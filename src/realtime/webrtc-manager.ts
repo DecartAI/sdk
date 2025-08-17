@@ -82,10 +82,10 @@ export class WebRTCManager {
 	}
 
 	isConnected(): boolean {
-		return this.connection.isConnected;
+		return this.connection.state === "connected";
 	}
 
 	getConnectionState(): "connected" | "connecting" | "disconnected" {
-		return this.connection.connectionState;
+		return this.connection.state;
 	}
 }

@@ -17,7 +17,7 @@ export type ConnectionState = "connecting" | "connected" | "disconnected";
 export class WebRTCConnection {
 	private pc: RTCPeerConnection | null = null;
 	private ws: WebSocket | null = null;
-	private state: ConnectionState = "disconnected";
+	state: ConnectionState = "disconnected";
 
 	constructor(private callbacks: ConnectionCallbacks = {}) {}
 
@@ -148,13 +148,5 @@ export class WebRTCConnection {
 		this.ws?.close();
 		this.ws = null;
 		this.setState("disconnected");
-	}
-
-	get connectionState(): ConnectionState {
-		return this.state;
-	}
-
-	get isConnected(): boolean {
-		return this.state === "connected";
 	}
 }
