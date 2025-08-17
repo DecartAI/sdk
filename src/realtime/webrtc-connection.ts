@@ -73,7 +73,8 @@ export class WebRTCConnection {
 		};
 
 		this.pc.onconnectionstatechange = () => {
-			const s = this.pc!.connectionState;
+			if (!this.pc) return;
+			const s = this.pc.connectionState;
 			this.setState(
 				s === "connected"
 					? "connected"
