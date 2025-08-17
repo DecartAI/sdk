@@ -103,6 +103,7 @@ export class WebRTCConnection {
 			switch (msg.type) {
 				case "ready": {
 					const offer = await this.pc.createOffer();
+					await this.applyCodecPreference(this.pc, "video/VP8");
 					await this.pc.setLocalDescription(offer);
 					this.send({ type: "offer", sdp: offer.sdp || "" });
 					break;
@@ -115,7 +116,10 @@ export class WebRTCConnection {
 					break;
 				}
 				case "answer":
-					await this.pc.setRemoteDescription({ type: "answer", sdp: msg.sdp });
+					await this.pc.setRemoteDescription({
+						type: "answer",
+						sdp: msg.sdp,
+					});
 					break;
 				case "ice-candidate":
 					if (msg.candidate) await this.pc.addIceCandidate(msg.candidate);
@@ -148,5 +152,45 @@ export class WebRTCConnection {
 		this.ws?.close();
 		this.ws = null;
 		this.setState("disconnected");
+	}
+
+	async applyCodecPreference(
+		peerConnection: RTCPeerConnection,
+		preferredCodecName: string,
+	) {
+		const videoTransceiver = peerConnection
+			.getTransceivers()
+			.find((r) => r.sender.track?.kind === "video");
+		if (!videoTransceiver) {
+			console.error(
+				"Could not find video transceiver. Ensure track is added to peer connection.",
+			);
+			return;
+		}
+
+		const capabilities = RTCRtpSender.getCapabilities("video");
+		if (!capabilities) {
+			console.error("Could not get video sender capabilities.");
+			return;
+		}
+
+		const preferredCodecs: RTCRtpCodec[] = [];
+		const otherCodecs: RTCRtpCodec[] = [];
+
+		capabilities.codecs.forEach((codec) => {
+			if (codec.mimeType === preferredCodecName) {
+				preferredCodecs.push(codec);
+			} else {
+				otherCodecs.push(codec);
+			}
+		});
+
+		const orderedCodecs = [...preferredCodecs, ...otherCodecs];
+		if (orderedCodecs.length === 0) {
+			console.warn("No video codecs found to set preferences for.");
+			return;
+		}
+
+		await videoTransceiver.setCodecPreferences(orderedCodecs);
 	}
 }
