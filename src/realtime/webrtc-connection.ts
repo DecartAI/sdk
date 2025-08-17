@@ -176,7 +176,6 @@ export class WebRTCConnection {
 
 		const preferredCodecs: RTCRtpCodec[] = [];
 		const otherCodecs: RTCRtpCodec[] = [];
-
 		capabilities.codecs.forEach((codec) => {
 			if (codec.mimeType === preferredCodecName) {
 				preferredCodecs.push(codec);
