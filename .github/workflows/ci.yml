@@ -1,4 +1,4 @@
-name: Unit Test
+name: CI
 
 on:
   push:
@@ -34,7 +34,6 @@ jobs:
 
       - name: Lint
         run: pnpm lint
-
       
       - name: Format
         run: pnpm format:check
