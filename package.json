@@ -1,0 +1,57 @@
+{
+	"name": "@decartai/mirage",
+	"version": "0.0.1",
+	"description": "Decart's Mirage JavaScript SDK",
+	"type": "module",
+	"license": "MIT",
+	"homepage": "https://github.com/decartai/mirage-sdk#readme",
+	"bugs": {
+		"url": "https://github.com/decartai/mirage-sdk/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/decartai/mirage-sdk.git"
+	},
+	"author": "Adir Amsalem <adir@decart.ai>",
+	"sideEffects": false,
+	"files": [
+		"dist"
+	],
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": "./dist/index.js",
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"dev:example": "vite dev",
+		"test": "vitest",
+		"typecheck": "tsc --noEmit",
+		"format": "biome format --write",
+		"format:check": "biome check",
+		"lint": "biome lint",
+		"prepublishOnly": "pnpm build",
+		"release": "bumpp && npm publish"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.17",
+		"biome": "^0.3.3",
+		"bumpp": "^10.1.0",
+		"tsdown": "^0.14.1",
+		"typescript": "^5.8.3",
+		"vite": "^7.1.2",
+		"vitest": "^3.1.3"
+	},
+	"dependencies": {
+		"mitt": "^3.0.1",
+		"p-retry": "^6.2.1",
+		"uuid": "^11.1.0",
+		"zod": "^4.0.17"
+	}
+}

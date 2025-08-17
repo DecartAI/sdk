@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mirage SDK Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f0f2f5;
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .video-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .video-section h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 18px;
+        }
+        
+        video {
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            border-radius: 8px;
+            background: #000;
+        }
+        
+        .controls {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .control-group {
+            margin-bottom: 20px;
+        }
+        
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        
+        input[type="text"]:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover:not(:disabled) {
+            background: #45a049;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        button.secondary {
+            background: #2196F3;
+        }
+        
+        button.secondary:hover:not(:disabled) {
+            background: #1976D2;
+        }
+        
+        .status {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-connected {
+            background: #4CAF50;
+        }
+        
+        .status-disconnected {
+            background: #f44336;
+        }
+        
+        .status-connecting {
+            background: #ff9800;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .logs {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .logs h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+        
+        .log-entry {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin: 5px 0;
+            padding: 5px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 3px solid #ddd;
+        }
+        
+        .log-error {
+            border-left-color: #f44336;
+            background: #ffebee;
+        }
+        
+        .log-info {
+            border-left-color: #2196F3;
+            background: #e3f2fd;
+        }
+        
+        .log-success {
+            border-left-color: #4CAF50;
+            background: #e8f5e8;
+        }
+        
+        .inline-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎭 Mirage SDK Test Page</h1>
+    
+    <!-- Connection Status -->
+    <div class="status">
+        <h3>Connection Status</h3>
+        <div>
+            <span id="status-indicator" class="status-indicator status-disconnected"></span>
+            <span id="status-text">Disconnected</span>
+        </div>
+    </div>
+    
+    <!-- Configuration -->
+    <div class="controls">
+        <h3>Configuration</h3>
+        <div class="control-group">
+            <label for="api-key">API Key:</label>
+            <input type="password" id="api-key" placeholder="Enter your Mirage API key">
+        </div>
+        <div class="control-group">
+            <label for="base-url">Base URL (optional):</label>
+            <input type="text" id="base-url" placeholder="wss://bouncer.mirage.decart.ai" value="wss://bouncer.mirage.decart.ai">
+        </div>
+        <div class="inline-controls">
+            <button id="start-camera">Start Camera</button>
+            <button id="connect-btn" disabled>Connect to Mirage</button>
+            <button id="disconnect-btn" disabled>Disconnect</button>
+            <div class="checkbox-group">
+                <input type="checkbox" id="mirror-toggle">
+                <label for="mirror-toggle" style="margin: 0; font-weight: normal;">Mirror Video</label>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Video Streams -->
+    <div class="container">
+        <div class="video-section">
+            <h3>📹 Local Camera</h3>
+            <video id="local-video" autoplay muted playsinline></video>
+        </div>
+        <div class="video-section">
+            <h3>🤖 Mirage Output</h3>
+            <video id="remote-video" autoplay playsinline></video>
+        </div>
+    </div>
+    
+    <!-- Prompt Controls -->
+    <div class="controls">
+        <h3>Prompt Control</h3>
+        <div class="control-group">
+            <label for="prompt-input">Enter your prompt:</label>
+            <input type="text" id="prompt-input" placeholder="Type your prompt here..." disabled>
+        </div>
+        <div class="inline-controls">
+            <button id="send-prompt" disabled>Send Prompt</button>
+            <div class="checkbox-group">
+                <input type="checkbox" id="enrich-toggle" checked>
+                <label for="enrich-toggle" style="margin: 0; font-weight: normal;">Enrich Prompt</label>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Logs -->
+    <div class="logs">
+        <h3>Console Logs</h3>
+        <div id="logs-container"></div>
+    </div>
+    
+    <script type="module">
+        // Import the Mirage SDK
+        import { createMirageClient } from './dist/index.js';
+        
+        // State management
+        let mirageClient = null;
+        let mirageRealtime = null;
+        let localStream = null;
+        let isConnected = false;
+        
+        // DOM elements
+        const elements = {
+            apiKey: document.getElementById('api-key'),
+            baseUrl: document.getElementById('base-url'),
+            startCamera: document.getElementById('start-camera'),
+            connectBtn: document.getElementById('connect-btn'),
+            disconnectBtn: document.getElementById('disconnect-btn'),
+            localVideo: document.getElementById('local-video'),
+            remoteVideo: document.getElementById('remote-video'),
+            promptInput: document.getElementById('prompt-input'),
+            sendPrompt: document.getElementById('send-prompt'),
+            enrichToggle: document.getElementById('enrich-toggle'),
+            mirrorToggle: document.getElementById('mirror-toggle'),
+            statusIndicator: document.getElementById('status-indicator'),
+            statusText: document.getElementById('status-text'),
+            logsContainer: document.getElementById('logs-container')
+        };
+        
+        // Logging system
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            elements.logsContainer.appendChild(logEntry);
+            elements.logsContainer.scrollTop = elements.logsContainer.scrollHeight;
+            
+            // Also log to browser console
+            console.log(`[Mirage SDK] ${message}`);
+        }
+        
+        // Update connection status
+        function updateStatus(status) {
+            const statusClass = {
+                'connected': 'status-connected',
+                'connecting': 'status-connecting',
+                'disconnected': 'status-disconnected'
+            };
+            
+            elements.statusIndicator.className = `status-indicator ${statusClass[status]}`;
+            elements.statusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
+        
+        // Start camera
+        elements.startCamera.addEventListener('click', async () => {
+            try {
+                addLog('Requesting camera access...', 'info');
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        frameRate: 14,
+                    },
+                    audio: true
+                });
+                
+                elements.localVideo.srcObject = localStream;
+                elements.startCamera.disabled = true;
+                elements.connectBtn.disabled = false;
+                
+                addLog('Camera access granted successfully', 'success');
+            } catch (error) {
+                addLog(`Failed to access camera: ${error.message}`, 'error');
+            }
+        });
+        
+        // Connect to Mirage
+        elements.connectBtn.addEventListener('click', async () => {
+            const apiKey = elements.apiKey.value.trim();
+            if (!apiKey) {
+                addLog('Please enter an API key', 'error');
+                return;
+            }
+            
+            if (!localStream) {
+                addLog('Please start camera first', 'error');
+                return;
+            }
+            
+            try {
+                updateStatus('connecting');
+                elements.connectBtn.disabled = true;
+                
+                addLog('Initializing Mirage client...', 'info');
+                
+                const baseUrl = elements.baseUrl.value.trim() || 'wss://bouncer.mirage.decart.ai';
+                mirageClient = createMirageClient({
+                    apiKey,
+                    baseUrl
+                });
+                
+                addLog('Connecting to Mirage server...', 'info');
+                
+                mirageRealtime = await mirageClient.realtime.connect(localStream, {
+                    onRemoteStream: (stream) => {
+                        addLog('Received remote stream from Mirage', 'success');
+                        elements.remoteVideo.srcObject = stream;
+                    },
+                    sessionId: `test-session-${Date.now()}`,
+                    initialState: {
+                        mirror: elements.mirrorToggle.checked
+                    }
+                });
+                
+                // Check connection status
+                if (mirageRealtime.isConnected()) {
+                    isConnected = true;
+                    updateStatus('connected');
+                    elements.disconnectBtn.disabled = false;
+                    elements.promptInput.disabled = false;
+                    elements.sendPrompt.disabled = false;
+                    
+                    addLog('Successfully connected to Mirage!', 'success');
+                } else {
+                    throw new Error('Connection established but not in connected state');
+                }
+                
+            } catch (error) {
+                addLog(`Failed to connect: ${error.message}`, 'error');
+                updateStatus('disconnected');
+                elements.connectBtn.disabled = false;
+                mirageClient = null;
+                isConnected = false;
+            }
+        });
+        
+        // Disconnect
+        elements.disconnectBtn.addEventListener('click', () => {
+            if (mirageClient) {
+                addLog('Disconnecting from Mirage...', 'info');
+                // Note: The SDK doesn't seem to have a disconnect method, 
+                // so we'll just reset our state
+                mirageClient = null;
+            }
+            
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+                elements.localVideo.srcObject = null;
+            }
+            
+            elements.remoteVideo.srcObject = null;
+            
+            isConnected = false;
+            updateStatus('disconnected');
+            
+            // Reset UI
+            elements.startCamera.disabled = false;
+            elements.connectBtn.disabled = true;
+            elements.disconnectBtn.disabled = true;
+            elements.promptInput.disabled = true;
+            elements.sendPrompt.disabled = true;
+            elements.promptInput.value = '';
+            
+            addLog('Disconnected successfully', 'info');
+        });
+        
+        // Send prompt
+        function sendPrompt() {
+            const prompt = elements.promptInput.value.trim();
+            if (!prompt) {
+                addLog('Please enter a prompt', 'error');
+                return;
+            }
+            
+            if (!mirageClient || !isConnected) {
+                addLog('Not connected to Mirage', 'error');
+                return;
+            }
+            
+            try {
+                const enrich = elements.enrichToggle.checked;
+                mirageRealtime.setPrompt(prompt, { enrich });
+                addLog(`Sent prompt: "${prompt}" (enrich: ${enrich})`, 'success');
+                elements.promptInput.value = '';
+            } catch (error) {
+                addLog(`Failed to send prompt: ${error.message}`, 'error');
+            }
+        }
+        
+        // Send prompt on button click
+        elements.sendPrompt.addEventListener('click', sendPrompt);
+        
+        // Send prompt on Enter key
+        elements.promptInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !elements.sendPrompt.disabled) {
+                sendPrompt();
+            }
+        });
+        
+        // Mirror toggle
+        elements.mirrorToggle.addEventListener('change', () => {
+            if (mirageClient && isConnected) {
+                try {
+                    mirageRealtime.setMirror(elements.mirrorToggle.checked);
+                    addLog(`Mirror ${elements.mirrorToggle.checked ? 'enabled' : 'disabled'}`, 'info');
+                } catch (error) {
+                    addLog(`Failed to toggle mirror: ${error.message}`, 'error');
+                }
+            }
+        });
+        
+        // Initialize
+        addLog('Mirage SDK Test Page loaded', 'info');
+        addLog('Click "Start Camera" to begin', 'info');
+    </script>
+</body>
+</html>
