@@ -65,7 +65,7 @@ mirage.disconnect();
 ```typescript
 const client = createMirageClient({
   apiKey: "your-api-key-here",
-  baseUrl: "wss://custom-endpoint.com" // optional, uses default Mirage endpoint
+  baseUrl: "https://custom-endpoint.com" // optional, uses default Mirage endpoint
 });
 ```
 

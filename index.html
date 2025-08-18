@@ -222,7 +222,7 @@
         </div>
         <div class="control-group">
             <label for="base-url">Base URL (optional):</label>
-            <input type="text" id="base-url" placeholder="wss://bouncer.mirage.decart.ai" value="wss://bouncer.mirage.decart.ai">
+            <input type="text" id="base-url" placeholder="https://bouncer.mirage.decart.ai" value="https://bouncer.mirage.decart.ai">
         </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
@@ -362,7 +362,7 @@
                 
                 addLog('Initializing Mirage client...', 'info');
                 
-                const baseUrl = elements.baseUrl.value.trim() || 'wss://bouncer.mirage.decart.ai';
+                const baseUrl = elements.baseUrl.value.trim() || 'https://bouncer.mirage.decart.ai';
                 mirageClient = createMirageClient({
                     apiKey,
                     baseUrl

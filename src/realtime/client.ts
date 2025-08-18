@@ -1,6 +1,7 @@
 import mitt from "mitt";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { modelStateSchema } from "../shared/types";
 import { createWebrtcError, type MirageSDKError } from "../utils/errors";
 import { realtimeMethods } from "./methods";
 import { WebRTCManager } from "./webrtc-manager";
@@ -10,15 +11,7 @@ export type RealTimeClientOptions = {
 	apiKey: string;
 };
 
-const realTimeClientInitialStateSchema = z.object({
-	prompt: z
-		.object({
-			text: z.string().min(1),
-			enrich: z.boolean().optional(),
-		})
-		.optional(),
-	mirror: z.boolean().optional(),
-});
+const realTimeClientInitialStateSchema = modelStateSchema;
 type OnRemoteStreamFn = (stream: MediaStream) => void;
 export type RealTimeClientInitialState = z.infer<
 	typeof realTimeClientInitialStateSchema
