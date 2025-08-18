@@ -41,8 +41,8 @@ export type Events = {
 };
 
 export type RealTimeClient = {
-	enrichPrompt: (prompt: string) => void;
-	setPrompt: (prompt: string, { enrich }: { enrich?: boolean }) => void;
+	enrichPrompt: (prompt: string) => Promise<string>;
+	setPrompt: (prompt: string, { enrich }?: { enrich?: boolean }) => void;
 	setMirror: (enabled: boolean) => void;
 	isConnected: () => boolean;
 	getConnectionState: () => "connected" | "connecting" | "disconnected";
