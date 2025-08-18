@@ -103,7 +103,7 @@ export class WebRTCConnection {
 			switch (msg.type) {
 				case "ready": {
 					const offer = await this.pc.createOffer();
-					await this.applyCodecPreference(this.pc, "video/VP8");
+					await this.applyCodecPreference("video/VP8");
 					await this.pc.setLocalDescription(offer);
 					this.send({ type: "offer", sdp: offer.sdp || "" });
 					break;
@@ -154,11 +154,10 @@ export class WebRTCConnection {
 		this.setState("disconnected");
 	}
 
-	async applyCodecPreference(
-		peerConnection: RTCPeerConnection,
-		preferredCodecName: string,
-	) {
-		const videoTransceiver = peerConnection
+	async applyCodecPreference(preferredCodecName: "video/VP8" | "video/H264") {
+		if (!this.pc) return;
+
+		const videoTransceiver = this.pc
 			.getTransceivers()
 			.find((r) => r.sender.track?.kind === "video");
 		if (!videoTransceiver) {
@@ -177,7 +176,7 @@ export class WebRTCConnection {
 		const preferredCodecs: RTCRtpCodec[] = [];
 		const otherCodecs: RTCRtpCodec[] = [];
 		capabilities.codecs.forEach((codec) => {
-			if (codec.mimeType === preferredCodecName) {
+			if (codec.mimeType.toLowerCase() === preferredCodecName.toLowerCase()) {
 				preferredCodecs.push(codec);
 			} else {
 				otherCodecs.push(codec);
@@ -189,7 +188,5 @@ export class WebRTCConnection {
 			console.warn("No video codecs found to set preferences for.");
 			return;
 		}
-
-		await videoTransceiver.setCodecPreferences(orderedCodecs);
 	}
 }
