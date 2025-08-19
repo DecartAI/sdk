@@ -319,7 +319,6 @@
         let localStream = null;
         let isConnected = false;
         let processedVideoUrl = null;
-        let processedThumbnailUrl = null;
         
         // DOM elements
         const elements = {
@@ -604,8 +603,7 @@
                 addLog(`Video processed successfully in ${processingTime}s`, 'success');
                 
                 // Store URLs
-                processedVideoUrl = result.videoUrl;
-                processedThumbnailUrl = result.thumbnailUrl;
+                processedVideoUrl = URL.createObjectURL(result);
                 
                 // Display processed video
                 elements.processedVideo.src = processedVideoUrl;
@@ -613,7 +611,6 @@
                 elements.downloadResult.disabled = false;
                 
                 addLog(`Video URL: ${processedVideoUrl}`, 'info');
-                addLog(`Thumbnail URL: ${processedThumbnailUrl}`, 'info');
                 
             } catch (error) {
                 addLog(`Processing failed: ${error.message}`, 'error');

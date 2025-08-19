@@ -1,5 +1,5 @@
 import { createInvalidInputError, createMirageError } from "../utils/errors";
-import type { ProcessOptions, ProcessResult, VideoInput } from "./types";
+import type { ProcessOptions, VideoInput } from "./types";
 
 export async function videoInputToBlob(input: VideoInput): Promise<Blob> {
 	if (input instanceof Blob || input instanceof File) {
@@ -46,7 +46,7 @@ export async function processVideo({
 	blob: Blob;
 	options: ProcessOptions;
 	signal?: AbortSignal;
-}): Promise<ProcessResult> {
+}): Promise<Blob> {
 	const formData = new FormData();
 	formData.append("video", blob, "video.mp4");
 
@@ -77,5 +77,5 @@ export async function processVideo({
 		);
 	}
 
-	return response.json();
+	return response.blob();
 }

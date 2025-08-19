@@ -75,7 +75,7 @@ const result = await client.process.video(file, {
 
 // Display the processed video
 const video = document.querySelector('video');
-video.src = result.videoUrl;
+video.src = URL.createObjectURL(result);
 
 // Process a video from URL
 const urlResult = await client.process.video(
@@ -291,19 +291,7 @@ const result = await client.process.video(file, {
 
 // Use the processed video
 const video = document.querySelector('video');
-video.src = result.videoUrl;
-
-// Display thumbnail
-const img = document.querySelector('img');
-img.src = result.thumbnailUrl;
-
-// 2. Process from URL
-const result = await client.process.video(
-  "https://example.com/input-video.mp4",
-  {
-    prompt: { text: "Pixel art" }
-  }
-);
+video.src = URL.createObjectURL(result);
 
 // 3. With cancellation
 const controller = new AbortController();
@@ -375,9 +363,7 @@ Process a video file or URL.
   - `mirror?: boolean` - Mirror the video horizontally (default: `false`)
   - `signal?: AbortSignal` - AbortSignal for cancellation
 
-**Returns:** `Promise<ProcessResult>`
-- `videoUrl: string` - URL of the processed video
-- `thumbnailUrl: string` - URL of the video thumbnail
+**Returns:** `Promise<Blob>` - The transformed video
 
 **Type Definitions:**
 ```typescript
@@ -390,11 +376,6 @@ type ProcessOptions = {
   };
   mirror?: boolean;
   signal?: AbortSignal;
-};
-
-type ProcessResult = {
-  videoUrl: string;
-  thumbnailUrl: string;
 };
 ```
 

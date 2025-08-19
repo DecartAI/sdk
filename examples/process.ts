@@ -1,12 +1,11 @@
-import fs from "node:fs";
 import {
 	createMirageClient,
 	type ProcessOptions,
-	type ProcessResult,
 	type VideoInput,
 } from "@decartai/mirage";
 
-const videoFile: VideoInput = fs.readFileSync("examples/video.mp4");
+const fileInput = document.querySelector('input[type="file"]');
+const videoFile: VideoInput = fileInput.files[0];
 
 // 1. Create a client
 const client = createMirageClient({
@@ -15,8 +14,8 @@ const client = createMirageClient({
 });
 
 // 2. Process a video
-// 2.1. Process a video file - upload the video file to the server, process it, and return the processed video url
-const processedVideoByFile: ProcessResult = await client.process.video(
+// 2.1. Process a video file - upload the video file to the server, process it, and return the processed video
+const processedVideoByFile = await client.process.video(
 	videoFile, // required, the video file to process. type: File | Buffer | Stream.
 	{
 		prompt: {
@@ -28,8 +27,8 @@ const processedVideoByFile: ProcessResult = await client.process.video(
 	} satisfies ProcessOptions,
 );
 
-// 2.2. Process a remote video URL - send the video url to the server, download the video, process it, and return the processed video url
-const processedVideoByUrl: ProcessResult = await client.process.video(
+// 2.2. Process a remote video URL - send the video url to the server, download the video, process it, and return the processed video
+const processedVideoByUrl = await client.process.video(
 	"https://www.youtube.com/watch?v=dQw4w9WgXcQ?download=true", // required, the url of the video to process. type: string.
 	{
 		prompt: {
@@ -43,8 +42,8 @@ const processedVideoByUrl: ProcessResult = await client.process.video(
 
 // 3. Play the video
 const videoElement = document.createElement("video");
-videoElement.src = processedVideoByFile.videoUrl;
-videoElement.src = processedVideoByUrl.videoUrl;
+videoElement.src = URL.createObjectURL(processedVideoByFile);
+videoElement.src = URL.createObjectURL(processedVideoByUrl);
 videoElement.play();
 
 document.body.appendChild(videoElement);

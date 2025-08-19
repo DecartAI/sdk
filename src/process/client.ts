@@ -1,14 +1,13 @@
 import { createInvalidInputError } from "../utils/errors";
 import {
 	type ProcessOptions,
-	type ProcessResult,
 	processOptionsSchema,
 	type VideoInput,
 } from "./types";
 import { processVideo, videoInputToBlob } from "./video";
 
 export type ProcessClient = {
-	video: (input: VideoInput, options: ProcessOptions) => Promise<ProcessResult>;
+	video: (input: VideoInput, options: ProcessOptions) => Promise<Blob>;
 };
 
 export type ProcessClientOptions = {
@@ -24,7 +23,7 @@ export const createProcessClient = (
 	const video = async (
 		input: VideoInput,
 		options: ProcessOptions,
-	): Promise<ProcessResult> => {
+	): Promise<Blob> => {
 		const parsedOptions = processOptionsSchema.safeParse(options);
 		if (!parsedOptions.success) {
 			// TODO: status code 400
