@@ -263,6 +263,46 @@
         </div>
     </div>
     
+    <!-- Video File Processing -->
+    <div class="controls">
+        <h3>Video File Processing</h3>
+        <div class="control-group">
+            <label for="video-file">Select a video file:</label>
+            <input type="file" id="video-file" accept="video/*">
+        </div>
+        <div class="control-group">
+            <label for="process-prompt">Processing prompt:</label>
+            <input type="text" id="process-prompt" placeholder="Enter style (e.g., Lego World, Anime style)">
+        </div>
+        <div class="inline-controls">
+            <button id="process-video" disabled>Process Video</button>
+            <button id="download-result" disabled>Download Result</button>
+            <div class="checkbox-group">
+                <input type="checkbox" id="process-enrich" checked>
+                <label for="process-enrich" style="margin: 0; font-weight: normal;">Enrich</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="process-mirror">
+                <label for="process-mirror" style="margin: 0; font-weight: normal;">Mirror</label>
+            </div>
+        </div>
+        <div id="process-status" style="margin-top: 10px; display: none;">
+            <strong>Status:</strong> <span id="process-status-text">Ready</span>
+        </div>
+    </div>
+    
+    <!-- Processed Video Display -->
+    <div class="container" id="processed-container" style="display: none;">
+        <div class="video-section">
+            <h3>📹 Original Video</h3>
+            <video id="original-video" controls></video>
+        </div>
+        <div class="video-section">
+            <h3>✨ Processed Video</h3>
+            <video id="processed-video" controls></video>
+        </div>
+    </div>
+    
     <!-- Logs -->
     <div class="logs">
         <h3>Console Logs</h3>
@@ -278,6 +318,8 @@
         let mirageRealtime = null;
         let localStream = null;
         let isConnected = false;
+        let processedVideoUrl = null;
+        let processedThumbnailUrl = null;
         
         // DOM elements
         const elements = {
@@ -294,7 +336,19 @@
             mirrorToggle: document.getElementById('mirror-toggle'),
             statusIndicator: document.getElementById('status-indicator'),
             statusText: document.getElementById('status-text'),
-            logsContainer: document.getElementById('logs-container')
+            logsContainer: document.getElementById('logs-container'),
+            // Video processing elements
+            videoFile: document.getElementById('video-file'),
+            processPrompt: document.getElementById('process-prompt'),
+            processVideo: document.getElementById('process-video'),
+            downloadResult: document.getElementById('download-result'),
+            processEnrich: document.getElementById('process-enrich'),
+            processMirror: document.getElementById('process-mirror'),
+            processStatus: document.getElementById('process-status'),
+            processStatusText: document.getElementById('process-status-text'),
+            processedContainer: document.getElementById('processed-container'),
+            originalVideo: document.getElementById('original-video'),
+            processedVideo: document.getElementById('processed-video')
         };
         
         // Logging system
@@ -479,9 +533,130 @@
             }
         });
         
+        // Video file selection handler
+        elements.videoFile.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                addLog(`Selected video file: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`, 'info');
+                elements.processVideo.disabled = false;
+                
+                // Display original video
+                const url = URL.createObjectURL(file);
+                elements.originalVideo.src = url;
+                elements.processedContainer.style.display = 'grid';
+            }
+        });
+        
+        // Process video file
+        elements.processVideo.addEventListener('click', async () => {
+            const apiKey = elements.apiKey.value.trim();
+            if (!apiKey) {
+                addLog('Please enter an API key', 'error');
+                return;
+            }
+            
+            const file = elements.videoFile.files[0];
+            if (!file) {
+                addLog('Please select a video file', 'error');
+                return;
+            }
+            
+            const promptText = elements.processPrompt.value.trim();
+            if (!promptText) {
+                addLog('Please enter a processing prompt', 'error');
+                return;
+            }
+            
+            try {
+                // Show status
+                elements.processStatus.style.display = 'block';
+                elements.processStatusText.textContent = 'Processing...';
+                elements.processVideo.disabled = true;
+                elements.downloadResult.disabled = true;
+                
+                addLog(`Starting video processing with prompt: "${promptText}"`, 'info');
+                
+                // Initialize client if not already done
+                if (!mirageClient) {
+                    const baseUrl = elements.baseUrl.value.trim() || 'https://bouncer.mirage.decart.ai';
+                    mirageClient = createMirageClient({
+                        apiKey,
+                        baseUrl
+                    });
+                    addLog('Initialized Mirage client for processing', 'info');
+                }
+                
+                // Process the video
+                const options = {
+                    prompt: {
+                        text: promptText,
+                        enrich: elements.processEnrich.checked
+                    },
+                    mirror: elements.processMirror.checked
+                };
+                
+                addLog('Uploading and processing video...', 'info');
+                const startTime = Date.now();
+                
+                const result = await mirageClient.process.video(file, options);
+                
+                const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                addLog(`Video processed successfully in ${processingTime}s`, 'success');
+                
+                // Store URLs
+                processedVideoUrl = result.videoUrl;
+                processedThumbnailUrl = result.thumbnailUrl;
+                
+                // Display processed video
+                elements.processedVideo.src = processedVideoUrl;
+                elements.processStatusText.textContent = 'Completed!';
+                elements.downloadResult.disabled = false;
+                
+                addLog(`Video URL: ${processedVideoUrl}`, 'info');
+                addLog(`Thumbnail URL: ${processedThumbnailUrl}`, 'info');
+                
+            } catch (error) {
+                addLog(`Processing failed: ${error.message}`, 'error');
+                elements.processStatusText.textContent = 'Failed';
+                console.error('Processing error:', error);
+            } finally {
+                elements.processVideo.disabled = false;
+            }
+        });
+        
+        // Download processed video
+        elements.downloadResult.addEventListener('click', async () => {
+            if (!processedVideoUrl) {
+                addLog('No processed video available', 'error');
+                return;
+            }
+            
+            try {
+                addLog('Downloading processed video...', 'info');
+                
+                // Fetch the video blob
+                const response = await fetch(processedVideoUrl);
+                const blob = await response.blob();
+                
+                // Create download link
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `processed_video_${Date.now()}.mp4`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                addLog('Download started', 'success');
+            } catch (error) {
+                addLog(`Download failed: ${error.message}`, 'error');
+            }
+        });
+        
         // Initialize
         addLog('Mirage SDK Test Page loaded', 'info');
-        addLog('Click "Start Camera" to begin', 'info');
+        addLog('Click "Start Camera" for real-time or select a video file for processing', 'info');
     </script>
 </body>
 </html>
