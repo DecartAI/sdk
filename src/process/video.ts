@@ -19,16 +19,12 @@ export async function videoInputToBlob(input: VideoInput): Promise<Blob> {
 		const url = typeof input === "string" ? input : input.toString();
 
 		if (!url.startsWith("http://") && !url.startsWith("https://")) {
-			throw createMirageError(
-				"INVALID_INPUT",
-				"URL must start with http:// or https://",
-			);
+			throw createInvalidInputError("URL must start with http:// or https://");
 		}
 
 		const response = await fetch(url);
 		if (!response.ok) {
-			throw createMirageError(
-				"INVALID_INPUT",
+			throw createInvalidInputError(
 				`Failed to fetch video from URL: ${response.statusText}`,
 			);
 		}

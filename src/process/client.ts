@@ -1,4 +1,4 @@
-import { createMirageError } from "../utils/errors";
+import { createInvalidInputError } from "../utils/errors";
 import {
 	type ProcessOptions,
 	type ProcessResult,
@@ -28,8 +28,7 @@ export const createProcessClient = (
 		const parsedOptions = processOptionsSchema.safeParse(options);
 		if (!parsedOptions.success) {
 			// TODO: status code 400
-			throw createMirageError(
-				"INVALID_OPTIONS",
+			throw createInvalidInputError(
 				`Invalid process options: ${parsedOptions.error.message}`,
 			);
 		}
