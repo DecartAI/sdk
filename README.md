@@ -352,7 +352,6 @@ Process a video file or URL.
 - `input: VideoInput` - Video input, can be:
   - `File` - File object from input element (browser)
   - `Blob` - Binary data (browser)
-  - `ArrayBuffer` - Raw binary buffer
   - `ReadableStream` - Streaming input
   - `URL` or `string` - HTTP/HTTPS URL to video
 
@@ -367,7 +366,7 @@ Process a video file or URL.
 
 **Type Definitions:**
 ```typescript
-type VideoInput = File | Blob | ArrayBuffer | ReadableStream | URL | string;
+type VideoInput = File | Blob | ReadableStream | URL | string;
 
 type ProcessOptions = {
   prompt?: {

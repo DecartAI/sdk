@@ -6,10 +6,6 @@ export async function videoInputToBlob(input: VideoInput): Promise<Blob> {
 		return input;
 	}
 
-	if (input instanceof ArrayBuffer) {
-		return new Blob([input], { type: "video/mp4" });
-	}
-
 	if (input instanceof ReadableStream) {
 		const response = new Response(input);
 		return response.blob();
@@ -48,7 +44,7 @@ export async function processVideo({
 	signal?: AbortSignal;
 }): Promise<Blob> {
 	const formData = new FormData();
-	formData.append("video", blob, "video.mp4");
+	formData.append("video", blob);
 
 	if (options.prompt?.text) {
 		formData.append("prompt", options.prompt.text);

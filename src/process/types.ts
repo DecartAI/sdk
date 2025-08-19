@@ -6,10 +6,4 @@ export const processOptionsSchema = modelStateSchema.extend({
 });
 export type ProcessOptions = z.input<typeof processOptionsSchema>;
 
-export type VideoInput =
-	| File
-	| Blob
-	| ArrayBuffer
-	| ReadableStream
-	| URL
-	| string;
+export type VideoInput = File | Blob | ReadableStream | URL | string;
