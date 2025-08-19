@@ -8,10 +8,7 @@ import {
 import { processVideo, videoInputToBlob } from "./video";
 
 export type ProcessClient = {
-	video: (
-		input: VideoInput,
-		options?: ProcessOptions,
-	) => Promise<ProcessResult>;
+	video: (input: VideoInput, options: ProcessOptions) => Promise<ProcessResult>;
 };
 
 export type ProcessClientOptions = {
@@ -26,7 +23,7 @@ export const createProcessClient = (
 
 	const video = async (
 		input: VideoInput,
-		options?: ProcessOptions,
+		options: ProcessOptions,
 	): Promise<ProcessResult> => {
 		const parsedOptions = processOptionsSchema.safeParse(options);
 		if (!parsedOptions.success) {

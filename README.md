@@ -14,6 +14,8 @@ yarn add @decartai/mirage
 
 ## Quick Start
 
+### Real-time Video Transformation
+
 ```typescript
 import { createMirageClient } from "@decartai/mirage";
 
@@ -49,9 +51,47 @@ mirage.setPrompt("Cyberpunk city");
 mirage.disconnect();
 ```
 
+### Process Video Files
+
+```typescript
+import { createMirageClient } from "@decartai/mirage";
+
+// Create a client
+const client = createMirageClient({
+  apiKey: "your-api-key-here"
+});
+
+// Process a local video file
+const fileInput = document.querySelector('input[type="file"]');
+const file = fileInput.files[0];
+
+const result = await client.process.video(file, {
+  prompt: {
+    text: "Lego World",
+    enrich: true
+  },
+  mirror: false
+});
+
+// Display the processed video
+const video = document.querySelector('video');
+video.src = result.videoUrl;
+
+// Process a video from URL
+const urlResult = await client.process.video(
+  "https://example.com/video.mp4",
+  {
+    prompt: {
+      text: "Anime style"
+    }
+  }
+);
+```
+
 ## Features
 
 - **Real-time video transformation** - Transform video streams with minimal latency using WebRTC
+- **Video file processing** - Transform video files and URLs on-demand
 - **Dynamic prompt switching** - Change styles on the fly without reconnecting
 - **Automatic prompt enhancement** - Mirage enriches simple prompts for better results
 - **Mirror mode** - Built-in support for front-facing camera scenarios
@@ -60,7 +100,9 @@ mirage.disconnect();
 
 ## Usage Guide
 
-### 1. Creating a Client
+### Real-time API
+
+#### 1. Creating a Client
 
 ```typescript
 const client = createMirageClient({
@@ -69,7 +111,7 @@ const client = createMirageClient({
 });
 ```
 
-### 2. Connecting to the Real-time API
+#### 2. Connecting to the Real-time API
 
 ```typescript
 const mirage = await client.realtime.connect(stream, {
@@ -87,7 +129,7 @@ const mirage = await client.realtime.connect(stream, {
 });
 ```
 
-### 3. Managing Prompts
+#### 3. Managing Prompts
 
 ```typescript
 // Simple prompt with automatic enhancement
@@ -105,14 +147,14 @@ console.log(enhanced);
 mirage.setPrompt(enhanced, { enrich: false });
 ```
 
-### 4. Camera Mirroring
+#### 4. Camera Mirroring
 
 ```typescript
 // Toggle mirror mode (useful for front-facing cameras)
 mirage.setMirror(true);
 ```
 
-### 5. Connection State Management
+#### 5. Connection State Management
 
 ```typescript
 // Check connection state synchronously
@@ -128,7 +170,7 @@ mirage.on("connectionChange", (state) => {
 });
 ```
 
-### 6. Error Handling
+#### 6. Error Handling
 
 ```typescript
 import type { MirageSDKError } from "@decartai/mirage";
@@ -148,7 +190,7 @@ mirage.on("error", (error: MirageSDKError) => {
 });
 ```
 
-### 7. Cleanup
+#### 7. Cleanup
 
 ```typescript
 // Always disconnect when done
@@ -159,7 +201,7 @@ mirage.off("connectionChange", onConnectionChange);
 mirage.off("error", onError);
 ```
 
-## Complete Example
+### Complete Example
 
 ```typescript
 import { createMirageClient, type MirageSDKError } from "@decartai/mirage";
@@ -221,15 +263,70 @@ async function setupMirage() {
 setupMirage();
 ```
 
+## Process API
+
+#### 1. Creating a Client
+
+```typescript
+const client = createMirageClient({
+  apiKey: "your-api-key-here",
+  baseUrl: "https://custom-endpoint.com" // optional, uses default Mirage endpoint
+});
+```
+
+#### 2. Process Video Files
+
+```typescript
+// 1. Process a local file (browser)
+const fileInput = document.querySelector('input[type="file"]');
+const file = fileInput.files[0];
+
+const result = await client.process.video(file, {
+  prompt: {
+    text: "Cartoon style",
+    enrich: true
+  },
+  mirror: false
+});
+
+// Use the processed video
+const video = document.querySelector('video');
+video.src = result.videoUrl;
+
+// Display thumbnail
+const img = document.querySelector('img');
+img.src = result.thumbnailUrl;
+
+// 2. Process from URL
+const result = await client.process.video(
+  "https://example.com/input-video.mp4",
+  {
+    prompt: { text: "Pixel art" }
+  }
+);
+
+// 3. With cancellation
+const controller = new AbortController();
+const result = await client.process.video(file, {
+  prompt: { text: "Watercolor painting" },
+  signal: controller.signal
+});
+
+// Cancel if needed
+controller.abort();
+```
+
 ## API Reference
 
 ### `createMirageClient(options)`
 Creates a new Mirage client instance.
 
 - `options.apiKey` (required) - Your Mirage API key
-- `options.baseUrl` (optional) - Custom WebSocket endpoint
+- `options.baseUrl` (optional) - Custom API endpoint (defaults to Mirage)
 
-### `client.realtime.connect(stream, options)`
+### Real-time API
+
+#### `client.realtime.connect(stream, options)`
 Connects to the real-time transformation service.
 
 - `stream` - MediaStream from getUserMedia
@@ -237,26 +334,69 @@ Connects to the real-time transformation service.
 - `options.initialState.prompt` - Initial transformation prompt
 - `options.initialState.mirror` - Enable mirror mode
 
-### `mirage.setPrompt(prompt, options?)`
+#### `mirage.setPrompt(prompt, options?)`
 Changes the transformation style.
 
 - `prompt` - Text description of desired style
 - `options.enrich` - Whether to enhance the prompt (default: true)
 
-### `mirage.enrichPrompt(prompt)`
+#### `mirage.enrichPrompt(prompt)`
 Gets an enhanced version of your prompt without applying it.
 
-### `mirage.setMirror(enabled)`
+#### `mirage.setMirror(enabled)`
 Toggles video mirroring.
 
-### `mirage.disconnect()`
+#### `mirage.disconnect()`
 Closes the connection and cleans up resources.
 
-### Event: `'connectionChange'`
+#### Event: `'connectionChange'`
 Fired when connection state changes.
 
-### Event: `'error'`
+#### Event: `'error'`
 Fired when an error occurs.
+
+### Process API
+
+#### `client.process.video(input, options?)`
+Process a video file or URL.
+
+**Parameters:**
+- `input: VideoInput` - Video input, can be:
+  - `File` - File object from input element (browser)
+  - `Blob` - Binary data (browser)
+  - `ArrayBuffer` - Raw binary buffer
+  - `ReadableStream` - Streaming input
+  - `URL` or `string` - HTTP/HTTPS URL to video
+
+- `options?: ProcessOptions` - Optional configuration:
+  - `prompt?: { text: string; enrich?: boolean }` - Style transformation
+    - `text` - Style description (required if prompt is provided)
+    - `enrich` - Enable prompt enhancement (default: `true`)
+  - `mirror?: boolean` - Mirror the video horizontally (default: `false`)
+  - `signal?: AbortSignal` - AbortSignal for cancellation
+
+**Returns:** `Promise<ProcessResult>`
+- `videoUrl: string` - URL of the processed video
+- `thumbnailUrl: string` - URL of the video thumbnail
+
+**Type Definitions:**
+```typescript
+type VideoInput = File | Blob | ArrayBuffer | ReadableStream | URL | string;
+
+type ProcessOptions = {
+  prompt?: {
+    text: string;
+    enrich?: boolean;
+  };
+  mirror?: boolean;
+  signal?: AbortSignal;
+};
+
+type ProcessResult = {
+  videoUrl: string;
+  thumbnailUrl: string;
+};
+```
 
 ## Development
 
