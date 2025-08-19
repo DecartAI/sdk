@@ -1,6 +1,6 @@
 # Mirage SDK
 
-A JavaScript SDK for Mirage - Decart's realtime video-to-video AI model. Transform video streams in real-time with text prompts.
+A JavaScript SDK for Mirage - Decart's realtime video-to-video AI model.
 
 ## Installation
 
