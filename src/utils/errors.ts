@@ -9,6 +9,9 @@ export const ERROR_CODES = {
 	INVALID_API_KEY: "INVALID_API_KEY",
 	INVALID_BASE_URL: "INVALID_BASE_URL",
 	WEB_RTC_ERROR: "WEB_RTC_ERROR",
+	PROCESSING_ERROR: "PROCESSING_ERROR",
+	INVALID_INPUT: "INVALID_INPUT",
+	INVALID_OPTIONS: "INVALID_OPTIONS",
 } as const;
 
 export function createMirageError(
@@ -38,4 +41,8 @@ export function createWebrtcError(error: Error): MirageSDKError {
 	return createMirageError(ERROR_CODES.WEB_RTC_ERROR, "WebRTC error", {
 		cause: error,
 	});
+}
+
+export function createInvalidInputError(message: string): MirageSDKError {
+	return createMirageError(ERROR_CODES.INVALID_INPUT, message);
 }

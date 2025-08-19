@@ -30,7 +30,7 @@
 	"scripts": {
 		"build": "tsdown",
 		"dev": "tsdown --watch",
-		"dev:example": "vite dev",
+		"dev:example": "vite dev --port 3000",
 		"test": "vitest",
 		"typecheck": "tsc --noEmit",
 		"format": "biome format --write",
