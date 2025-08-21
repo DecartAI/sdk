@@ -1,5 +1,5 @@
 {
-	"name": "@decartai/mirage",
+	"name": "@decartai/sdk",
 	"version": "0.0.1",
 	"description": "Decart's Mirage JavaScript SDK",
 	"type": "module",

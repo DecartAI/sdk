@@ -1,4 +1,4 @@
-export type MirageSDKError = {
+export type DecartSDKError = {
 	code: string;
 	message: string;
 	data?: Record<string, unknown>;
@@ -12,37 +12,45 @@ export const ERROR_CODES = {
 	PROCESSING_ERROR: "PROCESSING_ERROR",
 	INVALID_INPUT: "INVALID_INPUT",
 	INVALID_OPTIONS: "INVALID_OPTIONS",
+	MODEL_NOT_FOUND: "MODEL_NOT_FOUND",
 } as const;
 
-export function createMirageError(
+export function createSDKError(
 	code: string,
 	message: string,
 	data?: Record<string, unknown>,
 	cause?: Error,
-): MirageSDKError {
+): DecartSDKError {
 	return { code, message, data, cause };
 }
 
-export function createInvalidApiKeyError(): MirageSDKError {
-	return createMirageError(
+export function createInvalidApiKeyError(): DecartSDKError {
+	return createSDKError(
 		ERROR_CODES.INVALID_API_KEY,
 		"API key is required and must be a non-empty string",
 	);
 }
 
-export function createInvalidBaseUrlError(url?: string): MirageSDKError {
-	return createMirageError(
+export function createInvalidBaseUrlError(url?: string): DecartSDKError {
+	return createSDKError(
 		ERROR_CODES.INVALID_BASE_URL,
 		`Invalid base URL${url ? `: ${url}` : ""}`,
 	);
 }
 
-export function createWebrtcError(error: Error): MirageSDKError {
-	return createMirageError(ERROR_CODES.WEB_RTC_ERROR, "WebRTC error", {
+export function createWebrtcError(error: Error): DecartSDKError {
+	return createSDKError(ERROR_CODES.WEB_RTC_ERROR, "WebRTC error", {
 		cause: error,
 	});
 }
 
-export function createInvalidInputError(message: string): MirageSDKError {
-	return createMirageError(ERROR_CODES.INVALID_INPUT, message);
+export function createInvalidInputError(message: string): DecartSDKError {
+	return createSDKError(ERROR_CODES.INVALID_INPUT, message);
+}
+
+export function createModelNotFoundError(model: string): DecartSDKError {
+	return createSDKError(
+		ERROR_CODES.MODEL_NOT_FOUND,
+		`Model ${model} not found`,
+	);
 }

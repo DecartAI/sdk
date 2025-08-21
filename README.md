@@ -1,15 +1,15 @@
-# Mirage SDK
+# Decart SDK
 
-A JavaScript SDK for Mirage - Decart's realtime video-to-video AI model.
+A JavaScript SDK for Decart's models.
 
 ## Installation
 
 ```bash
-npm install @decartai/mirage
+npm install @decartai/sdk
 # or
-pnpm add @decartai/mirage
+pnpm add @decartai/sdk
 # or
-yarn add @decartai/mirage
+yarn add @decartai/sdk
 ```
 
 ## Quick Start
@@ -17,21 +17,24 @@ yarn add @decartai/mirage
 ### Real-time Video Transformation
 
 ```typescript
-import { createMirageClient } from "@decartai/mirage";
+import { createDecartClient, models } from "@decartai/sdk";
+
+const model = models.mirage("decart-v2v-v2.0-704p");
 
 // Get user's camera stream
 const stream = await navigator.mediaDevices.getUserMedia({
   audio: true,
-  video: { frameRate: 14 }
+  video: { frameRate: model.fps }
 });
 
 // Create a client
-const client = createMirageClient({
+const client = createDecartClient({
   apiKey: "your-api-key-here"
 });
 
 // Connect and transform the video stream
-const mirage = await client.realtime.connect(stream, {
+const realtimeClient = await client.realtime.connect(stream, {
+  model,
   onRemoteStream: (transformedStream) => {
     // Display the transformed video in your app
     videoElement.srcObject = transformedStream;
@@ -45,19 +48,19 @@ const mirage = await client.realtime.connect(stream, {
 });
 
 // Change the style on the fly
-mirage.setPrompt("Cyberpunk city");
+realtimeClient.setPrompt("Cyberpunk city");
 
 // Disconnect when done
-mirage.disconnect();
+realtimeClient.disconnect();
 ```
 
 ### Process Video Files
 
 ```typescript
-import { createMirageClient } from "@decartai/mirage";
+import { createDecartClient } from "@decartai/sdk";
 
 // Create a client
-const client = createMirageClient({
+const client = createDecartClient({
   apiKey: "your-api-key-here"
 });
 
@@ -66,6 +69,7 @@ const fileInput = document.querySelector('input[type="file"]');
 const file = fileInput.files[0];
 
 const result = await client.process.video(file, {
+  model: models.mirage("decart-v2v-v2.0-704p"),
   prompt: {
     text: "Lego World",
     enrich: true
@@ -81,6 +85,7 @@ video.src = URL.createObjectURL(result);
 const urlResult = await client.process.video(
   "https://example.com/video.mp4",
   {
+    model: models.mirage("decart-v2v-v2.0-704p"),
     prompt: {
       text: "Anime style"
     }
@@ -105,7 +110,7 @@ const urlResult = await client.process.video(
 #### 1. Creating a Client
 
 ```typescript
-const client = createMirageClient({
+const client = createDecartClient({
   apiKey: "your-api-key-here",
   baseUrl: "https://custom-endpoint.com" // optional, uses default Mirage endpoint
 });
@@ -114,7 +119,8 @@ const client = createMirageClient({
 #### 2. Connecting to the Real-time API
 
 ```typescript
-const mirage = await client.realtime.connect(stream, {
+const realtimeClient = await client.realtime.connect(stream, {
+  model: models.mirage("decart-v2v-v2.0-704p"),
   onRemoteStream: (stream: MediaStream) => {
     // Handle the transformed video stream
     videoElement.srcObject = stream;
@@ -133,36 +139,36 @@ const mirage = await client.realtime.connect(stream, {
 
 ```typescript
 // Simple prompt with automatic enhancement
-mirage.setPrompt("Anime style");
+realtimeClient.setPrompt("Anime style");
 
 // Use your own detailed prompt without enhancement
-mirage.setPrompt(
+realtimeClient.setPrompt(
   "A detailed artistic style with specific colors and mood...",
   { enrich: false }
 );
 
 // Get an enhanced prompt without applying it (for preview/debugging)
-const enhanced = await mirage.enrichPrompt("Pixel art");
+const enhanced = await realtimeClient.enrichPrompt("Pixel art");
 console.log(enhanced);
-mirage.setPrompt(enhanced, { enrich: false });
+realtimeClient.setPrompt(enhanced, { enrich: false });
 ```
 
 #### 4. Camera Mirroring
 
 ```typescript
 // Toggle mirror mode (useful for front-facing cameras)
-mirage.setMirror(true);
+realtimeClient.setMirror(true);
 ```
 
 #### 5. Connection State Management
 
 ```typescript
 // Check connection state synchronously
-const isConnected = mirage.isConnected();
-const state = mirage.getConnectionState(); // "connected" | "connecting" | "disconnected"
+const isConnected = realtimeClient.isConnected();
+const state = realtimeClient.getConnectionState(); // "connected" | "connecting" | "disconnected"
 
 // Listen to connection changes
-mirage.on("connectionChange", (state) => {
+realtimeClient.on("connectionChange", (state) => {
   console.log(`Connection state: ${state}`);
   if (state === "disconnected") {
     // Handle disconnection
@@ -173,10 +179,10 @@ mirage.on("connectionChange", (state) => {
 #### 6. Error Handling
 
 ```typescript
-import type { MirageSDKError } from "@decartai/mirage";
+import type { DecartSDKError } from "@decartai/sdk";
 
-mirage.on("error", (error: MirageSDKError) => {
-  console.error("Mirage error:", error.code, error.message);
+realtimeClient.on("error", (error: DecartSDKError) => {
+  console.error("SDK error:", error.code, error.message);
   
   // Handle specific errors
   switch(error.code) {
@@ -194,19 +200,19 @@ mirage.on("error", (error: MirageSDKError) => {
 
 ```typescript
 // Always disconnect when done
-mirage.disconnect();
+realtimeClient.disconnect();
 
 // Remove event listeners
-mirage.off("connectionChange", onConnectionChange);
-mirage.off("error", onError);
+realtimeClient.off("connectionChange", onConnectionChange);
+realtimeClient.off("error", onError);
 ```
 
 ### Complete Example
 
 ```typescript
-import { createMirageClient, type MirageSDKError } from "@decartai/mirage";
+import { createDecartClient, type DecartSDKError } from "@decartai/sdk";
 
-async function setupMirage() {
+async function setupSDK() {
   try {
     // Get camera stream
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -215,12 +221,12 @@ async function setupMirage() {
     });
 
     // Create client
-    const client = createMirageClient({
+    const client = createDecartClient({
       apiKey: process.env.MIRAGE_API_KEY
     });
 
     // Connect with initial prompt
-    const mirage = await client.realtime.connect(stream, {
+    const realtimeClient = await client.realtime.connect(stream, {
       onRemoteStream: (stream) => {
         const video = document.getElementById("output-video");
         video.srcObject = stream;
@@ -235,32 +241,32 @@ async function setupMirage() {
     });
 
     // Set up event handlers
-    mirage.on("connectionChange", (state) => {
+    realtimeClient.on("connectionChange", (state) => {
       updateUIConnectionStatus(state);
     });
 
-    mirage.on("error", (error) => {
+    realtimeClient.on("error", (error) => {
       console.error("Mirage error:", error);
       showErrorToUser(error.message);
     });
 
     // Allow user to change styles
     document.getElementById("style-input").addEventListener("change", async (e) => {
-      mirage.setPrompt(e.target.value);
+      realtimeClient.setPrompt(e.target.value);
     });
 
     // Cleanup on page unload
     window.addEventListener("beforeunload", async () => {
-      mirage.disconnect();
+      realtimeClient.disconnect();
     });
 
-    return mirage;
+    return realtimeClient;
   } catch (error) {
     console.error("Failed to setup Mirage:", error);
   }
 }
 
-setupMirage();
+setupSDK();
 ```
 
 ## Process API
@@ -268,7 +274,7 @@ setupMirage();
 #### 1. Creating a Client
 
 ```typescript
-const client = createMirageClient({
+const client = createDecartClient({
   apiKey: "your-api-key-here",
   baseUrl: "https://custom-endpoint.com" // optional, uses default Mirage endpoint
 });
@@ -306,7 +312,7 @@ controller.abort();
 
 ## API Reference
 
-### `createMirageClient(options)`
+### `createDecartClient(options)`
 Creates a new Mirage client instance.
 
 - `options.apiKey` (required) - Your Mirage API key
@@ -322,19 +328,19 @@ Connects to the real-time transformation service.
 - `options.initialState.prompt` - Initial transformation prompt
 - `options.initialState.mirror` - Enable mirror mode
 
-#### `mirage.setPrompt(prompt, options?)`
+#### `realtimeClient.setPrompt(prompt, options?)`
 Changes the transformation style.
 
 - `prompt` - Text description of desired style
 - `options.enrich` - Whether to enhance the prompt (default: true)
 
-#### `mirage.enrichPrompt(prompt)`
+#### `realtimeClient.enrichPrompt(prompt)`
 Gets an enhanced version of your prompt without applying it.
 
-#### `mirage.setMirror(enabled)`
+#### `realtimeClient.setMirror(enabled)`
 Toggles video mirroring.
 
-#### `mirage.disconnect()`
+#### `realtimeClient.disconnect()`
 Closes the connection and cleans up resources.
 
 #### Event: `'connectionChange'`

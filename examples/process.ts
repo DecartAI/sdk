@@ -1,15 +1,18 @@
 import {
-	createMirageClient,
+	createDecartClient,
+	models,
 	type ProcessOptions,
 	type VideoInput,
-} from "@decartai/mirage";
+} from "@decartai/sdk";
 
-const fileInput = document.querySelector('input[type="file"]');
-const videoFile: VideoInput = fileInput.files[0];
+const fileInput = document.querySelector(
+	'input[type="file"]',
+) as HTMLInputElement;
+const videoFile: VideoInput = fileInput.files?.[0] as VideoInput;
 
 // 1. Create a client
-const client = createMirageClient({
-	baseUrl: "https://api.decart.ai/mirage/v1", // optional, defaults to https://...
+const client = createDecartClient({
+	baseUrl: "https://api.decart.ai", // optional, defaults to https://...
 	apiKey: "dcrt-dLMPLEvXIuYPCpC0U5QKJh7jTH9RK8EoAaMT",
 });
 
@@ -18,6 +21,7 @@ const client = createMirageClient({
 const processedVideoByFile = await client.process.video(
 	videoFile, // required, the video file to process. type: File | Buffer | Stream.
 	{
+		model: models.v2v("decart-v2v-v2.0-704p"),
 		prompt: {
 			// optional, defaults to undefined, will return the original stream if no prompt is sent
 			text: "Lego World",
@@ -31,6 +35,7 @@ const processedVideoByFile = await client.process.video(
 const processedVideoByUrl = await client.process.video(
 	"https://www.youtube.com/watch?v=dQw4w9WgXcQ?download=true", // required, the url of the video to process. type: string.
 	{
+		model: models.v2v("decart-v2v-v1.0-432p"),
 		prompt: {
 			// optional, defaults to undefined, will return the original stream if no prompt is sent
 			text: "Lego World",

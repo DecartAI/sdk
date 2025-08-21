@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mirage SDK Test</title>
+    <title>Decart SDK Test</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -202,7 +202,7 @@
     </style>
 </head>
 <body>
-    <h1>🎭 Mirage SDK Test Page</h1>
+    <h1>🎭 Decart SDK Test Page</h1>
     
     <!-- Connection Status -->
     <div class="status">
@@ -218,7 +218,7 @@
         <h3>Configuration</h3>
         <div class="control-group">
             <label for="api-key">API Key:</label>
-            <input type="password" id="api-key" placeholder="Enter your Mirage API key">
+            <input type="password" id="api-key" placeholder="Enter your Decart API key">
         </div>
         <div class="control-group">
             <label for="base-url">Base URL (optional):</label>
@@ -226,7 +226,7 @@
         </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
-            <button id="connect-btn" disabled>Connect to Mirage</button>
+            <button id="connect-btn" disabled>Connect to Decart</button>
             <button id="disconnect-btn" disabled>Disconnect</button>
             <div class="checkbox-group">
                 <input type="checkbox" id="mirror-toggle">
@@ -242,7 +242,7 @@
             <video id="local-video" autoplay muted playsinline></video>
         </div>
         <div class="video-section">
-            <h3>🤖 Mirage Output</h3>
+            <h3>🤖 Decart Output</h3>
             <video id="remote-video" autoplay playsinline></video>
         </div>
     </div>
@@ -310,12 +310,12 @@
     </div>
     
     <script type="module">
-        // Import the Mirage SDK
-        import { createMirageClient } from './dist/index.js';
+        // Import the Decart SDK
+        import { createDecartClient, models } from './dist/index.js';
         
         // State management
-        let mirageClient = null;
-        let mirageRealtime = null;
+        let decartClient = null;
+        let decartRealtime = null;
         let localStream = null;
         let isConnected = false;
         let processedVideoUrl = null;
@@ -360,7 +360,7 @@
             elements.logsContainer.scrollTop = elements.logsContainer.scrollHeight;
             
             // Also log to browser console
-            console.log(`[Mirage SDK] ${message}`);
+            console.log(`[Decart SDK] ${message}`);
         }
         
         // Update connection status
@@ -396,7 +396,7 @@
             }
         });
         
-        // Connect to Mirage
+        // Connect to Decart
         elements.connectBtn.addEventListener('click', async () => {
             const apiKey = elements.apiKey.value.trim();
             if (!apiKey) {
@@ -413,19 +413,20 @@
                 updateStatus('connecting');
                 elements.connectBtn.disabled = true;
                 
-                addLog('Initializing Mirage client...', 'info');
+                addLog('Initializing Decart client...', 'info');
                 
-                const baseUrl = elements.baseUrl.value.trim() || 'https://bouncer.mirage.decart.ai';
-                mirageClient = createMirageClient({
+                const baseUrl = elements.baseUrl.value.trim() || 'https://bouncer.decart.ai';
+                decartClient = createDecartClient({
                     apiKey,
                     baseUrl
                 });
                 
-                addLog('Connecting to Mirage server...', 'info');
+                addLog('Connecting to Decart server...', 'info');
                 
-                mirageRealtime = await mirageClient.realtime.connect(localStream, {
+                decartRealtime = await decartClient.realtime.connect(localStream, {
+                    model: models.v2v("decart-v2v-v2.0-704p"),
                     onRemoteStream: (stream) => {
-                        addLog('Received remote stream from Mirage', 'success');
+                        addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
                     },
                     sessionId: `test-session-${Date.now()}`,
@@ -435,14 +436,14 @@
                 });
                 
                 // Check connection status
-                if (mirageRealtime.isConnected()) {
+                if (decartRealtime.isConnected()) {
                     isConnected = true;
                     updateStatus('connected');
                     elements.disconnectBtn.disabled = false;
                     elements.promptInput.disabled = false;
                     elements.sendPrompt.disabled = false;
                     
-                    addLog('Successfully connected to Mirage!', 'success');
+                    addLog('Successfully connected to Decart!', 'success');
                 } else {
                     throw new Error('Connection established but not in connected state');
                 }
@@ -451,18 +452,18 @@
                 addLog(`Failed to connect: ${error.message}`, 'error');
                 updateStatus('disconnected');
                 elements.connectBtn.disabled = false;
-                mirageClient = null;
+                decartClient = null;
                 isConnected = false;
             }
         });
         
         // Disconnect
         elements.disconnectBtn.addEventListener('click', () => {
-            if (mirageClient) {
-                addLog('Disconnecting from Mirage...', 'info');
+            if (decartClient) {
+                addLog('Disconnecting from Decart...', 'info');
                 // Note: The SDK doesn't seem to have a disconnect method, 
                 // so we'll just reset our state
-                mirageClient = null;
+                decartClient = null;
             }
             
             if (localStream) {
@@ -495,14 +496,14 @@
                 return;
             }
             
-            if (!mirageClient || !isConnected) {
-                addLog('Not connected to Mirage', 'error');
+            if (!decartClient || !isConnected) {
+                addLog('Not connected to Decart', 'error');
                 return;
             }
             
             try {
                 const enrich = elements.enrichToggle.checked;
-                mirageRealtime.setPrompt(prompt, { enrich });
+                decartRealtime.setPrompt(prompt, { enrich });
                 addLog(`Sent prompt: "${prompt}" (enrich: ${enrich})`, 'success');
                 elements.promptInput.value = '';
             } catch (error) {
@@ -522,9 +523,9 @@
         
         // Mirror toggle
         elements.mirrorToggle.addEventListener('change', () => {
-            if (mirageClient && isConnected) {
+            if (decartClient && isConnected) {
                 try {
-                    mirageRealtime.setMirror(elements.mirrorToggle.checked);
+                    decartRealtime.setMirror(elements.mirrorToggle.checked);
                     addLog(`Mirror ${elements.mirrorToggle.checked ? 'enabled' : 'disabled'}`, 'info');
                 } catch (error) {
                     addLog(`Failed to toggle mirror: ${error.message}`, 'error');
@@ -576,17 +577,18 @@
                 addLog(`Starting video processing with prompt: "${promptText}"`, 'info');
                 
                 // Initialize client if not already done
-                if (!mirageClient) {
-                    const baseUrl = elements.baseUrl.value.trim() || 'https://bouncer.mirage.decart.ai';
-                    mirageClient = createMirageClient({
+                if (!decartClient) {
+                    const baseUrl = elements.baseUrl.value.trim() || 'https://bouncer.decart.ai';
+                    decartClient = createDecartClient({
                         apiKey,
                         baseUrl
                     });
-                    addLog('Initialized Mirage client for processing', 'info');
+                    addLog('Initialized Decart client for processing', 'info');
                 }
                 
                 // Process the video
                 const options = {
+                    model: models.v2v("decart-v2v-v2.0-704p"),
                     prompt: {
                         text: promptText,
                         enrich: elements.processEnrich.checked
@@ -597,7 +599,7 @@
                 addLog('Uploading and processing video...', 'info');
                 const startTime = Date.now();
                 
-                const result = await mirageClient.process.video(file, options);
+                const result = await decartClient.process.video(file, options);
                 
                 const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
                 addLog(`Video processed successfully in ${processingTime}s`, 'success');
@@ -652,7 +654,7 @@
         });
         
         // Initialize
-        addLog('Mirage SDK Test Page loaded', 'info');
+        addLog('Decart SDK Test Page loaded', 'info');
         addLog('Click "Start Camera" for real-time or select a video file for processing', 'info');
     </script>
 </body>
