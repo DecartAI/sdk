@@ -340,6 +340,9 @@ Gets an enhanced version of your prompt without applying it.
 #### `realtimeClient.setMirror(enabled)`
 Toggles video mirroring.
 
+#### `realtimeClient.sessionId`
+The id of the current real-time inference session.
+
 #### `realtimeClient.disconnect()`
 Closes the connection and cleans up resources.
 
