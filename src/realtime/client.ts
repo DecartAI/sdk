@@ -1,8 +1,9 @@
 import mitt from "mitt";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { modelDefinitionSchema } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
-import { createWebrtcError, type MirageSDKError } from "../utils/errors";
+import { createWebrtcError, type DecartSDKError } from "../utils/errors";
 import { realtimeMethods } from "./methods";
 import { WebRTCManager } from "./webrtc-manager";
 
@@ -18,6 +19,7 @@ export type RealTimeClientInitialState = z.infer<
 >;
 
 const realTimeClientConnectOptionsSchema = z.object({
+	model: modelDefinitionSchema,
 	onRemoteStream: z.custom<OnRemoteStreamFn>(
 		(val) => typeof val === "function",
 		{ message: "onRemoteStream must be a function" },
@@ -30,7 +32,7 @@ export type RealTimeClientConnectOptions = z.infer<
 
 export type Events = {
 	connectionChange: "connected" | "connecting" | "disconnected";
-	error: MirageSDKError;
+	error: DecartSDKError;
 };
 
 export type RealTimeClient = {
@@ -66,7 +68,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
 		const { onRemoteStream, initialState } = parsedOptions.data;
 		const webrtcManager = new WebRTCManager({
-			webrtcUrl: `${baseUrl}/ws?gameTimeLimitSeconds=999999`,
+			webrtcUrl: `${baseUrl}/ws?gameTimeLimitSeconds=999999&model=${options.model.name}`,
 			apiKey,
 			sessionId: uuidv4(),
 			initialState,

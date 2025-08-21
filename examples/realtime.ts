@@ -1,25 +1,29 @@
 import {
-	createMirageClient,
-	type MirageSDKError,
+	createDecartClient,
+	type DecartSDKError,
+	models,
 	type RealTimeClientConnectOptions,
 	type RealTimeClientInitialState,
-} from "@decartai/mirage";
+} from "@decartai/sdk";
+
+const model = models.v2v("decart-v2v-v2.0-704p");
 
 const stream = await navigator.mediaDevices.getUserMedia({
 	audio: true,
 	video: {
-		frameRate: 14,
+		frameRate: model.fps,
 	},
 });
 
 // 1. Create a client
-const client = createMirageClient({
-	baseUrl: "https://api.decart.ai/mirage/v1", // optional, defaults to https://bouncer.mirage.decart.ai
+const client = createDecartClient({
+	baseUrl: "https://api.decart.ai", // optional, defaults to https://bouncer.mirage.decart.ai
 	apiKey: "dcrt-dLMPLEvXIuYPCpC0U5QKJh7jTH9RK8EoAaMT",
 });
 
 // 2. Connect to the realtime API
-const mirage = await client.realtime.connect(stream, {
+const realtimeClient = await client.realtime.connect(stream, {
+	model,
 	onRemoteStream: (stream: MediaStream) => {
 		console.log("remote stream", stream);
 	},
@@ -35,27 +39,30 @@ const mirage = await client.realtime.connect(stream, {
 
 // 3. Prompt Management
 // 3.1 Sending a prompt, the prompt will be enriched automatically (great for out-of-the-box experience)
-mirage.setPrompt("Lego World");
+realtimeClient.setPrompt("Lego World");
 
 // 3.2 Sending an already enriched prompt (great for advanced use-cases)
-mirage.setPrompt("A very long prompt that is very descriptive and detailed", {
-	enrich: false, // optional, defaults to true
-});
+realtimeClient.setPrompt(
+	"A very long prompt that is very descriptive and detailed",
+	{
+		enrich: false, // optional, defaults to true
+	},
+);
 
 // 3.3 Enriching a prompt and sending it (great for advanced use-cases)
-// const enrichedPrompt = await mirage.enrichPrompt("Anime");
-// mirage.setPrompt(enrichedPrompt, {
+// const enrichedPrompt = await realtimeClient.enrichPrompt("Anime");
+// realtimeClient.setPrompt(enrichedPrompt, {
 // 	enrich: false, // optional, defaults to true
 // });
 
 // 4. Mirroring (useful utility for use-cases like front-facing cameras)
-mirage.setMirror(true);
+realtimeClient.setMirror(true);
 
 // 5. State Management
 // 5.1 Get the connection state synchronously
-const isConnected: boolean = mirage.isConnected();
+const isConnected: boolean = realtimeClient.isConnected();
 const connectionState: "connected" | "connecting" | "disconnected" =
-	mirage.getConnectionState();
+	realtimeClient.getConnectionState();
 
 // 5.2 Subscribe to connection change events asynchronously
 const onConnectionChange = (
@@ -63,15 +70,15 @@ const onConnectionChange = (
 ) => {
 	console.log(`Connection state changed to ${state}`);
 };
-mirage.on("connectionChange", onConnectionChange);
-mirage.off("connectionChange", onConnectionChange);
+realtimeClient.on("connectionChange", onConnectionChange);
+realtimeClient.off("connectionChange", onConnectionChange);
 
 // 6. Error Handling
-const onError = (error: MirageSDKError) => {
+const onError = (error: DecartSDKError) => {
 	console.error("Error", error);
 };
-mirage.on("error", onError);
-mirage.off("error", onError);
+realtimeClient.on("error", onError);
+realtimeClient.off("error", onError);
 
 // 7. Disconnect
-mirage.disconnect();
+realtimeClient.disconnect();

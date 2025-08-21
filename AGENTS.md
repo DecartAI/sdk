@@ -11,7 +11,7 @@
 - `pnpm release` - Bump version and publish to NPM
 
 ## Project Architecture
-- **src/index.ts** - Main entry point, exports createMirageClient
+- **src/index.ts** - Main entry point, exports createDecartClient
 - **src/realtime/** - WebRTC real-time video streaming logic
   - `client.ts` - Real-time client implementation with WebRTC connection management
   - `webrtc-manager.ts` - WebRTC connection lifecycle and signaling
@@ -28,8 +28,8 @@
 - **Build Tool**: tsdown with unbundle mode for better tree-shaking
 - **Testing**: Vitest for unit tests
 - **Imports**: Named exports preferred, use `export type` for types, no file extensions needed
-- **Error Handling**: Use error factory pattern (createMirageError), include ERROR_CODES constants
-- **Validation**: Use Zod schemas for runtime validation (e.g., mirageClientOptionsSchema)
+- **Error Handling**: Use error factory pattern (createSDKError), include ERROR_CODES constants
+- **Validation**: Use Zod schemas for runtime validation (e.g., decartClientOptionsSchema)
 - **WebRTC**: Implement proper connection lifecycle with error recovery
 - **Events**: Use mitt for typed event emitters (connection state, errors)
 - **Formatting**: Use Biome formatter (`pnpm format`), enforced formatting standards
@@ -38,7 +38,7 @@
   - Dev: tsdown (build), vitest (test), typescript, vite (examples), bumpp (releases)
 
 ## API Design Patterns
-- **Factory Functions**: Use `create*` pattern for constructors (createMirageClient, createRealTimeClient)
+- **Factory Functions**: Use `create*` pattern for constructors (createDecartClient, createRealTimeClient)
 - **Options Validation**: Validate all public API options with Zod schemas
 - **Error Messages**: Provide clear, actionable error messages with specific error codes
 - **Type Exports**: Export all public types alongside implementations

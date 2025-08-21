@@ -13,17 +13,19 @@ export type {
 	RealTimeClientConnectOptions,
 	RealTimeClientInitialState,
 } from "./realtime/client";
-export { ERROR_CODES, type MirageSDKError } from "./utils/errors";
+export { type Model, type ModelDefinition, models } from "./shared/model";
+export type { ModelState } from "./shared/types";
+export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
 
-const mirageClientOptionsSchema = z.object({
+const decartClientOptionsSchema = z.object({
 	apiKey: z.string().min(1),
-	baseUrl: z.url().optional().default("https://bouncer.mirage.decart.ai"),
+	baseUrl: z.url().optional(),
 });
 
-export type MirageClientOptions = z.infer<typeof mirageClientOptionsSchema>;
+export type DecartClientOptions = z.infer<typeof decartClientOptionsSchema>;
 
-export const createMirageClient = (options: MirageClientOptions) => {
-	const parsedOptions = mirageClientOptionsSchema.safeParse(options);
+export const createDecartClient = (options: DecartClientOptions) => {
+	const parsedOptions = decartClientOptionsSchema.safeParse(options);
 
 	if (!parsedOptions.success) {
 		const issue = parsedOptions.error.issues[0];
@@ -39,7 +41,8 @@ export const createMirageClient = (options: MirageClientOptions) => {
 		throw parsedOptions.error;
 	}
 
-	const { baseUrl, apiKey } = parsedOptions.data;
+	const { baseUrl = "https://bouncer.mirage.decart.ai", apiKey } =
+		parsedOptions.data;
 
 	const wsBaseUrl = baseUrl
 		.replace("https://", "wss://")

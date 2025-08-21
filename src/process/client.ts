@@ -32,14 +32,14 @@ export const createProcessClient = (
 			);
 		}
 
-		const { prompt, mirror, signal } = parsedOptions.data;
+		const { model, prompt, mirror, signal } = parsedOptions.data;
 
 		const blob = await videoInputToBlob(input);
 		const response = await processVideo({
 			baseUrl,
 			apiKey,
 			blob,
-			options: { prompt, mirror },
+			options: { model, prompt, mirror },
 			signal,
 		});
 

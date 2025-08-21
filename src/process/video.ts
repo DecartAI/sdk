@@ -1,4 +1,4 @@
-import { createInvalidInputError, createMirageError } from "../utils/errors";
+import { createInvalidInputError, createSDKError } from "../utils/errors";
 import type { ProcessOptions, VideoInput } from "./types";
 
 export async function videoInputToBlob(input: VideoInput): Promise<Blob> {
@@ -67,7 +67,7 @@ export async function processVideo({
 
 	if (!response.ok) {
 		const errorText = await response.text().catch(() => "Unknown error");
-		throw createMirageError(
+		throw createSDKError(
 			"PROCESSING_ERROR",
 			`Processing failed: ${response.status} - ${errorText}`,
 		);
