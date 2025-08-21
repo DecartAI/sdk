@@ -19,7 +19,7 @@ yarn add @decartai/sdk
 ```typescript
 import { createDecartClient, models } from "@decartai/sdk";
 
-const model = models.mirage("decart-v2v-v2.0-704p");
+const model = models.v2v("decart-v2v-v2.0-704p");
 
 // Get user's camera stream
 const stream = await navigator.mediaDevices.getUserMedia({
@@ -69,7 +69,7 @@ const fileInput = document.querySelector('input[type="file"]');
 const file = fileInput.files[0];
 
 const result = await client.process.video(file, {
-  model: models.mirage("decart-v2v-v2.0-704p"),
+  model: models.v2v("decart-v2v-v2.0-704p"),
   prompt: {
     text: "Lego World",
     enrich: true
@@ -85,7 +85,7 @@ video.src = URL.createObjectURL(result);
 const urlResult = await client.process.video(
   "https://example.com/video.mp4",
   {
-    model: models.mirage("decart-v2v-v2.0-704p"),
+    model: models.v2v("decart-v2v-v2.0-704p"),
     prompt: {
       text: "Anime style"
     }
@@ -120,7 +120,7 @@ const client = createDecartClient({
 
 ```typescript
 const realtimeClient = await client.realtime.connect(stream, {
-  model: models.mirage("decart-v2v-v2.0-704p"),
+  model: models.v2v("decart-v2v-v2.0-704p"),
   onRemoteStream: (stream: MediaStream) => {
     // Handle the transformed video stream
     videoElement.srcObject = stream;
