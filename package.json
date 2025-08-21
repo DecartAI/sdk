@@ -1,7 +1,7 @@
 {
 	"name": "@decartai/sdk",
 	"version": "0.0.1",
-	"description": "Decart's Mirage JavaScript SDK",
+	"description": "Decart's JavaScript SDK",
 	"type": "module",
 	"license": "MIT",
 	"homepage": "https://github.com/decartai/mirage-sdk#readme",

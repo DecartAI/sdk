@@ -42,7 +42,7 @@ const realtimeClient = await client.realtime.connect(stream, {
   initialState: {
     prompt: {
       text: "Anime",
-      enrich: true // Mirage will enhance your prompt for better results
+      enrich: true // We will enhance your prompt for better results
     }
   }
 });
@@ -98,7 +98,7 @@ const urlResult = await client.process.video(
 - **Real-time video transformation** - Transform video streams with minimal latency using WebRTC
 - **Video file processing** - Transform video files and URLs on-demand
 - **Dynamic prompt switching** - Change styles on the fly without reconnecting
-- **Automatic prompt enhancement** - Mirage enriches simple prompts for better results
+- **Automatic prompt enhancement** - Decart enriches simple prompts for better results
 - **Mirror mode** - Built-in support for front-facing camera scenarios
 - **Connection state management** - Monitor and react to connection changes
 - **TypeScript support** - Full type definitions included
@@ -112,7 +112,7 @@ const urlResult = await client.process.video(
 ```typescript
 const client = createDecartClient({
   apiKey: "your-api-key-here",
-  baseUrl: "https://custom-endpoint.com" // optional, uses default Mirage endpoint
+  baseUrl: "https://custom-endpoint.com" // optional, uses default Decart endpoint
 });
 ```
 
@@ -128,7 +128,7 @@ const realtimeClient = await client.realtime.connect(stream, {
   initialState: {
     prompt: {
       text: "Lego World",
-      enrich: true // Let Mirage enhance the prompt (recommended)
+      enrich: true // Let Decart enhance the prompt (recommended)
     },
     mirror: false // Set to true for front-facing cameras
   }
@@ -246,7 +246,7 @@ async function setupSDK() {
     });
 
     realtimeClient.on("error", (error) => {
-      console.error("Mirage error:", error);
+      console.error("SDK error:", error);
       showErrorToUser(error.message);
     });
 
@@ -262,7 +262,7 @@ async function setupSDK() {
 
     return realtimeClient;
   } catch (error) {
-    console.error("Failed to setup Mirage:", error);
+    console.error("Failed to setup DecartSDK:", error);
   }
 }
 
@@ -276,7 +276,7 @@ setupSDK();
 ```typescript
 const client = createDecartClient({
   apiKey: "your-api-key-here",
-  baseUrl: "https://custom-endpoint.com" // optional, uses default Mirage endpoint
+  baseUrl: "https://custom-endpoint.com" // optional, uses default Decart endpoint
 });
 ```
 
@@ -313,10 +313,10 @@ controller.abort();
 ## API Reference
 
 ### `createDecartClient(options)`
-Creates a new Mirage client instance.
+Creates a new Decart client instance.
 
-- `options.apiKey` (required) - Your Mirage API key
-- `options.baseUrl` (optional) - Custom API endpoint (defaults to Mirage)
+- `options.apiKey` (required) - Your Decart API key
+- `options.baseUrl` (optional) - Custom API endpoint (defaults to Decart)
 
 ### Real-time API
 

@@ -1,4 +1,4 @@
-# Mirage SDK - Coding Agent Guidelines
+# Decart SDK - Coding Agent Guidelines
 
 ## Build/Test Commands
 - `pnpm build` - Build the project using tsdown
