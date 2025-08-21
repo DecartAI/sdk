@@ -50,6 +50,7 @@ export type RealTimeClient = {
 		event: keyof Events,
 		listener: (...args: Events[keyof Events][]) => void,
 	) => void;
+	sessionId: string;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
@@ -66,11 +67,13 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 			throw parsedOptions.error;
 		}
 
+		const sessionId = uuidv4();
+
 		const { onRemoteStream, initialState } = parsedOptions.data;
 		const webrtcManager = new WebRTCManager({
 			webrtcUrl: `${baseUrl}/ws?gameTimeLimitSeconds=999999&model=${options.model.name}`,
 			apiKey,
-			sessionId: uuidv4(),
+			sessionId,
 			initialState,
 			onRemoteStream,
 			onConnectionStateChange: (
@@ -97,6 +100,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 			disconnect: () => webrtcManager.cleanup(),
 			on: eventEmitter.on,
 			off: eventEmitter.off,
+			sessionId,
 		};
 	};
 

@@ -211,6 +211,9 @@
             <span id="status-indicator" class="status-indicator status-disconnected"></span>
             <span id="status-text">Disconnected</span>
         </div>
+        <div id="session-info" style="display: none; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 14px;">
+            <strong>Session ID:</strong> <span id="session-id-text">-</span>
+        </div>
     </div>
     
     <!-- Configuration -->
@@ -319,6 +322,7 @@
         let localStream = null;
         let isConnected = false;
         let processedVideoUrl = null;
+        let currentSessionId = null;
         
         // DOM elements
         const elements = {
@@ -335,6 +339,8 @@
             mirrorToggle: document.getElementById('mirror-toggle'),
             statusIndicator: document.getElementById('status-indicator'),
             statusText: document.getElementById('status-text'),
+            sessionInfo: document.getElementById('session-info'),
+            sessionIdText: document.getElementById('session-id-text'),
             logsContainer: document.getElementById('logs-container'),
             // Video processing elements
             videoFile: document.getElementById('video-file'),
@@ -429,7 +435,6 @@
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
                     },
-                    sessionId: `test-session-${Date.now()}`,
                     initialState: {
                         mirror: elements.mirrorToggle.checked
                     }
@@ -443,7 +448,13 @@
                     elements.promptInput.disabled = false;
                     elements.sendPrompt.disabled = false;
                     
+                    // Show session ID
+                    currentSessionId = decartRealtime.sessionId;
+                    elements.sessionIdText.textContent = currentSessionId;
+                    elements.sessionInfo.style.display = 'block';
+                    
                     addLog('Successfully connected to Decart!', 'success');
+                    addLog(`Session ID: ${currentSessionId}`, 'success');
                 } else {
                     throw new Error('Connection established but not in connected state');
                 }
@@ -454,6 +465,8 @@
                 elements.connectBtn.disabled = false;
                 decartClient = null;
                 isConnected = false;
+                currentSessionId = null;
+                elements.sessionInfo.style.display = 'none';
             }
         });
         
@@ -476,6 +489,7 @@
             
             isConnected = false;
             updateStatus('disconnected');
+            currentSessionId = null;
             
             // Reset UI
             elements.startCamera.disabled = false;
@@ -484,6 +498,7 @@
             elements.promptInput.disabled = true;
             elements.sendPrompt.disabled = true;
             elements.promptInput.value = '';
+            elements.sessionInfo.style.display = 'none';
             
             addLog('Disconnected successfully', 'info');
         });

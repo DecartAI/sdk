@@ -73,6 +73,9 @@ const onConnectionChange = (
 realtimeClient.on("connectionChange", onConnectionChange);
 realtimeClient.off("connectionChange", onConnectionChange);
 
+// 5.3 Get the session ID
+const sessionId = realtimeClient.sessionId;
+
 // 6. Error Handling
 const onError = (error: DecartSDKError) => {
 	console.error("Error", error);
