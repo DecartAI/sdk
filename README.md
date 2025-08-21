@@ -24,7 +24,11 @@ const model = models.v2v("decart-v2v-v2.0-704p");
 // Get user's camera stream
 const stream = await navigator.mediaDevices.getUserMedia({
   audio: true,
-  video: { frameRate: model.fps }
+  video: { 
+		frameRate: model.fps,
+		width: model.width,
+		height: model.height,
+  }
 });
 
 // Create a client

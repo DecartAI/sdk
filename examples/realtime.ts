@@ -12,6 +12,8 @@ const stream = await navigator.mediaDevices.getUserMedia({
 	audio: true,
 	video: {
 		frameRate: model.fps,
+		width: model.width,
+		height: model.height,
 	},
 });
 

@@ -323,6 +323,7 @@
         let isConnected = false;
         let processedVideoUrl = null;
         let currentSessionId = null;
+        let model = models.v2v("decart-v2v-v2.0-448p");
         
         // DOM elements
         const elements = {
@@ -387,7 +388,9 @@
                 addLog('Requesting camera access...', 'info');
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: {
-                        frameRate: 14,
+                        frameRate: model.fps,
+                        width: model.width,
+                        height: model.height,
                     },
                     audio: true
                 });
@@ -430,7 +433,7 @@
                 addLog('Connecting to Decart server...', 'info');
                 
                 decartRealtime = await decartClient.realtime.connect(localStream, {
-                    model: models.v2v("decart-v2v-v2.0-704p"),
+                    model,
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
@@ -603,7 +606,7 @@
                 
                 // Process the video
                 const options = {
-                    model: models.v2v("decart-v2v-v2.0-704p"),
+                    model,
                     prompt: {
                         text: promptText,
                         enrich: elements.processEnrich.checked

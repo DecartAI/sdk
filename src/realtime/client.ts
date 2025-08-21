@@ -74,6 +74,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 			webrtcUrl: `${baseUrl}/ws?gameTimeLimitSeconds=999999&model=${options.model.name}`,
 			apiKey,
 			sessionId,
+			fps: options.model.fps,
 			initialState,
 			onRemoteStream,
 			onConnectionStateChange: (
