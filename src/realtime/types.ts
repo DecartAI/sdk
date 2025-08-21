@@ -3,6 +3,7 @@ export type InitializeSessionMessage = {
 	product: "miragesdk";
 	access_key: string;
 	session_id: string;
+	fps: number;
 	prompt?: string;
 	should_enrich?: boolean;
 	rotateY?: number;

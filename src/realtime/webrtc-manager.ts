@@ -6,12 +6,13 @@ import { WebRTCConnection } from "./webrtc-connection";
 export interface WebRTCConfig {
 	webrtcUrl: string;
 	apiKey: string;
+	sessionId: string;
+	fps: number;
 	onRemoteStream: (stream: MediaStream) => void;
 	onConnectionStateChange?: (
 		state: "connected" | "connecting" | "disconnected",
 	) => void;
 	onError?: (error: Error) => void;
-	sessionId: string;
 	initialState?: RealTimeClientInitialState;
 }
 
@@ -43,6 +44,7 @@ export class WebRTCManager {
 			prompt: this.config.initialState?.prompt?.text,
 			should_enrich: this.config.initialState?.prompt?.enrich,
 			rotateY: this.config.initialState?.mirror ? 2 : 0,
+			fps: this.config.fps,
 		};
 
 		return pRetry(
