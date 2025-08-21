@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createModelNotFoundError, createSDKError } from "../utils/errors";
+import { createModelNotFoundError } from "../utils/errors";
 
 export const modelSchema = z.union([
 	z.literal("decart-v2v-v1.0-432p"),
