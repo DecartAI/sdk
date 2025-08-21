@@ -102,8 +102,8 @@ export class WebRTCConnection {
 		try {
 			switch (msg.type) {
 				case "ready": {
-					const offer = await this.pc.createOffer();
 					await this.applyCodecPreference("video/VP8");
+					const offer = await this.pc.createOffer();
 					await this.pc.setLocalDescription(offer);
 					this.send({ type: "offer", sdp: offer.sdp || "" });
 					break;
@@ -188,5 +188,6 @@ export class WebRTCConnection {
 			console.warn("No video codecs found to set preferences for.");
 			return;
 		}
+		await videoTransceiver.setCodecPreferences(orderedCodecs);
 	}
 }
