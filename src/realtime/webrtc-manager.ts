@@ -14,6 +14,7 @@ export interface WebRTCConfig {
 	) => void;
 	onError?: (error: Error) => void;
 	initialState?: RealTimeClientInitialState;
+	customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
 }
 
 const PERMANENT_ERRORS = [
@@ -32,6 +33,7 @@ export class WebRTCManager {
 			onRemoteStream: config.onRemoteStream,
 			onStateChange: config.onConnectionStateChange,
 			onError: config.onError,
+			customizeOffer: config.customizeOffer,
 		});
 	}
 
