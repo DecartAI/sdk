@@ -10,6 +10,7 @@ interface ConnectionCallbacks {
 	onRemoteStream?: (stream: MediaStream) => void;
 	onStateChange?: (state: ConnectionState) => void;
 	onError?: (error: Error) => void;
+	customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
 }
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -104,6 +105,7 @@ export class WebRTCConnection {
 				case "ready": {
 					await this.applyCodecPreference("video/VP8");
 					const offer = await this.pc.createOffer();
+					await this.callbacks.customizeOffer?.(offer);
 					await this.pc.setLocalDescription(offer);
 					this.send({ type: "offer", sdp: offer.sdp || "" });
 					break;
