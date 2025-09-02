@@ -48,7 +48,7 @@ export async function processVideo({
 
 	if (options.prompt?.text) {
 		formData.append("prompt", options.prompt.text);
-		formData.append("should_enrich", String(options.prompt.enrich ?? true));
+		// formData.append("should_enrich", String(options.prompt.enrich ?? true));
 	}
 
 	if (options.mirror) {
