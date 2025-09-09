@@ -5,6 +5,7 @@ export const modelSchema = z.union([
 	z.literal("decart-v2v-v1.0-432p"),
 	z.literal("decart-v2v-v2.0-448p"),
 	z.literal("decart-v2v-v2.0-704p"),
+	z.literal("decart-v2v-v2.1-704p"),
 ]);
 export type Model = z.infer<typeof modelSchema>;
 
@@ -36,6 +37,13 @@ const _models = {
 		"decart-v2v-v2.0-704p": {
 			urlPath: "",
 			name: "decart-v2v-v2.0-704p",
+			fps: 16,
+			width: 1251,
+			height: 704,
+		},
+		"decart-v2v-v2.1-704p": {
+			urlPath: "",
+			name: "decart-v2v-v2.1-704p",
 			fps: 16,
 			width: 1251,
 			height: 704,
