@@ -6,7 +6,7 @@ import {
 	type RealTimeClientInitialState,
 } from "@decartai/sdk";
 
-const model = models.v2v("decart-v2v-v2.0-704p");
+const model = models.v2v("decart-v2v-v2.1-704p");
 
 const stream = await navigator.mediaDevices.getUserMedia({
 	audio: true,
