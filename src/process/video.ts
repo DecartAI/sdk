@@ -46,6 +46,9 @@ export async function processVideo({
 	const formData = new FormData();
 	formData.append("video", blob);
 
+	formData.append("superResolution", "true");
+	formData.append("interpolate", "true");
+
 	if (options.prompt?.text) {
 		formData.append("prompt", options.prompt.text);
 		// formData.append("should_enrich", String(options.prompt.enrich ?? true));
@@ -59,7 +62,7 @@ export async function processVideo({
 	const response = await fetch(endpoint, {
 		method: "POST",
 		headers: {
-			Authorization: `Bearer ${apiKey}`,
+			"X-API-KEY": apiKey,
 		},
 		body: formData,
 		signal,
