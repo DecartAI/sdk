@@ -40,7 +40,7 @@ export class WebRTCManager {
 	async connect(localStream: MediaStream): Promise<boolean> {
 		const initMessage: InitializeSessionMessage = {
 			type: "initialize_session",
-			product: "miragesdk",
+			// product: "miragesdk",
 			access_key: this.config.apiKey,
 			session_id: this.config.sessionId,
 			prompt: this.config.initialState?.prompt?.text,

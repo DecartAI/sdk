@@ -1,6 +1,6 @@
 export type InitializeSessionMessage = {
 	type: "initialize_session";
-	product: "miragesdk";
+	// product: "miragesdk";
 	access_key: string;
 	session_id: string;
 	fps: number;

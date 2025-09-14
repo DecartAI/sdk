@@ -79,7 +79,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
 		const { onRemoteStream, initialState } = parsedOptions.data;
 		const webrtcManager = new WebRTCManager({
-			webrtcUrl: `${baseUrl}/ws?gameTimeLimitSeconds=999999&model=${options.model.name}`,
+			webrtcUrl: `${baseUrl}/ws`,
 			apiKey,
 			sessionId,
 			fps: options.model.fps,
