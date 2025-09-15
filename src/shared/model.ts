@@ -20,9 +20,9 @@ const _models = {
 		"decart-v2v-v2.0-448p": {
 			urlPath: "",
 			name: "decart-v2v-v2.0-448p",
-			fps: 27,
+			fps: 26,
 			width: 1280,
-			height: 720,
+			height: 704,
 		},
 	} satisfies Record<Model, ModelDefinition>,
 } as const;
