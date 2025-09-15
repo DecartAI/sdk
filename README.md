@@ -33,7 +33,6 @@ const stream = await navigator.mediaDevices.getUserMedia({
 
 // Create a client
 const client = createDecartClient({
-  apiKey: "your-api-key-here"
 });
 
 // Connect and transform the video stream
@@ -65,7 +64,6 @@ import { createDecartClient } from "@decartai/sdk";
 
 // Create a client
 const client = createDecartClient({
-  apiKey: "your-api-key-here"
 });
 
 // Process a local video file
@@ -115,7 +113,6 @@ const urlResult = await client.process.video(
 
 ```typescript
 const client = createDecartClient({
-  apiKey: "your-api-key-here",
   baseUrl: "https://custom-endpoint.com" // optional, uses default Decart endpoint
 });
 ```
@@ -225,9 +222,7 @@ async function setupSDK() {
     });
 
     // Create client
-    const client = createDecartClient({
-      apiKey: process.env.MIRAGE_API_KEY
-    });
+    const client = createDecartClient({});
 
     // Connect with initial prompt
     const realtimeClient = await client.realtime.connect(stream, {
@@ -279,7 +274,6 @@ setupSDK();
 
 ```typescript
 const client = createDecartClient({
-  apiKey: "your-api-key-here",
   baseUrl: "https://custom-endpoint.com" // optional, uses default Decart endpoint
 });
 ```
@@ -319,7 +313,6 @@ controller.abort();
 ### `createDecartClient(options)`
 Creates a new Decart client instance.
 
-- `options.apiKey` (required) - Your Decart API key
 - `options.baseUrl` (optional) - Custom API endpoint (defaults to Decart)
 
 ### Real-time API

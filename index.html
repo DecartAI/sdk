@@ -220,10 +220,6 @@
     <div class="controls">
         <h3>Configuration</h3>
         <div class="control-group">
-            <label for="api-key">API Key:</label>
-            <input type="password" id="api-key" placeholder="Enter your Decart API key" value="api-key">
-        </div>
-        <div class="control-group">
             <label for="base-url">Base URL (optional):</label>
             <input type="text" id="base-url" placeholder="https://bouncer.mirage.decart.ai" value="ws://worker-gpu-26.eu-iceland1-a.compute.internal:8000">
         </div>
@@ -323,7 +319,6 @@
         
         // DOM elements
         const elements = {
-            apiKey: document.getElementById('api-key'),
             baseUrl: document.getElementById('base-url'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
@@ -402,12 +397,6 @@
         
         // Connect to Decart
         elements.connectBtn.addEventListener('click', async () => {
-            const apiKey = elements.apiKey.value.trim();
-            if (!apiKey) {
-                addLog('Please enter an API key', 'error');
-                return;
-            }
-            
             if (!localStream) {
                 addLog('Please start camera first', 'error');
                 return;
@@ -421,7 +410,6 @@
                 
                 const baseUrl = elements.baseUrl.value.trim() || 'https://bouncer.decart.ai';
                 decartClient = createDecartClient({
-                    apiKey,
                     baseUrl
                 });
                 
@@ -551,12 +539,6 @@
         
         // Process video file
         elements.processVideo.addEventListener('click', async () => {
-            const apiKey = elements.apiKey.value.trim();
-            if (!apiKey) {
-                addLog('Please enter an API key', 'error');
-                return;
-            }
-            
             const file = elements.videoFile.files[0];
             if (!file) {
                 addLog('Please select a video file', 'error');
@@ -582,7 +564,6 @@
                 if (!decartClient) {
                     const baseUrl = elements.baseUrl.value.trim() || 'https://bouncer.decart.ai';
                     decartClient = createDecartClient({
-                        apiKey,
                         baseUrl
                     });
                     addLog('Initialized Decart client for processing', 'info');

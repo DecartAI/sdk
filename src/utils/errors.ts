@@ -6,7 +6,6 @@ export type DecartSDKError = {
 };
 
 export const ERROR_CODES = {
-	INVALID_API_KEY: "INVALID_API_KEY",
 	INVALID_BASE_URL: "INVALID_BASE_URL",
 	WEB_RTC_ERROR: "WEB_RTC_ERROR",
 	PROCESSING_ERROR: "PROCESSING_ERROR",
@@ -24,12 +23,6 @@ export function createSDKError(
 	return { code, message, data, cause };
 }
 
-export function createInvalidApiKeyError(): DecartSDKError {
-	return createSDKError(
-		ERROR_CODES.INVALID_API_KEY,
-		"API key is required and must be a non-empty string",
-	);
-}
 
 export function createInvalidBaseUrlError(url?: string): DecartSDKError {
 	return createSDKError(

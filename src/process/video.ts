@@ -32,13 +32,11 @@ export async function videoInputToBlob(input: VideoInput): Promise<Blob> {
 
 export async function processVideo({
 	baseUrl,
-	apiKey,
 	blob,
 	options,
 	signal,
 }: {
 	baseUrl: string;
-	apiKey: string;
 	blob: Blob;
 	options: ProcessOptions;
 	signal?: AbortSignal;
@@ -61,9 +59,6 @@ export async function processVideo({
 	const endpoint = `${baseUrl}/process_video`;
 	const response = await fetch(endpoint, {
 		method: "POST",
-		headers: {
-			"X-API-KEY": apiKey,
-		},
 		body: formData,
 		signal,
 	});

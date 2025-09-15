@@ -5,7 +5,6 @@ import { WebRTCConnection } from "./webrtc-connection";
 
 export interface WebRTCConfig {
 	webrtcUrl: string;
-	apiKey: string;
 	sessionId: string;
 	fps: number;
 	onRemoteStream: (stream: MediaStream) => void;
@@ -41,7 +40,6 @@ export class WebRTCManager {
 		const initMessage: InitializeSessionMessage = {
 			type: "initialize_session",
 			// product: "miragesdk",
-			access_key: this.config.apiKey,
 			session_id: this.config.sessionId,
 			prompt: this.config.initialState?.prompt?.text,
 			// should_enrich: this.config.initialState?.prompt?.enrich,

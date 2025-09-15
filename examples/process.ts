@@ -13,7 +13,6 @@ const videoFile: VideoInput = fileInput.files?.[0] as VideoInput;
 // 1. Create a client
 const client = createDecartClient({
 	baseUrl: "https://api.decart.ai", // optional, defaults to https://...
-	apiKey: "dcrt-dLMPLEvXIuYPCpC0U5QKJh7jTH9RK8EoAaMT",
 });
 
 // 2. Process a video

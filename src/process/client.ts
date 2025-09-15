@@ -11,14 +11,13 @@ export type ProcessClient = {
 };
 
 export type ProcessClientOptions = {
-	apiKey: string;
 	baseUrl: string;
 };
 
 export const createProcessClient = (
 	opts: ProcessClientOptions,
 ): ProcessClient => {
-	const { apiKey, baseUrl } = opts;
+	const { baseUrl } = opts;
 
 	const video = async (
 		input: VideoInput,
@@ -37,7 +36,6 @@ export const createProcessClient = (
 		const blob = await videoInputToBlob(input);
 		const response = await processVideo({
 			baseUrl,
-			apiKey,
 			blob,
 			options: { model, prompt, mirror },
 			signal,
