@@ -231,10 +231,6 @@
             <button id="start-camera">Start Camera</button>
             <button id="connect-btn" disabled>Connect to Decart</button>
             <button id="disconnect-btn" disabled>Disconnect</button>
-            <div class="checkbox-group">
-                <input type="checkbox" id="mirror-toggle">
-                <label for="mirror-toggle" style="margin: 0; font-weight: normal;">Mirror Video</label>
-            </div>
         </div>
     </div>
     
@@ -337,7 +333,6 @@
             promptInput: document.getElementById('prompt-input'),
             sendPrompt: document.getElementById('send-prompt'),
             enrichToggle: document.getElementById('enrich-toggle'),
-            mirrorToggle: document.getElementById('mirror-toggle'),
             statusIndicator: document.getElementById('status-indicator'),
             statusText: document.getElementById('status-text'),
             sessionInfo: document.getElementById('session-info'),
@@ -439,7 +434,7 @@
                         elements.remoteVideo.srcObject = stream;
                     },
                     initialState: {
-                        mirror: elements.mirrorToggle.checked
+                        mirror: false
                     }
                 });
                 
@@ -539,17 +534,6 @@
             }
         });
         
-        // Mirror toggle
-        elements.mirrorToggle.addEventListener('change', () => {
-            if (decartClient && isConnected) {
-                try {
-                    decartRealtime.setMirror(elements.mirrorToggle.checked);
-                    addLog(`Mirror ${elements.mirrorToggle.checked ? 'enabled' : 'disabled'}`, 'info');
-                } catch (error) {
-                    addLog(`Failed to toggle mirror: ${error.message}`, 'error');
-                }
-            }
-        });
         
         // Video file selection handler
         elements.videoFile.addEventListener('change', (e) => {
