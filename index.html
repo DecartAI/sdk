@@ -221,7 +221,15 @@
         <h3>Configuration</h3>
         <div class="control-group">
             <label for="base-url">Base URL (optional):</label>
-            <input type="text" id="base-url" placeholder="https://bouncer.mirage.decart.ai" value="ws://worker-gpu-26.eu-iceland1-a.compute.internal:8000">
+            <input type="text" id="base-url" placeholder="https://bouncer.mirage.decart.ai" value="ws://worker-gpu-25.eu-iceland1-a.compute.internal:8000">
+        </div>
+        <div class="control-group">
+            <label for="original-recording-path">Original Recording Path (optional):</label>
+            <input type="text" id="original-recording-path" placeholder="/path/to/original/recording.mp4">
+        </div>
+        <div class="control-group">
+            <label for="processed-recording-path">Processed Recording Path (optional):</label>
+            <input type="text" id="processed-recording-path" placeholder="/path/to/processed/recording.mp4">
         </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
@@ -282,6 +290,8 @@
         // DOM elements
         const elements = {
             baseUrl: document.getElementById('base-url'),
+            originalRecordingPath: document.getElementById('original-recording-path'),
+            processedRecordingPath: document.getElementById('processed-recording-path'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
             disconnectBtn: document.getElementById('disconnect-btn'),
@@ -365,6 +375,18 @@
                 
                 addLog('Connecting to Decart server...', 'info');
                 
+                const originalRecordingPath = elements.originalRecordingPath.value.trim() || undefined;
+                const processedRecordingPath = elements.processedRecordingPath.value.trim() || undefined;
+                
+                console.log('Recording paths:', { originalRecordingPath, processedRecordingPath });
+                
+                if (originalRecordingPath) {
+                    addLog(`Using original recording path: ${originalRecordingPath}`, 'info');
+                }
+                if (processedRecordingPath) {
+                    addLog(`Using processed recording path: ${processedRecordingPath}`, 'info');
+                }
+                
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     onRemoteStream: (stream) => {
@@ -373,7 +395,9 @@
                     },
                     initialState: {
                         mirror: false
-                    }
+                    },
+                    originalRecordingPath,
+                    processedRecordingPath
                 });
                 
                 // Check connection status
@@ -473,122 +497,9 @@
         });
         
         
-        // Video file selection handler
-        elements.videoFile.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                addLog(`Selected video file: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`, 'info');
-                elements.processVideo.disabled = false;
-                
-                // Display original video
-                const url = URL.createObjectURL(file);
-                elements.originalVideo.src = url;
-                elements.processedContainer.style.display = 'grid';
-            }
-        });
-        
-        // Process video file
-        elements.processVideo.addEventListener('click', async () => {
-            const file = elements.videoFile.files[0];
-            if (!file) {
-                addLog('Please select a video file', 'error');
-                return;
-            }
-            
-            const promptText = elements.processPrompt.value.trim();
-            if (!promptText) {
-                addLog('Please enter a processing prompt', 'error');
-                return;
-            }
-            
-            try {
-                // Show status
-                elements.processStatus.style.display = 'block';
-                elements.processStatusText.textContent = 'Processing...';
-                elements.processVideo.disabled = true;
-                elements.downloadResult.disabled = true;
-                
-                addLog(`Starting video processing with prompt: "${promptText}"`, 'info');
-                
-                // Initialize client if not already done
-                if (!decartClient) {
-                    const baseUrl = elements.baseUrl.value.trim() || 'https://bouncer.decart.ai';
-                    decartClient = createDecartClient({
-                        baseUrl
-                    });
-                    addLog('Initialized Decart client for processing', 'info');
-                }
-                
-                // Process the video
-                const options = {
-                    model,
-                    prompt: {
-                        text: promptText,
-                        enrich: elements.processEnrich.checked
-                    },
-                    mirror: elements.processMirror.checked
-                };
-                
-                addLog('Uploading and processing video...', 'info');
-                const startTime = Date.now();
-                
-                const result = await decartClient.process.video(file, options);
-                
-                const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
-                addLog(`Video processed successfully in ${processingTime}s`, 'success');
-                
-                // Store URLs
-                processedVideoUrl = URL.createObjectURL(result);
-                
-                // Display processed video
-                elements.processedVideo.src = processedVideoUrl;
-                elements.processStatusText.textContent = 'Completed!';
-                elements.downloadResult.disabled = false;
-                
-                addLog(`Video URL: ${processedVideoUrl}`, 'info');
-                
-            } catch (error) {
-                addLog(`Processing failed: ${error.message}`, 'error');
-                elements.processStatusText.textContent = 'Failed';
-                console.error('Processing error:', error);
-            } finally {
-                elements.processVideo.disabled = false;
-            }
-        });
-        
-        // Download processed video
-        elements.downloadResult.addEventListener('click', async () => {
-            if (!processedVideoUrl) {
-                addLog('No processed video available', 'error');
-                return;
-            }
-            
-            try {
-                addLog('Downloading processed video...', 'info');
-                
-                // Fetch the video blob
-                const response = await fetch(processedVideoUrl);
-                const blob = await response.blob();
-                
-                // Create download link
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `processed_video_${Date.now()}.mp4`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                
-                addLog('Download started', 'success');
-            } catch (error) {
-                addLog(`Download failed: ${error.message}`, 'error');
-            }
-        });
-        
         // Initialize
         addLog('Decart SDK Test Page loaded', 'info');
-        addLog('Click "Start Camera" for real-time or select a video file for processing', 'info');
+        addLog('Click "Start Camera" to begin real-time video processing', 'info');
     </script>
 </body>
 </html>

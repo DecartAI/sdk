@@ -14,6 +14,8 @@ export interface WebRTCConfig {
 	onError?: (error: Error) => void;
 	initialState?: RealTimeClientInitialState;
 	customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
+	originalRecordingPath?: string;
+	processedRecordingPath?: string;
 }
 
 const PERMANENT_ERRORS = [
@@ -28,6 +30,10 @@ export class WebRTCManager {
 
 	constructor(config: WebRTCConfig) {
 		this.config = config;
+		console.log('[WebRTC] Config received:', {
+			originalRecordingPath: config.originalRecordingPath,
+			processedRecordingPath: config.processedRecordingPath,
+		});
 		this.connection = new WebRTCConnection({
 			onRemoteStream: config.onRemoteStream,
 			onStateChange: config.onConnectionStateChange,
@@ -45,7 +51,11 @@ export class WebRTCManager {
 			// should_enrich: this.config.initialState?.prompt?.enrich,
 			rotateY: this.config.initialState?.mirror ? 2 : 0,
 			fps: this.config.fps,
+			originalRecordingPath: this.config.originalRecordingPath,
+			processedRecordingPath: this.config.processedRecordingPath,
 		};
+
+		console.log('[WebRTC] Initialization message:', initMessage);
 
 		return pRetry(
 			async () => {

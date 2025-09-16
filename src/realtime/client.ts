@@ -32,6 +32,8 @@ const realTimeClientConnectOptionsSchema = z.object({
 	),
 	initialState: realTimeClientInitialStateSchema.optional(),
 	customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
+	originalRecordingPath: z.string().optional(),
+	processedRecordingPath: z.string().optional(),
 });
 export type RealTimeClientConnectOptions = z.infer<
 	typeof realTimeClientConnectOptionsSchema
@@ -76,7 +78,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
 		const sessionId = uuidv4();
 
-		const { onRemoteStream, initialState } = parsedOptions.data;
+		const { onRemoteStream, initialState, originalRecordingPath, processedRecordingPath } = parsedOptions.data;
 		const webrtcManager = new WebRTCManager({
 			webrtcUrl: `${baseUrl}/ws`,
 			sessionId,
@@ -95,6 +97,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 			customizeOffer: options.customizeOffer as
 				| ((offer: RTCSessionDescriptionInit) => Promise<void>)
 				| undefined,
+			originalRecordingPath,
+			processedRecordingPath,
 		});
 
 		await webrtcManager.connect(stream);

@@ -6,6 +6,8 @@ export type InitializeSessionMessage = {
 	prompt?: string;
 	should_enrich?: boolean;
 	rotateY?: number;
+	originalRecordingPath?: string;
+	processedRecordingPath?: string;
 };
 
 export type OfferMessage = {
