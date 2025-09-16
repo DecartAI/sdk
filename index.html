@@ -258,45 +258,7 @@
         </div>
     </div>
     
-    <!-- Video File Processing -->
-    <div class="controls">
-        <h3>Video File Processing</h3>
-        <div class="control-group">
-            <label for="video-file">Select a video file:</label>
-            <input type="file" id="video-file" accept="video/*">
-        </div>
-        <div class="control-group">
-            <label for="process-prompt">Processing prompt:</label>
-            <input type="text" id="process-prompt" placeholder="Enter style (e.g., Lego World, Anime style)">
-        </div>
-        <div class="inline-controls">
-            <button id="process-video" disabled>Process Video</button>
-            <button id="download-result" disabled>Download Result</button>
-            <div class="checkbox-group">
-                <input type="checkbox" id="process-enrich" checked>
-                <label for="process-enrich" style="margin: 0; font-weight: normal;">Enrich</label>
-            </div>
-            <div class="checkbox-group">
-                <input type="checkbox" id="process-mirror">
-                <label for="process-mirror" style="margin: 0; font-weight: normal;">Mirror</label>
-            </div>
-        </div>
-        <div id="process-status" style="margin-top: 10px; display: none;">
-            <strong>Status:</strong> <span id="process-status-text">Ready</span>
-        </div>
-    </div>
     
-    <!-- Processed Video Display -->
-    <div class="container" id="processed-container" style="display: none;">
-        <div class="video-section">
-            <h3>📹 Original Video</h3>
-            <video id="original-video" controls></video>
-        </div>
-        <div class="video-section">
-            <h3>✨ Processed Video</h3>
-            <video id="processed-video" controls></video>
-        </div>
-    </div>
     
     <!-- Logs -->
     <div class="logs">
@@ -333,18 +295,6 @@
             sessionInfo: document.getElementById('session-info'),
             sessionIdText: document.getElementById('session-id-text'),
             logsContainer: document.getElementById('logs-container'),
-            // Video processing elements
-            videoFile: document.getElementById('video-file'),
-            processPrompt: document.getElementById('process-prompt'),
-            processVideo: document.getElementById('process-video'),
-            downloadResult: document.getElementById('download-result'),
-            processEnrich: document.getElementById('process-enrich'),
-            processMirror: document.getElementById('process-mirror'),
-            processStatus: document.getElementById('process-status'),
-            processStatusText: document.getElementById('process-status-text'),
-            processedContainer: document.getElementById('processed-container'),
-            originalVideo: document.getElementById('original-video'),
-            processedVideo: document.getElementById('processed-video')
         };
         
         // Logging system
