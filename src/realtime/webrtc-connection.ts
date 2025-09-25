@@ -32,31 +32,31 @@ export class WebRTCConnection {
 
 		console.log("connect", url, localStream, timeout);
 		// Setup WebSocket
-		// await new Promise<void>((resolve, reject) => {
-		// const timer = setTimeout(
-		// 	() => reject(new Error("WebSocket timeout")),
-		// 	timeout,
-		// );
-		this.ws = new WebSocket(url);
+		await new Promise<void>((resolve, reject) => {
+			const timer = setTimeout(
+				() => reject(new Error("WebSocket timeout")),
+				timeout,
+			);
+			this.ws = new WebSocket(url);
 
-		// this.ws.onopen = () => {
-		// 	console.log("ws onopen");
-		// 	clearTimeout(timer);
-		// 	resolve();
-		// };
-		this.ws.onmessage = (e) => {
-			try {
-				this.handleSignalingMessage(JSON.parse(e.data));
-			} catch (err) {
-				console.error("[WebRTC] Parse error:", err);
-			}
-		};
-		// this.ws.onerror = () => {
-		// 	clearTimeout(timer);
-		// 	// reject(new Error("WebSocket failed"));
-		// };
-		this.ws.onclose = () => this.setState("disconnected");
-		// });
+			this.ws.onopen = () => {
+				console.log("ws onopen");
+				clearTimeout(timer);
+				resolve();
+			};
+			this.ws.onmessage = (e) => {
+				try {
+					this.handleSignalingMessage(JSON.parse(e.data));
+				} catch (err) {
+					console.error("[WebRTC] Parse error:", err);
+				}
+			};
+			this.ws.onerror = () => {
+				clearTimeout(timer);
+				// reject(new Error("WebSocket failed"));
+			};
+			this.ws.onclose = () => this.setState("disconnected");
+		});
 		console.log("ws onopen resolved");
 
 		// Setup peer connection
