@@ -1,6 +1,6 @@
 import type {
 	IncomingWebRTCMessage,
-	InitializeSessionMessage,
+	// InitializeSessionMessage,
 	OutgoingWebRTCMessage,
 } from "./types";
 
@@ -25,7 +25,7 @@ export class WebRTCConnection {
 	async connect(
 		url: string,
 		localStream: MediaStream,
-		initMessage: InitializeSessionMessage,
+		// initMessage: InitializeSessionMessage,
 		timeout = 15000,
 	): Promise<void> {
 		const deadline = Date.now() + timeout;
@@ -86,7 +86,7 @@ export class WebRTCConnection {
 		};
 
 		// Send init message and wait for connection
-		this.send(initMessage);
+		// this.send(initMessage);
 
 		while (Date.now() < deadline) {
 			if (this.state === "connected") return;

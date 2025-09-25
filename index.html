@@ -323,7 +323,7 @@
         let isConnected = false;
         let processedVideoUrl = null;
         let currentSessionId = null;
-        let model = models.v2v("decart-v2v-v2.0-448p");
+        let model = models.v2v("mirage");
         
         // DOM elements
         const elements = {
@@ -424,7 +424,7 @@
                 
                 addLog('Initializing Decart client...', 'info');
                 
-                const baseUrl = elements.baseUrl.value.trim() || 'https://bouncer.decart.ai';
+                const baseUrl = elements.baseUrl.value.trim() || undefined;
                 decartClient = createDecartClient({
                     apiKey,
                     baseUrl
@@ -596,7 +596,7 @@
                 
                 // Initialize client if not already done
                 if (!decartClient) {
-                    const baseUrl = elements.baseUrl.value.trim() || 'https://bouncer.decart.ai';
+                    const baseUrl = elements.baseUrl.value.trim() || undefined;
                     decartClient = createDecartClient({
                         apiKey,
                         baseUrl
