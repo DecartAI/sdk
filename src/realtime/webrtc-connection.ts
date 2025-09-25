@@ -33,10 +33,10 @@ export class WebRTCConnection {
 		console.log("connect", url, localStream, timeout);
 		// Setup WebSocket
 		// await new Promise<void>((resolve, reject) => {
-		const timer = setTimeout(
-			() => reject(new Error("WebSocket timeout")),
-			timeout,
-		);
+		// const timer = setTimeout(
+		// 	() => reject(new Error("WebSocket timeout")),
+		// 	timeout,
+		// );
 		this.ws = new WebSocket(url);
 
 		// this.ws.onopen = () => {
