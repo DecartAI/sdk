@@ -225,7 +225,7 @@
         </div>
         <div class="control-group">
             <label for="base-url">Base URL (optional):</label>
-            <input type="text" id="base-url" placeholder="https://bouncer.mirage.decart.ai" value="https://bouncer.mirage.decart.ai">
+            <input type="text" id="base-url" placeholder="https://api3.decart.ai" value="https://api3.decart.ai">
         </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
@@ -424,7 +424,7 @@
                 
                 addLog('Initializing Decart client...', 'info');
                 
-                const baseUrl = elements.baseUrl.value.trim() || undefined;
+                const baseUrl = elements.baseUrl.value.trim();
                 decartClient = createDecartClient({
                     apiKey,
                     baseUrl
@@ -596,7 +596,7 @@
                 
                 // Initialize client if not already done
                 if (!decartClient) {
-                    const baseUrl = elements.baseUrl.value.trim() || undefined;
+                    const baseUrl = elements.baseUrl.value.trim();
                     decartClient = createDecartClient({
                         apiKey,
                         baseUrl
