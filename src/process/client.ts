@@ -1,13 +1,13 @@
 import { createInvalidInputError } from "../utils/errors";
 import {
+	type FileInput,
 	type ProcessOptions,
 	processOptionsSchema,
-	type VideoInput,
 } from "./types";
-import { processVideo, videoInputToBlob } from "./video";
+import { process, videoInputToBlob } from "./video";
 
 export type ProcessClient = {
-	video: (input: VideoInput, options: ProcessOptions) => Promise<Blob>;
+	video: (input: FileInput, options: ProcessOptions) => Promise<Blob>;
 };
 
 export type ProcessClientOptions = {
@@ -21,7 +21,7 @@ export const createProcessClient = (
 	const { apiKey, baseUrl } = opts;
 
 	const video = async (
-		input: VideoInput,
+		input: FileInput,
 		options: ProcessOptions,
 	): Promise<Blob> => {
 		const parsedOptions = processOptionsSchema.safeParse(options);
@@ -35,7 +35,7 @@ export const createProcessClient = (
 		const { model, prompt, mirror, signal } = parsedOptions.data;
 
 		const blob = await videoInputToBlob(input);
-		const response = await processVideo({
+		const response = await process({
 			baseUrl,
 			apiKey,
 			blob,

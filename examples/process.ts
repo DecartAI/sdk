@@ -1,14 +1,14 @@
 import {
 	createDecartClient,
+	type FileInput,
 	models,
 	type ProcessOptions,
-	type VideoInput,
 } from "@decartai/sdk";
 
 const fileInput = document.querySelector(
 	'input[type="file"]',
 ) as HTMLInputElement;
-const videoFile: VideoInput = fileInput.files?.[0] as VideoInput;
+const videoFile: FileInput = fileInput.files?.[0] as FileInput;
 
 // 1. Create a client
 const client = createDecartClient({

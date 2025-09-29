@@ -1,7 +1,7 @@
 import { createInvalidInputError, createSDKError } from "../utils/errors";
-import type { ProcessOptions, VideoInput } from "./types";
+import type { FileInput, ProcessOptions } from "./types";
 
-export async function videoInputToBlob(input: VideoInput): Promise<Blob> {
+export async function videoInputToBlob(input: FileInput): Promise<Blob> {
 	if (input instanceof Blob || input instanceof File) {
 		return input;
 	}
@@ -30,7 +30,7 @@ export async function videoInputToBlob(input: VideoInput): Promise<Blob> {
 	throw createInvalidInputError("Invalid video input type");
 }
 
-export async function processVideo({
+export async function process({
 	baseUrl,
 	apiKey,
 	blob,
@@ -44,21 +44,17 @@ export async function processVideo({
 	signal?: AbortSignal;
 }): Promise<Blob> {
 	const formData = new FormData();
-	formData.append("video", blob);
-
-	formData.append("superResolution", "true");
-	formData.append("interpolate", "true");
+	formData.append("data", blob);
 
 	if (options.prompt?.text) {
 		formData.append("prompt", options.prompt.text);
-		// formData.append("should_enrich", String(options.prompt.enrich ?? true));
 	}
 
 	if (options.mirror) {
 		formData.append("mirror", String(options.mirror));
 	}
 
-	const endpoint = `${baseUrl}/process_video`;
+	const endpoint = `${baseUrl}${options.model.urlPath}`;
 	const response = await fetch(endpoint, {
 		method: "POST",
 		headers: {

@@ -7,7 +7,7 @@ import {
 } from "./utils/errors";
 
 export type { ProcessClient } from "./process/client";
-export type { ProcessOptions, VideoInput } from "./process/types";
+export type { FileInput, ProcessOptions } from "./process/types";
 export type {
 	RealTimeClient,
 	RealTimeClientConnectOptions,

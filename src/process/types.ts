@@ -8,4 +8,4 @@ export const processOptionsSchema = modelStateSchema.extend({
 });
 export type ProcessOptions = z.input<typeof processOptionsSchema>;
 
-export type VideoInput = File | Blob | ReadableStream | URL | string;
+export type FileInput = File | Blob | ReadableStream | URL | string;
