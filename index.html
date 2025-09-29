@@ -223,10 +223,6 @@
             <label for="api-key">API Key:</label>
             <input type="password" id="api-key" placeholder="Enter your Decart API key">
         </div>
-        <div class="control-group">
-            <label for="base-url">Base URL (optional):</label>
-            <input type="text" id="base-url" placeholder="https://api3.decart.ai" value="https://api3.decart.ai">
-        </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
             <button id="connect-btn" disabled>Connect to Decart</button>
@@ -328,7 +324,6 @@
         // DOM elements
         const elements = {
             apiKey: document.getElementById('api-key'),
-            baseUrl: document.getElementById('base-url'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
             disconnectBtn: document.getElementById('disconnect-btn'),
@@ -424,10 +419,8 @@
                 
                 addLog('Initializing Decart client...', 'info');
                 
-                const baseUrl = elements.baseUrl.value.trim();
                 decartClient = createDecartClient({
                     apiKey,
-                    baseUrl
                 });
                 
                 addLog('Connecting to Decart server...', 'info');
@@ -596,10 +589,8 @@
                 
                 // Initialize client if not already done
                 if (!decartClient) {
-                    const baseUrl = elements.baseUrl.value.trim();
                     decartClient = createDecartClient({
                         apiKey,
-                        baseUrl
                     });
                     addLog('Initialized Decart client for processing', 'info');
                 }

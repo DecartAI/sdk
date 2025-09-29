@@ -41,7 +41,7 @@ export const createDecartClient = (options: DecartClientOptions) => {
 		throw parsedOptions.error;
 	}
 
-	const { baseUrl = "https://api3.decart.ai", apiKey } = parsedOptions.data;
+	const { baseUrl = "https://api.decart.ai", apiKey } = parsedOptions.data;
 
 	const wsBaseUrl = baseUrl
 		.replace("https://", "wss://")
