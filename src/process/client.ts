@@ -1,14 +1,8 @@
 import { createInvalidInputError } from "../utils/errors";
-import {
-	type FileInput,
-	type ProcessOptions,
-	processOptionsSchema,
-} from "./types";
-import { process, videoInputToBlob } from "./video";
+import { fileInputToBlob, sendRequest } from "./request";
+import { type ProcessOptions, processOptionsSchema } from "./types";
 
-export type ProcessClient = {
-	video: (input: FileInput, options: ProcessOptions) => Promise<Blob>;
-};
+export type ProcessClient = (options: ProcessOptions) => Promise<Blob>;
 
 export type ProcessClientOptions = {
 	apiKey: string;
@@ -20,33 +14,28 @@ export const createProcessClient = (
 ): ProcessClient => {
 	const { apiKey, baseUrl } = opts;
 
-	const video = async (
-		input: FileInput,
-		options: ProcessOptions,
-	): Promise<Blob> => {
+	const _process = async (options: ProcessOptions): Promise<Blob> => {
 		const parsedOptions = processOptionsSchema.safeParse(options);
 		if (!parsedOptions.success) {
-			// TODO: status code 400
 			throw createInvalidInputError(
 				`Invalid process options: ${parsedOptions.error.message}`,
 			);
 		}
 
-		const { model, prompt, mirror, signal } = parsedOptions.data;
+		const { model, file, prompt, signal, start, end } = parsedOptions.data;
+		const fileBlob = file ? await fileInputToBlob(file) : undefined;
+		const startBlob = start ? await fileInputToBlob(start) : undefined;
+		const endBlob = end ? await fileInputToBlob(end) : undefined;
 
-		const blob = await videoInputToBlob(input);
-		const response = await process({
+		const response = await sendRequest({
 			baseUrl,
 			apiKey,
-			blob,
-			options: { model, prompt, mirror },
+			data: { model, prompt, file: fileBlob, start: startBlob, end: endBlob },
 			signal,
 		});
 
 		return response;
 	};
 
-	return {
-		video,
-	};
+	return _process;
 };
