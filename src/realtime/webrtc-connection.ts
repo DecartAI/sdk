@@ -136,9 +136,9 @@ export class WebRTCConnection {
 	}
 
 	send(message: OutgoingWebRTCMessage): void {
-		// if (this.ws?.readyState === WebSocket.OPEN) {
-		this.ws?.send(JSON.stringify(message));
-		// }
+		if (this.ws?.readyState === WebSocket.OPEN) {
+			this.ws?.send(JSON.stringify(message));
+		}
 	}
 
 	private setState(state: ConnectionState): void {
