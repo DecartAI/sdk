@@ -21,7 +21,7 @@ const client = createDecartClient({
 const processedVideoByFile = await client.process.video(
 	videoFile, // required, the video file to process. type: File | Buffer | Stream.
 	{
-		model: models.v2v("decart-v2v-v2.1-704p"),
+		model: models.realtime("mirage"),
 		prompt: {
 			// optional, defaults to undefined, will return the original stream if no prompt is sent
 			text: "Lego World",
@@ -35,7 +35,7 @@ const processedVideoByFile = await client.process.video(
 const processedVideoByUrl = await client.process.video(
 	"https://www.youtube.com/watch?v=dQw4w9WgXcQ?download=true", // required, the url of the video to process. type: string.
 	{
-		model: models.v2v("decart-v2v-v1.0-432p"),
+		model: models.realtime("lucy_v2v_720p_rt"),
 		prompt: {
 			// optional, defaults to undefined, will return the original stream if no prompt is sent
 			text: "Lego World",

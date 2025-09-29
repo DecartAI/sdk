@@ -17,7 +17,7 @@ export const modelDefinitionSchema = z.object({
 export type ModelDefinition = z.infer<typeof modelDefinitionSchema>;
 
 const _models = {
-	v2v: {
+	realtime: {
 		mirage: {
 			urlPath: "/v1/stream",
 			name: "mirage",
@@ -36,8 +36,8 @@ const _models = {
 } as const;
 
 export const models = {
-	v2v: (model: Model): ModelDefinition => {
-		const modelDefinition = _models.v2v[model];
+	realtime: (model: Model): ModelDefinition => {
+		const modelDefinition = _models.realtime[model];
 		if (!modelDefinition) {
 			throw createModelNotFoundError(model);
 		}
