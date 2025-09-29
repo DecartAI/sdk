@@ -82,9 +82,6 @@ export const modelInputSchemas = {
 ### 4. Autocomplete
 IDEs show correct fields for each model with inline documentation.
 
-### 5. No Field Mapping Confusion
-Renamed `file` → `data` to match OpenAPI spec directly.
-
 ## Architecture
 
 1. **Model Registry** (`src/shared/model.ts`): Each model includes `inputSchema`
