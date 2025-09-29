@@ -79,9 +79,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
 		const { onRemoteStream, initialState } = parsedOptions.data;
 
-		const realtimeBaseUrl = "wss://api3.decart.ai";
-		const url = `${realtimeBaseUrl}${options.model.urlPath}`;
-
+		const url = `${baseUrl}${options.model.urlPath}`;
 		const webrtcManager = new WebRTCManager({
 			webrtcUrl: `${url}?api_key=${apiKey}&model=${options.model.name}`,
 			apiKey,
