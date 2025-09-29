@@ -30,7 +30,6 @@ export class WebRTCConnection {
 	): Promise<void> {
 		const deadline = Date.now() + timeout;
 
-		console.log("connect", url, localStream, timeout);
 		// Setup WebSocket
 		await new Promise<void>((resolve, reject) => {
 			const timer = setTimeout(
@@ -40,7 +39,6 @@ export class WebRTCConnection {
 			this.ws = new WebSocket(url);
 
 			this.ws.onopen = () => {
-				console.log("ws onopen");
 				clearTimeout(timer);
 				resolve();
 			};
@@ -57,7 +55,6 @@ export class WebRTCConnection {
 			};
 			this.ws.onclose = () => this.setState("disconnected");
 		});
-		console.log("ws onopen resolved");
 
 		// Setup peer connection
 		this.pc?.close();
@@ -103,23 +100,16 @@ export class WebRTCConnection {
 	private async handleSignalingMessage(
 		msg: IncomingWebRTCMessage,
 	): Promise<void> {
-		console.log("handleSignalingMessage", msg, this.pc);
 		if (!this.pc) return;
 
 		try {
 			switch (msg.type) {
 				case "ready": {
-					console.log("ready!!!");
 					await this.applyCodecPreference("video/VP8");
-					console.log("applyCodecPreference done");
 					const offer = await this.pc.createOffer();
-					console.log("offer created");
 					await this.callbacks.customizeOffer?.(offer);
-					console.log("customizeOffer done");
 					await this.pc.setLocalDescription(offer);
-					console.log("setLocalDescription done");
 					this.send({ type: "offer", sdp: offer.sdp || "" });
-					console.log("offer sent");
 					break;
 				}
 				case "offer": {
@@ -146,8 +136,6 @@ export class WebRTCConnection {
 	}
 
 	send(message: OutgoingWebRTCMessage): void {
-		console.log("send", message);
-		console.log("ws readyState", this.ws?.readyState);
 		// if (this.ws?.readyState === WebSocket.OPEN) {
 		this.ws?.send(JSON.stringify(message));
 		// }
