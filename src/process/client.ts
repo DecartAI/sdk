@@ -1,8 +1,11 @@
+import type { ModelDefinition } from "../shared/model";
 import { createInvalidInputError } from "../utils/errors";
 import { fileInputToBlob, sendRequest } from "./request";
-import { type ProcessOptions, processOptionsSchema } from "./types";
+import type { FileInput, ProcessOptions } from "./types";
 
-export type ProcessClient = (options: ProcessOptions) => Promise<Blob>;
+export type ProcessClient = <T extends ModelDefinition>(
+	options: ProcessOptions<T>,
+) => Promise<Blob>;
 
 export type ProcessClientOptions = {
 	apiKey: string;
@@ -14,23 +17,32 @@ export const createProcessClient = (
 ): ProcessClient => {
 	const { apiKey, baseUrl } = opts;
 
-	const _process = async (options: ProcessOptions): Promise<Blob> => {
-		const parsedOptions = processOptionsSchema.safeParse(options);
-		if (!parsedOptions.success) {
+	const _process = async <T extends ModelDefinition>(
+		options: ProcessOptions<T>,
+	): Promise<Blob> => {
+		const { model, signal, ...inputs } = options;
+
+		const parsedInputs = model.inputSchema.safeParse(inputs);
+		if (!parsedInputs.success) {
 			throw createInvalidInputError(
-				`Invalid process options: ${parsedOptions.error.message}`,
+				`Invalid inputs for ${model.name}: ${parsedInputs.error.message}`,
 			);
 		}
 
-		const { model, file, prompt, signal, start, end } = parsedOptions.data;
-		const fileBlob = file ? await fileInputToBlob(file) : undefined;
-		const startBlob = start ? await fileInputToBlob(start) : undefined;
-		const endBlob = end ? await fileInputToBlob(end) : undefined;
+		const processedInputs: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(parsedInputs.data)) {
+			if (key === "data" || key === "start" || key === "end") {
+				processedInputs[key] = await fileInputToBlob(value as FileInput);
+			} else {
+				processedInputs[key] = value;
+			}
+		}
 
 		const response = await sendRequest({
 			baseUrl,
 			apiKey,
-			data: { model, prompt, file: fileBlob, start: startBlob, end: endBlob },
+			model,
+			inputs: processedInputs,
 			signal,
 		});
 

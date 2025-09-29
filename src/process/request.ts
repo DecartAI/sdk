@@ -1,5 +1,6 @@
+import type { ModelDefinition } from "../shared/model";
 import { createInvalidInputError, createSDKError } from "../utils/errors";
-import type { FileInput, ProcessOptions } from "./types";
+import type { FileInput } from "./types";
 
 export async function fileInputToBlob(input: FileInput): Promise<Blob> {
 	if (input instanceof Blob || input instanceof File) {
@@ -21,45 +22,41 @@ export async function fileInputToBlob(input: FileInput): Promise<Blob> {
 		const response = await fetch(url);
 		if (!response.ok) {
 			throw createInvalidInputError(
-				`Failed to fetch video from URL: ${response.statusText}`,
+				`Failed to fetch file from URL: ${response.statusText}`,
 			);
 		}
 		return response.blob();
 	}
 
-	throw createInvalidInputError("Invalid video input type");
+	throw createInvalidInputError("Invalid file input type");
 }
 
 export async function sendRequest({
 	baseUrl,
 	apiKey,
-	data,
+	model,
+	inputs,
 	signal,
 }: {
 	baseUrl: string;
 	apiKey: string;
-	data: ProcessOptions;
+	model: ModelDefinition;
+	inputs: Record<string, unknown>;
 	signal?: AbortSignal;
 }): Promise<Blob> {
 	const formData = new FormData();
 
-	if (data.file) {
-		formData.append("data", data.file);
+	for (const [key, value] of Object.entries(inputs)) {
+		if (value !== undefined && value !== null) {
+			if (value instanceof Blob) {
+				formData.append(key, value);
+			} else {
+				formData.append(key, String(value));
+			}
+		}
 	}
 
-	if (data.prompt) {
-		formData.append("prompt", data.prompt);
-	}
-
-	if (data.start) {
-		formData.append("start", data.start);
-	}
-
-	if (data.end) {
-		formData.append("end", data.end);
-	}
-
-	const endpoint = `${baseUrl}${data.model.urlPath}`;
+	const endpoint = `${baseUrl}${model.urlPath}`;
 	const response = await fetch(endpoint, {
 		method: "POST",
 		headers: {

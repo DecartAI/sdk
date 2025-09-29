@@ -1,40 +1,61 @@
-import {
-	createDecartClient,
-	type FileInput,
-	models,
-	type ProcessOptions,
-} from "@decartai/sdk";
+import { createDecartClient, type FileInput, models } from "@decartai/sdk";
 
 const fileInput = document.querySelector(
 	'input[type="file"]',
 ) as HTMLInputElement;
 const videoFile: FileInput = fileInput.files?.[0] as FileInput;
+const imageFile: FileInput = fileInput.files?.[0] as FileInput;
 
-// 1. Create a client
 const client = createDecartClient({
-	baseUrl: "https://api.decart.ai", // optional, defaults to https://...
+	baseUrl: "https://api.decart.ai",
 	apiKey: "dcrt-dLMPLEvXIuYPCpC0U5QKJh7jTH9RK8EoAaMT",
 });
 
-// 2. Process a video
-// 2.1. Process a video file - upload the video file to the server, process it, and return the processed video
-const processedVideoByFile = await client.process({
+const textToVideo = await client.process({
+	model: models.video("lucy-pro-t2v"),
+	prompt: "A cat walking in a park",
+	seed: 42,
+	resolution: "720p",
+	orientation: "landscape",
+});
+
+const videoToVideo = await client.process({
 	model: models.video("lucy-pro-v2v"),
 	prompt: "Lego World",
-	file: videoFile,
-} satisfies ProcessOptions);
+	data: videoFile,
+	enhance_prompt: true,
+	num_inference_steps: 50,
+});
 
-// 2.2. Process a remote video URL - send the video url to the server, download the video, process it, and return the processed video
-const processedVideoByUrl = await client.process({
+const videoByUrl = await client.process({
 	model: models.video("lucy-pro-v2v"),
-	prompt: "Lego World",
-	file: "https://www.youtube.com/watch?v=dQw4w9WgXcQ?download=true",
-} satisfies ProcessOptions);
+	prompt: "Cyberpunk style",
+	data: "https://example.com/video.mp4",
+});
 
-// 3. Play the video
+const firstLastFrame = await client.process({
+	model: models.video("lucy-pro-flf2v"),
+	prompt: "Smooth transition between frames",
+	start: imageFile,
+	end: imageFile,
+	seed: 123,
+});
+
+const textToImage = await client.process({
+	model: models.image("lucy-pro-t2i"),
+	prompt: "A beautiful sunset over mountains",
+	orientation: "portrait",
+});
+
+const imageToImage = await client.process({
+	model: models.image("lucy-pro-i2i"),
+	prompt: "Oil painting style",
+	data: imageFile,
+	enhance_prompt: false,
+});
+
 const videoElement = document.createElement("video");
-videoElement.src = URL.createObjectURL(processedVideoByFile);
-videoElement.src = URL.createObjectURL(processedVideoByUrl);
+videoElement.src = URL.createObjectURL(textToVideo);
 videoElement.play();
 
 document.body.appendChild(videoElement);
