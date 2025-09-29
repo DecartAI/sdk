@@ -2,10 +2,8 @@ import { z } from "zod";
 import { createModelNotFoundError } from "../utils/errors";
 
 export const modelSchema = z.union([
-	z.literal("decart-v2v-v1.0-432p"),
-	z.literal("decart-v2v-v2.0-448p"),
-	z.literal("decart-v2v-v2.0-704p"),
-	z.literal("decart-v2v-v2.1-704p"),
+	z.literal("mirage"),
+	z.literal("lucy_v2v_720p_rt"),
 ]);
 export type Model = z.infer<typeof modelSchema>;
 
@@ -20,32 +18,18 @@ export type ModelDefinition = z.infer<typeof modelDefinitionSchema>;
 
 const _models = {
 	v2v: {
-		"decart-v2v-v1.0-432p": {
-			urlPath: "",
-			name: "decart-v2v-v1.0-432p",
-			fps: 14,
-			width: 768,
-			height: 432,
-		},
-		"decart-v2v-v2.0-448p": {
-			urlPath: "",
-			name: "decart-v2v-v2.0-448p",
-			fps: 23,
-			width: 796,
-			height: 448,
-		},
-		"decart-v2v-v2.0-704p": {
-			urlPath: "",
-			name: "decart-v2v-v2.0-704p",
-			fps: 16,
-			width: 1251,
+		mirage: {
+			urlPath: "/v1/stream",
+			name: "mirage",
+			fps: 25,
+			width: 1280,
 			height: 704,
 		},
-		"decart-v2v-v2.1-704p": {
-			urlPath: "",
-			name: "decart-v2v-v2.1-704p",
-			fps: 16,
-			width: 1251,
+		lucy_v2v_720p_rt: {
+			urlPath: "/v1/stream",
+			name: "lucy_v2v_720p_rt",
+			fps: 25,
+			width: 1280,
 			height: 704,
 		},
 	} satisfies Record<Model, ModelDefinition>,

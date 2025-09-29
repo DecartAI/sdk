@@ -1,6 +1,6 @@
 import pRetry from "p-retry";
 import type { RealTimeClientInitialState } from "./client";
-import type { InitializeSessionMessage, OutgoingMessage } from "./types";
+import type { OutgoingMessage } from "./types";
 import { WebRTCConnection } from "./webrtc-connection";
 
 export interface WebRTCConfig {
@@ -38,23 +38,23 @@ export class WebRTCManager {
 	}
 
 	async connect(localStream: MediaStream): Promise<boolean> {
-		const initMessage: InitializeSessionMessage = {
-			type: "initialize_session",
-			product: "miragesdk",
-			access_key: this.config.apiKey,
-			session_id: this.config.sessionId,
-			prompt: this.config.initialState?.prompt?.text,
-			// should_enrich: this.config.initialState?.prompt?.enrich,
-			rotateY: this.config.initialState?.mirror ? 2 : 0,
-			fps: this.config.fps,
-		};
+		// const initMessage: InitializeSessionMessage = {
+		// 	type: "initialize_session",
+		// 	product: "miragesdk",
+		// 	access_key: this.config.apiKey,
+		// 	session_id: this.config.sessionId,
+		// 	prompt: this.config.initialState?.prompt?.text,
+		// 	// should_enrich: this.config.initialState?.prompt?.enrich,
+		// 	rotateY: this.config.initialState?.mirror ? 2 : 0,
+		// 	fps: this.config.fps,
+		// };
 
 		return pRetry(
 			async () => {
 				await this.connection.connect(
 					this.config.webrtcUrl,
 					localStream,
-					initMessage,
+					// initMessage,
 				);
 				return true;
 			},

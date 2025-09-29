@@ -6,7 +6,7 @@ import {
 	type RealTimeClientInitialState,
 } from "@decartai/sdk";
 
-const model = models.v2v("decart-v2v-v2.1-704p");
+const model = models.v2v("mirage");
 
 const stream = await navigator.mediaDevices.getUserMedia({
 	audio: true,
@@ -19,7 +19,7 @@ const stream = await navigator.mediaDevices.getUserMedia({
 
 // 1. Create a client
 const client = createDecartClient({
-	baseUrl: "https://api.decart.ai", // optional, defaults to https://bouncer.mirage.decart.ai
+	baseUrl: "https://custom-endpoint.decart.ai", // optional, defaults to https://api3.decart.ai
 	apiKey: "dcrt-dLMPLEvXIuYPCpC0U5QKJh7jTH9RK8EoAaMT",
 });
 
