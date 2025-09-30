@@ -362,7 +362,7 @@ Fired when an error occurs.
 Process a video file or URL.
 
 **Parameters:**
-- `input: VideoInput` - Video input, can be:
+- `input: FileInput` - Video input, can be:
   - `File` - File object from input element (browser)
   - `Blob` - Binary data (browser)
   - `ReadableStream` - Streaming input
@@ -379,7 +379,7 @@ Process a video file or URL.
 
 **Type Definitions:**
 ```typescript
-type VideoInput = File | Blob | ReadableStream | URL | string;
+type FileInput = File | Blob | ReadableStream | URL | string;
 
 type ProcessOptions = {
   prompt?: {

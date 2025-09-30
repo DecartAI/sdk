@@ -1,7 +1,8 @@
+import type { ModelDefinition } from "../shared/model";
 import { createInvalidInputError, createSDKError } from "../utils/errors";
-import type { ProcessOptions, VideoInput } from "./types";
+import type { FileInput } from "./types";
 
-export async function videoInputToBlob(input: VideoInput): Promise<Blob> {
+export async function fileInputToBlob(input: FileInput): Promise<Blob> {
 	if (input instanceof Blob || input instanceof File) {
 		return input;
 	}
@@ -21,44 +22,41 @@ export async function videoInputToBlob(input: VideoInput): Promise<Blob> {
 		const response = await fetch(url);
 		if (!response.ok) {
 			throw createInvalidInputError(
-				`Failed to fetch video from URL: ${response.statusText}`,
+				`Failed to fetch file from URL: ${response.statusText}`,
 			);
 		}
 		return response.blob();
 	}
 
-	throw createInvalidInputError("Invalid video input type");
+	throw createInvalidInputError("Invalid file input type");
 }
 
-export async function processVideo({
+export async function sendRequest({
 	baseUrl,
 	apiKey,
-	blob,
-	options,
+	model,
+	inputs,
 	signal,
 }: {
 	baseUrl: string;
 	apiKey: string;
-	blob: Blob;
-	options: ProcessOptions;
+	model: ModelDefinition;
+	inputs: Record<string, unknown>;
 	signal?: AbortSignal;
 }): Promise<Blob> {
 	const formData = new FormData();
-	formData.append("video", blob);
 
-	formData.append("superResolution", "true");
-	formData.append("interpolate", "true");
-
-	if (options.prompt?.text) {
-		formData.append("prompt", options.prompt.text);
-		// formData.append("should_enrich", String(options.prompt.enrich ?? true));
+	for (const [key, value] of Object.entries(inputs)) {
+		if (value !== undefined && value !== null) {
+			if (value instanceof Blob) {
+				formData.append(key, value);
+			} else {
+				formData.append(key, String(value));
+			}
+		}
 	}
 
-	if (options.mirror) {
-		formData.append("mirror", String(options.mirror));
-	}
-
-	const endpoint = `${baseUrl}/process_video`;
+	const endpoint = `${baseUrl}${model.urlPath}`;
 	const response = await fetch(endpoint, {
 		method: "POST",
 		headers: {

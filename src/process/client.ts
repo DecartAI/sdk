@@ -1,14 +1,11 @@
+import type { ModelDefinition } from "../shared/model";
 import { createInvalidInputError } from "../utils/errors";
-import {
-	type ProcessOptions,
-	processOptionsSchema,
-	type VideoInput,
-} from "./types";
-import { processVideo, videoInputToBlob } from "./video";
+import { fileInputToBlob, sendRequest } from "./request";
+import type { FileInput, ProcessOptions } from "./types";
 
-export type ProcessClient = {
-	video: (input: VideoInput, options: ProcessOptions) => Promise<Blob>;
-};
+export type ProcessClient = <T extends ModelDefinition>(
+	options: ProcessOptions<T>,
+) => Promise<Blob>;
 
 export type ProcessClientOptions = {
 	apiKey: string;
@@ -20,33 +17,37 @@ export const createProcessClient = (
 ): ProcessClient => {
 	const { apiKey, baseUrl } = opts;
 
-	const video = async (
-		input: VideoInput,
-		options: ProcessOptions,
+	const _process = async <T extends ModelDefinition>(
+		options: ProcessOptions<T>,
 	): Promise<Blob> => {
-		const parsedOptions = processOptionsSchema.safeParse(options);
-		if (!parsedOptions.success) {
-			// TODO: status code 400
+		const { model, signal, ...inputs } = options;
+
+		const parsedInputs = model.inputSchema.safeParse(inputs);
+		if (!parsedInputs.success) {
 			throw createInvalidInputError(
-				`Invalid process options: ${parsedOptions.error.message}`,
+				`Invalid inputs for ${model.name}: ${parsedInputs.error.message}`,
 			);
 		}
 
-		const { model, prompt, mirror, signal } = parsedOptions.data;
+		const processedInputs: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(parsedInputs.data)) {
+			if (key === "data" || key === "start" || key === "end") {
+				processedInputs[key] = await fileInputToBlob(value as FileInput);
+			} else {
+				processedInputs[key] = value;
+			}
+		}
 
-		const blob = await videoInputToBlob(input);
-		const response = await processVideo({
+		const response = await sendRequest({
 			baseUrl,
 			apiKey,
-			blob,
-			options: { model, prompt, mirror },
+			model,
+			inputs: processedInputs,
 			signal,
 		});
 
 		return response;
 	};
 
-	return {
-		video,
-	};
+	return _process;
 };

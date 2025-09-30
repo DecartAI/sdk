@@ -1,54 +1,61 @@
-import {
-	createDecartClient,
-	models,
-	type ProcessOptions,
-	type VideoInput,
-} from "@decartai/sdk";
+import { createDecartClient, type FileInput, models } from "@decartai/sdk";
 
 const fileInput = document.querySelector(
 	'input[type="file"]',
 ) as HTMLInputElement;
-const videoFile: VideoInput = fileInput.files?.[0] as VideoInput;
+const videoFile: FileInput = fileInput.files?.[0] as FileInput;
+const imageFile: FileInput = fileInput.files?.[0] as FileInput;
 
-// 1. Create a client
 const client = createDecartClient({
-	baseUrl: "https://api.decart.ai", // optional, defaults to https://...
+	baseUrl: "https://api.decart.ai",
 	apiKey: "dcrt-dLMPLEvXIuYPCpC0U5QKJh7jTH9RK8EoAaMT",
 });
 
-// 2. Process a video
-// 2.1. Process a video file - upload the video file to the server, process it, and return the processed video
-const processedVideoByFile = await client.process.video(
-	videoFile, // required, the video file to process. type: File | Buffer | Stream.
-	{
-		model: models.realtime("mirage"),
-		prompt: {
-			// optional, defaults to undefined, will return the original stream if no prompt is sent
-			text: "Lego World",
-			enrich: true, // optional, defaults to true
-		},
-		mirror: false, // optional, defaults to false (useful for use-cases like front-facing cameras),
-	} satisfies ProcessOptions,
-);
+const textToVideo = await client.process({
+	model: models.video("lucy-pro-t2v"),
+	prompt: "A cat walking in a park",
+	seed: 42,
+	resolution: "720p",
+	orientation: "landscape",
+});
 
-// 2.2. Process a remote video URL - send the video url to the server, download the video, process it, and return the processed video
-const processedVideoByUrl = await client.process.video(
-	"https://www.youtube.com/watch?v=dQw4w9WgXcQ?download=true", // required, the url of the video to process. type: string.
-	{
-		model: models.realtime("lucy_v2v_720p_rt"),
-		prompt: {
-			// optional, defaults to undefined, will return the original stream if no prompt is sent
-			text: "Lego World",
-			enrich: true, // optional, defaults to true
-		},
-		mirror: false, // optional, defaults to false (useful for use-cases like front-facing cameras)
-	} satisfies ProcessOptions,
-);
+const videoToVideo = await client.process({
+	model: models.video("lucy-pro-v2v"),
+	prompt: "Lego World",
+	data: videoFile,
+	enhance_prompt: true,
+	num_inference_steps: 50,
+});
 
-// 3. Play the video
+const videoByUrl = await client.process({
+	model: models.video("lucy-pro-v2v"),
+	prompt: "Cyberpunk style",
+	data: "https://example.com/video.mp4",
+});
+
+const firstLastFrame = await client.process({
+	model: models.video("lucy-pro-flf2v"),
+	prompt: "Smooth transition between frames",
+	start: imageFile,
+	end: imageFile,
+	seed: 123,
+});
+
+const textToImage = await client.process({
+	model: models.image("lucy-pro-t2i"),
+	prompt: "A beautiful sunset over mountains",
+	orientation: "portrait",
+});
+
+const imageToImage = await client.process({
+	model: models.image("lucy-pro-i2i"),
+	prompt: "Oil painting style",
+	data: imageFile,
+	enhance_prompt: false,
+});
+
 const videoElement = document.createElement("video");
-videoElement.src = URL.createObjectURL(processedVideoByFile);
-videoElement.src = URL.createObjectURL(processedVideoByUrl);
+videoElement.src = URL.createObjectURL(textToVideo);
 videoElement.play();
 
 document.body.appendChild(videoElement);
