@@ -11,12 +11,20 @@
 - `pnpm release` - Bump version and publish to NPM
 
 ## Project Architecture
-- **src/index.ts** - Main entry point, exports createDecartClient
+- **src/index.ts** - Main entry point, exports createDecartClient with realtime and process clients
+- **src/process/** - HTTP API for asynchronous video/image generation
+  - `client.ts` - Process client implementation for model inference
+  - `request.ts` - HTTP request handling and file input processing
+  - `types.ts` - TypeScript types for process API options
 - **src/realtime/** - WebRTC real-time video streaming logic
   - `client.ts` - Real-time client implementation with WebRTC connection management
   - `webrtc-manager.ts` - WebRTC connection lifecycle and signaling
   - `webrtc-connection.ts` - Low-level WebRTC peer connection handling
+  - `methods.ts` - WebRTC method implementations
   - `types.ts` - TypeScript types for WebRTC messages and events
+- **src/shared/** - Shared model definitions and types
+  - `model.ts` - Model registry with definitions for realtime, video, and image models
+  - `types.ts` - Common types across APIs (ModelState, etc.)
 - **src/utils/** - Shared utilities
   - `errors.ts` - Error factory pattern with ERROR_CODES constants
 - **tests/** - Test files using Vitest (.test.ts extension)
@@ -38,7 +46,26 @@
   - Dev: tsdown (build), vitest (test), typescript, vite (examples), bumpp (releases)
 
 ## API Design Patterns
-- **Factory Functions**: Use `create*` pattern for constructors (createDecartClient, createRealTimeClient)
+- **Factory Functions**: Use `create*` pattern for constructors (createDecartClient, createRealTimeClient, createProcessClient)
 - **Options Validation**: Validate all public API options with Zod schemas
 - **Error Messages**: Provide clear, actionable error messages with specific error codes
 - **Type Exports**: Export all public types alongside implementations
+- **Model Registry**: Use `models.realtime()`, `models.video()`, `models.image()` factory functions to access model definitions
+- **File Inputs**: Support multiple input types (File, Blob, ReadableStream, URL, string URL)
+
+## Supported Models
+### Realtime Models (WebRTC)
+- `mirage` - Real-time video restyling model
+- `lucy_v2v_720p_rt` - Real-time video editing model
+
+### Video Models (Process API)
+- `lucy-dev-i2v` - image-to-video (Dev quality)
+- `lucy-dev-v2v` - video-to-video (Dev quality)
+- `lucy-pro-t2v` - text-to-video (Pro quality)
+- `lucy-pro-i2v` - image-to-video (Pro quality)
+- `lucy-pro-v2v` - video-to-video (Pro quality)
+- `lucy-pro-flf2v` - first-last-frame-to-video (Pro quality)
+
+### Image Models (Process API)
+- `lucy-pro-t2i` - text-to-image (Pro quality)
+- `lucy-pro-i2i` - image-to-image (Pro quality)
