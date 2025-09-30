@@ -4,13 +4,14 @@
 	"description": "Decart's JavaScript SDK",
 	"type": "module",
 	"license": "MIT",
-	"homepage": "https://github.com/decartai/mirage-sdk#readme",
+	"private": false,
+	"homepage": "https://github.com/decartai/sdk#readme",
 	"bugs": {
-		"url": "https://github.com/decartai/mirage-sdk/issues"
+		"url": "https://github.com/decartai/sdk/issues"
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/decartai/mirage-sdk.git"
+		"url": "git+https://github.com/decartai/sdk.git"
 	},
 	"author": "Adir Amsalem <adir@decart.ai>",
 	"sideEffects": false,
