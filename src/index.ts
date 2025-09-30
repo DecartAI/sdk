@@ -13,7 +13,14 @@ export type {
 	RealTimeClientConnectOptions,
 	RealTimeClientInitialState,
 } from "./realtime/client";
-export { type Model, type ModelDefinition, models } from "./shared/model";
+export {
+	type ImageModels,
+	type Model,
+	type ModelDefinition,
+	models,
+	type RealTimeModels,
+	type VideoModels,
+} from "./shared/model";
 export type { ModelState } from "./shared/types";
 export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
 
