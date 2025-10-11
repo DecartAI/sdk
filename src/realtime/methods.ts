@@ -24,7 +24,7 @@ export const realtimeMethods = (webrtcManager: WebRTCManager) => {
 		webrtcManager.sendMessage({
 			type: "prompt",
 			prompt: parsedInput.data.prompt,
-			// should_enrich: parsedInput.data.enrich,
+			enhance_prompt: parsedInput.data.enrich,
 		});
 	};
 

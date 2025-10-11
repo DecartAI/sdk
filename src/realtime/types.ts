@@ -31,7 +31,7 @@ export type ReadyMessage = {
 export type PromptMessage = {
 	type: "prompt";
 	prompt: string;
-	// should_enrich: boolean;
+	enhance_prompt: boolean;
 };
 
 export type SwitchCameraMessage = {
