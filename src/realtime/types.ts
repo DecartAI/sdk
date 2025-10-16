@@ -39,12 +39,24 @@ export type SwitchCameraMessage = {
 	rotateY: number;
 };
 
+export type TurnConfig = {
+	username: string;
+	credential: string;
+	server_url: string;
+};
+
+export type IceRestartMessage = {
+	type: "ice-restart";
+	turn_config: TurnConfig;
+};
+
 // Incoming message types (from server)
 export type IncomingWebRTCMessage =
 	| ReadyMessage
 	| OfferMessage
 	| AnswerMessage
-	| IceCandidateMessage;
+	| IceCandidateMessage
+	| IceRestartMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =

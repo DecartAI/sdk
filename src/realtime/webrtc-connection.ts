@@ -2,6 +2,7 @@ import type {
 	IncomingWebRTCMessage,
 	// InitializeSessionMessage,
 	OutgoingWebRTCMessage,
+	TurnConfig,
 } from "./types";
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
@@ -18,6 +19,7 @@ export type ConnectionState = "connecting" | "connected" | "disconnected";
 export class WebRTCConnection {
 	private pc: RTCPeerConnection | null = null;
 	private ws: WebSocket | null = null;
+	private localStream: MediaStream | null = null;
 	state: ConnectionState = "disconnected";
 
 	constructor(private callbacks: ConnectionCallbacks = {}) {}
@@ -26,9 +28,10 @@ export class WebRTCConnection {
 		url: string,
 		localStream: MediaStream,
 		// initMessage: InitializeSessionMessage,
-		timeout = 15000,
+		timeout = 25000,
 	): Promise<void> {
 		const deadline = Date.now() + timeout;
+		this.localStream = localStream;
 
 		// Setup WebSocket
 		await new Promise<void>((resolve, reject) => {
@@ -56,39 +59,7 @@ export class WebRTCConnection {
 			this.ws.onclose = () => this.setState("disconnected");
 		});
 
-		// Setup peer connection
-		this.pc?.close();
-		this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-
-		localStream
-			.getTracks()
-			.forEach((track) => this.pc!.addTrack(track, localStream));
-
-		this.pc.ontrack = (e) => {
-			if (e.streams?.[0]) this.callbacks.onRemoteStream?.(e.streams[0]);
-		};
-
-		this.pc.onicecandidate = (e) => {
-			if (e.candidate)
-				this.send({ type: "ice-candidate", candidate: e.candidate });
-		};
-
-		this.pc.onconnectionstatechange = () => {
-			if (!this.pc) return;
-			const s = this.pc.connectionState;
-			this.setState(
-				s === "connected"
-					? "connected"
-					: ["connecting", "new"].includes(s)
-						? "connecting"
-						: "disconnected",
-			);
-		};
-
-		this.handleSignalingMessage({ type: "ready" });
-
-		// Send init message and wait for connection
-		// this.send(initMessage);
+		await this.setupNewPeerConnection();
 
 		while (Date.now() < deadline) {
 			if (this.state === "connected") return;
@@ -128,6 +99,12 @@ export class WebRTCConnection {
 				case "ice-candidate":
 					if (msg.candidate) await this.pc.addIceCandidate(msg.candidate);
 					break;
+				case "ice-restart":
+					const turnConfig = msg.turn_config;
+					if (turnConfig) {
+						await this.setupNewPeerConnection(turnConfig);
+					}
+					break;
 			}
 		} catch (error) {
 			console.error("[WebRTC] Error:", error);
@@ -149,12 +126,63 @@ export class WebRTCConnection {
 		}
 	}
 
+	private async setupNewPeerConnection(turnConfig?: TurnConfig): Promise<void> {
+		if (!this.localStream) {
+			throw new Error("No local stream found");
+		}
+		if (this.pc) {
+			this.pc.getSenders().forEach((sender) => {
+				if (sender.track) {
+					this.pc!.removeTrack(sender);
+				}
+			});
+			this.pc.close();
+		}
+		let iceServers: RTCIceServer[] = ICE_SERVERS;
+		if (turnConfig) {
+			iceServers.push({ urls: turnConfig.server_url, credential: turnConfig.credential, username: turnConfig.username });
+		}
+		this.pc = new RTCPeerConnection({ iceServers });
+
+		this.localStream
+			.getTracks()
+			.forEach((track) => this.pc!.addTrack(track, this.localStream!));
+
+		this.pc.ontrack = (e) => {
+			if (e.streams?.[0]) this.callbacks.onRemoteStream?.(e.streams[0]);
+		};
+
+		this.pc.onicecandidate = (e) => {
+			this.send({ type: "ice-candidate", candidate: e.candidate });
+		};
+
+		this.pc.onconnectionstatechange = () => {
+			if (!this.pc) return;
+			const s = this.pc.connectionState;
+			this.setState(
+				s === "connected"
+					? "connected"
+					: ["connecting", "new"].includes(s)
+						? "connecting"
+						: "disconnected",
+			);
+		};
+
+		this.pc.oniceconnectionstatechange = () => {};
+
+		this.handleSignalingMessage({ type: "ready" });
+
+		// Send init message and wait for connection
+		// this.send(initMessage);
+	}
+
 	cleanup(): void {
 		this.pc?.getSenders().forEach((s) => s.track?.stop());
 		this.pc?.close();
 		this.pc = null;
 		this.ws?.close();
 		this.ws = null;
+		this.localStream = null;
 		this.setState("disconnected");
 	}
 
