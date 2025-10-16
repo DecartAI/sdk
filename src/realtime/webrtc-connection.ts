@@ -100,13 +100,7 @@ export class WebRTCConnection {
 					if (msg.candidate) await this.pc.addIceCandidate(msg.candidate);
 					break;
 				case "ice-restart":
-					const turnConfig = msg.turn_config &&
-						typeof msg.turn_config === 'object' &&
-						'username' in msg.turn_config &&
-						'credential' in msg.turn_config &&
-						'server_url' in msg.turn_config
-						? msg.turn_config as TurnConfig
-						: undefined;
+					const turnConfig = msg.turn_config;
 					if (turnConfig) {
 						await this.setupNewPeerConnection(turnConfig);
 					}
