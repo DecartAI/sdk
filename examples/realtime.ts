@@ -6,7 +6,7 @@ import {
 	type RealTimeClientInitialState,
 } from "@decartai/sdk";
 
-const model = models.realtime("mirage");
+const model = models.realtime("mirage_v2");
 
 const stream = await navigator.mediaDevices.getUserMedia({
 	audio: true,

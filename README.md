@@ -24,7 +24,7 @@ For complete documentation, guides, and examples, visit:
 ```typescript
 import { createDecartClient, models } from "@decartai/sdk";
 
-const model = models.realtime("mirage");
+const model = models.realtime("mirage_v2");
 
 // Get user's camera stream
 const stream = await navigator.mediaDevices.getUserMedia({
