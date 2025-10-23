@@ -50,13 +50,19 @@ export type IceRestartMessage = {
 	turn_config: TurnConfig;
 };
 
+export type ErrorMessage = {
+	type: "error";
+	error: string;
+};
+
 // Incoming message types (from server)
 export type IncomingWebRTCMessage =
 	| ReadyMessage
 	| OfferMessage
 	| AnswerMessage
 	| IceCandidateMessage
-	| IceRestartMessage;
+	| IceRestartMessage
+	| ErrorMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =
