@@ -2,19 +2,18 @@ import { z } from "zod";
 import type { WebRTCManager } from "./webrtc-manager";
 
 export const realtimeMethods = (webrtcManager: WebRTCManager) => {
-	const enrichPrompt = (_prompt: string) => {
-		throw new Error("Not implemented");
-	};
-
-	const setPrompt = (prompt: string, { enrich }: { enrich?: boolean } = {}) => {
+	const setPrompt = (
+		prompt: string,
+		{ enhance }: { enhance?: boolean } = {},
+	) => {
 		const schema = z.object({
 			prompt: z.string().min(1),
-			enrich: z.boolean().optional().default(true),
+			enhance: z.boolean().optional().default(true),
 		});
 
 		const parsedInput = schema.safeParse({
 			prompt,
-			enrich,
+			enhance,
 		});
 
 		if (!parsedInput.success) {
@@ -24,7 +23,7 @@ export const realtimeMethods = (webrtcManager: WebRTCManager) => {
 		webrtcManager.sendMessage({
 			type: "prompt",
 			prompt: parsedInput.data.prompt,
-			enhance_prompt: parsedInput.data.enrich,
+			enhance_prompt: parsedInput.data.enhance,
 		});
 	};
 
@@ -48,7 +47,6 @@ export const realtimeMethods = (webrtcManager: WebRTCManager) => {
 	};
 
 	return {
-		enrichPrompt,
 		setPrompt,
 		setMirror,
 	};
