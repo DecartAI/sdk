@@ -3,6 +3,7 @@ import { createModelNotFoundError } from "../utils/errors";
 
 export const realtimeModels = z.union([
 	z.literal("mirage"),
+	z.literal("mirage_v2"),
 	z.literal("lucy_v2v_720p_rt"),
 ]);
 export const videoModels = z.union([
@@ -117,6 +118,14 @@ const _models = {
 			urlPath: "/v1/stream",
 			name: "mirage" as const,
 			fps: 25,
+			width: 1280,
+			height: 704,
+			inputSchema: z.object({}),
+		},
+		mirage_v2: {
+			urlPath: "/v1/stream",
+			name: "mirage_v2" as const,
+			fps: 12,
 			width: 1280,
 			height: 704,
 			inputSchema: z.object({}),
