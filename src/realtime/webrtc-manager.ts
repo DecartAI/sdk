@@ -47,7 +47,7 @@ export class WebRTCManager {
 		// 	access_key: this.config.apiKey,
 		// 	session_id: this.config.sessionId,
 		// 	prompt: this.config.initialState?.prompt?.text,
-		// 	// should_enrich: this.config.initialState?.prompt?.enrich,
+		// 	// should_enrich: this.config.initialState?.prompt?.enhance,
 		// 	rotateY: this.config.initialState?.mirror ? 2 : 0,
 		// 	fps: this.config.fps,
 		// };

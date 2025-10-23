@@ -50,7 +50,7 @@ const realtimeClient = await client.realtime.connect(stream, {
   initialState: {
     prompt: {
       text: "Anime",
-      enrich: true
+      enhance: true
     }
   }
 });

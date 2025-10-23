@@ -44,8 +44,7 @@ export type Events = {
 };
 
 export type RealTimeClient = {
-	enrichPrompt: (prompt: string) => Promise<string>;
-	setPrompt: (prompt: string, { enrich }?: { enrich?: boolean }) => void;
+	setPrompt: (prompt: string, { enhance }?: { enhance?: boolean }) => void;
 	setMirror: (enabled: boolean) => void;
 	isConnected: () => boolean;
 	getConnectionState: () => "connected" | "connecting" | "disconnected";
@@ -106,7 +105,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 		const methods = realtimeMethods(webrtcManager);
 
 		return {
-			enrichPrompt: methods.enrichPrompt,
 			setPrompt: methods.setPrompt,
 			setMirror: methods.setMirror,
 			isConnected: () => webrtcManager.isConnected(),

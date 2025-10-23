@@ -33,29 +33,23 @@ const realtimeClient = await client.realtime.connect(stream, {
 		prompt: {
 			// optional, defaults to undefined, will return the original stream if no prompt is sent
 			text: "Lego World",
-			enrich: true, // optional, defaults to true
+			enhance: true, // optional, defaults to true
 		},
 		mirror: false, // optional, defaults to false (useful for use-cases like front-facing cameras)
 	} satisfies RealTimeClientInitialState,
 } satisfies RealTimeClientConnectOptions);
 
 // 3. Prompt Management
-// 3.1 Sending a prompt, the prompt will be enriched automatically (great for out-of-the-box experience)
+// 3.1 Sending a prompt, the prompt will be enhanced automatically (great for out-of-the-box experience)
 realtimeClient.setPrompt("Lego World");
 
-// 3.2 Sending an already enriched prompt (great for advanced use-cases)
+// 3.2 Sending an already enhanced prompt (great for advanced use-cases)
 realtimeClient.setPrompt(
 	"A very long prompt that is very descriptive and detailed",
 	{
-		enrich: false, // optional, defaults to true
+		enhance: false, // optional, defaults to true
 	},
 );
-
-// 3.3 Enriching a prompt and sending it (great for advanced use-cases)
-// const enrichedPrompt = await realtimeClient.enrichPrompt("Anime");
-// realtimeClient.setPrompt(enrichedPrompt, {
-// 	enrich: false, // optional, defaults to true
-// });
 
 // 4. Mirroring (useful utility for use-cases like front-facing cameras)
 realtimeClient.setMirror(true);
