@@ -21,6 +21,9 @@ const PERMANENT_ERRORS = [
 	"permission denied",
 	"not allowed",
 	"invalid session",
+	"401",
+	"invalid api key",
+	"unauthorized",
 ];
 
 export class WebRTCManager {
@@ -64,9 +67,7 @@ export class WebRTCManager {
 				minTimeout: 1000,
 				maxTimeout: 10000,
 				onFailedAttempt: (error) => {
-					console.log(
-						`[WebRTC] Retry ${error.attemptNumber} failed: ${error.message}`,
-					);
+					console.error(`[WebRTC] Failed to connect: ${error.message}`);
 					this.connection.cleanup();
 				},
 				shouldRetry: (error) => {

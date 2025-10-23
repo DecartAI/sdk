@@ -20,6 +20,7 @@ export class WebRTCConnection {
 	private pc: RTCPeerConnection | null = null;
 	private ws: WebSocket | null = null;
 	private localStream: MediaStream | null = null;
+	private connectionReject: ((error: Error) => void) | null = null;
 	state: ConnectionState = "disconnected";
 
 	constructor(private callbacks: ConnectionCallbacks = {}) {}
@@ -35,6 +36,7 @@ export class WebRTCConnection {
 
 		// Setup WebSocket
 		await new Promise<void>((resolve, reject) => {
+			this.connectionReject = reject;
 			const timer = setTimeout(
 				() => reject(new Error("WebSocket timeout")),
 				timeout,
@@ -61,11 +63,20 @@ export class WebRTCConnection {
 
 		await this.setupNewPeerConnection();
 
-		while (Date.now() < deadline) {
-			if (this.state === "connected") return;
-			await new Promise((r) => setTimeout(r, 100));
-		}
-		throw new Error("Connection timeout");
+		return new Promise<void>((resolve, reject) => {
+			this.connectionReject = reject;
+			const checkConnection = setInterval(() => {
+				if (this.state === "connected") {
+					clearInterval(checkConnection);
+					this.connectionReject = null;
+					resolve();
+				} else if (Date.now() >= deadline) {
+					clearInterval(checkConnection);
+					this.connectionReject = null;
+					reject(new Error("Connection timeout"));
+				}
+			}, 100);
+		});
 	}
 
 	private async handleSignalingMessage(
@@ -75,6 +86,15 @@ export class WebRTCConnection {
 
 		try {
 			switch (msg.type) {
+				case "error": {
+					const error = new Error(msg.error);
+					this.callbacks.onError?.(error);
+					if (this.connectionReject) {
+						this.connectionReject(error);
+						this.connectionReject = null;
+					}
+					break;
+				}
 				case "ready": {
 					await this.applyCodecPreference("video/VP8");
 					const offer = await this.pc.createOffer();
@@ -99,12 +119,13 @@ export class WebRTCConnection {
 				case "ice-candidate":
 					if (msg.candidate) await this.pc.addIceCandidate(msg.candidate);
 					break;
-				case "ice-restart":
+				case "ice-restart": {
 					const turnConfig = msg.turn_config;
 					if (turnConfig) {
 						await this.setupNewPeerConnection(turnConfig);
 					}
 					break;
+				}
 			}
 		} catch (error) {
 			console.error("[WebRTC] Error:", error);
@@ -138,9 +159,13 @@ export class WebRTCConnection {
 			});
 			this.pc.close();
 		}
-		let iceServers: RTCIceServer[] = ICE_SERVERS;
+		const iceServers: RTCIceServer[] = ICE_SERVERS;
 		if (turnConfig) {
-			iceServers.push({ urls: turnConfig.server_url, credential: turnConfig.credential, username: turnConfig.username });
+			iceServers.push({
+				urls: turnConfig.server_url,
+				credential: turnConfig.credential,
+				username: turnConfig.username,
+			});
 		}
 		this.pc = new RTCPeerConnection({ iceServers });
 
