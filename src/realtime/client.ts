@@ -104,6 +104,16 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
 		const methods = realtimeMethods(webrtcManager);
 
+		if (options.initialState) {
+			if (options.initialState.prompt) {
+				const { text, enhance } = options.initialState.prompt;
+				methods.setPrompt(text, { enhance });
+			}
+			if (options.initialState.mirror) {
+				methods.setMirror(options.initialState.mirror);
+			}
+		}
+
 		return {
 			setPrompt: methods.setPrompt,
 			setMirror: methods.setMirror,
