@@ -41,24 +41,9 @@ export class WebRTCManager {
 	}
 
 	async connect(localStream: MediaStream): Promise<boolean> {
-		// const initMessage: InitializeSessionMessage = {
-		// 	type: "initialize_session",
-		// 	product: "miragesdk",
-		// 	access_key: this.config.apiKey,
-		// 	session_id: this.config.sessionId,
-		// 	prompt: this.config.initialState?.prompt?.text,
-		// 	// should_enrich: this.config.initialState?.prompt?.enhance,
-		// 	rotateY: this.config.initialState?.mirror ? 2 : 0,
-		// 	fps: this.config.fps,
-		// };
-
 		return pRetry(
 			async () => {
-				await this.connection.connect(
-					this.config.webrtcUrl,
-					localStream,
-					// initMessage,
-				);
+				await this.connection.connect(this.config.webrtcUrl, localStream);
 				return true;
 			},
 			{

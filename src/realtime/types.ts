@@ -1,14 +1,3 @@
-export type InitializeSessionMessage = {
-	type: "initialize_session";
-	product: "miragesdk";
-	access_key: string;
-	session_id: string;
-	fps: number;
-	prompt?: string;
-	should_enrich?: boolean;
-	rotateY?: number;
-};
-
 export type OfferMessage = {
 	type: "offer";
 	sdp: string;
@@ -66,7 +55,6 @@ export type IncomingWebRTCMessage =
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =
-	| InitializeSessionMessage
 	| OfferMessage
 	| AnswerMessage
 	| IceCandidateMessage
