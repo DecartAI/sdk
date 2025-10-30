@@ -64,7 +64,7 @@
             color: #333;
         }
         
-        input[type="text"], input[type="password"] {
+        input[type="text"], input[type="password"], select {
             width: 100%;
             padding: 12px;
             border: 2px solid #ddd;
@@ -73,9 +73,14 @@
             box-sizing: border-box;
         }
         
-        input[type="text"]:focus, input[type="password"]:focus {
+        input[type="text"]:focus, input[type="password"]:focus, select:focus {
             outline: none;
             border-color: #4CAF50;
+        }
+        
+        select {
+            background: white;
+            cursor: pointer;
         }
         
         button {
@@ -221,7 +226,15 @@
         <h3>Configuration</h3>
         <div class="control-group">
             <label for="api-key">API Key:</label>
-            <input type="password" id="api-key" placeholder="Enter your Decart API key">
+            <input type="password" autocomplete="off" id="api-key" placeholder="Enter your Decart API key">
+        </div>
+        <div class="control-group">
+            <label for="model-select">Model:</label>
+            <select id="model-select">
+                <option value="mirage">Mirage</option>
+                <option value="mirage_v2" selected>Mirage v2</option>
+                <option value="lucy_v2v_720p_rt">Lucy v2v 720p RT</option>
+            </select>
         </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
@@ -324,6 +337,7 @@
         // DOM elements
         const elements = {
             apiKey: document.getElementById('api-key'),
+            modelSelect: document.getElementById('model-select'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
             disconnectBtn: document.getElementById('disconnect-btn'),
@@ -376,6 +390,23 @@
             elements.statusIndicator.className = `status-indicator ${statusClass[status]}`;
             elements.statusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
         }
+        
+        // Model selection handler
+        elements.modelSelect.addEventListener('change', (e) => {
+            const selectedModel = e.target.value;
+            model = models.realtime(selectedModel);
+            addLog(`Selected model: ${selectedModel}`, 'info');
+            
+            // If camera is already started, stop it so user can restart with new model settings
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+                elements.localVideo.srcObject = null;
+                elements.startCamera.disabled = false;
+                elements.connectBtn.disabled = true;
+                addLog('Camera stopped. Please restart camera with new model settings.', 'info');
+            }
+        });
         
         // Start camera
         elements.startCamera.addEventListener('click', async () => {
