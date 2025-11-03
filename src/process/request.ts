@@ -1,5 +1,6 @@
 import type { ModelDefinition } from "../shared/model";
 import { createInvalidInputError, createSDKError } from "../utils/errors";
+import { buildUserAgent } from "../utils/user-agent";
 import type { FileInput } from "./types";
 
 export async function fileInputToBlob(input: FileInput): Promise<Blob> {
@@ -61,6 +62,7 @@ export async function sendRequest({
 		method: "POST",
 		headers: {
 			"X-API-KEY": apiKey,
+			"User-Agent": buildUserAgent(),
 		},
 		body: formData,
 		signal,

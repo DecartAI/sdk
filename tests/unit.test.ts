@@ -93,6 +93,21 @@ describe("Decart SDK", () => {
 				expect(lastFormData?.get("seed")).toBe("42");
 			});
 
+			it("includes User-Agent header in requests", async () => {
+				server.use(createMockHandler("/v1/generate/lucy-pro-t2v"));
+
+				await decart.process({
+					model: models.video("lucy-pro-t2v"),
+					prompt: "Test prompt",
+				});
+
+				const userAgent = lastRequest?.headers.get("user-agent");
+				expect(userAgent).toBeDefined();
+				expect(userAgent).toMatch(
+					/^decart-js-sdk\/[\d.]+-?\w* lang\/js runtime\/[\w./]+$/,
+				);
+			});
+
 			it("processes text-to-image", async () => {
 				server.use(createMockHandler("/v1/generate/lucy-pro-t2i"));
 
@@ -297,5 +312,17 @@ describe("Decart SDK", () => {
 				).rejects.toThrow("Processing failed");
 			});
 		});
+	});
+});
+
+describe("UserAgent", () => {
+	it("builds User-Agent with version and runtime", async () => {
+		const { buildUserAgent } = await import("../src/utils/user-agent.js");
+		const { VERSION } = await import("../src/version.js");
+		const userAgent = buildUserAgent();
+
+		expect(userAgent).toEqual(
+			`decart-js-sdk/${VERSION} lang/js runtime/node.js/${process.version}`,
+		);
 	});
 });
