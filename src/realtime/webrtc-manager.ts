@@ -8,6 +8,7 @@ export interface WebRTCConfig {
 	apiKey: string;
 	sessionId: string;
 	fps: number;
+	integration?: string;
 	onRemoteStream: (stream: MediaStream) => void;
 	onConnectionStateChange?: (
 		state: "connected" | "connecting" | "disconnected",
@@ -43,7 +44,12 @@ export class WebRTCManager {
 	async connect(localStream: MediaStream): Promise<boolean> {
 		return pRetry(
 			async () => {
-				await this.connection.connect(this.config.webrtcUrl, localStream);
+				await this.connection.connect(
+					this.config.webrtcUrl,
+					localStream,
+					25000,
+					this.config.integration,
+				);
 				return true;
 			},
 			{

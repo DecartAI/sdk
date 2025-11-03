@@ -10,6 +10,7 @@ import { WebRTCManager } from "./webrtc-manager";
 export type RealTimeClientOptions = {
 	baseUrl: string;
 	apiKey: string;
+	integration?: string;
 };
 
 const realTimeClientInitialStateSchema = modelStateSchema;
@@ -61,7 +62,7 @@ export type RealTimeClient = {
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
-	const { baseUrl, apiKey } = opts;
+	const { baseUrl, apiKey, integration } = opts;
 
 	const connect = async (
 		stream: MediaStream,
@@ -85,6 +86,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 			sessionId,
 			fps: options.model.fps,
 			initialState,
+			integration,
 			onRemoteStream,
 			onConnectionStateChange: (
 				state: "connected" | "connecting" | "disconnected",

@@ -29,12 +29,13 @@ export class WebRTCConnection {
 		url: string,
 		localStream: MediaStream,
 		timeout = 25000,
+		integration?: string,
 	): Promise<void> {
 		const deadline = Date.now() + timeout;
 		this.localStream = localStream;
 
 		// Add user agent as query parameter (browsers don't support WS headers)
-		const userAgent = encodeURIComponent(buildUserAgent());
+		const userAgent = encodeURIComponent(buildUserAgent(integration));
 		const separator = url.includes("?") ? "&" : "?";
 		const wsUrl = `${url}${separator}user_agent=${userAgent}`;
 

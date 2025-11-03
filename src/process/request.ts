@@ -38,12 +38,14 @@ export async function sendRequest({
 	model,
 	inputs,
 	signal,
+	integration,
 }: {
 	baseUrl: string;
 	apiKey: string;
 	model: ModelDefinition;
 	inputs: Record<string, unknown>;
 	signal?: AbortSignal;
+	integration?: string;
 }): Promise<Blob> {
 	const formData = new FormData();
 
@@ -62,7 +64,7 @@ export async function sendRequest({
 		method: "POST",
 		headers: {
 			"X-API-KEY": apiKey,
-			"User-Agent": buildUserAgent(),
+			"User-Agent": buildUserAgent(integration),
 		},
 		body: formData,
 		signal,
