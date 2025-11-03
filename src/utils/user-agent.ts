@@ -3,20 +3,20 @@ import { VERSION } from "../version";
 /**
  * Detects the current runtime environment and returns a formatted string.
  * Includes version for server runtimes (Node.js, Bun, Deno).
- * Returns just "Browser" for browser environments (privacy + simplicity).
+ * Returns just "runtime/browser" for browser environments (privacy + simplicity).
  *
  * @returns Runtime environment string
  * @example
  * // Node.js
- * getRuntimeEnvironment() // => "Node.js/v18.17.0"
+ * getRuntimeEnvironment() // => "runtime/node.js/v18.17.0"
  *
  * @example
  * // Browser
- * getRuntimeEnvironment() // => "Browser"
+ * getRuntimeEnvironment() // => "runtime/browser"
  *
  * @example
  * // Bun
- * getRuntimeEnvironment() // => "Bun/1.0.0"
+ * getRuntimeEnvironment() // => "runtime/bun/1.0.0"
  */
 export function getRuntimeEnvironment(): string {
 	// Browser - no version for privacy
@@ -46,7 +46,7 @@ export function getRuntimeEnvironment(): string {
 
 /**
  * Builds the User-Agent string for the SDK.
- * Format: decart-js-sdk/{version} lang/js {runtime}
+ * Format: decart-js-sdk/{version} lang/js runtime/{runtime}
  *
  * @returns Complete User-Agent string
  * @example
