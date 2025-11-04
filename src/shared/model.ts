@@ -15,13 +15,7 @@ export const videoModels = z.union([
 	z.literal("lucy-pro-flf2v"),
 ]);
 export const imageModels = z.union([
-	/**
-	 * Text-to-image model.
-	 */
 	z.literal("lucy-pro-t2i"),
-	/**
-	 * Image-to-image model.
-	 */
 	z.literal("lucy-pro-i2i"),
 ]);
 
@@ -287,6 +281,17 @@ export const models = {
 		}
 		return modelDefinition as ModelDefinition<T>;
 	},
+	/**
+	 * Get a video model identifier.
+	 *
+	 * Available options:
+	 *   - `"lucy-pro-t2v"` - Text-to-video
+	 *   - `"lucy-pro-i2v"` - Image-to-video
+	 *   - `"lucy-pro-v2v"` - Video-to-video
+	 *   - `"lucy-pro-flf2v"` - First-last-frame-to-video
+	 * 	 - `"lucy-dev-i2v"` - Image-to-video (Dev quality)
+	 *   - `"lucy-dev-v2v"` - Video-to-video (Dev quality)
+	 */
 	video: <T extends VideoModels>(model: T): ModelDefinition<T> => {
 		const modelDefinition = _models.video[model];
 		if (!modelDefinition) {
