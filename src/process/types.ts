@@ -1,5 +1,10 @@
 import type { z } from "zod";
-import type { ModelDefinition, ModelInputSchemas } from "../shared/model";
+import type {
+	ImageModels,
+	ModelDefinition,
+	ModelInputSchemas,
+	VideoModels,
+} from "../shared/model";
 
 export type FileInput = File | Blob | ReadableStream | URL | string;
 
@@ -8,13 +13,60 @@ type InferModelInputs<T extends ModelDefinition> =
 		? z.input<ModelInputSchemas[T["name"]]>
 		: Record<string, never>;
 
-interface ProcessInputs {
+/**
+ * Model-specific input documentation for image models.
+ */
+interface ImageModelInputs {
 	/**
 	 * Text description to use for the generation.
 	 *
-	 * See our [Prompt Engineering](https://docs.platform.decart.ai/models/image/image-generation#prompt-engineering) guide for how to write prompt for Decart models effectively.
+	 * See our [Prompt Engineering](https://docs.platform.decart.ai/models/image/image-generation#prompt-engineering) guide for how to write prompt for Decart image models effectively.
 	 */
 	prompt: string;
+}
+
+/**
+ * Model-specific input documentation for video models.
+ */
+interface VideoModelInputs {
+	/**
+	 * Text description to use for the generation.
+	 *
+	 * See our [Prompt Engineering](https://docs.platform.decart.ai/models/video/video-generation#prompt-engineering) guide for how to write prompt for Decart video models effectively.
+	 */
+	prompt: string;
+}
+
+/**
+ * Default inputs for models that only require a prompt.
+ */
+interface PromptInput {
+	/**
+	 * Text description to use for the generation.
+	 */
+	prompt: string;
+}
+
+type ModelCategoryFor<T extends ModelDefinition> = T["name"] extends ImageModels
+	? "image"
+	: T["name"] extends VideoModels
+		? "video"
+		: "other";
+
+type ModelInputsByCategory = {
+	image: ImageModelInputs;
+	video: VideoModelInputs;
+	other: PromptInput;
+};
+
+/**
+ * Conditional type that selects the appropriate model-specific input documentation based on the model type.
+ * This allows different models to have field-specific documentation while maintaining type safety.
+ */
+type ModelSpecificInputs<T extends ModelDefinition> =
+	ModelInputsByCategory[ModelCategoryFor<T>];
+
+interface ProcessInputs {
 	/**
 	 * Random seed for reproducible results.
 	 *
@@ -69,20 +121,28 @@ interface ProcessInputs {
 }
 
 /**
- * Pick only the fields from ProcessInputs that exist in the inferred model inputs,
+ * ProcessInputs combined with model-specific inputs.
+ * This ensures fields have the correct descriptions based on the model type.
+ * Add fields to ImageModelInputs or VideoModelInputs to provide model-specific details.
+ */
+type ModelSpecificProcessInputs<T extends ModelDefinition> = ProcessInputs &
+	ModelSpecificInputs<T>;
+
+/**
+ * Pick only the fields from ModelSpecificProcessInputs that exist in the inferred model inputs,
  * so JSDoc comments will be preserved, while type inference will be accurate.
  */
 type PickDocumentedInputs<T extends ModelDefinition> = Pick<
-	ProcessInputs,
-	keyof ProcessInputs & keyof InferModelInputs<T>
+	ModelSpecificProcessInputs<T>,
+	keyof ModelSpecificProcessInputs<T> & keyof InferModelInputs<T>
 >;
 
 /**
  * Merge documented inputs with inferred inputs, ensuring zod types take precedence
- * while preserving JSDoc comments from ProcessInputs.
+ * while preserving JSDoc comments from ModelSpecificProcessInputs.
  *
  * By intersecting PickDocumentedInputs with InferModelInputs, we get:
- * - JSDoc comments from ProcessInputs (from PickDocumentedInputs)
+ * - JSDoc comments from ModelSpecificProcessInputs (from PickDocumentedInputs)
  * - Accurate types from zod schemas (from InferModelInputs, takes precedence in intersection)
  */
 type MergeDocumentedInputs<T extends ModelDefinition> =
