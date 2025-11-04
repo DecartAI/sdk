@@ -82,6 +82,34 @@ const result = await client.process({
 videoElement.src = URL.createObjectURL(result);
 ```
 
+## Development
+
+### Setup
+
+```bash
+pnpm install
+```
+
+### Development Commands
+
+- `pnpm build` - Build the project
+- `pnpm dev:example` - Run Vite dev server for examples
+- `pnpm test` - Run unit tests
+- `pnpm test:e2e` - Run end-to-end tests
+- `pnpm typecheck` - Type check with TypeScript
+- `pnpm format` - Format code with Biome
+- `pnpm lint` - Lint code with Biome
+
+### Publishing
+
+1. **Version bump**: Run `pnpm release` to bump the version (this uses `bumpp` to create a new version tag) and push it to GitHub
+2. **Automated publish**: The GitHub Actions workflow will:
+   - Build the project
+   - Publish to npm
+   - Create a GitHub release with changelog
+
+The package is published to npm as `@decartai/sdk`.
+
 ## License
 
 MIT
