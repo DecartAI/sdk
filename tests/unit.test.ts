@@ -144,7 +144,7 @@ describe("Decart SDK", () => {
 				expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
 				expect(lastFormData?.get("prompt")).toBe("A beautiful landscape");
 				expect(lastFormData?.get("seed")).toBe("123");
-				expect(lastFormData?.get("resolution")).toBe("1920x1080");
+				expect(lastFormData?.get("resolution")).toBe("480p");
 			});
 
 			it("processes image-to-image", async () => {
