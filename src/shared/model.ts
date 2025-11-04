@@ -40,14 +40,43 @@ const fileInputSchema = z.union([
 	z.url(),
 ]);
 
+/**
+ * Resolution schema for dev models. Supports only 720p.
+ */
+const devResolutionSchema = z
+	.literal("720p")
+	.default("720p")
+	.optional()
+	.describe(
+		"The resolution to use for the generation. For dev models, only `720p` is supported.",
+	);
+
+/**
+ * Resolution schema for pro models.
+ * @param defaultValue - Optional default value (e.g., "720p")
+ */
+const proResolutionSchema = () => {
+	return z
+		.enum(["720p", "480p"])
+		.optional()
+		.describe("The resolution to use for the generation!")
+		.default("720p");
+};
+
+/**
+ * Resolution schema for lucy-pro-v2v (supports 720p and 480p).
+ */
+const proV2vResolutionSchema = z
+	.enum(["720p", "480p"])
+	.optional()
+	.describe("The resolution to use for the generation")
+	.default("720p");
+
 export const modelInputSchemas = {
 	"lucy-pro-t2v": z.object({
 		prompt: z.string().describe("The prompt to use for the generation"),
 		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: z
-			.string()
-			.optional()
-			.describe("The resolution to use for the generation"),
+		resolution: proResolutionSchema(),
 		orientation: z
 			.string()
 			.optional()
@@ -56,10 +85,7 @@ export const modelInputSchemas = {
 	"lucy-pro-t2i": z.object({
 		prompt: z.string().describe("The prompt to use for the generation"),
 		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: z
-			.string()
-			.optional()
-			.describe("The resolution to use for the generation"),
+		resolution: proResolutionSchema(),
 		orientation: z
 			.string()
 			.optional()
@@ -71,10 +97,7 @@ export const modelInputSchemas = {
 			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
 		),
 		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: z
-			.string()
-			.optional()
-			.describe("The resolution to use for the generation"),
+		resolution: proResolutionSchema(),
 	}),
 	"lucy-dev-i2v": z.object({
 		prompt: z.string().describe("The prompt to use for the generation"),
@@ -82,13 +105,7 @@ export const modelInputSchemas = {
 			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
 		),
 		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: z
-			.literal("720p")
-			.default("720p")
-			.optional()
-			.describe(
-				"The resolution to use for the generation. For dev models, only `720p` is supported.",
-			),
+		resolution: devResolutionSchema,
 	}),
 	"lucy-pro-v2v": z.object({
 		prompt: z.string().describe("The prompt to use for the generation"),
@@ -96,11 +113,7 @@ export const modelInputSchemas = {
 			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
 		),
 		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: z
-			.string()
-			.optional()
-			.describe("The resolution to use for the generation")
-			.default("720p"),
+		resolution: proV2vResolutionSchema,
 		enhance_prompt: z
 			.boolean()
 			.optional()
@@ -116,13 +129,7 @@ export const modelInputSchemas = {
 			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
 		),
 		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: z
-			.literal("720p")
-			.default("720p")
-			.optional()
-			.describe(
-				"The resolution to use for the generation. For dev models, only `720p` is supported.",
-			),
+		resolution: devResolutionSchema,
 		enhance_prompt: z
 			.boolean()
 			.optional()
@@ -137,10 +144,7 @@ export const modelInputSchemas = {
 			"The end frame image (File, Blob, ReadableStream, URL, or string URL)",
 		),
 		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: z
-			.string()
-			.optional()
-			.describe("The resolution to use for the generation"),
+		resolution: proResolutionSchema(),
 	}),
 	"lucy-pro-i2i": z.object({
 		prompt: z.string().describe("The prompt to use for the generation"),
@@ -148,10 +152,7 @@ export const modelInputSchemas = {
 			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
 		),
 		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: z
-			.string()
-			.optional()
-			.describe("The resolution to use for the generation"),
+		resolution: proResolutionSchema(),
 		enhance_prompt: z
 			.boolean()
 			.optional()
