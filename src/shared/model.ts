@@ -290,6 +290,13 @@ export const models = {
 		}
 		return modelDefinition as ModelDefinition<T>;
 	},
+	/**
+	 * Get an image model identifier.
+	 *
+	 * Available options:
+	 *   - `"lucy-pro-t2i"` - Text-to-image
+	 *   - `"lucy-pro-i2i"` - Image-to-image
+	 */
 	image: <T extends ImageModels>(model: T): ModelDefinition<T> => {
 		const modelDefinition = _models.image[model];
 		if (!modelDefinition) {
