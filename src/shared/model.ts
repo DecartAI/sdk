@@ -53,7 +53,7 @@ const proResolutionSchema = () => {
 	return z
 		.enum(["720p", "480p"])
 		.optional()
-		.describe("The resolution to use for the generation!")
+		.describe("The resolution to use for the generation")
 		.default("720p");
 };
 
