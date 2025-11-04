@@ -14,13 +14,25 @@ type InferModelInputs<T extends ModelDefinition> =
 		: Record<string, never>;
 
 /**
- * Model-specific input documentation for image models.
+ * Model-specific input documentation for image generation models.
  */
-interface ImageModelInputs {
+interface ImageGenerationInputs {
 	/**
 	 * Text description to use for the generation.
 	 *
 	 * See our [Prompt Engineering](https://docs.platform.decart.ai/models/image/image-generation#prompt-engineering) guide for how to write prompt for Decart image models effectively.
+	 */
+	prompt: string;
+}
+
+/**
+ * Model-specific input documentation for image editing models.
+ */
+interface ImageEditingInputs {
+	/**
+	 * Text description of the changes to apply to the image.
+	 *
+	 * It's highly recommended to read our [Prompt Engineering for Edits](https://docs.platform.decart.ai/models/image/image-editing#prompt-engineering-for-edits) guide for how to write effective editing prompts.
 	 */
 	prompt: string;
 }
@@ -47,24 +59,19 @@ interface PromptInput {
 	prompt: string;
 }
 
-type ModelCategoryFor<T extends ModelDefinition> = T["name"] extends ImageModels
-	? "image"
-	: T["name"] extends VideoModels
-		? "video"
-		: "other";
-
-type ModelInputsByCategory = {
-	image: ImageModelInputs;
-	video: VideoModelInputs;
-	other: PromptInput;
-};
-
 /**
  * Conditional type that selects the appropriate model-specific input documentation based on the model type.
  * This allows different models to have field-specific documentation while maintaining type safety.
+ * Specific models are checked first, then falls back to category-based selection.
  */
 type ModelSpecificInputs<T extends ModelDefinition> =
-	ModelInputsByCategory[ModelCategoryFor<T>];
+	T["name"] extends "lucy-pro-i2i"
+		? ImageEditingInputs
+		: T["name"] extends ImageModels
+			? ImageGenerationInputs
+			: T["name"] extends VideoModels
+				? VideoModelInputs
+				: PromptInput;
 
 interface ProcessInputs {
 	/**
@@ -123,7 +130,8 @@ interface ProcessInputs {
 /**
  * ProcessInputs combined with model-specific inputs.
  * This ensures fields have the correct descriptions based on the model type.
- * Add fields to ImageModelInputs or VideoModelInputs to provide model-specific details.
+ * Add fields to ImageGenerationInputs, ImageEditingInputs, VideoModelInputs, or PromptInput
+ * to provide model-specific documentation for any field.
  */
 type ModelSpecificProcessInputs<T extends ModelDefinition> = ProcessInputs &
 	ModelSpecificInputs<T>;
