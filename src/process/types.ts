@@ -18,6 +18,9 @@ interface ProcessInputs {
 	/**
 	 * Random seed for reproducible results.
 	 *
+	 * Using the same seed with the same prompt and settings will produce the same output every time.
+	 * This is useful for testing, debugging, or when you want to recreate a specific result.
+	 *
 	 */
 	seed?: number;
 	/**
