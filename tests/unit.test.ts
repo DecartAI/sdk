@@ -137,7 +137,7 @@ describe("Decart SDK", () => {
 					model: models.image("lucy-pro-t2i"),
 					prompt: "A beautiful landscape",
 					seed: 123,
-					resolution: "1920x1080",
+					resolution: "480p",
 				});
 
 				expect(result).toBeInstanceOf(Blob);

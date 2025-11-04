@@ -15,7 +15,13 @@ export const videoModels = z.union([
 	z.literal("lucy-pro-flf2v"),
 ]);
 export const imageModels = z.union([
+	/**
+	 * Text-to-image model.
+	 */
 	z.literal("lucy-pro-t2i"),
+	/**
+	 * Image-to-image model.
+	 */
 	z.literal("lucy-pro-i2i"),
 ]);
 
@@ -36,57 +42,117 @@ const fileInputSchema = z.union([
 
 export const modelInputSchemas = {
 	"lucy-pro-t2v": z.object({
-		prompt: z.string(),
-		seed: z.number().optional(),
-		resolution: z.string().optional(),
-		orientation: z.string().optional(),
+		prompt: z.string().describe("The prompt to use for the generation"),
+		seed: z.number().optional().describe("The seed to use for the generation"),
+		resolution: z
+			.string()
+			.optional()
+			.describe("The resolution to use for the generation"),
+		orientation: z
+			.string()
+			.optional()
+			.describe("The orientation to use for the generation"),
 	}),
 	"lucy-pro-t2i": z.object({
-		prompt: z.string(),
-		seed: z.number().optional(),
-		resolution: z.string().optional(),
-		orientation: z.string().optional(),
+		prompt: z.string().describe("The prompt to use for the generation"),
+		seed: z.number().optional().describe("The seed to use for the generation"),
+		resolution: z
+			.string()
+			.optional()
+			.describe("The resolution to use for the generation"),
+		orientation: z
+			.string()
+			.optional()
+			.describe("The orientation to use for the generation"),
 	}),
 	"lucy-pro-i2v": z.object({
-		prompt: z.string(),
-		data: fileInputSchema,
-		seed: z.number().optional(),
-		resolution: z.string().optional(),
+		prompt: z.string().describe("The prompt to use for the generation"),
+		data: fileInputSchema.describe(
+			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+		),
+		seed: z.number().optional().describe("The seed to use for the generation"),
+		resolution: z
+			.string()
+			.optional()
+			.describe("The resolution to use for the generation"),
 	}),
 	"lucy-dev-i2v": z.object({
-		prompt: z.string(),
-		data: fileInputSchema,
-		seed: z.number().optional(),
-		resolution: z.string().optional(),
+		prompt: z.string().describe("The prompt to use for the generation"),
+		data: fileInputSchema.describe(
+			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+		),
+		seed: z.number().optional().describe("The seed to use for the generation"),
+		resolution: z
+			.literal("720p")
+			.optional()
+			.describe("The resolution to use for the generation"),
 	}),
 	"lucy-pro-v2v": z.object({
-		prompt: z.string(),
-		data: fileInputSchema,
-		seed: z.number().optional(),
-		resolution: z.string().optional(),
-		enhance_prompt: z.boolean().optional(),
-		num_inference_steps: z.number().optional(),
+		prompt: z.string().describe("The prompt to use for the generation"),
+		data: fileInputSchema.describe(
+			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+		),
+		seed: z.number().optional().describe("The seed to use for the generation"),
+		resolution: z
+			.string()
+			.optional()
+			.describe("The resolution to use for the generation")
+			.default("720p"),
+		enhance_prompt: z
+			.boolean()
+			.optional()
+			.describe("Whether to enhance the prompt"),
+		num_inference_steps: z
+			.number()
+			.optional()
+			.describe("The number of inference steps"),
 	}),
 	"lucy-dev-v2v": z.object({
-		prompt: z.string(),
-		data: fileInputSchema,
-		seed: z.number().optional(),
-		resolution: z.string().optional(),
-		enhance_prompt: z.boolean().optional(),
+		prompt: z.string().describe("The prompt to use for the generation"),
+		data: fileInputSchema.describe(
+			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+		),
+		seed: z.number().optional().describe("The seed to use for the generation"),
+		resolution: z
+			.literal("720p")
+			.default("720p")
+			.optional()
+			.describe(
+				"The resolution to use for the generation. For Dev quality models, only `720p` is supported.",
+			),
+		enhance_prompt: z
+			.boolean()
+			.optional()
+			.describe("Whether to enhance the prompt"),
 	}),
 	"lucy-pro-flf2v": z.object({
-		prompt: z.string(),
-		start: fileInputSchema,
-		end: fileInputSchema,
-		seed: z.number().optional(),
-		resolution: z.string().optional(),
+		prompt: z.string().describe("The prompt to use for the generation"),
+		start: fileInputSchema.describe(
+			"The start frame image (File, Blob, ReadableStream, URL, or string URL)",
+		),
+		end: fileInputSchema.describe(
+			"The end frame image (File, Blob, ReadableStream, URL, or string URL)",
+		),
+		seed: z.number().optional().describe("The seed to use for the generation"),
+		resolution: z
+			.string()
+			.optional()
+			.describe("The resolution to use for the generation"),
 	}),
 	"lucy-pro-i2i": z.object({
-		prompt: z.string(),
-		data: fileInputSchema,
-		seed: z.number().optional(),
-		resolution: z.string().optional(),
-		enhance_prompt: z.boolean().optional(),
+		prompt: z.string().describe("The prompt to use for the generation"),
+		data: fileInputSchema.describe(
+			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+		),
+		seed: z.number().optional().describe("The seed to use for the generation"),
+		resolution: z
+			.string()
+			.optional()
+			.describe("The resolution to use for the generation"),
+		enhance_prompt: z
+			.boolean()
+			.optional()
+			.describe("Whether to enhance the prompt"),
 	}),
 } as const;
 
