@@ -54,7 +54,7 @@ interface ProcessInputs {
 	 * Whether to enhance the prompt.
 	 *
 	 * @remarks
-	 * For best results, keep this `true` (default) to let Decart’s AI enhance your prompts.
+	 * For best results, keep this `true` (default) to let Decart's AI enhance your prompts.
 	 * Only disable it if you need exact prompt control.
 	 *
 	 * @default true
@@ -67,6 +67,26 @@ interface ProcessInputs {
 	 */
 	num_inference_steps?: number;
 }
+
+/**
+ * Pick only the fields from ProcessInputs that exist in the inferred model inputs,
+ * so JSDoc comments will be preserved, while type inference will be accurate.
+ */
+type PickDocumentedInputs<T extends ModelDefinition> = Pick<
+	ProcessInputs,
+	keyof ProcessInputs & keyof InferModelInputs<T>
+>;
+
+/**
+ * Merge documented inputs with inferred inputs, ensuring zod types take precedence
+ * while preserving JSDoc comments from ProcessInputs.
+ *
+ * By intersecting PickDocumentedInputs with InferModelInputs, we get:
+ * - JSDoc comments from ProcessInputs (from PickDocumentedInputs)
+ * - Accurate types from zod schemas (from InferModelInputs, takes precedence in intersection)
+ */
+type MergeDocumentedInputs<T extends ModelDefinition> =
+	PickDocumentedInputs<T> & InferModelInputs<T>;
 
 /**
  * Options for the process client to generate video or image content.
@@ -82,5 +102,4 @@ export type ProcessOptions<T extends ModelDefinition = ModelDefinition> = {
 	 * Optional `AbortSignal` for canceling the request.
 	 */
 	signal?: AbortSignal;
-} & ProcessInputs &
-	InferModelInputs<T>;
+} & MergeDocumentedInputs<T>;
