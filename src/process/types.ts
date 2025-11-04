@@ -28,6 +28,8 @@ interface ProcessInputs {
 	resolution?: "480p" | "720p";
 	/**
 	 * The output orientation to use for the generation.
+	 *
+	 * @default "landscape"
 	 */
 	orientation?: "landscape" | "portrait";
 	/**
@@ -49,13 +51,16 @@ interface ProcessInputs {
 	 * Whether to enhance the prompt.
 	 *
 	 * @remarks
-	 * For best results, keep this (default) to let Decart’s AI enhance your prompts. Only disable it if you need exact prompt control.
+	 * For best results, keep this `true` (default) to let Decart’s AI enhance your prompts.
+	 * Only disable it if you need exact prompt control.
 	 *
 	 * @default true
 	 */
 	enhance_prompt?: boolean;
 	/**
 	 * The number of inference steps.
+	 *
+	 * @default 50
 	 */
 	num_inference_steps?: number;
 }

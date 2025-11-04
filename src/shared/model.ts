@@ -84,8 +84,11 @@ export const modelInputSchemas = {
 		seed: z.number().optional().describe("The seed to use for the generation"),
 		resolution: z
 			.literal("720p")
+			.default("720p")
 			.optional()
-			.describe("The resolution to use for the generation"),
+			.describe(
+				"The resolution to use for the generation. For dev models, only `720p` is supported.",
+			),
 	}),
 	"lucy-pro-v2v": z.object({
 		prompt: z.string().describe("The prompt to use for the generation"),
@@ -118,7 +121,7 @@ export const modelInputSchemas = {
 			.default("720p")
 			.optional()
 			.describe(
-				"The resolution to use for the generation. For Dev quality models, only `720p` is supported.",
+				"The resolution to use for the generation. For dev models, only `720p` is supported.",
 			),
 		enhance_prompt: z
 			.boolean()
