@@ -93,6 +93,43 @@ describe("Decart SDK", () => {
 				expect(lastFormData?.get("seed")).toBe("42");
 			});
 
+			it("includes User-Agent header in requests", async () => {
+				server.use(createMockHandler("/v1/generate/lucy-pro-t2v"));
+
+				await decart.process({
+					model: models.video("lucy-pro-t2v"),
+					prompt: "Test prompt",
+				});
+
+				const userAgent = lastRequest?.headers.get("user-agent");
+				expect(userAgent).toBeDefined();
+				expect(userAgent).toMatch(
+					/^decart-js-sdk\/[\d.]+-?\w* lang\/js runtime\/[\w./]+$/,
+				);
+			});
+
+			it("includes integration parameter in User-Agent header", async () => {
+				const decartWithIntegration = createDecartClient({
+					apiKey: TEST_API_KEY,
+					baseUrl: BASE_URL,
+					integration: "vercel-ai-sdk/3.0.0",
+				});
+
+				server.use(createMockHandler("/v1/generate/lucy-pro-t2v"));
+
+				await decartWithIntegration.process({
+					model: models.video("lucy-pro-t2v"),
+					prompt: "Test with integration",
+				});
+
+				const userAgent = lastRequest?.headers.get("user-agent");
+				expect(userAgent).toBeDefined();
+				expect(userAgent).toContain("vercel-ai-sdk/3.0.0");
+				expect(userAgent).toMatch(
+					/^decart-js-sdk\/[\d.]+-?\w* lang\/js vercel-ai-sdk\/3\.0\.0 runtime\/[\w./]+$/,
+				);
+			});
+
 			it("processes text-to-image", async () => {
 				server.use(createMockHandler("/v1/generate/lucy-pro-t2i"));
 
@@ -297,5 +334,71 @@ describe("Decart SDK", () => {
 				).rejects.toThrow("Processing failed");
 			});
 		});
+	});
+});
+
+describe("UserAgent", () => {
+	it("builds User-Agent with version and runtime", async () => {
+		const { buildUserAgent } = await import("../src/utils/user-agent.js");
+		const { VERSION } = await import("../src/version.js");
+
+		// Use mock globalThis to avoid navigator.userAgent in Node.js >= 21
+		const mockGlobal = {
+			process: { versions: { node: true }, version: process.version },
+		};
+		const userAgent = buildUserAgent(undefined, mockGlobal);
+
+		expect(userAgent).toEqual(
+			`decart-js-sdk/${VERSION} lang/js runtime/node.js/${process.version}`,
+		);
+	});
+
+	it("builds User-Agent with integration", async () => {
+		const { buildUserAgent } = await import("../src/utils/user-agent.js");
+		const { VERSION } = await import("../src/version.js");
+
+		// Use mock globalThis to avoid navigator.userAgent in Node.js >= 21
+		const mockGlobal = {
+			process: { versions: { node: true }, version: process.version },
+		};
+		const userAgent = buildUserAgent("vercel-ai-sdk/3.0.0", mockGlobal);
+
+		expect(userAgent).toEqual(
+			`decart-js-sdk/${VERSION} lang/js vercel-ai-sdk/3.0.0 runtime/node.js/${process.version}`,
+		);
+	});
+
+	it("detects runtime with custom globalThis", async () => {
+		const { getRuntimeEnvironment } = await import(
+			"../src/utils/user-agent.js"
+		);
+
+		// Test browser detection
+		const mockBrowser = { window: {} };
+		expect(getRuntimeEnvironment(mockBrowser)).toEqual("runtime/browser");
+
+		// Test Node.js < 21.1 detection (no navigator.userAgent)
+		const mockNodeOld = {
+			process: { versions: { node: true }, version: "v18.0.0" },
+		};
+		expect(getRuntimeEnvironment(mockNodeOld)).toEqual(
+			"runtime/node.js/v18.0.0",
+		);
+
+		// Test Node.js >= 21.1 and other runtimes detection (has navigator.userAgent)
+		const mockNodeNew = {
+			navigator: { userAgent: "Node.js/v22.0.0" },
+		};
+		expect(getRuntimeEnvironment(mockNodeNew)).toEqual(
+			"runtime/node.js/v22.0.0",
+		);
+
+		// Test Vercel Edge detection (no navigator.userAgent, has EdgeRuntime)
+		const mockEdge = { EdgeRuntime: true };
+		expect(getRuntimeEnvironment(mockEdge)).toEqual("runtime/vercel-edge");
+
+		// Test unknown runtime
+		const mockUnknown = {};
+		expect(getRuntimeEnvironment(mockUnknown)).toEqual("runtime/unknown");
 	});
 });

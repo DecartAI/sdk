@@ -1,3 +1,4 @@
+import { buildUserAgent } from "../utils/user-agent";
 import type {
 	IncomingWebRTCMessage,
 	OutgoingWebRTCMessage,
@@ -28,9 +29,15 @@ export class WebRTCConnection {
 		url: string,
 		localStream: MediaStream,
 		timeout = 25000,
+		integration?: string,
 	): Promise<void> {
 		const deadline = Date.now() + timeout;
 		this.localStream = localStream;
+
+		// Add user agent as query parameter (browsers don't support WS headers)
+		const userAgent = encodeURIComponent(buildUserAgent(integration));
+		const separator = url.includes("?") ? "&" : "?";
+		const wsUrl = `${url}${separator}user_agent=${userAgent}`;
 
 		// Setup WebSocket
 		await new Promise<void>((resolve, reject) => {
@@ -39,7 +46,7 @@ export class WebRTCConnection {
 				() => reject(new Error("WebSocket timeout")),
 				timeout,
 			);
-			this.ws = new WebSocket(url);
+			this.ws = new WebSocket(wsUrl);
 
 			this.ws.onopen = () => {
 				clearTimeout(timer);

@@ -27,6 +27,7 @@ export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
 const decartClientOptionsSchema = z.object({
 	apiKey: z.string().min(1),
 	baseUrl: z.url().optional(),
+	integration: z.string().optional(),
 });
 
 export type DecartClientOptions = z.infer<typeof decartClientOptionsSchema>;
@@ -48,17 +49,19 @@ export const createDecartClient = (options: DecartClientOptions) => {
 		throw parsedOptions.error;
 	}
 
-	const { baseUrl = "https://api.decart.ai", apiKey } = parsedOptions.data;
+	const { baseUrl = "https://api.decart.ai", apiKey, integration } = parsedOptions.data;
 
 	const wsBaseUrl = "wss://api3.decart.ai";
 	const realtime = createRealTimeClient({
 		baseUrl: wsBaseUrl,
 		apiKey,
+		integration,
 	});
 
 	const process = createProcessClient({
 		baseUrl,
 		apiKey,
+		integration,
 	});
 
 	return {

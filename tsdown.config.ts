@@ -6,5 +6,11 @@ export default defineConfig([
 		platform: "neutral",
 		dts: true,
 		unbundle: true,
+		define: {
+			__PACKAGE_VERSION__: JSON.stringify(
+				(await import("./package.json", { with: { type: "json" } })).default
+					.version,
+			),
+		},
 	},
 ]);

@@ -10,12 +10,13 @@ export type ProcessClient = <T extends ModelDefinition>(
 export type ProcessClientOptions = {
 	apiKey: string;
 	baseUrl: string;
+	integration?: string;
 };
 
 export const createProcessClient = (
 	opts: ProcessClientOptions,
 ): ProcessClient => {
-	const { apiKey, baseUrl } = opts;
+	const { apiKey, baseUrl, integration } = opts;
 
 	const _process = async <T extends ModelDefinition>(
 		options: ProcessOptions<T>,
@@ -44,6 +45,7 @@ export const createProcessClient = (
 			model,
 			inputs: processedInputs,
 			signal,
+			integration,
 		});
 
 		return response;
