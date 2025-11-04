@@ -166,7 +166,7 @@ export type ModelDefinition<T extends Model = Model> = {
 	height: number;
 	inputSchema: T extends keyof ModelInputSchemas
 		? ModelInputSchemas[T]
-		: z.ZodObject<any>;
+		: z.ZodTypeAny;
 };
 
 export const modelDefinitionSchema = z.object({
