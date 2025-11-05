@@ -189,7 +189,7 @@ const _models = {
 		mirage_v2: {
 			urlPath: "/v1/stream",
 			name: "mirage_v2" as const,
-			fps: 18,
+			fps: 22,
 			width: 1280,
 			height: 704,
 			inputSchema: z.object({}),
