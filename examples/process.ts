@@ -12,7 +12,11 @@ const client = createDecartClient({
 });
 
 const textToVideo = await client.process({
-	model: models.image("lucy-pro-t2i"),
+	model: models.video("lucy-pro-t2v"),
+	prompt: "A cat walking in a park",
+	seed: 42,
+	resolution: "720p",
+	orientation: "landscape",
 });
 
 const videoToVideo = await client.process({
