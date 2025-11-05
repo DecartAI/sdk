@@ -66,6 +66,18 @@ export const createDecartClient = (options: DecartClientOptions) => {
 
 	return {
 		realtime,
+		/**
+		 * Client for video and image generation.
+		 *
+		 * @example
+		 * ```ts
+		 * const client = createDecartClient({ apiKey: "your-api-key" });
+		 * const result = await client.process({
+		 *   model: models.video("lucy-pro-t2v"),
+		 *   prompt: "A beautiful sunset over the ocean"
+		 * });
+		 * ```
+		 */
 		process,
 	};
 };
