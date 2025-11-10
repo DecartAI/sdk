@@ -278,9 +278,9 @@ describe("Decart SDK", () => {
 
 				const trajectory = [
 					{ frame: 0, x: 0, y: 0 },
-					{ frame: 0.5, x: 50, y: 50 },
-					{ frame: 0.75, x: 75, y: 75 },
-					{ frame: 1, x: 100, y: 100 },
+					{ frame: 1, x: 50, y: 50 },
+					{ frame: 2, x: 75, y: 75 },
+					{ frame: 3, x: 100, y: 100 },
 				];
 
 				const result = await decart.process({

@@ -169,9 +169,9 @@ export const modelInputSchemas = {
 		trajectory: z
 			.array(
 				z.object({
-					frame: z.number(),
-					x: z.number(),
-					y: z.number(),
+					frame: z.number().min(0),
+					x: z.number().min(0),
+					y: z.number().min(0),
 				}),
 			)
 			.describe(
