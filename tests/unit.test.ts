@@ -270,6 +270,34 @@ describe("Decart SDK", () => {
 				const dataFile = lastFormData?.get("data") as File;
 				expect(dataFile).toBeInstanceOf(File);
 			});
+
+			it("processes image-to-video-motion", async () => {
+				server.use(createMockHandler("/v1/generate/lucy-motion-i2v"));
+
+				const testImage = new Blob(["test-image"], { type: "image/png" });
+
+				const trajectory = [
+					{ frame: 0, x: 0, y: 0 },
+					{ frame: 0.5, x: 50, y: 50 },
+					{ frame: 0.75, x: 75, y: 75 },
+					{ frame: 1, x: 100, y: 100 },
+				];
+
+				const result = await decart.process({
+					model: models.video("lucy-motion-i2v"),
+					data: testImage,
+					trajectory,
+				});
+
+				expect(result).toBeInstanceOf(Blob);
+				expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
+
+				const dataFile = lastFormData?.get("data") as File;
+				expect(dataFile).toBeInstanceOf(File);
+				expect(lastFormData?.get("trajectory")).toEqual(
+					JSON.stringify(trajectory),
+				);
+			});
 		});
 
 		describe("Abort Signal", () => {

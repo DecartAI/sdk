@@ -54,6 +54,15 @@ const imageToImage = await client.process({
 	enhance_prompt: false,
 });
 
+const imageToVideoMotion = await client.process({
+	model: models.video("lucy-motion-i2v"),
+	data: imageFile,
+	trajectory: [
+		{ frame: 0, x: 0, y: 0 },
+		{ frame: 1, x: 100, y: 100 },
+	],
+});
+
 const videoElement = document.createElement("video");
 videoElement.src = URL.createObjectURL(textToVideo);
 videoElement.play();
