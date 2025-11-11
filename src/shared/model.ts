@@ -13,7 +13,7 @@ export const videoModels = z.union([
 	z.literal("lucy-pro-i2v"),
 	z.literal("lucy-pro-v2v"),
 	z.literal("lucy-pro-flf2v"),
-	z.literal("lucy-motion-i2v"),
+	z.literal("lucy-motion"),
 ]);
 export const imageModels = z.union([
 	z.literal("lucy-pro-t2i"),
@@ -162,7 +162,7 @@ export const modelInputSchemas = {
 			.optional()
 			.describe("Whether to enhance the prompt"),
 	}),
-	"lucy-motion-i2v": z.object({
+	"lucy-motion": z.object({
 		data: fileInputSchema.describe(
 			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
 		),
@@ -298,13 +298,13 @@ const _models = {
 			height: 704,
 			inputSchema: modelInputSchemas["lucy-pro-flf2v"],
 		},
-		"lucy-motion-i2v": {
-			urlPath: "/v1/generate/lucy-motion-i2v",
-			name: "lucy-motion-i2v" as const,
+		"lucy-motion": {
+			urlPath: "/v1/generate/lucy-motion",
+			name: "lucy-motion" as const,
 			fps: 25,
 			width: 1280,
 			height: 704,
-			inputSchema: modelInputSchemas["lucy-motion-i2v"],
+			inputSchema: modelInputSchemas["lucy-motion"],
 		},
 	},
 } as const;

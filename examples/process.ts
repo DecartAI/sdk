@@ -55,7 +55,7 @@ const imageToImage = await client.process({
 });
 
 const imageToVideoMotion = await client.process({
-	model: models.video("lucy-motion-i2v"),
+	model: models.video("lucy-motion"),
 	data: imageFile,
 	trajectory: [
 		{ frame: 0, x: 0, y: 0 },

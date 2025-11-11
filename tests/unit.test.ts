@@ -272,7 +272,7 @@ describe("Decart SDK", () => {
 			});
 
 			it("processes image-to-video-motion", async () => {
-				server.use(createMockHandler("/v1/generate/lucy-motion-i2v"));
+				server.use(createMockHandler("/v1/generate/lucy-motion"));
 
 				const testImage = new Blob(["test-image"], { type: "image/png" });
 
@@ -284,7 +284,7 @@ describe("Decart SDK", () => {
 				];
 
 				const result = await decart.process({
-					model: models.video("lucy-motion-i2v"),
+					model: models.video("lucy-motion"),
 					data: testImage,
 					trajectory,
 				});
