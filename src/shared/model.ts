@@ -174,6 +174,8 @@ export const modelInputSchemas = {
 					y: z.number().min(0),
 				}),
 			)
+			.min(2)
+			.max(121)
 			.describe(
 				"The trajectory of the desired movement of the object in the image",
 			),

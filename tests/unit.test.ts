@@ -344,6 +344,16 @@ describe("Decart SDK", () => {
 					} as any),
 				).rejects.toThrow("Invalid inputs");
 			});
+
+			it("validates inputs for image-to-video-motion", async () => {
+				await expect(
+					decart.process({
+						model: models.video("lucy-motion"),
+						data: new Blob(["test-image"], { type: "image/png" }),
+						trajectory: [{ frame: 0, x: 0, y: 0 }],
+					}),
+				).rejects.toThrow("expected array to have >=2 items");
+			});
 		});
 
 		describe("Error Handling", () => {
