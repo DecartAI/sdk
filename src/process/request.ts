@@ -53,8 +53,10 @@ export async function sendRequest({
 		if (value !== undefined && value !== null) {
 			if (value instanceof Blob) {
 				formData.append(key, value);
+			} else if (typeof value === "object" && value !== null) {
+				formData.append(key, JSON.stringify(value) as string);
 			} else {
-				formData.append(key, String(value));
+				formData.append(key, String(value) as string);
 			}
 		}
 	}

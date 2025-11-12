@@ -13,6 +13,7 @@ export const videoModels = z.union([
 	z.literal("lucy-pro-i2v"),
 	z.literal("lucy-pro-v2v"),
 	z.literal("lucy-pro-flf2v"),
+	z.literal("lucy-motion"),
 ]);
 export const imageModels = z.union([
 	z.literal("lucy-pro-t2i"),
@@ -56,6 +57,15 @@ const proResolutionSchema = () => {
 		.describe("The resolution to use for the generation")
 		.default("720p");
 };
+
+/**
+ * Resolution schema for lucy-motion.
+ */
+const motionResolutionSchema = z
+	.literal("720p")
+	.default("720p")
+	.optional()
+	.describe("The resolution to use for the generation");
 
 /**
  * Resolution schema for lucy-pro-v2v (supports 720p and 480p).
@@ -151,6 +161,26 @@ export const modelInputSchemas = {
 			.boolean()
 			.optional()
 			.describe("Whether to enhance the prompt"),
+	}),
+	"lucy-motion": z.object({
+		data: fileInputSchema.describe(
+			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+		),
+		trajectory: z
+			.array(
+				z.object({
+					frame: z.number().min(0),
+					x: z.number().min(0),
+					y: z.number().min(0),
+				}),
+			)
+			.min(2)
+			.max(121)
+			.describe(
+				"The trajectory of the desired movement of the object in the image",
+			),
+		seed: z.number().optional().describe("The seed to use for the generation"),
+		resolution: motionResolutionSchema,
 	}),
 } as const;
 
@@ -269,6 +299,14 @@ const _models = {
 			width: 1280,
 			height: 704,
 			inputSchema: modelInputSchemas["lucy-pro-flf2v"],
+		},
+		"lucy-motion": {
+			urlPath: "/v1/generate/lucy-motion",
+			name: "lucy-motion" as const,
+			fps: 25,
+			width: 1280,
+			height: 704,
+			inputSchema: modelInputSchemas["lucy-motion"],
 		},
 	},
 } as const;
