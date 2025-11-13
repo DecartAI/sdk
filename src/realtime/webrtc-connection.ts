@@ -12,8 +12,8 @@ interface ConnectionCallbacks {
 	onStateChange?: (state: ConnectionState) => void;
 	onError?: (error: Error) => void;
 	customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
-	vp8MinBitrate?: number; // in Kbps, default: 200, set both to 0 to skip SDP modification
-	vp8StartBitrate?: number; // in Kbps, default: 600, set both to 0 to skip SDP modification
+	vp8MinBitrate?: number; // in Kbps, default: 200
+	vp8StartBitrate?: number; // in Kbps, default: 600
 }
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -259,7 +259,6 @@ export class WebRTCConnection {
 		const minBitrate = this.callbacks.vp8MinBitrate ?? 200;
 		const startBitrate = this.callbacks.vp8StartBitrate ?? 600;
 
-		// Skip modification if both are explicitly set to 0
 		if (minBitrate === 0 && startBitrate === 0) {
 			return;
 		}

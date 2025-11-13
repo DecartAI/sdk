@@ -34,8 +34,6 @@ const realTimeClientConnectOptionsSchema = z.object({
 	),
 	initialState: realTimeClientInitialStateSchema.optional(),
 	customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
-	vp8MinBitrate: z.number().optional(),
-	vp8StartBitrate: z.number().optional(),
 });
 export type RealTimeClientConnectOptions = z.infer<
 	typeof realTimeClientConnectOptionsSchema
@@ -102,8 +100,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 			customizeOffer: options.customizeOffer as
 				| ((offer: RTCSessionDescriptionInit) => Promise<void>)
 				| undefined,
-			vp8MinBitrate: options.vp8MinBitrate,
-			vp8StartBitrate: options.vp8StartBitrate,
 		});
 
 		await webrtcManager.connect(stream);
