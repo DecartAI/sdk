@@ -12,8 +12,8 @@ interface ConnectionCallbacks {
 	onStateChange?: (state: ConnectionState) => void;
 	onError?: (error: Error) => void;
 	customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
-	vp8MinBitrate?: number; // in Kbps
-	vp8StartBitrate?: number; // in Kbps
+	vp8MinBitrate?: number;
+	vp8StartBitrate?: number;
 }
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -256,14 +256,14 @@ export class WebRTCConnection {
 	private modifyVP8Bitrate(offer: RTCSessionDescriptionInit): void {
 		if (!offer.sdp) return;
 
-		const minBitrate = this.callbacks.vp8MinBitrate;
-		const startBitrate = this.callbacks.vp8StartBitrate;
+		const minBitrateInKbps = this.callbacks.vp8MinBitrate;
+		const startBitrateInKbps = this.callbacks.vp8StartBitrate;
 
-		if (minBitrate === 0 && startBitrate === 0) {
+		if (minBitrateInKbps === 0 && startBitrateInKbps === 0) {
 			return;
 		}
 
-		const bitrateParams = `x-google-min-bitrate=${minBitrate};x-google-start-bitrate=${startBitrate}`;
+		const bitrateParams = `x-google-min-bitrate=${minBitrateInKbps};x-google-start-bitrate=${startBitrateInKbps}`;
 
 		const sdpLines = offer.sdp.split("\r\n");
 		const modifiedLines: string[] = [];
