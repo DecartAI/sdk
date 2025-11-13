@@ -51,7 +51,7 @@ export const createDecartClient = (options: DecartClientOptions) => {
 
 	const { baseUrl = "https://api.decart.ai", apiKey, integration } = parsedOptions.data;
 
-	const wsBaseUrl = "wss://api3.decart.ai";
+	const wsBaseUrl = "wss://staging.api3.decart.ai";
 	const realtime = createRealTimeClient({
 		baseUrl: wsBaseUrl,
 		apiKey,
