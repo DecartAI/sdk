@@ -256,8 +256,8 @@ export class WebRTCConnection {
 	private modifyVP8Bitrate(offer: RTCSessionDescriptionInit): void {
 		if (!offer.sdp) return;
 
-		const minBitrate = this.callbacks.vp8MinBitrate ?? 200;
-		const startBitrate = this.callbacks.vp8StartBitrate ?? 600;
+		const minBitrate = this.callbacks.vp8MinBitrate;
+		const startBitrate = this.callbacks.vp8StartBitrate;
 
 		if (minBitrate === 0 && startBitrate === 0) {
 			return;
@@ -277,9 +277,13 @@ export class WebRTCConnection {
 
 					// Find the range of lines for this payload type and where to insert fmtp
 					let fmtpIndex = -1;
-					let insertAfterIndex = i;  // Default: insert after rtpmap line
+					let insertAfterIndex = i; // Default: insert after rtpmap line
 
-					for (let j = i + 1; j < sdpLines.length && sdpLines[j].startsWith("a="); j++) {
+					for (
+						let j = i + 1;
+						j < sdpLines.length && sdpLines[j].startsWith("a=");
+						j++
+					) {
 						// Check if fmtp already exists
 						if (sdpLines[j].startsWith(`a=fmtp:${payloadType}`)) {
 							fmtpIndex = j;
