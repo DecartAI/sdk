@@ -12,8 +12,8 @@ interface ConnectionCallbacks {
 	onStateChange?: (state: ConnectionState) => void;
 	onError?: (error: Error) => void;
 	customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
-	vp8MinBitrate?: number; // in Kbps, default: 200
-	vp8StartBitrate?: number; // in Kbps, default: 600
+	vp8MinBitrate?: number; // in Kbps
+	vp8StartBitrate?: number; // in Kbps
 }
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
