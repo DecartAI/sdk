@@ -16,6 +16,8 @@ export interface WebRTCConfig {
 	onError?: (error: Error) => void;
 	initialState?: RealTimeClientInitialState;
 	customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
+	vp8MinBitrate?: number;
+	vp8StartBitrate?: number;
 }
 
 const PERMANENT_ERRORS = [
@@ -38,6 +40,8 @@ export class WebRTCManager {
 			onStateChange: config.onConnectionStateChange,
 			onError: config.onError,
 			customizeOffer: config.customizeOffer,
+			vp8MinBitrate: config.vp8MinBitrate,
+			vp8StartBitrate: config.vp8StartBitrate,
 		});
 	}
 

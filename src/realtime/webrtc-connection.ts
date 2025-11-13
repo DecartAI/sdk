@@ -12,6 +12,8 @@ interface ConnectionCallbacks {
 	onStateChange?: (state: ConnectionState) => void;
 	onError?: (error: Error) => void;
 	customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
+	vp8MinBitrate?: number;
+	vp8StartBitrate?: number;
 }
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -28,7 +30,7 @@ export class WebRTCConnection {
 	async connect(
 		url: string,
 		localStream: MediaStream,
-		timeout = 25000,
+		timeout = 35000,
 		integration?: string,
 	): Promise<void> {
 		const deadline = Date.now() + timeout;
@@ -103,6 +105,7 @@ export class WebRTCConnection {
 				case "ready": {
 					await this.applyCodecPreference("video/VP8");
 					const offer = await this.pc.createOffer();
+					this.modifyVP8Bitrate(offer);
 					await this.callbacks.customizeOffer?.(offer);
 					await this.pc.setLocalDescription(offer);
 					this.send({ type: "offer", sdp: offer.sdp || "" });
@@ -248,5 +251,76 @@ export class WebRTCConnection {
 			return;
 		}
 		await videoTransceiver.setCodecPreferences(orderedCodecs);
+	}
+
+	private modifyVP8Bitrate(offer: RTCSessionDescriptionInit): void {
+		if (!offer.sdp) return;
+
+		const minBitrateInKbps = this.callbacks.vp8MinBitrate;
+		const startBitrateInKbps = this.callbacks.vp8StartBitrate;
+
+		if (minBitrateInKbps === 0 && startBitrateInKbps === 0) {
+			return;
+		}
+
+		const bitrateParams = `x-google-min-bitrate=${minBitrateInKbps};x-google-start-bitrate=${startBitrateInKbps}`;
+
+		const sdpLines = offer.sdp.split("\r\n");
+		const modifiedLines: string[] = [];
+
+		for (let i = 0; i < sdpLines.length; i++) {
+			// Look for VP8 codec line (e.g., "a=rtpmap:96 VP8/90000")
+			if (sdpLines[i].includes("VP8/90000")) {
+				const match = sdpLines[i].match(/a=rtpmap:(\d+) VP8/);
+				if (match) {
+					const payloadType = match[1];
+
+					// Find the range of lines for this payload type and where to insert fmtp
+					let fmtpIndex = -1;
+					let insertAfterIndex = i; // Default: insert after rtpmap line
+
+					for (
+						let j = i + 1;
+						j < sdpLines.length && sdpLines[j].startsWith("a=");
+						j++
+					) {
+						// Check if fmtp already exists
+						if (sdpLines[j].startsWith(`a=fmtp:${payloadType}`)) {
+							fmtpIndex = j;
+							break;
+						}
+						// Update insert position to after rtcp-fb lines for this payload
+						if (sdpLines[j].startsWith(`a=rtcp-fb:${payloadType}`)) {
+							insertAfterIndex = j;
+						}
+						// Stop at next rtpmap (different codec)
+						if (sdpLines[j].startsWith("a=rtpmap:")) {
+							break;
+						}
+					}
+
+					if (fmtpIndex !== -1) {
+						// fmtp line exists, modify it in place
+						if (!sdpLines[fmtpIndex].includes("x-google-min-bitrate")) {
+							sdpLines[fmtpIndex] += `;${bitrateParams}`;
+						}
+					} else {
+						// No fmtp line exists, we'll insert it after all rtcp-fb lines
+						// Push lines up to and including the insert position
+						for (let k = i; k <= insertAfterIndex; k++) {
+							modifiedLines.push(sdpLines[k]);
+						}
+						// Insert the new fmtp line
+						modifiedLines.push(`a=fmtp:${payloadType} ${bitrateParams}`);
+						// Skip to after the insert position
+						i = insertAfterIndex;
+						continue;
+					}
+				}
+			}
+			modifiedLines.push(sdpLines[i]);
+		}
+
+		offer.sdp = modifiedLines.join("\r\n");
 	}
 }
