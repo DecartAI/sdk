@@ -354,6 +354,15 @@ describe("Decart SDK", () => {
 					}),
 				).rejects.toThrow("expected array to have >=2 items");
 			});
+
+			it("validates prompt max length is 1000 characters", async () => {
+				await expect(
+					decart.process({
+						model: models.video("lucy-pro-t2v"),
+						prompt: "a".repeat(1001),
+					}),
+				).rejects.toThrow("expected string to have <=1000 characters");
+			});
 		});
 
 		describe("Error Handling", () => {
