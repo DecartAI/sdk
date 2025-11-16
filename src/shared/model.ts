@@ -78,7 +78,11 @@ const proV2vResolutionSchema = z
 
 export const modelInputSchemas = {
 	"lucy-pro-t2v": z.object({
-		prompt: z.string().describe("The prompt to use for the generation"),
+		prompt: z
+			.string()
+			.min(1)
+			.max(1000)
+			.describe("The prompt to use for the generation"),
 		seed: z.number().optional().describe("The seed to use for the generation"),
 		resolution: proResolutionSchema(),
 		orientation: z
@@ -87,7 +91,11 @@ export const modelInputSchemas = {
 			.describe("The orientation to use for the generation"),
 	}),
 	"lucy-pro-t2i": z.object({
-		prompt: z.string().describe("The prompt to use for the generation"),
+		prompt: z
+			.string()
+			.min(1)
+			.max(1000)
+			.describe("The prompt to use for the generation"),
 		seed: z.number().optional().describe("The seed to use for the generation"),
 		resolution: proResolutionSchema(),
 		orientation: z
@@ -96,7 +104,11 @@ export const modelInputSchemas = {
 			.describe("The orientation to use for the generation"),
 	}),
 	"lucy-pro-i2v": z.object({
-		prompt: z.string().describe("The prompt to use for the generation"),
+		prompt: z
+			.string()
+			.min(1)
+			.max(1000)
+			.describe("The prompt to use for the generation"),
 		data: fileInputSchema.describe(
 			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
 		),
@@ -104,7 +116,11 @@ export const modelInputSchemas = {
 		resolution: proResolutionSchema(),
 	}),
 	"lucy-dev-i2v": z.object({
-		prompt: z.string().describe("The prompt to use for the generation"),
+		prompt: z
+			.string()
+			.min(1)
+			.max(1000)
+			.describe("The prompt to use for the generation"),
 		data: fileInputSchema.describe(
 			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
 		),
@@ -112,7 +128,11 @@ export const modelInputSchemas = {
 		resolution: devResolutionSchema,
 	}),
 	"lucy-pro-v2v": z.object({
-		prompt: z.string().describe("The prompt to use for the generation"),
+		prompt: z
+			.string()
+			.min(1)
+			.max(1000)
+			.describe("The prompt to use for the generation"),
 		data: fileInputSchema.describe(
 			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
 		),
@@ -128,7 +148,11 @@ export const modelInputSchemas = {
 			.describe("The number of inference steps"),
 	}),
 	"lucy-dev-v2v": z.object({
-		prompt: z.string().describe("The prompt to use for the generation"),
+		prompt: z
+			.string()
+			.min(1)
+			.max(1000)
+			.describe("The prompt to use for the generation"),
 		data: fileInputSchema.describe(
 			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
 		),
@@ -140,7 +164,11 @@ export const modelInputSchemas = {
 			.describe("Whether to enhance the prompt"),
 	}),
 	"lucy-pro-flf2v": z.object({
-		prompt: z.string().describe("The prompt to use for the generation"),
+		prompt: z
+			.string()
+			.min(1)
+			.max(1000)
+			.describe("The prompt to use for the generation"),
 		start: fileInputSchema.describe(
 			"The start frame image (File, Blob, ReadableStream, URL, or string URL)",
 		),
@@ -151,7 +179,11 @@ export const modelInputSchemas = {
 		resolution: proResolutionSchema(),
 	}),
 	"lucy-pro-i2i": z.object({
-		prompt: z.string().describe("The prompt to use for the generation"),
+		prompt: z
+			.string()
+			.min(1)
+			.max(1000)
+			.describe("The prompt to use for the generation"),
 		data: fileInputSchema.describe(
 			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
 		),
