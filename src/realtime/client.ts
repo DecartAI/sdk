@@ -100,7 +100,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 			customizeOffer: options.customizeOffer as
 				| ((offer: RTCSessionDescriptionInit) => Promise<void>)
 				| undefined,
-			vp8MinBitrate: 200,
+			vp8MinBitrate: 300,
 			vp8StartBitrate: 600,
 		});
 
