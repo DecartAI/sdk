@@ -68,10 +68,10 @@ const motionResolutionSchema = z
 	.describe("The resolution to use for the generation");
 
 /**
- * Resolution schema for lucy-pro-v2v (supports 720p and 480p).
+ * Resolution schema for lucy-pro-v2v (supports 720p).
  */
 const proV2vResolutionSchema = z
-	.enum(["720p", "480p"])
+	.literal("720p")
 	.optional()
 	.describe("The resolution to use for the generation")
 	.default("720p");
