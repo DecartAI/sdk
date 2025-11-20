@@ -27,6 +27,16 @@ const videoToVideo = await client.process({
 	num_inference_steps: 50,
 });
 
+const fastVideoToVideo = await client.process({
+	model: models.video("lucy-fast-v2v"),
+	prompt: "Change the car to a vintage motorcycle",
+	data: videoFile,
+	resolution: "720p",
+	enhance_prompt: true,
+	num_inference_steps: 50,
+	seed: 42,
+});
+
 const videoByUrl = await client.process({
 	model: models.video("lucy-pro-v2v"),
 	prompt: "Cyberpunk style",
