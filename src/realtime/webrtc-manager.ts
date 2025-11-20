@@ -51,7 +51,7 @@ export class WebRTCManager {
 				await this.connection.connect(
 					this.config.webrtcUrl,
 					localStream,
-					25000,
+					60000,
 					this.config.integration,
 				);
 				return true;
