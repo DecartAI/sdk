@@ -30,7 +30,7 @@ export class WebRTCConnection {
 	async connect(
 		url: string,
 		localStream: MediaStream,
-		timeout = 35000,
+		timeout = 60000,
 		integration?: string,
 	): Promise<void> {
 		const deadline = Date.now() + timeout;
