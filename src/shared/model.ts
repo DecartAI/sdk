@@ -9,6 +9,7 @@ export const realtimeModels = z.union([
 export const videoModels = z.union([
 	z.literal("lucy-dev-i2v"),
 	z.literal("lucy-dev-v2v"),
+	z.literal("lucy-fast-v2v"),
 	z.literal("lucy-pro-t2v"),
 	z.literal("lucy-pro-i2v"),
 	z.literal("lucy-pro-v2v"),
@@ -163,6 +164,26 @@ export const modelInputSchemas = {
 			.optional()
 			.describe("Whether to enhance the prompt"),
 	}),
+	"lucy-fast-v2v": z.object({
+		prompt: z
+			.string()
+			.min(1)
+			.max(1000)
+			.describe("The prompt to use for the generation"),
+		data: fileInputSchema.describe(
+			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+		),
+		seed: z.number().optional().describe("The seed to use for the generation"),
+		resolution: proResolutionSchema(),
+		enhance_prompt: z
+			.boolean()
+			.optional()
+			.describe("Whether to enhance the prompt"),
+		num_inference_steps: z
+			.number()
+			.optional()
+			.describe("The number of inference steps"),
+	}),
 	"lucy-pro-flf2v": z.object({
 		prompt: z
 			.string()
@@ -299,6 +320,14 @@ const _models = {
 			width: 1280,
 			height: 704,
 			inputSchema: modelInputSchemas["lucy-dev-v2v"],
+		},
+		"lucy-fast-v2v": {
+			urlPath: "/v1/generate/lucy-fast-v2v",
+			name: "lucy-fast-v2v" as const,
+			fps: 25,
+			width: 1280,
+			height: 704,
+			inputSchema: modelInputSchemas["lucy-fast-v2v"],
 		},
 		"lucy-pro-t2v": {
 			urlPath: "/v1/generate/lucy-pro-t2v",
