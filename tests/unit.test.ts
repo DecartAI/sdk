@@ -271,6 +271,31 @@ describe("Decart SDK", () => {
 				expect(dataFile).toBeInstanceOf(File);
 			});
 
+			it("processes fast video-to-video", async () => {
+				server.use(createMockHandler("/v1/generate/lucy-fast-v2v"));
+
+				const testVideo = new Blob(["test-video"], { type: "video/mp4" });
+
+				const result = await decart.process({
+					model: models.video("lucy-fast-v2v"),
+					prompt: "Change the car to a motorcycle",
+					data: testVideo,
+					resolution: "720p",
+					enhance_prompt: true,
+					seed: 42,
+				});
+
+				expect(result).toBeInstanceOf(Blob);
+				expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
+				expect(lastFormData?.get("prompt")).toBe("Change the car to a motorcycle");
+				expect(lastFormData?.get("resolution")).toBe("720p");
+				expect(lastFormData?.get("enhance_prompt")).toBe("true");
+				expect(lastFormData?.get("seed")).toBe("42");
+
+				const dataFile = lastFormData?.get("data") as File;
+				expect(dataFile).toBeInstanceOf(File);
+			});
+
 			it("processes image-to-video-motion", async () => {
 				server.use(createMockHandler("/v1/generate/lucy-motion"));
 
