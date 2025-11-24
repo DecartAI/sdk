@@ -174,15 +174,11 @@ export const modelInputSchemas = {
 			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
 		),
 		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: proResolutionSchema(),
+		resolution: proV2vResolutionSchema,
 		enhance_prompt: z
 			.boolean()
 			.optional()
 			.describe("Whether to enhance the prompt"),
-		num_inference_steps: z
-			.number()
-			.optional()
-			.describe("The number of inference steps"),
 	}),
 	"lucy-pro-flf2v": z.object({
 		prompt: z
@@ -326,7 +322,7 @@ const _models = {
 			name: "lucy-fast-v2v" as const,
 			fps: 25,
 			width: 1280,
-			height: 704,
+			height: 720,
 			inputSchema: modelInputSchemas["lucy-fast-v2v"],
 		},
 		"lucy-pro-t2v": {
