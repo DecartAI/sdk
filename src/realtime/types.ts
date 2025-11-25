@@ -23,11 +23,6 @@ export type PromptMessage = {
 	enhance_prompt: boolean;
 };
 
-export type SwitchCameraMessage = {
-	type: "switch_camera";
-	rotateY: number;
-};
-
 export type TurnConfig = {
 	username: string;
 	credential: string;
@@ -58,7 +53,6 @@ export type OutgoingWebRTCMessage =
 	| OfferMessage
 	| AnswerMessage
 	| IceCandidateMessage
-	| PromptMessage
-	| SwitchCameraMessage;
+	| PromptMessage;
 
-export type OutgoingMessage = PromptMessage | SwitchCameraMessage;
+export type OutgoingMessage = PromptMessage;

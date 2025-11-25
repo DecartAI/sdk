@@ -240,10 +240,6 @@
             <button id="start-camera">Start Camera</button>
             <button id="connect-btn" disabled>Connect to Decart</button>
             <button id="disconnect-btn" disabled>Disconnect</button>
-            <div class="checkbox-group">
-                <input type="checkbox" id="mirror-toggle">
-                <label for="mirror-toggle" style="margin: 0; font-weight: normal;">Mirror Video</label>
-            </div>
         </div>
     </div>
     
@@ -292,10 +288,6 @@
             <div class="checkbox-group">
                 <input type="checkbox" id="process-enrich" checked>
                 <label for="process-enrich" style="margin: 0; font-weight: normal;">Enrich</label>
-            </div>
-            <div class="checkbox-group">
-                <input type="checkbox" id="process-mirror">
-                <label for="process-mirror" style="margin: 0; font-weight: normal;">Mirror</label>
             </div>
         </div>
         <div id="process-status" style="margin-top: 10px; display: none;">
@@ -346,7 +338,6 @@
             promptInput: document.getElementById('prompt-input'),
             sendPrompt: document.getElementById('send-prompt'),
             enrichToggle: document.getElementById('enrich-toggle'),
-            mirrorToggle: document.getElementById('mirror-toggle'),
             statusIndicator: document.getElementById('status-indicator'),
             statusText: document.getElementById('status-text'),
             sessionInfo: document.getElementById('session-info'),
@@ -358,7 +349,6 @@
             processVideo: document.getElementById('process-video'),
             downloadResult: document.getElementById('download-result'),
             processEnrich: document.getElementById('process-enrich'),
-            processMirror: document.getElementById('process-mirror'),
             processStatus: document.getElementById('process-status'),
             processStatusText: document.getElementById('process-status-text'),
             processedContainer: document.getElementById('processed-container'),
@@ -463,7 +453,6 @@
                         elements.remoteVideo.srcObject = stream;
                     },
                     initialState: {
-                        mirror: elements.mirrorToggle.checked,
                         prompt: {
                             text: "Lego World",
                         }
@@ -566,18 +555,6 @@
             }
         });
         
-        // Mirror toggle
-        elements.mirrorToggle.addEventListener('change', () => {
-            if (decartClient && isConnected) {
-                try {
-                    decartRealtime.setMirror(elements.mirrorToggle.checked);
-                    addLog(`Mirror ${elements.mirrorToggle.checked ? 'enabled' : 'disabled'}`, 'info');
-                } catch (error) {
-                    addLog(`Failed to toggle mirror: ${error.message}`, 'error');
-                }
-            }
-        });
-        
         // Video file selection handler
         elements.videoFile.addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -636,7 +613,6 @@
                         text: promptText,
                         enrich: elements.processEnrich.checked
                     },
-                    mirror: elements.processMirror.checked
                 };
                 
                 addLog('Uploading and processing video...', 'info');

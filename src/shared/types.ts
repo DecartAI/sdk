@@ -7,6 +7,5 @@ export const modelStateSchema = z.object({
 			enhance: z.boolean().optional().default(true),
 		})
 		.optional(),
-	mirror: z.boolean().optional().default(false),
 });
 export type ModelState = z.infer<typeof modelStateSchema>;
