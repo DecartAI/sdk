@@ -35,7 +35,6 @@ const realtimeClient = await client.realtime.connect(stream, {
 			text: "Lego World",
 			enhance: true, // optional, defaults to true
 		},
-		mirror: false, // optional, defaults to false (useful for use-cases like front-facing cameras)
 	} satisfies RealTimeClientInitialState,
 } satisfies RealTimeClientConnectOptions);
 
@@ -50,9 +49,6 @@ realtimeClient.setPrompt(
 		enhance: false, // optional, defaults to true
 	},
 );
-
-// 4. Mirroring (useful utility for use-cases like front-facing cameras)
-realtimeClient.setMirror(true);
 
 // 5. State Management
 // 5.1 Get the connection state synchronously
