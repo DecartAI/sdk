@@ -61,7 +61,7 @@
 
 ### Video Models (Process API)
 - `lucy-dev-i2v` - image-to-video (Dev quality)
-- `lucy-dev-v2v` - video-to-video (Dev quality)
+- `lucy-fast-v2v` - video-to-video (Fast quality)
 - `lucy-pro-t2v` - text-to-video (Pro quality)
 - `lucy-pro-i2v` - image-to-video (Pro quality)
 - `lucy-pro-v2v` - video-to-video (Pro quality)

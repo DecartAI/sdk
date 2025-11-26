@@ -252,25 +252,6 @@ describe("Decart SDK", () => {
 				expect(dataFile).toBeInstanceOf(File);
 			});
 
-			it("processes dev video-to-video", async () => {
-				server.use(createMockHandler("/v1/generate/lucy-dev-v2v"));
-
-				const testVideo = new Blob(["test-video"], { type: "video/mp4" });
-
-				const result = await decart.process({
-					model: models.video("lucy-dev-v2v"),
-					prompt: "Dev version v2v",
-					data: testVideo,
-				});
-
-				expect(result).toBeInstanceOf(Blob);
-				expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
-				expect(lastFormData?.get("prompt")).toBe("Dev version v2v");
-
-				const dataFile = lastFormData?.get("data") as File;
-				expect(dataFile).toBeInstanceOf(File);
-			});
-
 			it("processes fast video-to-video", async () => {
 				server.use(createMockHandler("/v1/generate/lucy-fast-v2v"));
 

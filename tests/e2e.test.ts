@@ -106,20 +106,6 @@ describe.sequential("Process API E2E Tests", { timeout: 120_000 }, () => {
 			console.log(`Saved to: ${path}`);
 		});
 
-		it("lucy-dev-v2v: video-to-video (dev)", async () => {
-			const result = await client.process({
-				model: models.video("lucy-dev-v2v"),
-				prompt: "Cyberpunk neon style transformation",
-				data: videoBlob,
-				seed: 789,
-				enhance_prompt: true,
-			});
-
-			expect(result).toBeInstanceOf(Blob);
-			const path = await saveOutput(result, "lucy-dev-v2v", ".mp4");
-			console.log(`Saved to: ${path}`);
-		});
-
 		it("lucy-pro-v2v: video-to-video (pro)", async () => {
 			const result = await client.process({
 				model: models.video("lucy-pro-v2v"),
