@@ -27,27 +27,7 @@ export const realtimeMethods = (webrtcManager: WebRTCManager) => {
 		});
 	};
 
-	const setMirror = (enabled: boolean) => {
-		const schema = z.object({
-			enabled: z.boolean(),
-		});
-
-		const parsedInput = schema.safeParse({
-			enabled,
-		});
-
-		if (!parsedInput.success) {
-			throw parsedInput.error;
-		}
-
-		webrtcManager.sendMessage({
-			type: "switch_camera",
-			rotateY: parsedInput.data.enabled ? 2 : 0,
-		});
-	};
-
 	return {
 		setPrompt,
-		setMirror,
 	};
 };
