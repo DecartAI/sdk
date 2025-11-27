@@ -1,7 +1,9 @@
+import mitt from "mitt";
 import { buildUserAgent } from "../utils/user-agent";
 import type {
 	IncomingWebRTCMessage,
 	OutgoingWebRTCMessage,
+	PromptAckMessage,
 	TurnConfig,
 } from "./types";
 
@@ -18,13 +20,17 @@ interface ConnectionCallbacks {
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
 
+type WsMessageEvents = {
+	promptAck: PromptAckMessage;
+};
+
 export class WebRTCConnection {
 	private pc: RTCPeerConnection | null = null;
 	private ws: WebSocket | null = null;
 	private localStream: MediaStream | null = null;
 	private connectionReject: ((error: Error) => void) | null = null;
 	state: ConnectionState = "disconnected";
-
+	websocketMessagesEmitter = mitt<WsMessageEvents>();
 	constructor(private callbacks: ConnectionCallbacks = {}) {}
 
 	async connect(
@@ -134,6 +140,10 @@ export class WebRTCConnection {
 					}
 					break;
 				}
+				case "prompt_ack": {
+					this.websocketMessagesEmitter.emit("promptAck", msg);
+					break;
+				}
 			}
 		} catch (error) {
 			console.error("[WebRTC] Error:", error);
@@ -179,6 +189,7 @@ export class WebRTCConnection {
 
 		this.localStream
 			.getTracks()
+			// biome-ignore lint/suspicious/useIterableCallbackReturn: we don't care about the returned RTPSender
 			.forEach((track) => this.pc!.addTrack(track, this.localStream!));
 
 		this.pc.ontrack = (e) => {
@@ -207,6 +218,7 @@ export class WebRTCConnection {
 	}
 
 	cleanup(): void {
+		// biome-ignore lint/suspicious/useIterableCallbackReturn: we dont care about the returned value
 		this.pc?.getSenders().forEach((s) => s.track?.stop());
 		this.pc?.close();
 		this.pc = null;

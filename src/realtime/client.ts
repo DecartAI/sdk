@@ -45,17 +45,20 @@ export type Events = {
 };
 
 export type RealTimeClient = {
-	setPrompt: (prompt: string, { enhance }?: { enhance?: boolean }) => void;
+	setPrompt: (
+		prompt: string,
+		{ enhance }?: { enhance?: boolean },
+	) => Promise<void>;
 	isConnected: () => boolean;
 	getConnectionState: () => "connected" | "connecting" | "disconnected";
 	disconnect: () => void;
-	on: (
-		event: keyof Events,
-		listener: (...args: Events[keyof Events][]) => void,
+	on: <K extends keyof Events>(
+		event: K,
+		listener: (data: Events[K]) => void,
 	) => void;
-	off: (
-		event: keyof Events,
-		listener: (...args: Events[keyof Events][]) => void,
+	off: <K extends keyof Events>(
+		event: K,
+		listener: (data: Events[K]) => void,
 	) => void;
 	sessionId: string;
 };

@@ -88,4 +88,8 @@ export class WebRTCManager {
 	getConnectionState(): "connected" | "connecting" | "disconnected" {
 		return this.connection.state;
 	}
+
+	getWebsocketMessageEmitter() {
+		return this.connection.websocketMessagesEmitter;
+	}
 }
