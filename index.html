@@ -271,6 +271,24 @@
         </div>
     </div>
     
+    <!-- Prompt Control (With Acknowledgment) -->
+    <div class="controls">
+        <h3>Prompt Control (With Acknowledgment)</h3>
+        <div class="control-group">
+            <label for="promise-prompt-input">Enter your prompt:</label>
+            <input type="text" id="promise-prompt-input" placeholder="Type your prompt here..." disabled>
+        </div>
+        <div class="inline-controls">
+            <button id="send-promise-prompt" disabled>Send & Wait for Ack</button>
+            <div class="checkbox-group">
+                <input type="checkbox" id="promise-enrich-toggle" checked>
+                <label for="promise-enrich-toggle" style="margin: 0; font-weight: normal;">Enrich Prompt</label>
+            </div>
+        </div>
+        <div id="promise-status" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 6px; display: none;">
+            <strong>Status:</strong> <span id="promise-status-text">Ready</span>
+        </div>
+    </div>
     <!-- Video File Processing -->
     <div class="controls">
         <h3>Video File Processing</h3>
@@ -314,7 +332,7 @@
     </div>
     
     <script type="module">
-        // Import the Decart SDK
+        // Import the Decart SDK (with cache busting timestamp)
         import { createDecartClient, models } from './dist/index.js';
         
         // State management
@@ -338,6 +356,12 @@
             promptInput: document.getElementById('prompt-input'),
             sendPrompt: document.getElementById('send-prompt'),
             enrichToggle: document.getElementById('enrich-toggle'),
+            // Promise-based prompt elements
+            promisePromptInput: document.getElementById('promise-prompt-input'),
+            sendPromisePrompt: document.getElementById('send-promise-prompt'),
+            promiseEnrichToggle: document.getElementById('promise-enrich-toggle'),
+            promiseStatus: document.getElementById('promise-status'),
+            promiseStatusText: document.getElementById('promise-status-text'),
             statusIndicator: document.getElementById('status-indicator'),
             statusText: document.getElementById('status-text'),
             sessionInfo: document.getElementById('session-info'),
@@ -466,6 +490,8 @@
                     elements.disconnectBtn.disabled = false;
                     elements.promptInput.disabled = false;
                     elements.sendPrompt.disabled = false;
+                    elements.promisePromptInput.disabled = false;
+                    elements.sendPromisePrompt.disabled = false;
                     
                     // Show session ID
                     currentSessionId = decartRealtime.sessionId;
@@ -517,12 +543,16 @@
             elements.promptInput.disabled = true;
             elements.sendPrompt.disabled = true;
             elements.promptInput.value = '';
+            elements.promisePromptInput.disabled = true;
+            elements.sendPromisePrompt.disabled = true;
+            elements.promisePromptInput.value = '';
+            elements.promiseStatus.style.display = 'none';
             elements.sessionInfo.style.display = 'none';
             
             addLog('Disconnected successfully', 'info');
         });
         
-        // Send prompt
+        // Send prompt (fire-and-forget)
         function sendPrompt() {
             const prompt = elements.promptInput.value.trim();
             if (!prompt) {
@@ -530,14 +560,15 @@
                 return;
             }
             
-            if (!decartClient || !isConnected) {
+            if (!decartRealtime || !isConnected) {
                 addLog('Not connected to Decart', 'error');
                 return;
             }
             
             try {
                 const enrich = elements.enrichToggle.checked;
-                decartRealtime.setPrompt(prompt, { enrich });
+                // Fire-and-forget: don't await the promise
+                decartRealtime.setPrompt(prompt, { enhance: enrich });
                 addLog(`Sent prompt: "${prompt}" (enrich: ${enrich})`, 'success');
                 elements.promptInput.value = '';
             } catch (error) {
@@ -552,6 +583,62 @@
         elements.promptInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !elements.sendPrompt.disabled) {
                 sendPrompt();
+            }
+        });
+        
+        // Send prompt with acknowledgment (await response)
+        async function sendPromisePrompt() {
+            const prompt = elements.promisePromptInput.value.trim();
+            if (!prompt) {
+                addLog('Please enter a prompt', 'error');
+                return;
+            }
+            
+            if (!decartRealtime || !isConnected) {
+                addLog('Not connected to Decart', 'error');
+                return;
+            }
+            
+            try {
+                const enrich = elements.promiseEnrichToggle.checked;
+                
+                // Show waiting status
+                elements.promiseStatus.style.display = 'block';
+                elements.promiseStatusText.textContent = '⏳ Waiting for acknowledgment...';
+                elements.promiseStatusText.style.color = '#ff9800';
+                elements.sendPromisePrompt.disabled = true;
+                
+                addLog(`Sending prompt with ack: "${prompt}" (enrich: ${enrich})`, 'info');
+                
+                // Await the promise for acknowledgment
+                const result = await decartRealtime.setPrompt(prompt, { 
+                    enhance: enrich,
+                    maxTimeout: 15000 // 15 seconds timeout
+                });
+                
+                // Success
+                elements.promiseStatusText.textContent = '✅ Success! Prompt acknowledged by server';
+                elements.promiseStatusText.style.color = '#4CAF50';
+                addLog(`Prompt acknowledged: "${prompt}"`, 'success');
+                elements.promisePromptInput.value = '';
+                
+            } catch (error) {
+                // Failure
+                elements.promiseStatusText.textContent = `❌ Failed: ${error || 'Timeout or rejection'}`;
+                elements.promiseStatusText.style.color = '#f44336';
+                addLog(`Prompt failed: ${error || 'Unknown error'}`, 'error');
+            } finally {
+                elements.sendPromisePrompt.disabled = false;
+            }
+        }
+        
+        // Send promise prompt on button click
+        elements.sendPromisePrompt.addEventListener('click', sendPromisePrompt);
+        
+        // Send promise prompt on Enter key
+        elements.promisePromptInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !elements.sendPromisePrompt.disabled) {
+                sendPromisePrompt();
             }
         });
         
