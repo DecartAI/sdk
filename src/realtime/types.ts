@@ -34,6 +34,13 @@ export type IceRestartMessage = {
 	turn_config: TurnConfig;
 };
 
+export type PromptAckMessage = {
+	type: "prompt_ack";
+	prompt: string;
+	success: boolean;
+	error: null | string;
+};
+
 export type ErrorMessage = {
 	type: "error";
 	error: string;
@@ -46,6 +53,7 @@ export type IncomingWebRTCMessage =
 	| AnswerMessage
 	| IceCandidateMessage
 	| IceRestartMessage
+	| PromptAckMessage
 	| ErrorMessage;
 
 // Outgoing message types (to server)
