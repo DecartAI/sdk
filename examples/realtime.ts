@@ -61,13 +61,16 @@ realtimeClient.setPrompt(
 	},
 );
 
-// 5. State Management
-// 5.1 Get the connection state synchronously
+// 4. State Management
+
 const isConnected: boolean = realtimeClient.isConnected();
 const connectionState: "connected" | "connecting" | "disconnected" =
 	realtimeClient.getConnectionState();
+// 4.1 Get the connection state synchronously
+console.log("Is connected:", isConnected);
+console.log("Connection state:", connectionState);
 
-// 5.2 Subscribe to connection change events asynchronously
+// 4.2 Subscribe to connection change events asynchronously
 const onConnectionChange = (
 	state: "connected" | "connecting" | "disconnected",
 ) => {
@@ -76,15 +79,15 @@ const onConnectionChange = (
 realtimeClient.on("connectionChange", onConnectionChange);
 realtimeClient.off("connectionChange", onConnectionChange);
 
-// 5.3 Get the session ID
-const sessionId = realtimeClient.sessionId;
+// 4.3 Get the session ID
+console.log("Session ID:", realtimeClient.sessionId);
 
-// 6. Error Handling
+// 5. Error Handling
 const onError = (error: DecartSDKError) => {
 	console.error("Error", error);
 };
 realtimeClient.on("error", onError);
 realtimeClient.off("error", onError);
 
-// 7. Disconnect
+// 6. Disconnect
 realtimeClient.disconnect();

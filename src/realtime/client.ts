@@ -52,13 +52,13 @@ export type RealTimeClient = {
 	isConnected: () => boolean;
 	getConnectionState: () => "connected" | "connecting" | "disconnected";
 	disconnect: () => void;
-	on: (
-		event: keyof Events,
-		listener: (...args: Events[keyof Events][]) => void,
+	on: <K extends keyof Events>(
+		event: K,
+		listener: (data: Events[K]) => void,
 	) => void;
-	off: (
-		event: keyof Events,
-		listener: (...args: Events[keyof Events][]) => void,
+	off: <K extends keyof Events>(
+		event: K,
+		listener: (data: Events[K]) => void,
 	) => void;
 	sessionId: string;
 };
