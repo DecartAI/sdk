@@ -47,8 +47,8 @@ export type Events = {
 export type RealTimeClient = {
 	setPrompt: (
 		prompt: string,
-		{ enhance, maxTimeout }?: { enhance?: boolean; maxTimeout?: number },
-	) => Promise<boolean>;
+		{ enhance }?: { enhance?: boolean },
+	) => Promise<void>;
 	isConnected: () => boolean;
 	getConnectionState: () => "connected" | "connecting" | "disconnected";
 	disconnect: () => void;
