@@ -33,7 +33,6 @@ const fastVideoToVideo = await client.process({
 	data: videoFile,
 	resolution: "720p",
 	enhance_prompt: true,
-	num_inference_steps: 50,
 	seed: 42,
 });
 

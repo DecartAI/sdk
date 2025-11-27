@@ -221,6 +221,7 @@ export type ModelInputSchemas = typeof modelInputSchemas;
 export type ModelDefinition<T extends Model = Model> = {
 	name: T;
 	urlPath: string;
+	queueUrlPath?: string;
 	fps: number;
 	width: number;
 	height: number;
@@ -232,6 +233,7 @@ export type ModelDefinition<T extends Model = Model> = {
 export const modelDefinitionSchema = z.object({
 	name: modelSchema,
 	urlPath: z.string(),
+	queueUrlPath: z.string().optional(),
 	fps: z.number().min(1),
 	width: z.number().min(1),
 	height: z.number().min(1),
@@ -268,6 +270,7 @@ const _models = {
 	image: {
 		"lucy-pro-t2i": {
 			urlPath: "/v1/generate/lucy-pro-t2i",
+			queueUrlPath: "/v1/jobs/lucy-pro-t2i",
 			name: "lucy-pro-t2i" as const,
 			fps: 25,
 			width: 1280,
@@ -276,6 +279,7 @@ const _models = {
 		},
 		"lucy-pro-i2i": {
 			urlPath: "/v1/generate/lucy-pro-i2i",
+			queueUrlPath: "/v1/jobs/lucy-pro-i2i",
 			name: "lucy-pro-i2i" as const,
 			fps: 25,
 			width: 1280,
@@ -286,6 +290,7 @@ const _models = {
 	video: {
 		"lucy-dev-i2v": {
 			urlPath: "/v1/generate/lucy-dev-i2v",
+			queueUrlPath: "/v1/jobs/lucy-dev-i2v",
 			name: "lucy-dev-i2v" as const,
 			fps: 25,
 			width: 1280,
@@ -294,6 +299,7 @@ const _models = {
 		},
 		"lucy-fast-v2v": {
 			urlPath: "/v1/generate/lucy-fast-v2v",
+			queueUrlPath: "/v1/jobs/lucy-fast-v2v",
 			name: "lucy-fast-v2v" as const,
 			fps: 25,
 			width: 1280,
@@ -302,6 +308,7 @@ const _models = {
 		},
 		"lucy-pro-t2v": {
 			urlPath: "/v1/generate/lucy-pro-t2v",
+			queueUrlPath: "/v1/jobs/lucy-pro-t2v",
 			name: "lucy-pro-t2v" as const,
 			fps: 25,
 			width: 1280,
@@ -310,6 +317,7 @@ const _models = {
 		},
 		"lucy-pro-i2v": {
 			urlPath: "/v1/generate/lucy-pro-i2v",
+			queueUrlPath: "/v1/jobs/lucy-pro-i2v",
 			name: "lucy-pro-i2v" as const,
 			fps: 25,
 			width: 1280,
@@ -318,6 +326,7 @@ const _models = {
 		},
 		"lucy-pro-v2v": {
 			urlPath: "/v1/generate/lucy-pro-v2v",
+			queueUrlPath: "/v1/jobs/lucy-pro-v2v",
 			name: "lucy-pro-v2v" as const,
 			fps: 25,
 			width: 1280,
@@ -326,6 +335,7 @@ const _models = {
 		},
 		"lucy-pro-flf2v": {
 			urlPath: "/v1/generate/lucy-pro-flf2v",
+			queueUrlPath: "/v1/jobs/lucy-pro-flf2v",
 			name: "lucy-pro-flf2v" as const,
 			fps: 25,
 			width: 1280,
@@ -334,6 +344,7 @@ const _models = {
 		},
 		"lucy-motion": {
 			urlPath: "/v1/generate/lucy-motion",
+			queueUrlPath: "/v1/jobs/lucy-motion",
 			name: "lucy-motion" as const,
 			fps: 25,
 			width: 1280,

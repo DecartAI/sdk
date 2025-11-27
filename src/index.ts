@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createProcessClient } from "./process/client";
+import { createQueueClient } from "./queue/client";
 import { createRealTimeClient } from "./realtime/client";
 import {
 	createInvalidApiKeyError,
@@ -8,6 +9,15 @@ import {
 
 export type { ProcessClient } from "./process/client";
 export type { FileInput, ProcessOptions } from "./process/types";
+export type { QueueClient } from "./queue/client";
+export type {
+	JobStatus,
+	JobSubmitResponse,
+	JobStatusResponse,
+	QueueJobResult,
+	QueueSubmitOptions,
+	QueueSubmitAndPollOptions,
+} from "./queue/types";
 export type {
 	RealTimeClient,
 	RealTimeClientConnectOptions,
@@ -64,6 +74,12 @@ export const createDecartClient = (options: DecartClientOptions) => {
 		integration,
 	});
 
+	const queue = createQueueClient({
+		baseUrl,
+		apiKey,
+		integration,
+	});
+
 	return {
 		realtime,
 		/**
@@ -79,5 +95,43 @@ export const createDecartClient = (options: DecartClientOptions) => {
 		 * ```
 		 */
 		process,
+		/**
+		 * Client for queue-based async video and image generation.
+		 * Jobs are submitted and processed asynchronously.
+		 *
+		 * @example
+		 * ```ts
+		 * const client = createDecartClient({ apiKey: "your-api-key" });
+		 *
+		 * // Option 1: Submit and poll automatically
+		 * const result = await client.queue.submitAndPoll({
+		 *   model: models.video("lucy-pro-t2v"),
+		 *   prompt: "A beautiful sunset over the ocean",
+		 *   onStatusChange: (job) => console.log(`Job ${job.job_id}: ${job.status}`)
+		 * });
+		 *
+		 * // Option 2: Submit and poll manually
+		 * const job = await client.queue.submit({
+		 *   model: models.video("lucy-pro-t2v"),
+		 *   prompt: "A beautiful sunset over the ocean"
+		 * });
+		 *
+		 * // Poll until completion
+		 * while (true) {
+		 *   const status = await client.queue.status(job.job_id);
+		 *   console.log(`Job ${status.job_id}: ${status.status}`);
+		 *
+		 *   if (status.status === "completed") {
+		 *     const blob = await client.queue.result(job.job_id);
+		 *     break;
+		 *   }
+		 *   if (status.status === "failed") {
+		 *     throw new Error("Job failed");
+		 *   }
+		 *   await new Promise(resolve => setTimeout(resolve, 1500));
+		 * }
+		 * ```
+		 */
+		queue,
 	};
 };
