@@ -45,8 +45,7 @@ export type Events = {
 };
 
 export type RealTimeClient = {
-	setPrompt: (prompt: string, { enhance }?: { enhance?: boolean }) => void;
-	setPromptPromise: (
+	setPrompt: (
 		prompt: string,
 		{ enhance, maxTimeout }?: { enhance?: boolean; maxTimeout?: number },
 	) => Promise<boolean>;
@@ -120,7 +119,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
 		return {
 			setPrompt: methods.setPrompt,
-			setPromptPromise: methods.setPromptPromise,
 			isConnected: () => webrtcManager.isConnected(),
 			getConnectionState: () => webrtcManager.getConnectionState(),
 			disconnect: () => webrtcManager.cleanup(),

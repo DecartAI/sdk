@@ -39,14 +39,25 @@ const realtimeClient = await client.realtime.connect(stream, {
 } satisfies RealTimeClientConnectOptions);
 
 // 3. Prompt Management
-// 3.1 Sending a prompt, the prompt will be enhanced automatically (great for out-of-the-box experience)
-realtimeClient.setPrompt("Lego World");
+// 3.1 Sending a prompt (fire-and-forget, don't wait for acknowledgment)
+realtimeClient.setPrompt("Lego World"); // Returns a promise, but we don't await it
 
-// 3.2 Sending an already enhanced prompt (great for advanced use-cases)
+// 3.2 Sending a prompt and waiting for server acknowledgment
+try {
+	const success = await realtimeClient.setPrompt("Lego World", {
+		enhance: true, // optional, defaults to true
+		maxTimeout: 15000, // optional, defaults to 15000ms
+	});
+	console.log("Prompt acknowledged by server:", success);
+} catch (error) {
+	console.error("Prompt failed or timed out:", error);
+}
+
+// 3.3 Sending an already enhanced prompt (skip enhancement)
 realtimeClient.setPrompt(
 	"A very long prompt that is very descriptive and detailed",
 	{
-		enhance: false, // optional, defaults to true
+		enhance: false,
 	},
 );
 

@@ -271,22 +271,22 @@
         </div>
     </div>
     
-    <!-- Prompt Control (Promise-based) -->
+    <!-- Prompt Control (With Acknowledgment) -->
     <div class="controls">
-        <h3>Prompt Control (Promise-based)</h3>
+        <h3>Prompt Control (With Acknowledgment)</h3>
         <div class="control-group">
-            <label for="promise-prompt-input">Enter your promise prompt:</label>
+            <label for="promise-prompt-input">Enter your prompt:</label>
             <input type="text" id="promise-prompt-input" placeholder="Type your prompt here..." disabled>
         </div>
         <div class="inline-controls">
-            <button id="send-promise-prompt" disabled>Send Promise Prompt</button>
+            <button id="send-promise-prompt" disabled>Send & Wait for Ack</button>
             <div class="checkbox-group">
                 <input type="checkbox" id="promise-enrich-toggle" checked>
                 <label for="promise-enrich-toggle" style="margin: 0; font-weight: normal;">Enrich Prompt</label>
             </div>
         </div>
         <div id="promise-status" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 6px; display: none;">
-            <strong>Promise Status:</strong> <span id="promise-status-text">Ready</span>
+            <strong>Status:</strong> <span id="promise-status-text">Ready</span>
         </div>
     </div>
     <!-- Video File Processing -->
@@ -552,7 +552,7 @@
             addLog('Disconnected successfully', 'info');
         });
         
-        // Send prompt
+        // Send prompt (fire-and-forget)
         function sendPrompt() {
             const prompt = elements.promptInput.value.trim();
             if (!prompt) {
@@ -560,14 +560,15 @@
                 return;
             }
             
-            if (!decartClient || !isConnected) {
+            if (!decartRealtime || !isConnected) {
                 addLog('Not connected to Decart', 'error');
                 return;
             }
             
             try {
                 const enrich = elements.enrichToggle.checked;
-                decartRealtime.setPrompt(prompt, { enrich });
+                // Fire-and-forget: don't await the promise
+                decartRealtime.setPrompt(prompt, { enhance: enrich });
                 addLog(`Sent prompt: "${prompt}" (enrich: ${enrich})`, 'success');
                 elements.promptInput.value = '';
             } catch (error) {
@@ -585,11 +586,11 @@
             }
         });
         
-        // Send promise-based prompt
+        // Send prompt with acknowledgment (await response)
         async function sendPromisePrompt() {
             const prompt = elements.promisePromptInput.value.trim();
             if (!prompt) {
-                addLog('Please enter a promise prompt', 'error');
+                addLog('Please enter a prompt', 'error');
                 return;
             }
             
@@ -607,10 +608,10 @@
                 elements.promiseStatusText.style.color = '#ff9800';
                 elements.sendPromisePrompt.disabled = true;
                 
-                addLog(`Sending promise prompt: "${prompt}" (enrich: ${enrich})`, 'info');
+                addLog(`Sending prompt with ack: "${prompt}" (enrich: ${enrich})`, 'info');
                 
-                // Call the promise-based method
-                const result = await decartRealtime.setPromptPromise(prompt, { 
+                // Await the promise for acknowledgment
+                const result = await decartRealtime.setPrompt(prompt, { 
                     enhance: enrich,
                     maxTimeout: 15000 // 15 seconds timeout
                 });
@@ -618,14 +619,14 @@
                 // Success
                 elements.promiseStatusText.textContent = '✅ Success! Prompt acknowledged by server';
                 elements.promiseStatusText.style.color = '#4CAF50';
-                addLog(`Promise prompt acknowledged: "${prompt}"`, 'success');
+                addLog(`Prompt acknowledged: "${prompt}"`, 'success');
                 elements.promisePromptInput.value = '';
                 
             } catch (error) {
                 // Failure
                 elements.promiseStatusText.textContent = `❌ Failed: ${error || 'Timeout or rejection'}`;
                 elements.promiseStatusText.style.color = '#f44336';
-                addLog(`Promise prompt failed: ${error || 'Unknown error'}`, 'error');
+                addLog(`Prompt failed: ${error || 'Unknown error'}`, 'error');
             } finally {
                 elements.sendPromisePrompt.disabled = false;
             }
