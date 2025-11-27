@@ -8,7 +8,7 @@ import type {
 
 export type FileInput = File | Blob | ReadableStream | URL | string;
 
-type InferModelInputs<T extends ModelDefinition> =
+export type InferModelInputs<T extends ModelDefinition> =
 	T["name"] extends keyof ModelInputSchemas
 		? z.input<ModelInputSchemas[T["name"]]>
 		: Record<string, never>;
@@ -16,7 +16,7 @@ type InferModelInputs<T extends ModelDefinition> =
 /**
  * Model-specific input documentation for image generation models.
  */
-interface ImageGenerationInputs {
+export interface ImageGenerationInputs {
 	/**
 	 * Text description to use for the generation.
 	 *
@@ -28,7 +28,7 @@ interface ImageGenerationInputs {
 /**
  * Model-specific input documentation for image editing models.
  */
-interface ImageEditingInputs {
+export interface ImageEditingInputs {
 	/**
 	 * Text description of the changes to apply to the image.
 	 *
@@ -40,7 +40,7 @@ interface ImageEditingInputs {
 /**
  * Model-specific input documentation for video models.
  */
-interface VideoModelInputs {
+export interface VideoModelInputs {
 	/**
 	 * Text description to use for the generation.
 	 *
@@ -52,7 +52,7 @@ interface VideoModelInputs {
 /**
  * Default inputs for models that only require a prompt.
  */
-interface PromptInput {
+export interface PromptInput {
 	/**
 	 * Text description to use for the generation.
 	 */
@@ -64,7 +64,7 @@ interface PromptInput {
  * This allows different models to have field-specific documentation while maintaining type safety.
  * Specific models are checked first, then falls back to category-based selection.
  */
-type ModelSpecificInputs<T extends ModelDefinition> =
+export type ModelSpecificInputs<T extends ModelDefinition> =
 	T["name"] extends "lucy-pro-i2i"
 		? ImageEditingInputs
 		: T["name"] extends ImageModels
@@ -73,7 +73,7 @@ type ModelSpecificInputs<T extends ModelDefinition> =
 				? VideoModelInputs
 				: PromptInput;
 
-interface ProcessInputs {
+export interface ProcessInputs {
 	/**
 	 * Random seed for reproducible results.
 	 *

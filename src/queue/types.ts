@@ -1,11 +1,10 @@
-import type { z } from "zod";
+import type { ModelDefinition } from "../shared/model";
 import type {
-	ImageModels,
-	ModelDefinition,
-	ModelInputSchemas,
-	VideoModels,
-} from "../shared/model";
-import type { FileInput } from "../process/types";
+	FileInput,
+	InferModelInputs,
+	ModelSpecificInputs,
+	ProcessInputs,
+} from "../process/types";
 
 /**
  * Job status values returned by the queue API.
@@ -36,80 +35,10 @@ export type QueueJobResult =
 	| { status: "failed"; error: string };
 
 /**
- * Infer model inputs from the model's Zod schema.
+ * Queue-specific inputs extending ProcessInputs.
+ * Re-exports ProcessInputs fields with queue-specific documentation.
  */
-type InferModelInputs<T extends ModelDefinition> =
-	T["name"] extends keyof ModelInputSchemas
-		? z.input<ModelInputSchemas[T["name"]]>
-		: Record<string, never>;
-
-/**
- * Model-specific input documentation for image generation models.
- */
-interface ImageGenerationInputs {
-	/**
-	 * Text description to use for the generation.
-	 */
-	prompt: string;
-}
-
-/**
- * Model-specific input documentation for image editing models.
- */
-interface ImageEditingInputs {
-	/**
-	 * Text description of the changes to apply to the image.
-	 */
-	prompt: string;
-}
-
-/**
- * Model-specific input documentation for video models.
- */
-interface VideoModelInputs {
-	/**
-	 * Text description to use for the generation.
-	 */
-	prompt: string;
-}
-
-/**
- * Default inputs for models that only require a prompt.
- */
-interface PromptInput {
-	/**
-	 * Text description to use for the generation.
-	 */
-	prompt: string;
-}
-
-/**
- * Conditional type that selects the appropriate model-specific input documentation.
- */
-type ModelSpecificInputs<T extends ModelDefinition> =
-	T["name"] extends "lucy-pro-i2i"
-		? ImageEditingInputs
-		: T["name"] extends ImageModels
-			? ImageGenerationInputs
-			: T["name"] extends VideoModels
-				? VideoModelInputs
-				: PromptInput;
-
-interface QueueInputs {
-	/**
-	 * Random seed for reproducible results.
-	 */
-	seed?: number;
-	/**
-	 * The output resolution to use for the generation.
-	 * @default "720p"
-	 */
-	resolution?: "480p" | "720p";
-	/**
-	 * The output orientation to use for the generation.
-	 * @default "landscape"
-	 */
-	orientation?: "landscape" | "portrait";
+interface QueueInputs extends ProcessInputs {
 	/**
 	 * The data to use for generation (for image-to-image and video-to-video).
 	 */
@@ -122,16 +51,6 @@ interface QueueInputs {
 	 * The end frame image (for first-last-frame models).
 	 */
 	end?: FileInput;
-	/**
-	 * Whether to enhance the prompt.
-	 * @default true
-	 */
-	enhance_prompt?: boolean;
-	/**
-	 * The number of inference steps.
-	 * @default 50
-	 */
-	num_inference_steps?: number;
 }
 
 type ModelSpecificQueueInputs<T extends ModelDefinition> = QueueInputs &

@@ -1,6 +1,7 @@
 import type { ModelDefinition } from "../shared/model";
 import { createInvalidInputError } from "../utils/errors";
-import { fileInputToBlob, sendRequest } from "./request";
+import { fileInputToBlob } from "../shared/request";
+import { sendRequest } from "./request";
 import type { FileInput, ProcessOptions } from "./types";
 
 export type ProcessClient = <T extends ModelDefinition>(

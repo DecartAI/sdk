@@ -1,13 +1,6 @@
 import type { ModelDefinition } from "../shared/model";
-import {
-	buildAuthHeaders,
-	buildFormData,
-	fileInputToBlob as sharedFileInputToBlob,
-} from "../shared/request";
+import { buildAuthHeaders, buildFormData } from "../shared/request";
 import { createSDKError } from "../utils/errors";
-
-// Re-export for backwards compatibility
-export const fileInputToBlob = sharedFileInputToBlob;
 
 export async function sendRequest({
 	baseUrl,

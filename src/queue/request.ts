@@ -31,8 +31,14 @@ export async function submitJob({
 }): Promise<JobSubmitResponse> {
 	const formData = buildFormData(inputs);
 
-	// Queue endpoint uses /v1/jobs/{model-name} pattern
-	const endpoint = `${baseUrl}/v1/jobs/${model.name}`;
+	if (!model.queueUrlPath) {
+		throw createQueueSubmitError(
+			`Model ${model.name} does not support queue processing`,
+			400,
+		);
+	}
+
+	const endpoint = `${baseUrl}${model.queueUrlPath}`;
 	const response = await fetch(endpoint, {
 		method: "POST",
 		headers: buildAuthHeaders(apiKey, integration),

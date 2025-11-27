@@ -115,8 +115,21 @@ export const createDecartClient = (options: DecartClientOptions) => {
 		 *   model: models.video("lucy-pro-t2v"),
 		 *   prompt: "A beautiful sunset over the ocean"
 		 * });
-		 * // Poll status manually...
-		 * const blob = await client.queue.result(job.job_id);
+		 *
+		 * // Poll until completion
+		 * while (true) {
+		 *   const status = await client.queue.status(job.job_id);
+		 *   console.log(`Job ${status.job_id}: ${status.status}`);
+		 *
+		 *   if (status.status === "completed") {
+		 *     const blob = await client.queue.result(job.job_id);
+		 *     break;
+		 *   }
+		 *   if (status.status === "failed") {
+		 *     throw new Error("Job failed");
+		 *   }
+		 *   await new Promise(resolve => setTimeout(resolve, 1500));
+		 * }
 		 * ```
 		 */
 		queue,
