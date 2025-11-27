@@ -390,6 +390,256 @@ describe("Decart SDK", () => {
 	});
 });
 
+describe("Queue API", () => {
+	let decart: ReturnType<typeof createDecartClient>;
+	let lastFormData: FormData | null = null;
+	let lastRequest: Request | null = null;
+
+	const server = setupServer();
+
+	beforeAll(() => {
+		server.listen({ onUnhandledRequest: "error" });
+	});
+
+	afterAll(() => {
+		server.close();
+	});
+
+	beforeEach(() => {
+		lastFormData = null;
+		lastRequest = null;
+		decart = createDecartClient({
+			apiKey: "test-api-key",
+			baseUrl: "http://localhost",
+		});
+	});
+
+	afterEach(() => {
+		server.resetHandlers();
+	});
+
+	describe("submit", () => {
+		it("submits a job and returns job info", async () => {
+			server.use(
+				http.post("http://localhost/v1/jobs/lucy-pro-t2v", async ({ request }) => {
+					lastRequest = request;
+					lastFormData = await request.formData();
+					return HttpResponse.json({
+						job_id: "job_123",
+						status: "pending",
+					});
+				}),
+			);
+
+			const result = await decart.queue.submit({
+				model: models.video("lucy-pro-t2v"),
+				prompt: "A cat playing piano",
+				seed: 42,
+			});
+
+			expect(result.job_id).toBe("job_123");
+			expect(result.status).toBe("pending");
+			expect(lastRequest?.headers.get("x-api-key")).toBe("test-api-key");
+			expect(lastFormData?.get("prompt")).toBe("A cat playing piano");
+			expect(lastFormData?.get("seed")).toBe("42");
+		});
+
+		it("validates required inputs", async () => {
+			await expect(
+				// biome-ignore lint/suspicious/noExplicitAny: testing invalid input
+				decart.queue.submit({
+					model: models.video("lucy-pro-t2v"),
+				} as any),
+			).rejects.toThrow("Invalid inputs");
+		});
+
+		it("handles API errors", async () => {
+			server.use(
+				http.post("http://localhost/v1/jobs/lucy-pro-t2v", () => {
+					return HttpResponse.text("Internal Server Error", { status: 500 });
+				}),
+			);
+
+			await expect(
+				decart.queue.submit({
+					model: models.video("lucy-pro-t2v"),
+					prompt: "test",
+				}),
+			).rejects.toThrow("Failed to submit job");
+		});
+	});
+
+	describe("status", () => {
+		it("gets job status", async () => {
+			server.use(
+				http.get("http://localhost/v1/jobs/job_123", ({ request }) => {
+					lastRequest = request;
+					return HttpResponse.json({
+						job_id: "job_123",
+						status: "processing",
+					});
+				}),
+			);
+
+			const result = await decart.queue.status("job_123");
+
+			expect(result.job_id).toBe("job_123");
+			expect(result.status).toBe("processing");
+			expect(lastRequest?.headers.get("x-api-key")).toBe("test-api-key");
+		});
+
+		it("handles API errors", async () => {
+			server.use(
+				http.get("http://localhost/v1/jobs/job_123", () => {
+					return HttpResponse.text("Not Found", { status: 404 });
+				}),
+			);
+
+			await expect(decart.queue.status("job_123")).rejects.toThrow(
+				"Failed to get job status",
+			);
+		});
+	});
+
+	describe("result", () => {
+		it("gets job result as blob", async () => {
+			server.use(
+				http.get("http://localhost/v1/jobs/job_123/content", ({ request }) => {
+					lastRequest = request;
+					return HttpResponse.arrayBuffer(MOCK_RESPONSE_DATA, {
+						headers: { "Content-Type": "video/mp4" },
+					});
+				}),
+			);
+
+			const result = await decart.queue.result("job_123");
+
+			expect(result).toBeInstanceOf(Blob);
+			expect(lastRequest?.headers.get("x-api-key")).toBe("test-api-key");
+		});
+
+		it("handles API errors", async () => {
+			server.use(
+				http.get("http://localhost/v1/jobs/job_123/content", () => {
+					return HttpResponse.text("Not Found", { status: 404 });
+				}),
+			);
+
+			await expect(decart.queue.result("job_123")).rejects.toThrow(
+				"Failed to get job content",
+			);
+		});
+	});
+
+	describe("submitAndPoll", () => {
+		it("submits and polls until completed", async () => {
+			let pollCount = 0;
+			const statusChanges: Array<{ job_id: string; status: string }> = [];
+
+			server.use(
+				http.post("http://localhost/v1/jobs/lucy-pro-t2v", async ({ request }) => {
+					lastFormData = await request.formData();
+					return HttpResponse.json({
+						job_id: "job_456",
+						status: "pending",
+					});
+				}),
+				http.get("http://localhost/v1/jobs/job_456", () => {
+					pollCount++;
+					if (pollCount < 2) {
+						return HttpResponse.json({
+							job_id: "job_456",
+							status: "processing",
+						});
+					}
+					return HttpResponse.json({
+						job_id: "job_456",
+						status: "completed",
+					});
+				}),
+				http.get("http://localhost/v1/jobs/job_456/content", () => {
+					return HttpResponse.arrayBuffer(MOCK_RESPONSE_DATA, {
+						headers: { "Content-Type": "video/mp4" },
+					});
+				}),
+			);
+
+			const result = await decart.queue.submitAndPoll({
+				model: models.video("lucy-pro-t2v"),
+				prompt: "A beautiful sunset",
+				onStatusChange: (job) => {
+					statusChanges.push({ job_id: job.job_id, status: job.status });
+				},
+			});
+
+			expect(result.status).toBe("completed");
+			if (result.status === "completed") {
+				expect(result.data).toBeInstanceOf(Blob);
+			}
+			expect(statusChanges.length).toBeGreaterThan(0);
+			expect(statusChanges[0].job_id).toBe("job_456");
+		});
+
+		it("returns failed status when job fails", async () => {
+			server.use(
+				http.post("http://localhost/v1/jobs/lucy-pro-t2v", () => {
+					return HttpResponse.json({
+						job_id: "job_789",
+						status: "pending",
+					});
+				}),
+				http.get("http://localhost/v1/jobs/job_789", () => {
+					return HttpResponse.json({
+						job_id: "job_789",
+						status: "failed",
+					});
+				}),
+			);
+
+			const result = await decart.queue.submitAndPoll({
+				model: models.video("lucy-pro-t2v"),
+				prompt: "This will fail",
+			});
+
+			expect(result.status).toBe("failed");
+			if (result.status === "failed") {
+				expect(result.error).toBe("Job failed");
+			}
+		});
+
+		it("supports abort signal", async () => {
+			const controller = new AbortController();
+
+			server.use(
+				http.post("http://localhost/v1/jobs/lucy-pro-t2v", () => {
+					return HttpResponse.json({
+						job_id: "job_abort",
+						status: "pending",
+					});
+				}),
+				http.get("http://localhost/v1/jobs/job_abort", async () => {
+					await new Promise((resolve) => setTimeout(resolve, 100));
+					return HttpResponse.json({
+						job_id: "job_abort",
+						status: "processing",
+					});
+				}),
+			);
+
+			const pollPromise = decart.queue.submitAndPoll({
+				model: models.video("lucy-pro-t2v"),
+				prompt: "test",
+				signal: controller.signal,
+			});
+
+			// Abort after a short delay
+			setTimeout(() => controller.abort(), 50);
+
+			await expect(pollPromise).rejects.toThrow();
+		});
+	});
+});
+
 describe("UserAgent", () => {
 	it("builds User-Agent with version and runtime", async () => {
 		const { buildUserAgent } = await import("../src/utils/user-agent.js");
