@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createProcessClient } from "./process/client";
 import { createQueueClient } from "./queue/client";
 import { createRealTimeClient } from "./realtime/client";
+import { readEnv } from "./utils/env";
 import {
 	createInvalidApiKeyError,
 	createInvalidBaseUrlError,
@@ -37,22 +38,44 @@ export type { ModelState } from "./shared/types";
 export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
 
 const decartClientOptionsSchema = z.object({
-	apiKey: z.string().min(1),
+	apiKey: z.string().min(1).optional(),
 	baseUrl: z.url().optional(),
 	integration: z.string().optional(),
 });
 
 export type DecartClientOptions = z.infer<typeof decartClientOptionsSchema>;
 
-export const createDecartClient = (options: DecartClientOptions) => {
-	const parsedOptions = decartClientOptionsSchema.safeParse(options);
+/**
+ * Create a Decart API client.
+ *
+ * @param options - Configuration options
+ * @param options.apiKey - API key for authentication. Defaults to the DECART_API_KEY environment variable.
+ * @param options.baseUrl - Override the default API base URL.
+ * @param options.integration - Optional integration identifier.
+ *
+ * @example
+ * ```ts
+ * // Option 1: Explicit API key
+ * const client = createDecartClient({ apiKey: "your-api-key" });
+ *
+ * // Option 2: Using DECART_API_KEY environment variable
+ * const client = createDecartClient();
+ * ```
+ */
+export const createDecartClient = (options: DecartClientOptions = {}) => {
+	const apiKey = options.apiKey ?? readEnv("DECART_API_KEY");
+
+	if (!apiKey) {
+		throw createInvalidApiKeyError();
+	}
+
+	const parsedOptions = decartClientOptionsSchema.safeParse({
+		...options,
+		apiKey,
+	});
 
 	if (!parsedOptions.success) {
 		const issue = parsedOptions.error.issues[0];
-
-		if (issue.path.includes("apiKey")) {
-			throw createInvalidApiKeyError();
-		}
 
 		if (issue.path.includes("baseUrl")) {
 			throw createInvalidBaseUrlError(options.baseUrl);
@@ -61,7 +84,7 @@ export const createDecartClient = (options: DecartClientOptions) => {
 		throw parsedOptions.error;
 	}
 
-	const { baseUrl = "https://api.decart.ai", apiKey, integration } = parsedOptions.data;
+	const { baseUrl = "https://api.decart.ai", integration } = parsedOptions.data;
 
 	const wsBaseUrl = "wss://api3.decart.ai";
 	const realtime = createRealTimeClient({
