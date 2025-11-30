@@ -86,7 +86,7 @@ export const createDecartClient = (options: DecartClientOptions) => {
 		realtime,
 		/**
 		 * Client for synchronous image generation.
-		 * Only image models (t2i, i2i) support the sync/process API.
+		 * Only image models support the sync/process API.
 		 *
 		 * @example
 		 * ```ts

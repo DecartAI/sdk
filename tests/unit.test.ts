@@ -270,7 +270,7 @@ describe("Queue API", () => {
 	});
 
 	describe("submit", () => {
-		it("submits a job and returns job info", async () => {
+		it("submits text-to-video job", async () => {
 			server.use(
 				http.post("http://localhost/v1/jobs/lucy-pro-t2v", async ({ request }) => {
 					lastRequest = request;
@@ -295,11 +295,146 @@ describe("Queue API", () => {
 			expect(lastFormData?.get("seed")).toBe("42");
 		});
 
+		it("submits video-to-video job", async () => {
+			server.use(
+				http.post("http://localhost/v1/jobs/lucy-pro-v2v", async ({ request }) => {
+					lastRequest = request;
+					lastFormData = await request.formData();
+					return HttpResponse.json({
+						job_id: "job_v2v",
+						status: "pending",
+					});
+				}),
+			);
+
+			const testBlob = new Blob(["test-video"], { type: "video/mp4" });
+
+			const result = await decart.queue.submit({
+				model: models.video("lucy-pro-v2v"),
+				prompt: "Make it artistic",
+				data: testBlob,
+				enhance_prompt: true,
+				num_inference_steps: 50,
+			});
+
+			expect(result.job_id).toBe("job_v2v");
+			expect(result.status).toBe("pending");
+			expect(lastFormData?.get("prompt")).toBe("Make it artistic");
+			expect(lastFormData?.get("enhance_prompt")).toBe("true");
+			expect(lastFormData?.get("num_inference_steps")).toBe("50");
+
+			const dataFile = lastFormData?.get("data") as File;
+			expect(dataFile).toBeInstanceOf(File);
+		});
+
+		it("submits image-to-video job", async () => {
+			server.use(
+				http.post("http://localhost/v1/jobs/lucy-pro-i2v", async ({ request }) => {
+					lastRequest = request;
+					lastFormData = await request.formData();
+					return HttpResponse.json({
+						job_id: "job_i2v",
+						status: "pending",
+					});
+				}),
+			);
+
+			const testBlob = new Blob(["test-image"], { type: "image/png" });
+
+			const result = await decart.queue.submit({
+				model: models.video("lucy-pro-i2v"),
+				prompt: "The image comes to life",
+				data: testBlob,
+			});
+
+			expect(result.job_id).toBe("job_i2v");
+			expect(result.status).toBe("pending");
+			expect(lastFormData?.get("prompt")).toBe("The image comes to life");
+
+			const dataFile = lastFormData?.get("data") as File;
+			expect(dataFile).toBeInstanceOf(File);
+		});
+
+		it("submits first-last-frame-to-video job", async () => {
+			server.use(
+				http.post("http://localhost/v1/jobs/lucy-pro-flf2v", async ({ request }) => {
+					lastRequest = request;
+					lastFormData = await request.formData();
+					return HttpResponse.json({
+						job_id: "job_flf2v",
+						status: "pending",
+					});
+				}),
+			);
+
+			const startBlob = new Blob(["start-frame"], { type: "image/png" });
+			const endBlob = new Blob(["end-frame"], { type: "image/png" });
+
+			const result = await decart.queue.submit({
+				model: models.video("lucy-pro-flf2v"),
+				prompt: "Smooth transition",
+				start: startBlob,
+				end: endBlob,
+				seed: 123,
+			});
+
+			expect(result.job_id).toBe("job_flf2v");
+			expect(result.status).toBe("pending");
+			expect(lastFormData?.get("prompt")).toBe("Smooth transition");
+			expect(lastFormData?.get("seed")).toBe("123");
+
+			const startFile = lastFormData?.get("start") as File;
+			const endFile = lastFormData?.get("end") as File;
+			expect(startFile).toBeInstanceOf(File);
+			expect(endFile).toBeInstanceOf(File);
+		});
+
+		it("submits motion video job", async () => {
+			server.use(
+				http.post("http://localhost/v1/jobs/lucy-motion", async ({ request }) => {
+					lastRequest = request;
+					lastFormData = await request.formData();
+					return HttpResponse.json({
+						job_id: "job_motion",
+						status: "pending",
+					});
+				}),
+			);
+
+			const testBlob = new Blob(["test-image"], { type: "image/png" });
+
+			const result = await decart.queue.submit({
+				model: models.video("lucy-motion"),
+				data: testBlob,
+				trajectory: [
+					{ frame: 0, x: 0, y: 0 },
+					{ frame: 10, x: 100, y: 100 },
+				],
+			});
+
+			expect(result.job_id).toBe("job_motion");
+			expect(result.status).toBe("pending");
+
+			const dataFile = lastFormData?.get("data") as File;
+			expect(dataFile).toBeInstanceOf(File);
+			expect(lastFormData?.get("trajectory")).toBeDefined();
+		});
+
 		it("validates required inputs", async () => {
 			await expect(
 				// biome-ignore lint/suspicious/noExplicitAny: testing invalid input
 				decart.queue.submit({
 					model: models.video("lucy-pro-t2v"),
+				} as any),
+			).rejects.toThrow("Invalid inputs");
+		});
+
+		it("validates required inputs for video-to-video", async () => {
+			await expect(
+				// biome-ignore lint/suspicious/noExplicitAny: testing invalid input
+				decart.queue.submit({
+					model: models.video("lucy-pro-v2v"),
+					prompt: "test",
 				} as any),
 			).rejects.toThrow("Invalid inputs");
 		});
