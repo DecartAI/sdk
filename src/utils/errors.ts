@@ -31,7 +31,7 @@ export function createSDKError(
 export function createInvalidApiKeyError(): DecartSDKError {
 	return createSDKError(
 		ERROR_CODES.INVALID_API_KEY,
-		"API key is required and must be a non-empty string",
+		"Missing API key. Pass `apiKey` to createDecartClient() or set the DECART_API_KEY environment variable.",
 	);
 }
 

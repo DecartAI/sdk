@@ -17,7 +17,11 @@ const BASE_URL = "http://localhost";
 
 describe("Decart SDK", () => {
 	describe("createDecartClient", () => {
-		it("creates a client", () => {
+		afterEach(() => {
+			delete process.env.DECART_API_KEY;
+		});
+
+		it("creates a client with explicit apiKey", () => {
 			const decart = createDecartClient({
 				apiKey: "test",
 			});
@@ -25,11 +29,32 @@ describe("Decart SDK", () => {
 			expect(decart).toBeDefined();
 		});
 
-		it("throws an error if the api key is not provided", () => {
-			// biome-ignore lint/suspicious/noExplicitAny: invalid options to test
-			expect(() => createDecartClient({} as any)).toThrow(
-				"API key is required and must be a non-empty string",
+		it("creates a client using DECART_API_KEY env var", () => {
+			process.env.DECART_API_KEY = "env-api-key";
+
+			const decart = createDecartClient();
+
+			expect(decart).toBeDefined();
+		});
+
+		it("throws an error if api key is not provided and env var is not set", () => {
+			expect(() => createDecartClient()).toThrow("Missing API key");
+		});
+
+		it("throws an error if api key is empty string", () => {
+			expect(() => createDecartClient({ apiKey: "" })).toThrow(
+				"Missing API key",
 			);
+		});
+
+		it("throws an error if env var is empty string", () => {
+			process.env.DECART_API_KEY = "";
+			expect(() => createDecartClient()).toThrow("Missing API key");
+		});
+
+		it("throws an error if env var is only whitespace", () => {
+			process.env.DECART_API_KEY = "   ";
+			expect(() => createDecartClient()).toThrow("Missing API key");
 		});
 
 		it("throws an error if invalid base url is provided", () => {
