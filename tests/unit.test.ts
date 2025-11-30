@@ -32,7 +32,6 @@ describe("Decart SDK", () => {
 		it("creates a client using DECART_API_KEY env var", () => {
 			process.env.DECART_API_KEY = "env-api-key";
 			const decart = createDecartClient();
-
 			expect(decart).toBeDefined();
 		});
 
