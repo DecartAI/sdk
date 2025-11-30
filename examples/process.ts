@@ -8,47 +8,12 @@ const imageFile: FileInput = fileInput.files?.[0] as FileInput;
 
 const client = createDecartClient({
 	baseUrl: "https://api.decart.ai",
-	apiKey: "dcrt-dLMPLEvXIuYPCpC0U5QKJh7jTH9RK8EoAaMT",
+	apiKey: "your-api-key",
 });
 
-const textToVideo = await client.process({
-	model: models.video("lucy-pro-t2v"),
-	prompt: "A cat walking in a park",
-	seed: 42,
-	resolution: "720p",
-	orientation: "landscape",
-});
-
-const videoToVideo = await client.process({
-	model: models.video("lucy-pro-v2v"),
-	prompt: "Lego World",
-	data: videoFile,
-	enhance_prompt: true,
-	num_inference_steps: 50,
-});
-
-const fastVideoToVideo = await client.process({
-	model: models.video("lucy-fast-v2v"),
-	prompt: "Change the car to a vintage motorcycle",
-	data: videoFile,
-	resolution: "720p",
-	enhance_prompt: true,
-	seed: 42,
-});
-
-const videoByUrl = await client.process({
-	model: models.video("lucy-pro-v2v"),
-	prompt: "Cyberpunk style",
-	data: "https://example.com/video.mp4",
-});
-
-const firstLastFrame = await client.process({
-	model: models.video("lucy-pro-flf2v"),
-	prompt: "Smooth transition between frames",
-	start: imageFile,
-	end: imageFile,
-	seed: 123,
-});
+// ============================================
+// Process API - Image Models (synchronous)
+// ============================================
 
 const textToImage = await client.process({
 	model: models.image("lucy-pro-t2i"),
@@ -63,7 +28,55 @@ const imageToImage = await client.process({
 	enhance_prompt: false,
 });
 
-const imageToVideoMotion = await client.process({
+// Display image result
+const imgElement = document.createElement("img");
+imgElement.src = URL.createObjectURL(textToImage);
+document.body.appendChild(imgElement);
+
+// ============================================
+// Queue API - Video Models (asynchronous)
+// ============================================
+
+const textToVideo = await client.queue.submitAndPoll({
+	model: models.video("lucy-pro-t2v"),
+	prompt: "A cat walking in a park",
+	seed: 42,
+	resolution: "720p",
+	orientation: "landscape",
+});
+
+const videoToVideo = await client.queue.submitAndPoll({
+	model: models.video("lucy-pro-v2v"),
+	prompt: "Lego World",
+	data: videoFile,
+	enhance_prompt: true,
+	num_inference_steps: 50,
+});
+
+const fastVideoToVideo = await client.queue.submitAndPoll({
+	model: models.video("lucy-fast-v2v"),
+	prompt: "Change the car to a vintage motorcycle",
+	data: videoFile,
+	resolution: "720p",
+	enhance_prompt: true,
+	seed: 42,
+});
+
+const videoByUrl = await client.queue.submitAndPoll({
+	model: models.video("lucy-pro-v2v"),
+	prompt: "Cyberpunk style",
+	data: "https://example.com/video.mp4",
+});
+
+const firstLastFrame = await client.queue.submitAndPoll({
+	model: models.video("lucy-pro-flf2v"),
+	prompt: "Smooth transition between frames",
+	start: imageFile,
+	end: imageFile,
+	seed: 123,
+});
+
+const imageToVideoMotion = await client.queue.submitAndPoll({
 	model: models.video("lucy-motion"),
 	data: imageFile,
 	trajectory: [
@@ -72,8 +85,10 @@ const imageToVideoMotion = await client.process({
 	],
 });
 
-const videoElement = document.createElement("video");
-videoElement.src = URL.createObjectURL(textToVideo);
-videoElement.play();
-
-document.body.appendChild(videoElement);
+// Display video result
+if (textToVideo.status === "completed") {
+	const videoElement = document.createElement("video");
+	videoElement.src = URL.createObjectURL(textToVideo.data);
+	videoElement.play();
+	document.body.appendChild(videoElement);
+}

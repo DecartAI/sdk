@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import type {
+	ImageModelDefinition,
 	ImageModels,
 	ModelDefinition,
 	ModelInputSchemas,
@@ -157,11 +158,12 @@ type MergeDocumentedInputs<T extends ModelDefinition> =
 	PickDocumentedInputs<T> & InferModelInputs<T>;
 
 /**
- * Options for the process client to generate video or image content.
+ * Options for the process client to generate image content.
+ * Only image models support the sync/process API.
  *
- * @template T - The model definition type
+ * @template T - The image model definition type
  */
-export type ProcessOptions<T extends ModelDefinition = ModelDefinition> = {
+export type ProcessOptions<T extends ImageModelDefinition = ImageModelDefinition> = {
 	/**
 	 * The model definition to use.
 	 */

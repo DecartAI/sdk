@@ -1,4 +1,4 @@
-import type { ModelDefinition } from "../shared/model";
+import type { ModelDefinition, VideoModelDefinition } from "../shared/model";
 import type {
 	FileInput,
 	InferModelInputs,
@@ -66,8 +66,9 @@ type MergeDocumentedInputs<T extends ModelDefinition> =
 
 /**
  * Options for queue.submit() - submit a job for async processing.
+ * Only video models support the queue API.
  */
-export type QueueSubmitOptions<T extends ModelDefinition = ModelDefinition> = {
+export type QueueSubmitOptions<T extends VideoModelDefinition = VideoModelDefinition> = {
 	/**
 	 * The model definition to use.
 	 */
@@ -80,9 +81,10 @@ export type QueueSubmitOptions<T extends ModelDefinition = ModelDefinition> = {
 
 /**
  * Options for queue.submitAndPoll() - submit and wait for completion.
+ * Only video models support the queue API.
  */
 export type QueueSubmitAndPollOptions<
-	T extends ModelDefinition = ModelDefinition,
+	T extends VideoModelDefinition = VideoModelDefinition,
 > = QueueSubmitOptions<T> & {
 	/**
 	 * Callback invoked when job status changes during polling.

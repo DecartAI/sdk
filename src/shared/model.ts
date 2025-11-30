@@ -230,6 +230,18 @@ export type ModelDefinition<T extends Model = Model> = {
 		: z.ZodTypeAny;
 };
 
+/**
+ * Type alias for model definitions that support synchronous processing.
+ * Only image models support the sync/process API.
+ */
+export type ImageModelDefinition = ModelDefinition<ImageModels>;
+
+/**
+ * Type alias for model definitions that support queue processing.
+ * Only video models support the queue API.
+ */
+export type VideoModelDefinition = ModelDefinition<VideoModels>;
+
 export const modelDefinitionSchema = z.object({
 	name: modelSchema,
 	urlPath: z.string(),

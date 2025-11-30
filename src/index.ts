@@ -24,11 +24,13 @@ export type {
 	RealTimeClientInitialState,
 } from "./realtime/client";
 export {
+	type ImageModelDefinition,
 	type ImageModels,
 	type Model,
 	type ModelDefinition,
 	models,
 	type RealTimeModels,
+	type VideoModelDefinition,
 	type VideoModels,
 } from "./shared/model";
 export type { ModelState } from "./shared/types";
@@ -83,20 +85,22 @@ export const createDecartClient = (options: DecartClientOptions) => {
 	return {
 		realtime,
 		/**
-		 * Client for video and image generation.
+		 * Client for synchronous image generation.
+		 * Only image models (t2i, i2i) support the sync/process API.
 		 *
 		 * @example
 		 * ```ts
 		 * const client = createDecartClient({ apiKey: "your-api-key" });
 		 * const result = await client.process({
-		 *   model: models.video("lucy-pro-t2v"),
+		 *   model: models.image("lucy-pro-t2i"),
 		 *   prompt: "A beautiful sunset over the ocean"
 		 * });
 		 * ```
 		 */
 		process,
 		/**
-		 * Client for queue-based async video and image generation.
+		 * Client for queue-based async video generation.
+		 * Only video models support the queue API.
 		 * Jobs are submitted and processed asynchronously.
 		 *
 		 * @example

@@ -78,11 +78,11 @@ describe("Decart SDK", () => {
 		});
 
 		describe("Model Processing", () => {
-			it("processes text-to-video", async () => {
-				server.use(createMockHandler("/v1/generate/lucy-pro-t2v"));
+			it("processes text-to-image", async () => {
+				server.use(createMockHandler("/v1/generate/lucy-pro-t2i"));
 
 				const result = await decart.process({
-					model: models.video("lucy-pro-t2v"),
+					model: models.image("lucy-pro-t2i"),
 					prompt: "A cat playing piano",
 					seed: 42,
 				});
@@ -94,10 +94,10 @@ describe("Decart SDK", () => {
 			});
 
 			it("includes User-Agent header in requests", async () => {
-				server.use(createMockHandler("/v1/generate/lucy-pro-t2v"));
+				server.use(createMockHandler("/v1/generate/lucy-pro-t2i"));
 
 				await decart.process({
-					model: models.video("lucy-pro-t2v"),
+					model: models.image("lucy-pro-t2i"),
 					prompt: "Test prompt",
 				});
 
@@ -115,10 +115,10 @@ describe("Decart SDK", () => {
 					integration: "vercel-ai-sdk/3.0.0",
 				});
 
-				server.use(createMockHandler("/v1/generate/lucy-pro-t2v"));
+				server.use(createMockHandler("/v1/generate/lucy-pro-t2i"));
 
 				await decartWithIntegration.process({
-					model: models.video("lucy-pro-t2v"),
+					model: models.image("lucy-pro-t2i"),
 					prompt: "Test with integration",
 				});
 
@@ -130,7 +130,7 @@ describe("Decart SDK", () => {
 				);
 			});
 
-			it("processes text-to-image", async () => {
+			it("processes text-to-image with resolution", async () => {
 				server.use(createMockHandler("/v1/generate/lucy-pro-t2i"));
 
 				const result = await decart.process({
@@ -165,145 +165,6 @@ describe("Decart SDK", () => {
 				const dataFile = lastFormData?.get("data") as File;
 				expect(dataFile).toBeInstanceOf(File);
 			});
-
-			it("processes image-to-video", async () => {
-				server.use(createMockHandler("/v1/generate/lucy-pro-i2v"));
-
-				const testImage = new Blob(["test-image"], { type: "image/png" });
-
-				const result = await decart.process({
-					model: models.video("lucy-pro-i2v"),
-					prompt: "Animate this image",
-					data: testImage,
-					seed: 456,
-				});
-
-				expect(result).toBeInstanceOf(Blob);
-				expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
-				expect(lastFormData?.get("prompt")).toBe("Animate this image");
-				expect(lastFormData?.get("seed")).toBe("456");
-
-				const dataFile = lastFormData?.get("data") as File;
-				expect(dataFile).toBeInstanceOf(File);
-			});
-
-			it("processes video-to-video", async () => {
-				server.use(createMockHandler("/v1/generate/lucy-pro-v2v"));
-
-				const testVideo = new Blob(["test-video"], { type: "video/mp4" });
-
-				const result = await decart.process({
-					model: models.video("lucy-pro-v2v"),
-					prompt: "Transform video style",
-					data: testVideo,
-					enhance_prompt: true,
-					num_inference_steps: 30,
-				});
-
-				expect(result).toBeInstanceOf(Blob);
-				expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
-				expect(lastFormData?.get("prompt")).toBe("Transform video style");
-				expect(lastFormData?.get("enhance_prompt")).toBe("true");
-				expect(lastFormData?.get("num_inference_steps")).toBe("30");
-
-				const dataFile = lastFormData?.get("data") as File;
-				expect(dataFile).toBeInstanceOf(File);
-			});
-
-			it("processes first-last-frame-to-video", async () => {
-				server.use(createMockHandler("/v1/generate/lucy-pro-flf2v"));
-
-				const startFrame = new Blob(["start-frame"], { type: "image/png" });
-				const endFrame = new Blob(["end-frame"], { type: "image/png" });
-
-				const result = await decart.process({
-					model: models.video("lucy-pro-flf2v"),
-					prompt: "Interpolate between frames",
-					start: startFrame,
-					end: endFrame,
-				});
-
-				expect(result).toBeInstanceOf(Blob);
-				expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
-				expect(lastFormData?.get("prompt")).toBe("Interpolate between frames");
-
-				const startFile = lastFormData?.get("start") as File;
-				const endFile = lastFormData?.get("end") as File;
-				expect(startFile).toBeInstanceOf(File);
-				expect(endFile).toBeInstanceOf(File);
-			});
-
-			it("processes dev image-to-video", async () => {
-				server.use(createMockHandler("/v1/generate/lucy-dev-i2v"));
-
-				const testImage = new Blob(["test-image"], { type: "image/png" });
-
-				const result = await decart.process({
-					model: models.video("lucy-dev-i2v"),
-					prompt: "Dev version i2v",
-					data: testImage,
-				});
-
-				expect(result).toBeInstanceOf(Blob);
-				expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
-				expect(lastFormData?.get("prompt")).toBe("Dev version i2v");
-
-				const dataFile = lastFormData?.get("data") as File;
-				expect(dataFile).toBeInstanceOf(File);
-			});
-
-			it("processes fast video-to-video", async () => {
-				server.use(createMockHandler("/v1/generate/lucy-fast-v2v"));
-
-				const testVideo = new Blob(["test-video"], { type: "video/mp4" });
-
-				const result = await decart.process({
-					model: models.video("lucy-fast-v2v"),
-					prompt: "Change the car to a motorcycle",
-					data: testVideo,
-					resolution: "720p",
-					enhance_prompt: true,
-					seed: 42,
-				});
-
-				expect(result).toBeInstanceOf(Blob);
-				expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
-				expect(lastFormData?.get("prompt")).toBe("Change the car to a motorcycle");
-				expect(lastFormData?.get("resolution")).toBe("720p");
-				expect(lastFormData?.get("enhance_prompt")).toBe("true");
-				expect(lastFormData?.get("seed")).toBe("42");
-
-				const dataFile = lastFormData?.get("data") as File;
-				expect(dataFile).toBeInstanceOf(File);
-			});
-
-			it("processes image-to-video-motion", async () => {
-				server.use(createMockHandler("/v1/generate/lucy-motion"));
-
-				const testImage = new Blob(["test-image"], { type: "image/png" });
-
-				const trajectory = [
-					{ frame: 0, x: 0, y: 0 },
-					{ frame: 1, x: 50, y: 50 },
-					{ frame: 2, x: 75, y: 75 },
-					{ frame: 3, x: 100, y: 100 },
-				];
-
-				const result = await decart.process({
-					model: models.video("lucy-motion"),
-					data: testImage,
-					trajectory,
-				});
-
-				expect(result).toBeInstanceOf(Blob);
-				expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
-
-				const dataFile = lastFormData?.get("data") as File;
-				expect(dataFile).toBeInstanceOf(File);
-				expect(lastFormData?.get("trajectory")).toEqual(
-					JSON.stringify(trajectory),
-				);
-			});
 		});
 
 		describe("Abort Signal", () => {
@@ -311,7 +172,7 @@ describe("Decart SDK", () => {
 				const controller = new AbortController();
 
 				server.use(
-					http.post(`${BASE_URL}/v1/generate/lucy-pro-t2v`, async () => {
+					http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, async () => {
 						await new Promise((resolve) => setTimeout(resolve, 100));
 						return HttpResponse.arrayBuffer(MOCK_RESPONSE_DATA, {
 							headers: { "Content-Type": "application/octet-stream" },
@@ -320,7 +181,7 @@ describe("Decart SDK", () => {
 				);
 
 				const processPromise = decart.process({
-					model: models.video("lucy-pro-t2v"),
+					model: models.image("lucy-pro-t2i"),
 					prompt: "test",
 					signal: controller.signal,
 				});
@@ -332,11 +193,11 @@ describe("Decart SDK", () => {
 		});
 
 		describe("Input Validation", () => {
-			it("validates required inputs for text-to-video", async () => {
+			it("validates required inputs for text-to-image", async () => {
 				await expect(
 					// biome-ignore lint/suspicious/noExplicitAny: testing invalid input
 					decart.process({
-						model: models.video("lucy-pro-t2v"),
+						model: models.image("lucy-pro-t2i"),
 					} as any),
 				).rejects.toThrow("Invalid inputs");
 			});
@@ -351,20 +212,10 @@ describe("Decart SDK", () => {
 				).rejects.toThrow("Invalid inputs");
 			});
 
-			it("validates inputs for image-to-video-motion", async () => {
-				await expect(
-					decart.process({
-						model: models.video("lucy-motion"),
-						data: new Blob(["test-image"], { type: "image/png" }),
-						trajectory: [{ frame: 0, x: 0, y: 0 }],
-					}),
-				).rejects.toThrow("expected array to have >=2 items");
-			});
-
 			it("validates prompt max length is 1000 characters", async () => {
 				await expect(
 					decart.process({
-						model: models.video("lucy-pro-t2v"),
+						model: models.image("lucy-pro-t2i"),
 						prompt: "a".repeat(1001),
 					}),
 				).rejects.toThrow("expected string to have <=1000 characters");
@@ -374,14 +225,14 @@ describe("Decart SDK", () => {
 		describe("Error Handling", () => {
 			it("handles API errors", async () => {
 				server.use(
-					http.post(`${BASE_URL}/v1/generate/lucy-pro-t2v`, () => {
+					http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, () => {
 						return HttpResponse.text("Internal Server Error", { status: 500 });
 					}),
 				);
 
 				await expect(
 					decart.process({
-						model: models.video("lucy-pro-t2v"),
+						model: models.image("lucy-pro-t2i"),
 						prompt: "test",
 					}),
 				).rejects.toThrow("Processing failed");
