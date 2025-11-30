@@ -64,7 +64,9 @@ type MergeDocumentedInputs<T extends ModelDefinition> =
  * Options for queue.submit() - submit a job for async processing.
  * Only video models support the queue API.
  */
-export type QueueSubmitOptions<T extends VideoModelDefinition = VideoModelDefinition> = {
+export type QueueSubmitOptions<
+	T extends VideoModelDefinition = VideoModelDefinition,
+> = {
 	/**
 	 * The model definition to use.
 	 */
