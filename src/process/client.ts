@@ -1,10 +1,14 @@
-import type { ModelDefinition } from "../shared/model";
+import type { ImageModelDefinition } from "../shared/model";
 import { createInvalidInputError } from "../utils/errors";
 import { fileInputToBlob } from "../shared/request";
 import { sendRequest } from "./request";
 import type { FileInput, ProcessOptions } from "./types";
 
-export type ProcessClient = <T extends ModelDefinition>(
+/**
+ * Client for synchronous image generation.
+ * Only image models (t2i, i2i) support the sync/process API.
+ */
+export type ProcessClient = <T extends ImageModelDefinition>(
 	options: ProcessOptions<T>,
 ) => Promise<Blob>;
 
@@ -19,7 +23,7 @@ export const createProcessClient = (
 ): ProcessClient => {
 	const { apiKey, baseUrl, integration } = opts;
 
-	const _process = async <T extends ModelDefinition>(
+	const _process = async <T extends ImageModelDefinition>(
 		options: ProcessOptions<T>,
 	): Promise<Blob> => {
 		const { model, signal, ...inputs } = options;

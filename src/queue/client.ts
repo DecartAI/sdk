@@ -1,4 +1,4 @@
-import type { ModelDefinition } from "../shared/model";
+import type { VideoModelDefinition } from "../shared/model";
 import { fileInputToBlob } from "../shared/request";
 import { createInvalidInputError } from "../utils/errors";
 import { pollUntilComplete } from "./polling";
@@ -12,6 +12,10 @@ import type {
 } from "./types";
 import type { FileInput } from "../process/types";
 
+/**
+ * Client for queue-based async video generation.
+ * Only video models support the queue API.
+ */
 export type QueueClient = {
 	/**
 	 * Submit a job to the queue for async processing.
@@ -26,7 +30,7 @@ export type QueueClient = {
 	 * console.log(job.job_id); // "job_abc123"
 	 * ```
 	 */
-	submit: <T extends ModelDefinition>(
+	submit: <T extends VideoModelDefinition>(
 		options: QueueSubmitOptions<T>,
 	) => Promise<JobSubmitResponse>;
 
@@ -74,7 +78,7 @@ export type QueueClient = {
 	 * }
 	 * ```
 	 */
-	submitAndPoll: <T extends ModelDefinition>(
+	submitAndPoll: <T extends VideoModelDefinition>(
 		options: QueueSubmitAndPollOptions<T>,
 	) => Promise<QueueJobResult>;
 };
@@ -88,7 +92,7 @@ export type QueueClientOptions = {
 export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
 	const { apiKey, baseUrl, integration } = opts;
 
-	const submit = async <T extends ModelDefinition>(
+	const submit = async <T extends VideoModelDefinition>(
 		options: QueueSubmitOptions<T>,
 	): Promise<JobSubmitResponse> => {
 		const { model, signal, ...inputs } = options;
@@ -141,7 +145,7 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
 		});
 	};
 
-	const submitAndPoll = async <T extends ModelDefinition>(
+	const submitAndPoll = async <T extends VideoModelDefinition>(
 		options: QueueSubmitAndPollOptions<T>,
 	): Promise<QueueJobResult> => {
 		const { onStatusChange, signal, ...submitOptions } = options;

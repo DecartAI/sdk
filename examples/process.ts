@@ -1,79 +1,46 @@
-import { createDecartClient, type FileInput, models } from "@decartai/sdk";
-
-const fileInput = document.querySelector(
-	'input[type="file"]',
-) as HTMLInputElement;
-const videoFile: FileInput = fileInput.files?.[0] as FileInput;
-const imageFile: FileInput = fileInput.files?.[0] as FileInput;
+/**
+ * Process API Examples - Image Models Only (Node.js)
+ *
+ * The process API supports synchronous image generation.
+ * For video models, use the queue API instead (see queue.ts).
+ *
+ * Note: API keys should be kept private and never exposed in browser code.
+ */
+import fs from "node:fs";
+import { createDecartClient, models } from "@decartai/sdk";
 
 const client = createDecartClient({
-	baseUrl: "https://api.decart.ai",
-	apiKey: "dcrt-dLMPLEvXIuYPCpC0U5QKJh7jTH9RK8EoAaMT",
+	apiKey: process.env.DECART_API_KEY || "your-api-key",
 });
 
-const textToVideo = await client.process({
-	model: models.video("lucy-pro-t2v"),
-	prompt: "A cat walking in a park",
-	seed: 42,
-	resolution: "720p",
-	orientation: "landscape",
-});
+async function main() {
+	// Text-to-Image generation
+	console.log("Generating image from text...");
+	const textToImage = await client.process({
+		model: models.image("lucy-pro-t2i"),
+		prompt: "A beautiful sunset over mountains",
+		orientation: "portrait",
+	});
 
-const videoToVideo = await client.process({
-	model: models.video("lucy-pro-v2v"),
-	prompt: "Lego World",
-	data: videoFile,
-	enhance_prompt: true,
-	num_inference_steps: 50,
-});
+	// Save the generated image
+	const imageBuffer = Buffer.from(await textToImage.arrayBuffer());
+	fs.writeFileSync("output_t2i.png", imageBuffer);
+	console.log("Image saved to output_t2i.png");
 
-const fastVideoToVideo = await client.process({
-	model: models.video("lucy-fast-v2v"),
-	prompt: "Change the car to a vintage motorcycle",
-	data: videoFile,
-	resolution: "720p",
-	enhance_prompt: true,
-	seed: 42,
-});
+	// Image-to-Image transformation
+	console.log("Transforming image...");
+	const inputImage = fs.readFileSync("output_t2i.png");
+	const imageToImage = await client.process({
+		model: models.image("lucy-pro-i2i"),
+		prompt: "Oil painting style",
+		data: new Blob([inputImage]),
+		enhance_prompt: false,
+	});
 
-const videoByUrl = await client.process({
-	model: models.video("lucy-pro-v2v"),
-	prompt: "Cyberpunk style",
-	data: "https://example.com/video.mp4",
-});
+	// Save the transformed image
+	const transformedBuffer = Buffer.from(await imageToImage.arrayBuffer());
+	fs.writeFileSync("output_i2i.png", transformedBuffer);
+	console.log("Image saved to output_i2i.png");
+}
 
-const firstLastFrame = await client.process({
-	model: models.video("lucy-pro-flf2v"),
-	prompt: "Smooth transition between frames",
-	start: imageFile,
-	end: imageFile,
-	seed: 123,
-});
-
-const textToImage = await client.process({
-	model: models.image("lucy-pro-t2i"),
-	prompt: "A beautiful sunset over mountains",
-	orientation: "portrait",
-});
-
-const imageToImage = await client.process({
-	model: models.image("lucy-pro-i2i"),
-	prompt: "Oil painting style",
-	data: imageFile,
-	enhance_prompt: false,
-});
-
-const imageToVideoMotion = await client.process({
-	model: models.video("lucy-motion"),
-	data: imageFile,
-	trajectory: [
-		{ frame: 0, x: 0, y: 0 },
-		{ frame: 1, x: 100, y: 100 },
-	],
-});
-
-const videoElement = document.createElement("video");
-videoElement.src = URL.createObjectURL(textToVideo);
-videoElement.play();
-
-document.body.appendChild(videoElement);
+main().catch(console.error);

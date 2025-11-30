@@ -18,7 +18,7 @@ const OUTPUT_DIR = join(__dirname, "e2e-output");
 const VIDEO_FIXTURE = join(__dirname, "fixtures", "video.mp4");
 const IMAGE_FIXTURE = join(__dirname, "fixtures", "image.png");
 
-describe.sequential("Process API E2E Tests", { timeout: 120_000 }, () => {
+describe.sequential("E2E Tests", { timeout: 120_000 }, () => {
 	let client: ReturnType<typeof createDecartClient>;
 	let videoBlob: Blob;
 	let imageBlob: Blob;
@@ -63,81 +63,7 @@ describe.sequential("Process API E2E Tests", { timeout: 120_000 }, () => {
 		return outputPath;
 	}
 
-	describe("Video Models", () => {
-		it("lucy-pro-t2v: text-to-video", async () => {
-			const result = await client.process({
-				model: models.video("lucy-pro-t2v"),
-				prompt: "A majestic eagle soaring through mountain peaks at sunset",
-				seed: 42,
-				resolution: "720p",
-				orientation: "landscape",
-			});
-
-			expect(result).toBeInstanceOf(Blob);
-			const path = await saveOutput(result, "lucy-pro-t2v", ".mp4");
-			console.log(`Saved to: ${path}`);
-		});
-
-		it("lucy-dev-i2v: image-to-video (dev)", async () => {
-			const result = await client.process({
-				model: models.video("lucy-dev-i2v"),
-				prompt: "The image comes to life with gentle movements",
-				data: imageBlob,
-				seed: 123,
-				resolution: "720p",
-			});
-
-			expect(result).toBeInstanceOf(Blob);
-			const path = await saveOutput(result, "lucy-dev-i2v", ".mp4");
-			console.log(`Saved to: ${path}`);
-		});
-
-		it("lucy-pro-i2v: image-to-video (pro)", async () => {
-			const result = await client.process({
-				model: models.video("lucy-pro-i2v"),
-				prompt: "Transform the image into a dynamic video scene",
-				data: imageBlob,
-				seed: 456,
-				resolution: "720p",
-			});
-
-			expect(result).toBeInstanceOf(Blob);
-			const path = await saveOutput(result, "lucy-pro-i2v", ".mp4");
-			console.log(`Saved to: ${path}`);
-		});
-
-		it("lucy-pro-v2v: video-to-video (pro)", async () => {
-			const result = await client.process({
-				model: models.video("lucy-pro-v2v"),
-				prompt: "Lego World animated style",
-				data: videoBlob,
-				seed: 999,
-				enhance_prompt: true,
-				num_inference_steps: 50,
-			});
-
-			expect(result).toBeInstanceOf(Blob);
-			const path = await saveOutput(result, "lucy-pro-v2v", ".mp4");
-			console.log(`Saved to: ${path}`);
-		});
-
-		it("lucy-pro-flf2v: first-last-frame-to-video", async () => {
-			const result = await client.process({
-				model: models.video("lucy-pro-flf2v"),
-				prompt: "Smooth cinematic transition between frames",
-				start: imageBlob,
-				end: imageBlob,
-				seed: 111,
-				resolution: "720p",
-			});
-
-			expect(result).toBeInstanceOf(Blob);
-			const path = await saveOutput(result, "lucy-pro-flf2v", ".mp4");
-			console.log(`Saved to: ${path}`);
-		});
-	});
-
-	describe("Image Models", () => {
+	describe("Process API - Image Models", () => {
 		it("lucy-pro-t2i: text-to-image", async () => {
 			const result = await client.process({
 				model: models.image("lucy-pro-t2i"),
@@ -164,6 +90,90 @@ describe.sequential("Process API E2E Tests", { timeout: 120_000 }, () => {
 			expect(result).toBeInstanceOf(Blob);
 			const path = await saveOutput(result, "lucy-pro-i2i", ".png");
 			console.log(`Saved to: ${path}`);
+		});
+	});
+
+	describe("Queue API - Video Models", () => {
+		it("lucy-pro-t2v: text-to-video", async () => {
+			const result = await client.queue.submitAndPoll({
+				model: models.video("lucy-pro-t2v"),
+				prompt: "A majestic eagle soaring through mountain peaks at sunset",
+				seed: 42,
+				resolution: "720p",
+				orientation: "landscape",
+			});
+
+			expect(result.status).toBe("completed");
+			if (result.status === "completed") {
+				const path = await saveOutput(result.data, "lucy-pro-t2v", ".mp4");
+				console.log(`Saved to: ${path}`);
+			}
+		});
+
+		it("lucy-dev-i2v: image-to-video (dev)", async () => {
+			const result = await client.queue.submitAndPoll({
+				model: models.video("lucy-dev-i2v"),
+				prompt: "The image comes to life with gentle movements",
+				data: imageBlob,
+				seed: 123,
+				resolution: "720p",
+			});
+
+			expect(result.status).toBe("completed");
+			if (result.status === "completed") {
+				const path = await saveOutput(result.data, "lucy-dev-i2v", ".mp4");
+				console.log(`Saved to: ${path}`);
+			}
+		});
+
+		it("lucy-pro-i2v: image-to-video (pro)", async () => {
+			const result = await client.queue.submitAndPoll({
+				model: models.video("lucy-pro-i2v"),
+				prompt: "Transform the image into a dynamic video scene",
+				data: imageBlob,
+				seed: 456,
+				resolution: "720p",
+			});
+
+			expect(result.status).toBe("completed");
+			if (result.status === "completed") {
+				const path = await saveOutput(result.data, "lucy-pro-i2v", ".mp4");
+				console.log(`Saved to: ${path}`);
+			}
+		});
+
+		it("lucy-pro-v2v: video-to-video (pro)", async () => {
+			const result = await client.queue.submitAndPoll({
+				model: models.video("lucy-pro-v2v"),
+				prompt: "Lego World animated style",
+				data: videoBlob,
+				seed: 999,
+				enhance_prompt: true,
+				num_inference_steps: 50,
+			});
+
+			expect(result.status).toBe("completed");
+			if (result.status === "completed") {
+				const path = await saveOutput(result.data, "lucy-pro-v2v", ".mp4");
+				console.log(`Saved to: ${path}`);
+			}
+		});
+
+		it("lucy-pro-flf2v: first-last-frame-to-video", async () => {
+			const result = await client.queue.submitAndPoll({
+				model: models.video("lucy-pro-flf2v"),
+				prompt: "Smooth cinematic transition between frames",
+				start: imageBlob,
+				end: imageBlob,
+				seed: 111,
+				resolution: "720p",
+			});
+
+			expect(result.status).toBe("completed");
+			if (result.status === "completed") {
+				const path = await saveOutput(result.data, "lucy-pro-flf2v", ".mp4");
+				console.log(`Saved to: ${path}`);
+			}
 		});
 	});
 });
