@@ -1,10 +1,10 @@
-import type { ModelDefinition, VideoModelDefinition } from "../shared/model";
 import type {
 	FileInput,
 	InferModelInputs,
 	ModelSpecificInputs,
 	ProcessInputs,
 } from "../process/types";
+import type { ModelDefinition, VideoModelDefinition } from "../shared/model";
 
 /**
  * Job status values returned by the queue API.
@@ -39,10 +39,6 @@ export type QueueJobResult =
  * Re-exports ProcessInputs fields with queue-specific documentation.
  */
 interface QueueInputs extends ProcessInputs {
-	/**
-	 * The data to use for generation (for image-to-image and video-to-video).
-	 */
-	data?: FileInput;
 	/**
 	 * The start frame image (for first-last-frame models).
 	 */

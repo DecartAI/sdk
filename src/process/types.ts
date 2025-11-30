@@ -36,6 +36,11 @@ export interface ImageEditingInputs {
 	 * It's highly recommended to read our [Prompt Engineering for Edits](https://docs.platform.decart.ai/models/image/image-editing#prompt-engineering-for-edits) guide for how to write effective editing prompts.
 	 */
 	prompt: string;
+	/**
+	 * The data to use for generation (for image-to-image).
+	 * Can be a File, Blob, ReadableStream, URL, or string URL.
+	 */
+	data?: FileInput;
 }
 
 /**
@@ -48,6 +53,13 @@ export interface VideoModelInputs {
 	 * See our [Prompt Engineering](https://docs.platform.decart.ai/models/video/video-generation#prompt-engineering) guide for how to write prompt for Decart video models effectively.
 	 */
 	prompt: string;
+	/**
+	 * The data to use for generation (for image-to-video and video-to-video).
+	 * Can be a File, Blob, ReadableStream, URL, or string URL.
+	 *
+	 * Output video is limited to 5 seconds.
+	 */
+	data?: FileInput;
 }
 
 /**
@@ -95,11 +107,6 @@ export interface ProcessInputs {
 	 * @default "landscape"
 	 */
 	orientation?: "landscape" | "portrait";
-	/**
-	 * The data to use for generation (for image-to-image and video-to-video).
-	 * Can be a File, Blob, ReadableStream, URL, or string URL.
-	 */
-	data?: FileInput;
 	/**
 	 * The start frame image (for first-last-frame models).
 	 * Can be a File, Blob, ReadableStream, URL, or string URL.
@@ -163,7 +170,9 @@ type MergeDocumentedInputs<T extends ModelDefinition> =
  *
  * @template T - The image model definition type
  */
-export type ProcessOptions<T extends ImageModelDefinition = ImageModelDefinition> = {
+export type ProcessOptions<
+	T extends ImageModelDefinition = ImageModelDefinition,
+> = {
 	/**
 	 * The model definition to use.
 	 */
