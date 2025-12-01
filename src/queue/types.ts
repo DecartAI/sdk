@@ -1,10 +1,10 @@
-import type { ModelDefinition, VideoModelDefinition } from "../shared/model";
 import type {
 	FileInput,
 	InferModelInputs,
 	ModelSpecificInputs,
 	ProcessInputs,
 } from "../process/types";
+import type { ModelDefinition, VideoModelDefinition } from "../shared/model";
 
 /**
  * Job status values returned by the queue API.
@@ -40,10 +40,6 @@ export type QueueJobResult =
  */
 interface QueueInputs extends ProcessInputs {
 	/**
-	 * The data to use for generation (for image-to-image and video-to-video).
-	 */
-	data?: FileInput;
-	/**
 	 * The start frame image (for first-last-frame models).
 	 */
 	start?: FileInput;
@@ -68,7 +64,9 @@ type MergeDocumentedInputs<T extends ModelDefinition> =
  * Options for queue.submit() - submit a job for async processing.
  * Only video models support the queue API.
  */
-export type QueueSubmitOptions<T extends VideoModelDefinition = VideoModelDefinition> = {
+export type QueueSubmitOptions<
+	T extends VideoModelDefinition = VideoModelDefinition,
+> = {
 	/**
 	 * The model definition to use.
 	 */

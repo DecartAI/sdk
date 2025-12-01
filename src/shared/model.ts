@@ -110,7 +110,7 @@ export const modelInputSchemas = {
 			.max(1000)
 			.describe("The prompt to use for the generation"),
 		data: fileInputSchema.describe(
-			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
 		),
 		seed: z.number().optional().describe("The seed to use for the generation"),
 		resolution: proResolutionSchema(),
@@ -122,7 +122,7 @@ export const modelInputSchemas = {
 			.max(1000)
 			.describe("The prompt to use for the generation"),
 		data: fileInputSchema.describe(
-			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
 		),
 		seed: z.number().optional().describe("The seed to use for the generation"),
 		resolution: devResolutionSchema,
@@ -134,7 +134,7 @@ export const modelInputSchemas = {
 			.max(1000)
 			.describe("The prompt to use for the generation"),
 		data: fileInputSchema.describe(
-			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
 		),
 		seed: z.number().optional().describe("The seed to use for the generation"),
 		resolution: proV2vResolutionSchema,
@@ -154,7 +154,7 @@ export const modelInputSchemas = {
 			.max(1000)
 			.describe("The prompt to use for the generation"),
 		data: fileInputSchema.describe(
-			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
 		),
 		seed: z.number().optional().describe("The seed to use for the generation"),
 		resolution: proV2vResolutionSchema,
@@ -196,7 +196,7 @@ export const modelInputSchemas = {
 	}),
 	"lucy-motion": z.object({
 		data: fileInputSchema.describe(
-			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
 		),
 		trajectory: z
 			.array(
