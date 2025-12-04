@@ -41,6 +41,7 @@
 		"release": "bumpp"
 	},
 	"devDependencies": {
+		"@types/bun": "^1.3.3",
 		"@types/node": "^22.15.17",
 		"biome": "^0.3.3",
 		"bumpp": "^10.1.0",

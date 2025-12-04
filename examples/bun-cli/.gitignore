@@ -1,0 +1,4 @@
+node_modules
+.env
+decart-cli
+output.png
