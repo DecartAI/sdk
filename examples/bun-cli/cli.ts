@@ -11,12 +11,11 @@ if (command !== "text-to-image" || !prompt) {
 const client = createDecartClient();
 
 console.log("Generating image...");
-const blob = await client.process({
+const image = await client.process({
 	model: models.image("lucy-pro-t2i"),
 	prompt,
 });
 
-const output = Buffer.from(await blob.arrayBuffer());
-await Bun.write("output.png", output);
+await Bun.write("output.png", image);
 
 console.log("Image saved to output.png");
