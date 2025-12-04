@@ -62,7 +62,9 @@ realtimeClient.setPrompt("Cyberpunk city");
 realtimeClient.disconnect();
 ```
 
-### Process Files
+### Async Processing (Queue API)
+
+For video generation jobs, use the queue API to submit jobs and poll for results:
 
 ```typescript
 import { createDecartClient, models } from "@decartai/sdk";
@@ -71,15 +73,41 @@ const client = createDecartClient({
   apiKey: "your-api-key-here"
 });
 
-// Process a video file
-const file = fileInput.files[0];
-const result = await client.process({
-  model: models.video("lucy-pro-v2v"),
-  prompt: "Lego World",
-  data: file
+// Submit and poll automatically
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A cat playing piano",
+  onStatusChange: (job) => {
+    console.log(`Status: ${job.status}`);
+  }
 });
 
-videoElement.src = URL.createObjectURL(result);
+if (result.status === "completed") {
+  videoElement.src = URL.createObjectURL(result.data);
+} else {
+  console.error("Job failed:", result.error);
+}
+```
+
+Or manage the polling manually:
+
+```typescript
+// Submit the job
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A cat playing piano"
+});
+console.log(`Job ID: ${job.job_id}`);
+
+// Poll for status
+const status = await client.queue.status(job.job_id);
+console.log(`Status: ${status.status}`);
+
+// Get result when completed
+if (status.status === "completed") {
+  const blob = await client.queue.result(job.job_id);
+  videoElement.src = URL.createObjectURL(blob);
+}
 ```
 
 ## Development
