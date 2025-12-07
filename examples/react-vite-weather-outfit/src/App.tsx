@@ -1,20 +1,13 @@
-import { useEffect, useState, type ChangeEvent } from "react";
-import personExampleUrl from "./assets/person-example.webp";
 import { createDecartClient, models } from "@decartai/sdk";
-import { useObjectURL } from "./useObjectURL";
+import { type ChangeEvent, useEffect, useState } from "react";
+import personExampleUrl from "./assets/person-example.webp";
 import { getDefaultImageFile } from "./helpers";
+import { useObjectURL } from "./useObjectURL";
+import { WEATHER_OPTIONS, WeatherConditions } from "./WeatherConditions";
 
 const client = createDecartClient({
 	apiKey: import.meta.env.VITE_DECART_API_KEY,
 });
-
-const WEATHER_OPTIONS = [
-	"Sunny",
-	"Partly cloudy",
-	"Light rain",
-	"Thunderstorm",
-	"Snow",
-];
 
 function App() {
 	const [imageFile, setImageFile] = useState<File | undefined>();
@@ -69,21 +62,11 @@ function App() {
 				}}
 			>
 				<div>
-					<strong>Weather condition:</strong>
-					<div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-						{WEATHER_OPTIONS.map((option) => (
-							<label key={option} style={{ display: "block" }}>
-								<input
-									type="radio"
-									name="weather"
-									value={option}
-									checked={condition === option}
-									onChange={() => setCondition(option)}
-								/>
-								<span style={{ marginLeft: "0.5rem" }}>{option}</span>
-							</label>
-						))}
-					</div>
+					<WeatherConditions
+						value={condition}
+						onChange={setCondition}
+						options={WEATHER_OPTIONS}
+					/>
 
 					<div style={{ marginBlock: "1rem" }}>
 						<label>
