@@ -9,6 +9,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./packages/sdk
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,10 +38,10 @@ jobs:
 
       - name: Lint
         run: pnpm lint
-      
+
       - name: Format
         run: pnpm format:check
-        
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -47,6 +51,10 @@ jobs:
   release:
     needs: test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./packages/sdk
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
