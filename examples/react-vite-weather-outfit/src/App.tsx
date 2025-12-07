@@ -1,9 +1,13 @@
 import { createDecartClient, models } from "@decartai/sdk";
 import { type ChangeEvent, useEffect, useState } from "react";
 import personExampleUrl from "./assets/person-example.webp";
+import {
+	WEATHER_OPTIONS,
+	WeatherConditions,
+} from "./components/WeatherConditions";
 import { getDefaultImageFile } from "./helpers";
-import { useObjectURL } from "./useObjectURL";
-import { WEATHER_OPTIONS, WeatherConditions } from "./WeatherConditions";
+import { useObjectURL } from "./hooks/useObjectURL";
+import "./App.css";
 
 const client = createDecartClient({
 	apiKey: import.meta.env.VITE_DECART_API_KEY,
@@ -51,16 +55,10 @@ function App() {
 	};
 
 	return (
-		<div style={{ paddingInline: "2rem", fontFamily: "system-ui" }}>
+		<div className="app">
 			<h1>Decart Weather Outfit Demo</h1>
 
-			<div
-				style={{
-					display: "grid",
-					gridTemplateColumns: "1.25fr 1fr",
-					gap: "5rem",
-				}}
-			>
+			<div className="layout">
 				<div>
 					<WeatherConditions
 						value={condition}
@@ -68,29 +66,19 @@ function App() {
 						options={WEATHER_OPTIONS}
 					/>
 
-					<div style={{ marginBlock: "1rem" }}>
+					<div className="file-input">
 						<label>
 							Image:
 							<input
 								type="file"
 								accept="image/*"
 								onChange={handleFileChange}
-								style={{ width: "300px", marginLeft: "0.5rem" }}
+								className="file-input-control"
 							/>
 						</label>
 					</div>
 
-					<img
-						src={imageUrl}
-						alt="Selected outfit"
-						style={{
-							display: "block",
-							maxWidth: "300px",
-							maxHeight: "420px",
-							borderRadius: "0.5rem",
-							marginBottom: "1rem",
-						}}
-					/>
+					<img src={imageUrl} alt="Selected outfit" className="preview-image" />
 
 					<button
 						type="button"
@@ -103,18 +91,9 @@ function App() {
 				<div>
 					<strong>Result:</strong>
 					{resultUrl ? (
-						<img
-							src={resultUrl}
-							alt=""
-							style={{
-								display: "block",
-								maxWidth: "300px",
-								borderRadius: "0.5rem",
-								marginTop: "1rem",
-							}}
-						/>
+						<img src={resultUrl} alt="" className="result-image" />
 					) : (
-						<p style={{ marginTop: "0.5rem" }}>
+						<p className="result-placeholder">
 							{isLoading ? "Generating..." : "No result yet."}
 						</p>
 					)}

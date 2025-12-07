@@ -17,9 +17,9 @@ export function WeatherConditions(props: WeatherConditionsProps) {
 	return (
 		<>
 			<strong>Weather condition:</strong>
-			<div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+			<div className="weather-options">
 				{options.map((option) => (
-					<label key={option} style={{ display: "block" }}>
+					<label key={option} className="weather-option-label">
 						<input
 							type="radio"
 							name="weather"
@@ -27,7 +27,7 @@ export function WeatherConditions(props: WeatherConditionsProps) {
 							checked={value === option}
 							onChange={() => onChange(option)}
 						/>
-						<span style={{ marginLeft: "0.5rem" }}>{option}</span>
+						<span className="weather-option-text">{option}</span>
 					</label>
 				))}
 			</div>
