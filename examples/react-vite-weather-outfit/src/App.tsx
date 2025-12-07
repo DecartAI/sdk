@@ -1,10 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import personExampleUrl from "./assets/person-example.webp";
 import { createDecartClient, models } from "@decartai/sdk";
 
 const client = createDecartClient({
 	apiKey: import.meta.env.VITE_DECART_API_KEY,
 });
+
+const WEATHER_OPTIONS = [
+	"Sunny",
+	"Partly cloudy",
+	"Light rain",
+	"Thunderstorm",
+	"Snow",
+];
 
 function App() {
 	const [imageFile, setImageFile] = useState<File | undefined>(undefined);
@@ -13,15 +21,7 @@ function App() {
 	);
 	const [resultUrl, setResultUrl] = useState<string | undefined>(undefined);
 	const [isLoading, setIsLoading] = useState(false);
-
-	const weatherOptions = [
-		"Sunny",
-		"Partly cloudy",
-		"Light rain",
-		"Thunderstorm",
-		"Snow",
-	];
-	const [condition, setCondition] = useState(weatherOptions[0]);
+	const [condition, setCondition] = useState(WEATHER_OPTIONS[0]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -54,6 +54,17 @@ function App() {
 
 		return () => URL.revokeObjectURL(nextUrl);
 	}, [imageFile]);
+
+	useEffect(() => {
+		if (!resultUrl) return;
+		return () => URL.revokeObjectURL(resultUrl);
+	}, [resultUrl]);
+
+	const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0];
+		setResultUrl(undefined);
+		setImageFile(file ?? undefined);
+	};
 
 	const generateOutfit = async () => {
 		if (!imageFile) return;
@@ -89,7 +100,7 @@ function App() {
 				<div>
 					<strong>Weather condition:</strong>
 					<div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-						{weatherOptions.map((option) => (
+						{WEATHER_OPTIONS.map((option) => (
 							<label key={option} style={{ display: "block" }}>
 								<input
 									type="radio"
@@ -109,7 +120,7 @@ function App() {
 							<input
 								type="file"
 								accept="image/*"
-								onChange={(e) => setImageFile(e.target.files?.[0] ?? undefined)}
+								onChange={handleFileChange}
 								style={{
 									marginLeft: "0.5rem",
 									marginTop: "0.5rem",
@@ -132,7 +143,11 @@ function App() {
 						}}
 					/>
 
-					<button type="button" onClick={generateOutfit} disabled={isLoading}>
+					<button
+						type="button"
+						onClick={generateOutfit}
+						disabled={isLoading || !imageFile}
+					>
 						{isLoading ? "Generating..." : "Generate outfit"}
 					</button>
 				</div>
