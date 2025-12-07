@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import personExample from "./assets/person-example.webp";
+import personExampleUrl from "./assets/person-example.webp";
 import { createDecartClient, models } from "@decartai/sdk";
 
 const client = createDecartClient({
@@ -7,8 +7,13 @@ const client = createDecartClient({
 });
 
 function App() {
-	const [imageFile, setImageFile] = useState<File | null>(null);
-	const [imageUrl, setImageUrl] = useState(personExample);
+	const [imageFile, setImageFile] = useState<File | undefined>(undefined);
+	const [imageUrl, setImageUrl] = useState<string | undefined>(
+		personExampleUrl,
+	);
+	const [resultUrl, setResultUrl] = useState<string | undefined>(undefined);
+	const [isLoading, setIsLoading] = useState(false);
+
 	const weatherOptions = [
 		"Sunny",
 		"Partly cloudy",
@@ -21,11 +26,31 @@ function App() {
 	const [condition, setCondition] = useState(weatherOptions[0]);
 
 	useEffect(() => {
-		if (!imageFile) {
-			setImageUrl(personExample);
-			return;
-		}
+		let cancelled = false;
 
+		(async () => {
+			try {
+				const response = await fetch(personExampleUrl);
+				const blob = await response.blob();
+				if (cancelled) return;
+
+				setImageFile(
+					new File([blob], "person-example.webp", {
+						type: blob.type || "image/webp",
+					}),
+				);
+			} catch (error) {
+				console.error("Failed to load sample image", error);
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	useEffect(() => {
+		if (!imageFile) return;
 		const nextUrl = URL.createObjectURL(imageFile);
 		setImageUrl(nextUrl);
 
@@ -33,15 +58,21 @@ function App() {
 	}, [imageFile]);
 
 	const generateOutfit = async () => {
+		if (!imageFile) return;
+		setIsLoading(true);
 		try {
 			const result = await client.process({
 				model: models.image("lucy-pro-i2i"),
-				data: imageUrl,
+				data: imageFile,
 				prompt: "A person wearing a warm outfit for the weather condition",
 			});
-			console.log(result);
+
+			const resultUrl = URL.createObjectURL(result);
+			setResultUrl(resultUrl);
 		} catch (error) {
 			console.error(error);
+		} finally {
+			setIsLoading(false);
 		}
 	};
 
@@ -82,7 +113,7 @@ function App() {
 							<input
 								type="file"
 								accept="image/*"
-								onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+								onChange={(e) => setImageFile(e.target.files?.[0] ?? undefined)}
 								style={{
 									marginLeft: "0.5rem",
 									width: "300px",
@@ -103,11 +134,27 @@ function App() {
 						}}
 					/>
 
-					<button type="button" onClick={generateOutfit}>
-						Generate outfit
+					<button type="button" onClick={generateOutfit} disabled={isLoading}>
+						{isLoading ? "Generating..." : "Generate outfit"}
 					</button>
 				</div>
-				<strong>Result:</strong>
+				<div>
+					<strong>Result:</strong>
+					{resultUrl ? (
+						<img
+							src={resultUrl}
+							alt=""
+							style={{
+								display: "block",
+								maxWidth: "300px",
+								borderRadius: "0.5rem",
+								marginTop: "1rem",
+							}}
+						/>
+					) : (
+						<p style={{ marginTop: "0.5rem" }}>No result yet.</p>
+					)}
+				</div>
 			</div>
 		</div>
 	);
