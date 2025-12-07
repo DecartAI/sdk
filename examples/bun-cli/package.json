@@ -1,0 +1,18 @@
+{
+	"name": "@example/bun-cli",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"bin": {
+		"decart": "decart-cli"
+	},
+	"scripts": {
+		"build": "bun build ./cli.ts --compile --outfile decart-cli"
+	},
+	"dependencies": {
+		"@decartai/sdk": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/bun": "latest"
+	}
+}
