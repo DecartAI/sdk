@@ -1,6 +1,8 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import personExampleUrl from "./assets/person-example.webp";
 import { createDecartClient, models } from "@decartai/sdk";
+import { useObjectURL } from "./useObjectURL";
+import { getDefaultImageFile } from "./helpers";
 
 const client = createDecartClient({
 	apiKey: import.meta.env.VITE_DECART_API_KEY,
@@ -15,70 +17,39 @@ const WEATHER_OPTIONS = [
 ];
 
 function App() {
-	const [imageFile, setImageFile] = useState<File | undefined>(undefined);
-	const [imageUrl, setImageUrl] = useState<string | undefined>(
-		personExampleUrl,
-	);
-	const [resultUrl, setResultUrl] = useState<string | undefined>(undefined);
+	const [imageFile, setImageFile] = useState<File | undefined>();
+	const [resultFile, setResultFile] = useState<File | undefined>();
+
+	const imageUrl = useObjectURL(imageFile);
+	const resultUrl = useObjectURL(resultFile);
+
 	const [isLoading, setIsLoading] = useState(false);
 	const [condition, setCondition] = useState(WEATHER_OPTIONS[0]);
 
 	useEffect(() => {
-		let cancelled = false;
-
-		(async () => {
-			try {
-				const response = await fetch(personExampleUrl);
-				const blob = await response.blob();
-				if (cancelled) return;
-
-				setImageFile(
-					new File([blob], "person-example.webp", {
-						type: blob.type || "image/webp",
-					}),
-				);
-			} catch (error) {
-				console.error("Failed to load sample image", error);
-			}
-		})();
-
-		return () => {
-			cancelled = true;
-		};
+		getDefaultImageFile(personExampleUrl).then(setImageFile);
 	}, []);
-
-	useEffect(() => {
-		if (!imageFile) return;
-		const nextUrl = URL.createObjectURL(imageFile);
-		setImageUrl(nextUrl);
-
-		return () => URL.revokeObjectURL(nextUrl);
-	}, [imageFile]);
-
-	useEffect(() => {
-		if (!resultUrl) return;
-		return () => URL.revokeObjectURL(resultUrl);
-	}, [resultUrl]);
 
 	const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
 		const file = event.target.files?.[0];
-		setResultUrl(undefined);
+		setResultFile(undefined);
 		setImageFile(file ?? undefined);
 	};
 
 	const generateOutfit = async () => {
 		if (!imageFile) return;
 		setIsLoading(true);
-		setResultUrl(undefined);
+		setResultFile(undefined);
 		try {
-			const result = await client.process({
+			const resultBlob = await client.process({
 				model: models.image("lucy-pro-i2i"),
 				data: imageFile,
 				prompt: `A person wearing an outfit for ${condition.toLowerCase()} conditions`,
 			});
 
-			const resultUrl = URL.createObjectURL(result);
-			setResultUrl(resultUrl);
+			setResultFile(
+				new File([resultBlob], "result.webp", { type: "image/webp" }),
+			);
 		} catch (error) {
 			console.error(error);
 		} finally {
@@ -114,19 +85,14 @@ function App() {
 						))}
 					</div>
 
-					<div style={{ marginBottom: "1rem" }}>
+					<div style={{ marginBlock: "1rem" }}>
 						<label>
 							Image:
 							<input
 								type="file"
 								accept="image/*"
 								onChange={handleFileChange}
-								style={{
-									marginLeft: "0.5rem",
-									marginTop: "0.5rem",
-									width: "300px",
-									padding: "0.5rem",
-								}}
+								style={{ width: "300px", marginLeft: "0.5rem" }}
 							/>
 						</label>
 					</div>
