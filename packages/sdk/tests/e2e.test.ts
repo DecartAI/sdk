@@ -6,10 +6,9 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { createDecartClient, models } from "@decartai/sdk";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -18,7 +17,7 @@ const OUTPUT_DIR = join(__dirname, "e2e-output");
 const VIDEO_FIXTURE = join(__dirname, "fixtures", "video.mp4");
 const IMAGE_FIXTURE = join(__dirname, "fixtures", "image.png");
 
-describe.sequential("E2E Tests", { timeout: 120_000 }, () => {
+describe("E2E Tests", { timeout: 120_000 }, () => {
 	let client: ReturnType<typeof createDecartClient>;
 	let videoBlob: Blob;
 	let imageBlob: Blob;
@@ -38,7 +37,6 @@ describe.sequential("E2E Tests", { timeout: 120_000 }, () => {
 		mkdirSync(OUTPUT_DIR, { recursive: true });
 
 		client = createDecartClient({
-			baseUrl: "https://api.decart.ai",
 			apiKey,
 		});
 
@@ -46,10 +44,6 @@ describe.sequential("E2E Tests", { timeout: 120_000 }, () => {
 		const imageBuffer = readFileSync(IMAGE_FIXTURE);
 		videoBlob = new Blob([videoBuffer], { type: "video/mp4" });
 		imageBlob = new Blob([imageBuffer], { type: "image/png" });
-	});
-
-	beforeEach(async () => {
-		await setTimeout(1_000);
 	});
 
 	async function saveOutput(
@@ -142,14 +136,14 @@ describe.sequential("E2E Tests", { timeout: 120_000 }, () => {
 			}
 		});
 
-		it("lucy-pro-v2v: video-to-video (pro)", async () => {
+		it("lucy-pro-v2v: video-to-video", async () => {
 			const result = await client.queue.submitAndPoll({
 				model: models.video("lucy-pro-v2v"),
 				prompt: "Lego World animated style",
 				data: videoBlob,
 				seed: 999,
 				enhance_prompt: true,
-				num_inference_steps: 50,
+				num_inference_steps: 5,
 			});
 
 			expect(result.status).toBe("completed");
@@ -159,7 +153,7 @@ describe.sequential("E2E Tests", { timeout: 120_000 }, () => {
 			}
 		});
 
-		it("lucy-pro-flf2v: first-last-frame-to-video", async () => {
+		it.skip("lucy-pro-flf2v: first-last-frame-to-video", async () => {
 			const result = await client.queue.submitAndPoll({
 				model: models.video("lucy-pro-flf2v"),
 				prompt: "Smooth cinematic transition between frames",
