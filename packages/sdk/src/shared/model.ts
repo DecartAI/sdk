@@ -207,7 +207,7 @@ export const modelInputSchemas = {
 				}),
 			)
 			.min(2)
-			.max(121)
+			.max(1000)
 			.describe(
 				"The trajectory of the desired movement of the object in the image",
 			),
