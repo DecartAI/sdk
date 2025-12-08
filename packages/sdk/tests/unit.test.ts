@@ -462,6 +462,22 @@ describe("Queue API", () => {
 			).rejects.toThrow("Invalid inputs");
 		});
 
+		it("validates trajectory length is less	 than 1000", async () => {
+			const testBlob = new Blob(["test-image"], { type: "image/png" });
+
+			await expect(
+				decart.queue.submit({
+					model: models.video("lucy-motion"),
+					data: testBlob,
+					trajectory: Array.from({ length: 1001 }, (_, i) => ({
+						frame: i,
+						x: 0,
+						y: 0,
+					})),
+				}),
+			).rejects.toThrow("expected array to have <=1000 items");
+		});
+
 		it("handles API errors", async () => {
 			server.use(
 				http.post("http://localhost/v1/jobs/lucy-pro-t2v", () => {
