@@ -1,18 +1,28 @@
+import { createDecartClient, type DecartClient, models } from "@decartai/sdk";
 import { Hono } from "hono";
-import { createDecartClient, models } from "@decartai/sdk";
 
 type Bindings = {
 	DECART_API_KEY: string;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+type Variables = {
+	decart: DecartClient;
+};
 
-// Text-to-image generation
-app.post("/api/image/generate", async (c) => {
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+// Middleware to create and share the Decart client
+app.use("*", async (c, next) => {
 	const client = createDecartClient({
 		apiKey: c.env.DECART_API_KEY,
 	});
+	c.set("decart", client);
+	await next();
+});
 
+// Text-to-image generation
+app.post("/api/image/generate", async (c) => {
+	const client = c.get("decart");
 	const { prompt } = await c.req.json<{ prompt: string }>();
 
 	const blob = await client.process({
@@ -27,10 +37,7 @@ app.post("/api/image/generate", async (c) => {
 
 // Submit video generation job (async)
 app.post("/api/video/generate", async (c) => {
-	const client = createDecartClient({
-		apiKey: c.env.DECART_API_KEY,
-	});
-
+	const client = c.get("decart");
 	const { prompt } = await c.req.json<{ prompt: string }>();
 
 	const job = await client.queue.submit({
@@ -43,10 +50,7 @@ app.post("/api/video/generate", async (c) => {
 
 // Check video job status
 app.get("/api/video/status/:jobId", async (c) => {
-	const client = createDecartClient({
-		apiKey: c.env.DECART_API_KEY,
-	});
-
+	const client = c.get("decart");
 	const jobId = c.req.param("jobId");
 	const status = await client.queue.status(jobId);
 
@@ -55,10 +59,7 @@ app.get("/api/video/status/:jobId", async (c) => {
 
 // Get video result
 app.get("/api/video/result/:jobId", async (c) => {
-	const client = createDecartClient({
-		apiKey: c.env.DECART_API_KEY,
-	});
-
+	const client = c.get("decart");
 	const jobId = c.req.param("jobId");
 	const blob = await client.queue.result(jobId);
 
