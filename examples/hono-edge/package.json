@@ -1,0 +1,19 @@
+{
+	"name": "@example/hono-edge",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "wrangler dev",
+		"deploy": "wrangler deploy"
+	},
+	"dependencies": {
+		"@decartai/sdk": "workspace:*",
+		"hono": "^4.6.0"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20241127.0",
+		"typescript": "^5.8.0",
+		"wrangler": "^3.93.0"
+	}
+}
