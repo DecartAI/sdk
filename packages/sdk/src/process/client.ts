@@ -1,6 +1,6 @@
 import type { ImageModelDefinition } from "../shared/model";
-import { createInvalidInputError } from "../utils/errors";
 import { fileInputToBlob } from "../shared/request";
+import { createInvalidInputError } from "../utils/errors";
 import { sendRequest } from "./request";
 import type { FileInput, ProcessOptions } from "./types";
 
