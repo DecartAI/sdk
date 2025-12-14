@@ -14,6 +14,7 @@ export const videoModels = z.union([
 	z.literal("lucy-pro-v2v"),
 	z.literal("lucy-pro-flf2v"),
 	z.literal("lucy-motion"),
+	z.literal("mirage-v2-v2v"),
 ]);
 export const imageModels = z.union([
 	z.literal("lucy-pro-t2i"),
@@ -214,6 +215,23 @@ export const modelInputSchemas = {
 		seed: z.number().optional().describe("The seed to use for the generation"),
 		resolution: motionResolutionSchema,
 	}),
+	"mirage-v2-v2v": z.object({
+		prompt: z
+			.string()
+			.min(1)
+			.max(1000)
+			.describe("Text prompt for the video editing"),
+		data: fileInputSchema.describe(
+			"Video file to process (File, Blob, ReadableStream, URL, or string URL)",
+		),
+		seed: z.number().optional().describe("Seed for the video generation"),
+		resolution: proV2vResolutionSchema,
+		enhance_prompt: z
+			.boolean()
+			.default(true)
+			.optional()
+			.describe("Whether to enhance the prompt"),
+	}),
 } as const;
 
 export type ModelInputSchemas = typeof modelInputSchemas;
@@ -362,6 +380,16 @@ const _models = {
 			width: 1280,
 			height: 704,
 			inputSchema: modelInputSchemas["lucy-motion"],
+		},
+		"mirage-v2-v2v": {
+			// TODO: Change to mirage-v2-v2v once it goes live
+			urlPath: "/v1/generate/lucy-pro-v2v",
+			queueUrlPath: "/v1/jobs/lucy-pro-v2v",
+			name: "mirage-v2-v2v" as const,
+			fps: 22,
+			width: 1280,
+			height: 704,
+			inputSchema: modelInputSchemas["mirage-v2-v2v"],
 		},
 	},
 } as const;
