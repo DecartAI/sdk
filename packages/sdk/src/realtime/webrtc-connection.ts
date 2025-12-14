@@ -172,10 +172,11 @@ export class WebRTCConnection {
     }
     this.pc = new RTCPeerConnection({ iceServers });
 
-    this.localStream
-      .getTracks()
-      // biome-ignore lint/suspicious/useIterableCallbackReturn: we don't care about the returned RTPSender
-      .forEach((track) => this.pc!.addTrack(track, this.localStream!));
+    this.localStream.getTracks().forEach((track) => {
+      if (this.pc && this.localStream) {
+        this.pc.addTrack(track, this.localStream);
+      }
+    });
 
     this.pc.ontrack = (e) => {
       if (e.streams?.[0]) this.callbacks.onRemoteStream?.(e.streams[0]);
