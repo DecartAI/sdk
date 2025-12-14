@@ -202,19 +202,19 @@ describe("Decart SDK", () => {
     describe("Input Validation", () => {
       it("validates required inputs for text-to-image", async () => {
         await expect(
-          // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
           decart.process({
             model: models.image("lucy-pro-t2i"),
+            // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
           } as any),
         ).rejects.toThrow("Invalid inputs");
       });
 
       it("validates required inputs for image-to-image", async () => {
         await expect(
-          // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
           decart.process({
             model: models.image("lucy-pro-i2i"),
             prompt: "test",
+            // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
           } as any),
         ).rejects.toThrow("Invalid inputs");
       });
@@ -429,19 +429,19 @@ describe("Queue API", () => {
 
     it("validates required inputs", async () => {
       await expect(
-        // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
         decart.queue.submit({
           model: models.video("lucy-pro-t2v"),
+          // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
         } as any),
       ).rejects.toThrow("Invalid inputs");
     });
 
     it("validates required inputs for video-to-video", async () => {
       await expect(
-        // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
         decart.queue.submit({
           model: models.video("lucy-pro-v2v"),
           prompt: "test",
+          // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
         } as any),
       ).rejects.toThrow("Invalid inputs");
     });

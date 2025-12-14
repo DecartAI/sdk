@@ -20,7 +20,7 @@ export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialSta
 // ugly workaround to add an optional function to the schema
 // https://github.com/colinhacks/zod/issues/4143#issuecomment-2845134912
 const createAsyncFunctionSchema = <T extends z.core.$ZodFunction>(schema: T) =>
-  z.custom<Parameters<T["implementAsync"]>[0]>((fn) => schema.implementAsync(fn as any));
+  z.custom<Parameters<T["implementAsync"]>[0]>((fn) => schema.implementAsync(fn as Parameters<T["implementAsync"]>[0]));
 
 const realTimeClientConnectOptionsSchema = z.object({
   model: modelDefinitionSchema,
