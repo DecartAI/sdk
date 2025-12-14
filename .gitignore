@@ -4,3 +4,5 @@ dist
 .DS_Store
 tests/e2e-output
 .env
+examples/sdk-core/video/input.mp4
+examples/sdk-core/video/output.mp4
