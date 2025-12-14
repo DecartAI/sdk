@@ -1,4 +1,7 @@
 {
+  "files": {
+    "includes": ["**", "!!dist"]
+  },
   "linter": {
     "enabled": true,
     "rules": {
