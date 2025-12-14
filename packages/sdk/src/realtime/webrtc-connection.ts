@@ -156,8 +156,8 @@ export class WebRTCConnection {
     }
     if (this.pc) {
       this.pc.getSenders().forEach((sender) => {
-        if (sender.track) {
-          this.pc!.removeTrack(sender);
+        if (sender.track && this.pc) {
+          this.pc.removeTrack(sender);
         }
       });
       this.pc.close();

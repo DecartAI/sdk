@@ -1,7 +1,7 @@
 import type { ModelDefinition } from "../shared/model";
 import { buildAuthHeaders, buildFormData } from "../shared/request";
-import { createQueueSubmitError, createQueueStatusError, createQueueResultError } from "../utils/errors";
-import type { JobSubmitResponse, JobStatusResponse } from "./types";
+import { createQueueResultError, createQueueStatusError, createQueueSubmitError } from "../utils/errors";
+import type { JobStatusResponse, JobSubmitResponse } from "./types";
 
 export type QueueRequestOptions = {
   baseUrl: string;

@@ -1,16 +1,16 @@
+import type { FileInput } from "../process/types";
 import type { VideoModelDefinition } from "../shared/model";
 import { fileInputToBlob } from "../shared/request";
 import { createInvalidInputError } from "../utils/errors";
 import { pollUntilComplete } from "./polling";
-import { submitJob, getJobStatus, getJobContent } from "./request";
+import { getJobContent, getJobStatus, submitJob } from "./request";
 import type {
-  JobSubmitResponse,
   JobStatusResponse,
+  JobSubmitResponse,
   QueueJobResult,
-  QueueSubmitOptions,
   QueueSubmitAndPollOptions,
+  QueueSubmitOptions,
 } from "./types";
-import type { FileInput } from "../process/types";
 
 /**
  * Client for queue-based async video generation.

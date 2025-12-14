@@ -10,11 +10,11 @@ export type { FileInput, ProcessOptions } from "./process/types";
 export type { QueueClient } from "./queue/client";
 export type {
   JobStatus,
-  JobSubmitResponse,
   JobStatusResponse,
+  JobSubmitResponse,
   QueueJobResult,
-  QueueSubmitOptions,
   QueueSubmitAndPollOptions,
+  QueueSubmitOptions,
 } from "./queue/types";
 export type {
   RealTimeClient,

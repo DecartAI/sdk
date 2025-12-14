@@ -1,6 +1,6 @@
+import type { FileInput } from "../process/types";
 import { createInvalidInputError } from "../utils/errors";
 import { buildUserAgent } from "../utils/user-agent";
-import type { FileInput } from "../process/types";
 
 /**
  * Convert various file input types to a Blob.
