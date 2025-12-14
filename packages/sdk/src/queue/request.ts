@@ -1,16 +1,12 @@
 import type { ModelDefinition } from "../shared/model";
 import { buildAuthHeaders, buildFormData } from "../shared/request";
-import {
-	createQueueSubmitError,
-	createQueueStatusError,
-	createQueueResultError,
-} from "../utils/errors";
+import { createQueueSubmitError, createQueueStatusError, createQueueResultError } from "../utils/errors";
 import type { JobSubmitResponse, JobStatusResponse } from "./types";
 
 export type QueueRequestOptions = {
-	baseUrl: string;
-	apiKey: string;
-	integration?: string;
+  baseUrl: string;
+  apiKey: string;
+  integration?: string;
 };
 
 /**
@@ -18,43 +14,37 @@ export type QueueRequestOptions = {
  * POST /v1/jobs/{model}
  */
 export async function submitJob({
-	baseUrl,
-	apiKey,
-	model,
-	inputs,
-	signal,
-	integration,
+  baseUrl,
+  apiKey,
+  model,
+  inputs,
+  signal,
+  integration,
 }: QueueRequestOptions & {
-	model: ModelDefinition;
-	inputs: Record<string, unknown>;
-	signal?: AbortSignal;
+  model: ModelDefinition;
+  inputs: Record<string, unknown>;
+  signal?: AbortSignal;
 }): Promise<JobSubmitResponse> {
-	const formData = buildFormData(inputs);
+  const formData = buildFormData(inputs);
 
-	if (!model.queueUrlPath) {
-		throw createQueueSubmitError(
-			`Model ${model.name} does not support queue processing`,
-			400,
-		);
-	}
+  if (!model.queueUrlPath) {
+    throw createQueueSubmitError(`Model ${model.name} does not support queue processing`, 400);
+  }
 
-	const endpoint = `${baseUrl}${model.queueUrlPath}`;
-	const response = await fetch(endpoint, {
-		method: "POST",
-		headers: buildAuthHeaders(apiKey, integration),
-		body: formData,
-		signal,
-	});
+  const endpoint = `${baseUrl}${model.queueUrlPath}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: buildAuthHeaders(apiKey, integration),
+    body: formData,
+    signal,
+  });
 
-	if (!response.ok) {
-		const errorText = await response.text().catch(() => "Unknown error");
-		throw createQueueSubmitError(
-			`Failed to submit job: ${response.status} - ${errorText}`,
-			response.status,
-		);
-	}
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Unknown error");
+    throw createQueueSubmitError(`Failed to submit job: ${response.status} - ${errorText}`, response.status);
+  }
 
-	return response.json() as Promise<JobSubmitResponse>;
+  return response.json() as Promise<JobSubmitResponse>;
 }
 
 /**
@@ -62,31 +52,28 @@ export async function submitJob({
  * GET /v1/jobs/{job_id}
  */
 export async function getJobStatus({
-	baseUrl,
-	apiKey,
-	jobId,
-	signal,
-	integration,
+  baseUrl,
+  apiKey,
+  jobId,
+  signal,
+  integration,
 }: QueueRequestOptions & {
-	jobId: string;
-	signal?: AbortSignal;
+  jobId: string;
+  signal?: AbortSignal;
 }): Promise<JobStatusResponse> {
-	const endpoint = `${baseUrl}/v1/jobs/${jobId}`;
-	const response = await fetch(endpoint, {
-		method: "GET",
-		headers: buildAuthHeaders(apiKey, integration),
-		signal,
-	});
+  const endpoint = `${baseUrl}/v1/jobs/${jobId}`;
+  const response = await fetch(endpoint, {
+    method: "GET",
+    headers: buildAuthHeaders(apiKey, integration),
+    signal,
+  });
 
-	if (!response.ok) {
-		const errorText = await response.text().catch(() => "Unknown error");
-		throw createQueueStatusError(
-			`Failed to get job status: ${response.status} - ${errorText}`,
-			response.status,
-		);
-	}
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Unknown error");
+    throw createQueueStatusError(`Failed to get job status: ${response.status} - ${errorText}`, response.status);
+  }
 
-	return response.json() as Promise<JobStatusResponse>;
+  return response.json() as Promise<JobStatusResponse>;
 }
 
 /**
@@ -94,29 +81,26 @@ export async function getJobStatus({
  * GET /v1/jobs/{job_id}/content
  */
 export async function getJobContent({
-	baseUrl,
-	apiKey,
-	jobId,
-	signal,
-	integration,
+  baseUrl,
+  apiKey,
+  jobId,
+  signal,
+  integration,
 }: QueueRequestOptions & {
-	jobId: string;
-	signal?: AbortSignal;
+  jobId: string;
+  signal?: AbortSignal;
 }): Promise<Blob> {
-	const endpoint = `${baseUrl}/v1/jobs/${jobId}/content`;
-	const response = await fetch(endpoint, {
-		method: "GET",
-		headers: buildAuthHeaders(apiKey, integration),
-		signal,
-	});
+  const endpoint = `${baseUrl}/v1/jobs/${jobId}/content`;
+  const response = await fetch(endpoint, {
+    method: "GET",
+    headers: buildAuthHeaders(apiKey, integration),
+    signal,
+  });
 
-	if (!response.ok) {
-		const errorText = await response.text().catch(() => "Unknown error");
-		throw createQueueResultError(
-			`Failed to get job content: ${response.status} - ${errorText}`,
-			response.status,
-		);
-	}
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Unknown error");
+    throw createQueueResultError(`Failed to get job content: ${response.status} - ${errorText}`, response.status);
+  }
 
-	return response.blob();
+  return response.blob();
 }
