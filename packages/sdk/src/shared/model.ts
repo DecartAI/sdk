@@ -1,11 +1,7 @@
 import { z } from "zod";
 import { createModelNotFoundError } from "../utils/errors";
 
-export const realtimeModels = z.union([
-	z.literal("mirage"),
-	z.literal("mirage_v2"),
-	z.literal("lucy_v2v_720p_rt"),
-]);
+export const realtimeModels = z.union([z.literal("mirage"), z.literal("mirage_v2"), z.literal("lucy_v2v_720p_rt")]);
 export const videoModels = z.union([
 	z.literal("lucy-dev-i2v"),
 	z.literal("lucy-fast-v2v"),
@@ -16,10 +12,7 @@ export const videoModels = z.union([
 	z.literal("lucy-motion"),
 	z.literal("mirage-v2-v2v"),
 ]);
-export const imageModels = z.union([
-	z.literal("lucy-pro-t2i"),
-	z.literal("lucy-pro-i2i"),
-]);
+export const imageModels = z.union([z.literal("lucy-pro-t2i"), z.literal("lucy-pro-i2i")]);
 
 export const modelSchema = z.union([realtimeModels, videoModels, imageModels]);
 export type Model = z.infer<typeof modelSchema>;
@@ -29,53 +22,47 @@ export type VideoModels = z.infer<typeof videoModels>;
 export type ImageModels = z.infer<typeof imageModels>;
 
 const fileInputSchema = z.union([
-	z.instanceof(File),
-	z.instanceof(Blob),
-	z.instanceof(ReadableStream),
-	z.instanceof(URL),
-	z.url(),
+  z.instanceof(File),
+  z.instanceof(Blob),
+  z.instanceof(ReadableStream),
+  z.instanceof(URL),
+  z.url(),
 ]);
 
 /**
  * Resolution schema for dev models. Supports only 720p.
  */
 const devResolutionSchema = z
-	.literal("720p")
-	.default("720p")
-	.optional()
-	.describe(
-		"The resolution to use for the generation. For dev models, only `720p` is supported.",
-	);
+  .literal("720p")
+  .default("720p")
+  .optional()
+  .describe("The resolution to use for the generation. For dev models, only `720p` is supported.");
 
 /**
  * Resolution schema for pro models.
  * @param defaultValue - Optional default value (e.g., "720p")
  */
 const proResolutionSchema = () => {
-	return z
-		.enum(["720p", "480p"])
-		.optional()
-		.describe("The resolution to use for the generation")
-		.default("720p");
+  return z.enum(["720p", "480p"]).optional().describe("The resolution to use for the generation").default("720p");
 };
 
 /**
  * Resolution schema for lucy-motion.
  */
 const motionResolutionSchema = z
-	.literal("720p")
-	.default("720p")
-	.optional()
-	.describe("The resolution to use for the generation");
+  .literal("720p")
+  .default("720p")
+  .optional()
+  .describe("The resolution to use for the generation");
 
 /**
  * Resolution schema for lucy-pro-v2v (supports 720p).
  */
 const proV2vResolutionSchema = z
-	.literal("720p")
-	.optional()
-	.describe("The resolution to use for the generation")
-	.default("720p");
+  .literal("720p")
+  .optional()
+  .describe("The resolution to use for the generation")
+  .default("720p");
 
 export const modelInputSchemas = {
 	"lucy-pro-t2v": z.object({
@@ -237,15 +224,13 @@ export const modelInputSchemas = {
 export type ModelInputSchemas = typeof modelInputSchemas;
 
 export type ModelDefinition<T extends Model = Model> = {
-	name: T;
-	urlPath: string;
-	queueUrlPath?: string;
-	fps: number;
-	width: number;
-	height: number;
-	inputSchema: T extends keyof ModelInputSchemas
-		? ModelInputSchemas[T]
-		: z.ZodTypeAny;
+  name: T;
+  urlPath: string;
+  queueUrlPath?: string;
+  fps: number;
+  width: number;
+  height: number;
+  inputSchema: T extends keyof ModelInputSchemas ? ModelInputSchemas[T] : z.ZodTypeAny;
 };
 
 /**
@@ -261,13 +246,13 @@ export type ImageModelDefinition = ModelDefinition<ImageModels>;
 export type VideoModelDefinition = ModelDefinition<VideoModels>;
 
 export const modelDefinitionSchema = z.object({
-	name: modelSchema,
-	urlPath: z.string(),
-	queueUrlPath: z.string().optional(),
-	fps: z.number().min(1),
-	width: z.number().min(1),
-	height: z.number().min(1),
-	inputSchema: z.any(),
+  name: modelSchema,
+  urlPath: z.string(),
+  queueUrlPath: z.string().optional(),
+  fps: z.number().min(1),
+  width: z.number().min(1),
+  height: z.number().min(1),
+  inputSchema: z.any(),
 });
 
 const _models = {
@@ -395,43 +380,43 @@ const _models = {
 } as const;
 
 export const models = {
-	realtime: <T extends RealTimeModels>(model: T): ModelDefinition<T> => {
-		const modelDefinition = _models.realtime[model];
-		if (!modelDefinition) {
-			throw createModelNotFoundError(model);
-		}
-		return modelDefinition as ModelDefinition<T>;
-	},
-	/**
-	 * Get a video model identifier.
-	 *
-	 * Available options:
-	 *   - `"lucy-pro-t2v"` - Text-to-video
-	 *   - `"lucy-pro-i2v"` - Image-to-video
-	 *   - `"lucy-pro-v2v"` - Video-to-video
-	 *   - `"lucy-pro-flf2v"` - First-last-frame-to-video
-	 * 	 - `"lucy-dev-i2v"` - Image-to-video (Dev quality)
-	 *   - `"lucy-fast-v2v"` - Video-to-video (Fast quality)
-	 */
-	video: <T extends VideoModels>(model: T): ModelDefinition<T> => {
-		const modelDefinition = _models.video[model];
-		if (!modelDefinition) {
-			throw createModelNotFoundError(model);
-		}
-		return modelDefinition as ModelDefinition<T>;
-	},
-	/**
-	 * Get an image model identifier.
-	 *
-	 * Available options:
-	 *   - `"lucy-pro-t2i"` - Text-to-image
-	 *   - `"lucy-pro-i2i"` - Image-to-image
-	 */
-	image: <T extends ImageModels>(model: T): ModelDefinition<T> => {
-		const modelDefinition = _models.image[model];
-		if (!modelDefinition) {
-			throw createModelNotFoundError(model);
-		}
-		return modelDefinition as ModelDefinition<T>;
-	},
+  realtime: <T extends RealTimeModels>(model: T): ModelDefinition<T> => {
+    const modelDefinition = _models.realtime[model];
+    if (!modelDefinition) {
+      throw createModelNotFoundError(model);
+    }
+    return modelDefinition as ModelDefinition<T>;
+  },
+  /**
+   * Get a video model identifier.
+   *
+   * Available options:
+   *   - `"lucy-pro-t2v"` - Text-to-video
+   *   - `"lucy-pro-i2v"` - Image-to-video
+   *   - `"lucy-pro-v2v"` - Video-to-video
+   *   - `"lucy-pro-flf2v"` - First-last-frame-to-video
+   * 	 - `"lucy-dev-i2v"` - Image-to-video (Dev quality)
+   *   - `"lucy-fast-v2v"` - Video-to-video (Fast quality)
+   */
+  video: <T extends VideoModels>(model: T): ModelDefinition<T> => {
+    const modelDefinition = _models.video[model];
+    if (!modelDefinition) {
+      throw createModelNotFoundError(model);
+    }
+    return modelDefinition as ModelDefinition<T>;
+  },
+  /**
+   * Get an image model identifier.
+   *
+   * Available options:
+   *   - `"lucy-pro-t2i"` - Text-to-image
+   *   - `"lucy-pro-i2i"` - Image-to-image
+   */
+  image: <T extends ImageModels>(model: T): ModelDefinition<T> => {
+    const modelDefinition = _models.image[model];
+    if (!modelDefinition) {
+      throw createModelNotFoundError(model);
+    }
+    return modelDefinition as ModelDefinition<T>;
+  },
 };

@@ -6,7 +6,4 @@ declare const __PACKAGE_VERSION__: string | undefined;
  * Injected at build time from package.json.
  * Falls back to '0.0.0-dev' in development.
  */
-export const VERSION: string =
-	typeof __PACKAGE_VERSION__ !== "undefined"
-		? __PACKAGE_VERSION__
-		: "0.0.0-dev";
+export const VERSION: string = typeof __PACKAGE_VERSION__ !== "undefined" ? __PACKAGE_VERSION__ : "0.0.0-dev";
