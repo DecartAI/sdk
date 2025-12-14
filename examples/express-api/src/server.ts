@@ -90,9 +90,7 @@ app.post("/api/video/generate-sync", async (req, res) => {
     const { prompt, videoUrl } = req.body;
 
     const result = await client.queue.submitAndPoll({
-      model: videoUrl
-        ? models.video("lucy-pro-v2v")
-        : models.video("lucy-pro-t2v"),
+      model: videoUrl ? models.video("lucy-pro-v2v") : models.video("lucy-pro-t2v"),
       prompt,
       ...(videoUrl && { data: videoUrl }),
     });

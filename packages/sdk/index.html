@@ -334,6 +334,7 @@
     <script type="module">
         // Import the Decart SDK (with cache busting timestamp)
         import { createDecartClient, models } from './dist/index.js';
+
         
         // State management
         let decartClient = null;
@@ -413,7 +414,7 @@
             
             // If camera is already started, stop it so user can restart with new model settings
             if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
+                localStream.getTracks().forEach(track => { track.stop(); });
                 localStream = null;
                 elements.localVideo.srcObject = null;
                 elements.startCamera.disabled = false;
@@ -525,7 +526,7 @@
             }
             
             if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
+                localStream.getTracks().forEach(track => { track.stop(); });
                 localStream = null;
                 elements.localVideo.srcObject = null;
             }
@@ -611,7 +612,7 @@
                 addLog(`Sending prompt with ack: "${prompt}" (enrich: ${enrich})`, 'info');
                 
                 // Await the promise for acknowledgment
-                const result = await decartRealtime.setPrompt(prompt, { 
+                await decartRealtime.setPrompt(prompt, { 
                     enhance: enrich,
                     maxTimeout: 15000 // 15 seconds timeout
                 });

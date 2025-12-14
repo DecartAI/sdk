@@ -1,24 +1,17 @@
 import { z } from "zod";
 import { createModelNotFoundError } from "../utils/errors";
 
-export const realtimeModels = z.union([
-	z.literal("mirage"),
-	z.literal("mirage_v2"),
-	z.literal("lucy_v2v_720p_rt"),
-]);
+export const realtimeModels = z.union([z.literal("mirage"), z.literal("mirage_v2"), z.literal("lucy_v2v_720p_rt")]);
 export const videoModels = z.union([
-	z.literal("lucy-dev-i2v"),
-	z.literal("lucy-fast-v2v"),
-	z.literal("lucy-pro-t2v"),
-	z.literal("lucy-pro-i2v"),
-	z.literal("lucy-pro-v2v"),
-	z.literal("lucy-pro-flf2v"),
-	z.literal("lucy-motion"),
+  z.literal("lucy-dev-i2v"),
+  z.literal("lucy-fast-v2v"),
+  z.literal("lucy-pro-t2v"),
+  z.literal("lucy-pro-i2v"),
+  z.literal("lucy-pro-v2v"),
+  z.literal("lucy-pro-flf2v"),
+  z.literal("lucy-motion"),
 ]);
-export const imageModels = z.union([
-	z.literal("lucy-pro-t2i"),
-	z.literal("lucy-pro-i2i"),
-]);
+export const imageModels = z.union([z.literal("lucy-pro-t2i"), z.literal("lucy-pro-i2i")]);
 
 export const modelSchema = z.union([realtimeModels, videoModels, imageModels]);
 export type Model = z.infer<typeof modelSchema>;
@@ -28,206 +21,142 @@ export type VideoModels = z.infer<typeof videoModels>;
 export type ImageModels = z.infer<typeof imageModels>;
 
 const fileInputSchema = z.union([
-	z.instanceof(File),
-	z.instanceof(Blob),
-	z.instanceof(ReadableStream),
-	z.instanceof(URL),
-	z.url(),
+  z.instanceof(File),
+  z.instanceof(Blob),
+  z.instanceof(ReadableStream),
+  z.instanceof(URL),
+  z.url(),
 ]);
 
 /**
  * Resolution schema for dev models. Supports only 720p.
  */
 const devResolutionSchema = z
-	.literal("720p")
-	.default("720p")
-	.optional()
-	.describe(
-		"The resolution to use for the generation. For dev models, only `720p` is supported.",
-	);
+  .literal("720p")
+  .default("720p")
+  .optional()
+  .describe("The resolution to use for the generation. For dev models, only `720p` is supported.");
 
 /**
  * Resolution schema for pro models.
  * @param defaultValue - Optional default value (e.g., "720p")
  */
 const proResolutionSchema = () => {
-	return z
-		.enum(["720p", "480p"])
-		.optional()
-		.describe("The resolution to use for the generation")
-		.default("720p");
+  return z.enum(["720p", "480p"]).optional().describe("The resolution to use for the generation").default("720p");
 };
 
 /**
  * Resolution schema for lucy-motion.
  */
 const motionResolutionSchema = z
-	.literal("720p")
-	.default("720p")
-	.optional()
-	.describe("The resolution to use for the generation");
+  .literal("720p")
+  .default("720p")
+  .optional()
+  .describe("The resolution to use for the generation");
 
 /**
  * Resolution schema for lucy-pro-v2v (supports 720p).
  */
 const proV2vResolutionSchema = z
-	.literal("720p")
-	.optional()
-	.describe("The resolution to use for the generation")
-	.default("720p");
+  .literal("720p")
+  .optional()
+  .describe("The resolution to use for the generation")
+  .default("720p");
 
 export const modelInputSchemas = {
-	"lucy-pro-t2v": z.object({
-		prompt: z
-			.string()
-			.min(1)
-			.max(1000)
-			.describe("The prompt to use for the generation"),
-		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: proResolutionSchema(),
-		orientation: z
-			.string()
-			.optional()
-			.describe("The orientation to use for the generation"),
-	}),
-	"lucy-pro-t2i": z.object({
-		prompt: z
-			.string()
-			.min(1)
-			.max(1000)
-			.describe("The prompt to use for the generation"),
-		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: proResolutionSchema(),
-		orientation: z
-			.string()
-			.optional()
-			.describe("The orientation to use for the generation"),
-	}),
-	"lucy-pro-i2v": z.object({
-		prompt: z
-			.string()
-			.min(1)
-			.max(1000)
-			.describe("The prompt to use for the generation"),
-		data: fileInputSchema.describe(
-			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
-		),
-		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: proResolutionSchema(),
-	}),
-	"lucy-dev-i2v": z.object({
-		prompt: z
-			.string()
-			.min(1)
-			.max(1000)
-			.describe("The prompt to use for the generation"),
-		data: fileInputSchema.describe(
-			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
-		),
-		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: devResolutionSchema,
-	}),
-	"lucy-pro-v2v": z.object({
-		prompt: z
-			.string()
-			.min(1)
-			.max(1000)
-			.describe("The prompt to use for the generation"),
-		data: fileInputSchema.describe(
-			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
-		),
-		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: proV2vResolutionSchema,
-		enhance_prompt: z
-			.boolean()
-			.optional()
-			.describe("Whether to enhance the prompt"),
-		num_inference_steps: z
-			.number()
-			.optional()
-			.describe("The number of inference steps"),
-	}),
-	"lucy-fast-v2v": z.object({
-		prompt: z
-			.string()
-			.min(1)
-			.max(1000)
-			.describe("The prompt to use for the generation"),
-		data: fileInputSchema.describe(
-			"The video data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
-		),
-		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: proV2vResolutionSchema,
-		enhance_prompt: z
-			.boolean()
-			.optional()
-			.describe("Whether to enhance the prompt"),
-	}),
-	"lucy-pro-flf2v": z.object({
-		prompt: z
-			.string()
-			.min(1)
-			.max(1000)
-			.describe("The prompt to use for the generation"),
-		start: fileInputSchema.describe(
-			"The start frame image (File, Blob, ReadableStream, URL, or string URL)",
-		),
-		end: fileInputSchema.describe(
-			"The end frame image (File, Blob, ReadableStream, URL, or string URL)",
-		),
-		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: proResolutionSchema(),
-	}),
-	"lucy-pro-i2i": z.object({
-		prompt: z
-			.string()
-			.min(1)
-			.max(1000)
-			.describe("The prompt to use for the generation"),
-		data: fileInputSchema.describe(
-			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
-		),
-		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: proResolutionSchema(),
-		enhance_prompt: z
-			.boolean()
-			.optional()
-			.describe("Whether to enhance the prompt"),
-	}),
-	"lucy-motion": z.object({
-		data: fileInputSchema.describe(
-			"The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
-		),
-		trajectory: z
-			.array(
-				z.object({
-					frame: z.number().min(0),
-					x: z.number().min(0),
-					y: z.number().min(0),
-				}),
-			)
-			.min(2)
-			.max(1000)
-			.describe(
-				"The trajectory of the desired movement of the object in the image",
-			),
-		seed: z.number().optional().describe("The seed to use for the generation"),
-		resolution: motionResolutionSchema,
-	}),
+  "lucy-pro-t2v": z.object({
+    prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),
+    seed: z.number().optional().describe("The seed to use for the generation"),
+    resolution: proResolutionSchema(),
+    orientation: z.string().optional().describe("The orientation to use for the generation"),
+  }),
+  "lucy-pro-t2i": z.object({
+    prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),
+    seed: z.number().optional().describe("The seed to use for the generation"),
+    resolution: proResolutionSchema(),
+    orientation: z.string().optional().describe("The orientation to use for the generation"),
+  }),
+  "lucy-pro-i2v": z.object({
+    prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),
+    data: fileInputSchema.describe(
+      "The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
+    ),
+    seed: z.number().optional().describe("The seed to use for the generation"),
+    resolution: proResolutionSchema(),
+  }),
+  "lucy-dev-i2v": z.object({
+    prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),
+    data: fileInputSchema.describe(
+      "The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
+    ),
+    seed: z.number().optional().describe("The seed to use for the generation"),
+    resolution: devResolutionSchema,
+  }),
+  "lucy-pro-v2v": z.object({
+    prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),
+    data: fileInputSchema.describe(
+      "The video data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
+    ),
+    seed: z.number().optional().describe("The seed to use for the generation"),
+    resolution: proV2vResolutionSchema,
+    enhance_prompt: z.boolean().optional().describe("Whether to enhance the prompt"),
+    num_inference_steps: z.number().optional().describe("The number of inference steps"),
+  }),
+  "lucy-fast-v2v": z.object({
+    prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),
+    data: fileInputSchema.describe(
+      "The video data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
+    ),
+    seed: z.number().optional().describe("The seed to use for the generation"),
+    resolution: proV2vResolutionSchema,
+    enhance_prompt: z.boolean().optional().describe("Whether to enhance the prompt"),
+  }),
+  "lucy-pro-flf2v": z.object({
+    prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),
+    start: fileInputSchema.describe("The start frame image (File, Blob, ReadableStream, URL, or string URL)"),
+    end: fileInputSchema.describe("The end frame image (File, Blob, ReadableStream, URL, or string URL)"),
+    seed: z.number().optional().describe("The seed to use for the generation"),
+    resolution: proResolutionSchema(),
+  }),
+  "lucy-pro-i2i": z.object({
+    prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),
+    data: fileInputSchema.describe(
+      "The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
+    ),
+    seed: z.number().optional().describe("The seed to use for the generation"),
+    resolution: proResolutionSchema(),
+    enhance_prompt: z.boolean().optional().describe("Whether to enhance the prompt"),
+  }),
+  "lucy-motion": z.object({
+    data: fileInputSchema.describe(
+      "The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
+    ),
+    trajectory: z
+      .array(
+        z.object({
+          frame: z.number().min(0),
+          x: z.number().min(0),
+          y: z.number().min(0),
+        }),
+      )
+      .min(2)
+      .max(1000)
+      .describe("The trajectory of the desired movement of the object in the image"),
+    seed: z.number().optional().describe("The seed to use for the generation"),
+    resolution: motionResolutionSchema,
+  }),
 } as const;
 
 export type ModelInputSchemas = typeof modelInputSchemas;
 
 export type ModelDefinition<T extends Model = Model> = {
-	name: T;
-	urlPath: string;
-	queueUrlPath?: string;
-	fps: number;
-	width: number;
-	height: number;
-	inputSchema: T extends keyof ModelInputSchemas
-		? ModelInputSchemas[T]
-		: z.ZodTypeAny;
+  name: T;
+  urlPath: string;
+  queueUrlPath?: string;
+  fps: number;
+  width: number;
+  height: number;
+  inputSchema: T extends keyof ModelInputSchemas ? ModelInputSchemas[T] : z.ZodTypeAny;
 };
 
 /**
@@ -243,167 +172,167 @@ export type ImageModelDefinition = ModelDefinition<ImageModels>;
 export type VideoModelDefinition = ModelDefinition<VideoModels>;
 
 export const modelDefinitionSchema = z.object({
-	name: modelSchema,
-	urlPath: z.string(),
-	queueUrlPath: z.string().optional(),
-	fps: z.number().min(1),
-	width: z.number().min(1),
-	height: z.number().min(1),
-	inputSchema: z.any(),
+  name: modelSchema,
+  urlPath: z.string(),
+  queueUrlPath: z.string().optional(),
+  fps: z.number().min(1),
+  width: z.number().min(1),
+  height: z.number().min(1),
+  inputSchema: z.any(),
 });
 
 const _models = {
-	realtime: {
-		mirage: {
-			urlPath: "/v1/stream",
-			name: "mirage" as const,
-			fps: 25,
-			width: 1280,
-			height: 704,
-			inputSchema: z.object({}),
-		},
-		mirage_v2: {
-			urlPath: "/v1/stream",
-			name: "mirage_v2" as const,
-			fps: 22,
-			width: 1280,
-			height: 704,
-			inputSchema: z.object({}),
-		},
-		lucy_v2v_720p_rt: {
-			urlPath: "/v1/stream",
-			name: "lucy_v2v_720p_rt" as const,
-			fps: 25,
-			width: 1280,
-			height: 704,
-			inputSchema: z.object({}),
-		},
-	},
-	image: {
-		"lucy-pro-t2i": {
-			urlPath: "/v1/generate/lucy-pro-t2i",
-			queueUrlPath: "/v1/jobs/lucy-pro-t2i",
-			name: "lucy-pro-t2i" as const,
-			fps: 25,
-			width: 1280,
-			height: 704,
-			inputSchema: modelInputSchemas["lucy-pro-t2i"],
-		},
-		"lucy-pro-i2i": {
-			urlPath: "/v1/generate/lucy-pro-i2i",
-			queueUrlPath: "/v1/jobs/lucy-pro-i2i",
-			name: "lucy-pro-i2i" as const,
-			fps: 25,
-			width: 1280,
-			height: 704,
-			inputSchema: modelInputSchemas["lucy-pro-i2i"],
-		},
-	},
-	video: {
-		"lucy-dev-i2v": {
-			urlPath: "/v1/generate/lucy-dev-i2v",
-			queueUrlPath: "/v1/jobs/lucy-dev-i2v",
-			name: "lucy-dev-i2v" as const,
-			fps: 25,
-			width: 1280,
-			height: 704,
-			inputSchema: modelInputSchemas["lucy-dev-i2v"],
-		},
-		"lucy-fast-v2v": {
-			urlPath: "/v1/generate/lucy-fast-v2v",
-			queueUrlPath: "/v1/jobs/lucy-fast-v2v",
-			name: "lucy-fast-v2v" as const,
-			fps: 25,
-			width: 1280,
-			height: 720,
-			inputSchema: modelInputSchemas["lucy-fast-v2v"],
-		},
-		"lucy-pro-t2v": {
-			urlPath: "/v1/generate/lucy-pro-t2v",
-			queueUrlPath: "/v1/jobs/lucy-pro-t2v",
-			name: "lucy-pro-t2v" as const,
-			fps: 25,
-			width: 1280,
-			height: 704,
-			inputSchema: modelInputSchemas["lucy-pro-t2v"],
-		},
-		"lucy-pro-i2v": {
-			urlPath: "/v1/generate/lucy-pro-i2v",
-			queueUrlPath: "/v1/jobs/lucy-pro-i2v",
-			name: "lucy-pro-i2v" as const,
-			fps: 25,
-			width: 1280,
-			height: 704,
-			inputSchema: modelInputSchemas["lucy-pro-i2v"],
-		},
-		"lucy-pro-v2v": {
-			urlPath: "/v1/generate/lucy-pro-v2v",
-			queueUrlPath: "/v1/jobs/lucy-pro-v2v",
-			name: "lucy-pro-v2v" as const,
-			fps: 25,
-			width: 1280,
-			height: 704,
-			inputSchema: modelInputSchemas["lucy-pro-v2v"],
-		},
-		"lucy-pro-flf2v": {
-			urlPath: "/v1/generate/lucy-pro-flf2v",
-			queueUrlPath: "/v1/jobs/lucy-pro-flf2v",
-			name: "lucy-pro-flf2v" as const,
-			fps: 25,
-			width: 1280,
-			height: 704,
-			inputSchema: modelInputSchemas["lucy-pro-flf2v"],
-		},
-		"lucy-motion": {
-			urlPath: "/v1/generate/lucy-motion",
-			queueUrlPath: "/v1/jobs/lucy-motion",
-			name: "lucy-motion" as const,
-			fps: 25,
-			width: 1280,
-			height: 704,
-			inputSchema: modelInputSchemas["lucy-motion"],
-		},
-	},
+  realtime: {
+    mirage: {
+      urlPath: "/v1/stream",
+      name: "mirage" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: z.object({}),
+    },
+    mirage_v2: {
+      urlPath: "/v1/stream",
+      name: "mirage_v2" as const,
+      fps: 22,
+      width: 1280,
+      height: 704,
+      inputSchema: z.object({}),
+    },
+    lucy_v2v_720p_rt: {
+      urlPath: "/v1/stream",
+      name: "lucy_v2v_720p_rt" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: z.object({}),
+    },
+  },
+  image: {
+    "lucy-pro-t2i": {
+      urlPath: "/v1/generate/lucy-pro-t2i",
+      queueUrlPath: "/v1/jobs/lucy-pro-t2i",
+      name: "lucy-pro-t2i" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-pro-t2i"],
+    },
+    "lucy-pro-i2i": {
+      urlPath: "/v1/generate/lucy-pro-i2i",
+      queueUrlPath: "/v1/jobs/lucy-pro-i2i",
+      name: "lucy-pro-i2i" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-pro-i2i"],
+    },
+  },
+  video: {
+    "lucy-dev-i2v": {
+      urlPath: "/v1/generate/lucy-dev-i2v",
+      queueUrlPath: "/v1/jobs/lucy-dev-i2v",
+      name: "lucy-dev-i2v" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-dev-i2v"],
+    },
+    "lucy-fast-v2v": {
+      urlPath: "/v1/generate/lucy-fast-v2v",
+      queueUrlPath: "/v1/jobs/lucy-fast-v2v",
+      name: "lucy-fast-v2v" as const,
+      fps: 25,
+      width: 1280,
+      height: 720,
+      inputSchema: modelInputSchemas["lucy-fast-v2v"],
+    },
+    "lucy-pro-t2v": {
+      urlPath: "/v1/generate/lucy-pro-t2v",
+      queueUrlPath: "/v1/jobs/lucy-pro-t2v",
+      name: "lucy-pro-t2v" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-pro-t2v"],
+    },
+    "lucy-pro-i2v": {
+      urlPath: "/v1/generate/lucy-pro-i2v",
+      queueUrlPath: "/v1/jobs/lucy-pro-i2v",
+      name: "lucy-pro-i2v" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-pro-i2v"],
+    },
+    "lucy-pro-v2v": {
+      urlPath: "/v1/generate/lucy-pro-v2v",
+      queueUrlPath: "/v1/jobs/lucy-pro-v2v",
+      name: "lucy-pro-v2v" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-pro-v2v"],
+    },
+    "lucy-pro-flf2v": {
+      urlPath: "/v1/generate/lucy-pro-flf2v",
+      queueUrlPath: "/v1/jobs/lucy-pro-flf2v",
+      name: "lucy-pro-flf2v" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-pro-flf2v"],
+    },
+    "lucy-motion": {
+      urlPath: "/v1/generate/lucy-motion",
+      queueUrlPath: "/v1/jobs/lucy-motion",
+      name: "lucy-motion" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-motion"],
+    },
+  },
 } as const;
 
 export const models = {
-	realtime: <T extends RealTimeModels>(model: T): ModelDefinition<T> => {
-		const modelDefinition = _models.realtime[model];
-		if (!modelDefinition) {
-			throw createModelNotFoundError(model);
-		}
-		return modelDefinition as ModelDefinition<T>;
-	},
-	/**
-	 * Get a video model identifier.
-	 *
-	 * Available options:
-	 *   - `"lucy-pro-t2v"` - Text-to-video
-	 *   - `"lucy-pro-i2v"` - Image-to-video
-	 *   - `"lucy-pro-v2v"` - Video-to-video
-	 *   - `"lucy-pro-flf2v"` - First-last-frame-to-video
-	 * 	 - `"lucy-dev-i2v"` - Image-to-video (Dev quality)
-	 *   - `"lucy-fast-v2v"` - Video-to-video (Fast quality)
-	 */
-	video: <T extends VideoModels>(model: T): ModelDefinition<T> => {
-		const modelDefinition = _models.video[model];
-		if (!modelDefinition) {
-			throw createModelNotFoundError(model);
-		}
-		return modelDefinition as ModelDefinition<T>;
-	},
-	/**
-	 * Get an image model identifier.
-	 *
-	 * Available options:
-	 *   - `"lucy-pro-t2i"` - Text-to-image
-	 *   - `"lucy-pro-i2i"` - Image-to-image
-	 */
-	image: <T extends ImageModels>(model: T): ModelDefinition<T> => {
-		const modelDefinition = _models.image[model];
-		if (!modelDefinition) {
-			throw createModelNotFoundError(model);
-		}
-		return modelDefinition as ModelDefinition<T>;
-	},
+  realtime: <T extends RealTimeModels>(model: T): ModelDefinition<T> => {
+    const modelDefinition = _models.realtime[model];
+    if (!modelDefinition) {
+      throw createModelNotFoundError(model);
+    }
+    return modelDefinition as ModelDefinition<T>;
+  },
+  /**
+   * Get a video model identifier.
+   *
+   * Available options:
+   *   - `"lucy-pro-t2v"` - Text-to-video
+   *   - `"lucy-pro-i2v"` - Image-to-video
+   *   - `"lucy-pro-v2v"` - Video-to-video
+   *   - `"lucy-pro-flf2v"` - First-last-frame-to-video
+   * 	 - `"lucy-dev-i2v"` - Image-to-video (Dev quality)
+   *   - `"lucy-fast-v2v"` - Video-to-video (Fast quality)
+   */
+  video: <T extends VideoModels>(model: T): ModelDefinition<T> => {
+    const modelDefinition = _models.video[model];
+    if (!modelDefinition) {
+      throw createModelNotFoundError(model);
+    }
+    return modelDefinition as ModelDefinition<T>;
+  },
+  /**
+   * Get an image model identifier.
+   *
+   * Available options:
+   *   - `"lucy-pro-t2i"` - Text-to-image
+   *   - `"lucy-pro-i2i"` - Image-to-image
+   */
+  image: <T extends ImageModels>(model: T): ModelDefinition<T> => {
+    const modelDefinition = _models.image[model];
+    if (!modelDefinition) {
+      throw createModelNotFoundError(model);
+    }
+    return modelDefinition as ModelDefinition<T>;
+  },
 };

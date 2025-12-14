@@ -1,19 +1,19 @@
 import { useEffect, useState } from "react";
 
 export function useObjectURL(file: File | undefined) {
-	const [url, setUrl] = useState<string | undefined>();
+  const [url, setUrl] = useState<string | undefined>();
 
-	useEffect(() => {
-		if (!file) {
-			setUrl(undefined);
-			return;
-		}
+  useEffect(() => {
+    if (!file) {
+      setUrl(undefined);
+      return;
+    }
 
-		const objectUrl = URL.createObjectURL(file);
-		setUrl(objectUrl);
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
 
-		return () => URL.revokeObjectURL(objectUrl);
-	}, [file]);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
 
-	return url;
+  return url;
 }
