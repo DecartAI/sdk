@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  createDecartClient,
-  type DecartSDKError,
-  models,
-  type RealTimeClient,
-} from "@decartai/sdk";
+import { createDecartClient, type DecartSDKError, models, type RealTimeClient } from "@decartai/sdk";
 import { useEffect, useRef, useState } from "react";
 
 interface VideoStreamProps {

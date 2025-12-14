@@ -1,53 +1,52 @@
 .app {
-	padding-inline: 2rem;
-	font-family:
-		system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  padding-inline: 2rem;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .layout {
-	display: grid;
-	grid-template-columns: 1.25fr 1fr;
-	gap: 5rem;
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 5rem;
 }
 
 .file-input {
-	margin-block: 1rem;
+  margin-block: 1rem;
 }
 
 .file-input-control {
-	width: 300px;
-	margin-left: 0.5rem;
+  width: 300px;
+  margin-left: 0.5rem;
 }
 
 .preview-image {
-	display: block;
-	max-width: 300px;
-	max-height: 420px;
-	border-radius: 0.5rem;
-	margin-bottom: 1rem;
+  display: block;
+  max-width: 300px;
+  max-height: 420px;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
 }
 
 .result-image {
-	display: block;
-	max-width: 300px;
-	border-radius: 0.5rem;
-	margin-top: 1rem;
+  display: block;
+  max-width: 300px;
+  border-radius: 0.5rem;
+  margin-top: 1rem;
 }
 
 .result-placeholder {
-	margin-top: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 .weather-options {
-	display: flex;
-	gap: 0.5rem;
-	margin-top: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 .weather-option-label {
-	display: block;
+  display: block;
 }
 
 .weather-option-text {
-	margin-left: 0.5rem;
+  margin-left: 0.5rem;
 }
