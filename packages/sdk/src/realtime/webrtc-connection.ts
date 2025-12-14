@@ -199,8 +199,9 @@ export class WebRTCConnection {
   }
 
   cleanup(): void {
-    // biome-ignore lint/suspicious/useIterableCallbackReturn: we dont care about the returned value
-    this.pc?.getSenders().forEach((s) => s.track?.stop());
+    this.pc?.getSenders().forEach((s) => {
+      s.track?.stop();
+    });
     this.pc?.close();
     this.pc = null;
     this.ws?.close();
