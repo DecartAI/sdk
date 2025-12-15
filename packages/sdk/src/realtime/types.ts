@@ -46,6 +46,18 @@ export type ErrorMessage = {
   error: string;
 };
 
+// Avatar Live message types
+export type SetAvatarImageMessage = {
+  type: "set_avatar_image";
+  image: string; // Base64-encoded image data
+};
+
+export type AvatarReadyMessage = {
+  type: "avatar_ready";
+  success: boolean;
+  error: string | null;
+};
+
 // Incoming message types (from server)
 export type IncomingWebRTCMessage =
   | ReadyMessage
@@ -54,9 +66,15 @@ export type IncomingWebRTCMessage =
   | IceCandidateMessage
   | IceRestartMessage
   | PromptAckMessage
-  | ErrorMessage;
+  | ErrorMessage
+  | AvatarReadyMessage;
 
 // Outgoing message types (to server)
-export type OutgoingWebRTCMessage = OfferMessage | AnswerMessage | IceCandidateMessage | PromptMessage;
+export type OutgoingWebRTCMessage =
+  | OfferMessage
+  | AnswerMessage
+  | IceCandidateMessage
+  | PromptMessage
+  | SetAvatarImageMessage;
 
-export type OutgoingMessage = PromptMessage;
+export type OutgoingMessage = PromptMessage | SetAvatarImageMessage;

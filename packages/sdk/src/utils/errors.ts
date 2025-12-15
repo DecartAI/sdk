@@ -17,6 +17,7 @@ export const ERROR_CODES = {
   QUEUE_STATUS_ERROR: "QUEUE_STATUS_ERROR",
   QUEUE_RESULT_ERROR: "QUEUE_RESULT_ERROR",
   JOB_NOT_COMPLETED: "JOB_NOT_COMPLETED",
+  AVATAR_SETUP_ERROR: "AVATAR_SETUP_ERROR",
 } as const;
 
 export function createSDKError(
@@ -71,4 +72,8 @@ export function createJobNotCompletedError(jobId: string, currentStatus: string)
     `Cannot get content for job ${jobId} with status "${currentStatus}"`,
     { jobId, currentStatus },
   );
+}
+
+export function createAvatarSetupError(message: string): DecartSDKError {
+  return createSDKError(ERROR_CODES.AVATAR_SETUP_ERROR, message);
 }

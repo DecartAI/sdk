@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { createModelNotFoundError } from "../utils/errors";
 
-export const realtimeModels = z.union([z.literal("mirage"), z.literal("mirage_v2"), z.literal("lucy_v2v_720p_rt")]);
+export const realtimeModels = z.union([
+  z.literal("mirage"),
+  z.literal("mirage_v2"),
+  z.literal("lucy_v2v_720p_rt"),
+  z.literal("avatar-live"),
+]);
 export const videoModels = z.union([
   z.literal("lucy-dev-i2v"),
   z.literal("lucy-fast-v2v"),
@@ -205,6 +210,14 @@ const _models = {
       fps: 25,
       width: 1280,
       height: 704,
+      inputSchema: z.object({}),
+    },
+    "avatar-live": {
+      urlPath: "/v1/avatar-live/stream",
+      name: "avatar-live" as const,
+      fps: 25,
+      width: 1280,
+      height: 720,
       inputSchema: z.object({}),
     },
   },

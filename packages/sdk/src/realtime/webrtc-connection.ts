@@ -1,6 +1,12 @@
 import mitt from "mitt";
 import { buildUserAgent } from "../utils/user-agent";
-import type { IncomingWebRTCMessage, OutgoingWebRTCMessage, PromptAckMessage, TurnConfig } from "./types";
+import type {
+  AvatarReadyMessage,
+  IncomingWebRTCMessage,
+  OutgoingWebRTCMessage,
+  PromptAckMessage,
+  TurnConfig,
+} from "./types";
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
@@ -17,6 +23,7 @@ export type ConnectionState = "connecting" | "connected" | "disconnected";
 
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
+  avatarReady: AvatarReadyMessage;
 };
 
 export class WebRTCConnection {
@@ -127,6 +134,10 @@ export class WebRTCConnection {
         }
         case "prompt_ack": {
           this.websocketMessagesEmitter.emit("promptAck", msg);
+          break;
+        }
+        case "avatar_ready": {
+          this.websocketMessagesEmitter.emit("avatarReady", msg);
           break;
         }
       }

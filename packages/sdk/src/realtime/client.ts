@@ -4,6 +4,7 @@ import { z } from "zod";
 import { modelDefinitionSchema } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { createWebrtcError, type DecartSDKError } from "../utils/errors";
+import { avatarMethods } from "./avatar-methods";
 import { realtimeMethods } from "./methods";
 import { WebRTCManager } from "./webrtc-manager";
 
@@ -22,6 +23,11 @@ export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialSta
 const createAsyncFunctionSchema = <T extends z.core.$ZodFunction>(schema: T) =>
   z.custom<Parameters<T["implementAsync"]>[0]>((fn) => schema.implementAsync(fn as Parameters<T["implementAsync"]>[0]));
 
+const avatarOptionsSchema = z.object({
+  avatarImage: z.union([z.instanceof(Blob), z.instanceof(File), z.string()]),
+});
+export type AvatarOptions = z.infer<typeof avatarOptionsSchema>;
+
 const realTimeClientConnectOptionsSchema = z.object({
   model: modelDefinitionSchema,
   onRemoteStream: z.custom<OnRemoteStreamFn>((val) => typeof val === "function", {
@@ -29,6 +35,7 @@ const realTimeClientConnectOptionsSchema = z.object({
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
+  avatar: avatarOptionsSchema.optional(),
 });
 export type RealTimeClientConnectOptions = z.infer<typeof realTimeClientConnectOptionsSchema>;
 
@@ -50,7 +57,10 @@ export type RealTimeClient = {
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
   const { baseUrl, apiKey, integration } = opts;
 
-  const connect = async (stream: MediaStream, options: RealTimeClientConnectOptions): Promise<RealTimeClient> => {
+  const connect = async (
+    stream: MediaStream | null,
+    options: RealTimeClientConnectOptions,
+  ): Promise<RealTimeClient> => {
     const eventEmitter = mitt<Events>();
 
     const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
@@ -59,8 +69,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     }
 
     const sessionId = uuidv4();
+    const isAvatarLive = options.model.name === "avatar-live";
 
-    const { onRemoteStream, initialState } = parsedOptions.data;
+    const { onRemoteStream, initialState, avatar } = parsedOptions.data;
+
+    // For avatar-live, create empty MediaStream if none provided
+    const inputStream = stream ?? new MediaStream();
 
     const url = `${baseUrl}${options.model.urlPath}`;
     const webrtcManager = new WebRTCManager({
@@ -83,9 +97,23 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       vp8StartBitrate: 600,
     });
 
-    await webrtcManager.connect(stream);
+    await webrtcManager.connect(inputStream);
 
     const methods = realtimeMethods(webrtcManager);
+    const avatarMethodsInstance = avatarMethods(webrtcManager);
+
+    // For avatar-live: set up avatar image after connection
+    if (isAvatarLive && avatar?.avatarImage) {
+      let imageBlob: Blob;
+      if (typeof avatar.avatarImage === "string") {
+        // Fetch image from URL
+        const response = await fetch(avatar.avatarImage);
+        imageBlob = await response.blob();
+      } else {
+        imageBlob = avatar.avatarImage;
+      }
+      await avatarMethodsInstance.setAvatarImage(imageBlob);
+    }
 
     if (options.initialState) {
       if (options.initialState.prompt) {
