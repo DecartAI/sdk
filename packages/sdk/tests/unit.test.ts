@@ -702,3 +702,70 @@ describe("UserAgent", () => {
     expect(getRuntimeEnvironment(mockUnknown)).toEqual("runtime/unknown");
   });
 });
+
+describe("Tokens API", () => {
+  let decart: ReturnType<typeof createDecartClient>;
+  let lastRequest: Request | null = null;
+
+  const server = setupServer();
+
+  beforeAll(() => {
+    server.listen({ onUnhandledRequest: "error" });
+  });
+
+  afterAll(() => {
+    server.close();
+  });
+
+  beforeEach(() => {
+    lastRequest = null;
+    decart = createDecartClient({
+      apiKey: "test-api-key",
+      baseUrl: "http://localhost",
+    });
+  });
+
+  afterEach(() => {
+    server.resetHandlers();
+  });
+
+  describe("create", () => {
+    it("creates a client token", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({
+            apiKey: "ek_test123",
+            expiresAt: "2024-12-15T12:10:00Z",
+          });
+        }),
+      );
+
+      const result = await decart.tokens.create();
+
+      expect(result.apiKey).toBe("ek_test123");
+      expect(result.expiresAt).toBe("2024-12-15T12:10:00Z");
+      expect(lastRequest?.headers.get("x-api-key")).toBe("test-api-key");
+    });
+
+    it("handles 401 error", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", () => {
+          return HttpResponse.json({ error: "Invalid API key" }, { status: 401 });
+        }),
+      );
+
+      await expect(decart.tokens.create()).rejects.toThrow("Failed to create token");
+    });
+
+    it("handles 403 error", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", () => {
+          return HttpResponse.json({ error: "Cannot create token from client token" }, { status: 403 });
+        }),
+      );
+
+      await expect(decart.tokens.create()).rejects.toThrow("Failed to create token");
+    });
+  });
+});
