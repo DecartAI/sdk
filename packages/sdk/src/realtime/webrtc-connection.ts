@@ -17,6 +17,7 @@ interface ConnectionCallbacks {
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
+  isAvatarLive?: boolean;
 }
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -182,6 +183,11 @@ export class WebRTCConnection {
       });
     }
     this.pc = new RTCPeerConnection({ iceServers });
+
+    // For avatar-live: add receive-only video transceiver (sends audio only, receives audio+video)
+    if (this.callbacks.isAvatarLive) {
+      this.pc.addTransceiver("video", { direction: "recvonly" });
+    }
 
     this.localStream.getTracks().forEach((track) => {
       if (this.pc && this.localStream) {
