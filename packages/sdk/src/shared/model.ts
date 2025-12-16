@@ -301,8 +301,8 @@ const _models = {
       inputSchema: modelInputSchemas["lucy-motion"],
     },
     "mirage-v2-v2v": {
-      urlPath: "https://staging.api3.decart.ai/v1/generate/mirage-v2-v2v",
-      queueUrlPath: "https://staging.api3.decart.ai/v1/jobs/mirage-v2-v2v",
+      urlPath: "/v1/generate/mirage-v2-v2v",
+      queueUrlPath: "/v1/jobs/mirage-v2-v2v",
       name: "mirage-v2-v2v" as const,
       fps: 22,
       width: 1280,
