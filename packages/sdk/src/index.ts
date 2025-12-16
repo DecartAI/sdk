@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createProcessClient } from "./process/client";
 import { createQueueClient } from "./queue/client";
 import { createRealTimeClient } from "./realtime/client";
+import { createTokensClient } from "./tokens/client";
 import { readEnv } from "./utils/env";
 import { createInvalidApiKeyError, createInvalidBaseUrlError } from "./utils/errors";
 
@@ -32,6 +33,7 @@ export {
   type VideoModels,
 } from "./shared/model";
 export type { ModelState } from "./shared/types";
+export type { CreateTokenResponse, TokensClient } from "./tokens/client";
 export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
 
 const decartClientOptionsSchema = z.object({
@@ -102,6 +104,12 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     integration,
   });
 
+  const tokens = createTokensClient({
+    baseUrl,
+    apiKey,
+    integration,
+  });
+
   return {
     realtime,
     /**
@@ -157,5 +165,22 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
      * ```
      */
     queue,
+    /**
+     * Client for creating client tokens.
+     * Client tokens are short-lived API keys safe for client-side use.
+     *
+     * @example
+     * ```ts
+     * // Server-side: Create a client token
+     * const serverClient = createDecartClient({ apiKey: process.env.DECART_API_KEY });
+     * const token = await serverClient.tokens.create();
+     * // Returns: { apiKey: "ek_...", expiresAt: "2024-12-15T12:10:00Z" }
+     *
+     * // Client-side: Use the client token
+     * const client = createDecartClient({ apiKey: token.apiKey });
+     * const realtimeClient = await client.realtime.connect(stream, options);
+     * ```
+     */
+    tokens,
   };
 };
