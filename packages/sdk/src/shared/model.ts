@@ -301,8 +301,8 @@ const _models = {
       inputSchema: modelInputSchemas["lucy-motion"],
     },
     "lucy-restyle-v2v": {
-      urlPath: "/v1/generate/lucy_restyle_v2v",
-      queueUrlPath: "/v1/jobs/lucy_restyle_v2v",
+      urlPath: "/v1/generate/lucy-restyle-v2v",
+      queueUrlPath: "/v1/jobs/lucy-restyle-v2v",
       name: "lucy-restyle-v2v" as const,
       fps: 22,
       width: 1280,

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { createDecartClient, models } from "@decartai/sdk";
-import { run } from "../lib/run.js";
+import { run } from "../lib/run";
 
 run(async () => {
   const apiKey = process.env.DECART_API_KEY;
