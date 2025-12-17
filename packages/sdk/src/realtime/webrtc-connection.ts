@@ -1,7 +1,7 @@
 import mitt from "mitt";
 import { buildUserAgent } from "../utils/user-agent";
 import type {
-  AvatarReadyMessage,
+  ImageSetMessage,
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
@@ -9,6 +9,7 @@ import type {
 } from "./types";
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+const AVATAR_SETUP_TIMEOUT_MS = 15000;
 
 interface ConnectionCallbacks {
   onRemoteStream?: (stream: MediaStream) => void;
@@ -18,13 +19,14 @@ interface ConnectionCallbacks {
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
   isAvatarLive?: boolean;
+  avatarImageBase64?: string;
 }
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
 
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
-  avatarReady: AvatarReadyMessage;
+  imageSet: ImageSetMessage;
 };
 
 export class WebRTCConnection {
@@ -68,6 +70,11 @@ export class WebRTCConnection {
       };
       this.ws.onclose = () => this.setState("disconnected");
     });
+
+    // For avatar-live: send avatar image before WebRTC handshake
+    if (this.callbacks.avatarImageBase64) {
+      await this.sendAvatarImage(this.callbacks.avatarImageBase64);
+    }
 
     await this.setupNewPeerConnection();
 
@@ -137,8 +144,8 @@ export class WebRTCConnection {
           this.websocketMessagesEmitter.emit("promptAck", msg);
           break;
         }
-        case "avatar_ready": {
-          this.websocketMessagesEmitter.emit("avatarReady", msg);
+        case "image_set": {
+          this.websocketMessagesEmitter.emit("imageSet", msg);
           break;
         }
       }
@@ -152,6 +159,28 @@ export class WebRTCConnection {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     }
+  }
+
+  private async sendAvatarImage(imageBase64: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.websocketMessagesEmitter.off("imageSet", listener);
+        reject(new Error("Avatar setup timed out"));
+      }, AVATAR_SETUP_TIMEOUT_MS);
+
+      const listener = (msg: ImageSetMessage) => {
+        clearTimeout(timeoutId);
+        this.websocketMessagesEmitter.off("imageSet", listener);
+        if (msg.status === "success") {
+          resolve();
+        } else {
+          reject(new Error(`Failed to set avatar image: ${msg.status}`));
+        }
+      };
+
+      this.websocketMessagesEmitter.on("imageSet", listener);
+      this.send({ type: "set_image", image_data: imageBase64 });
+    });
   }
 
   private setState(state: ConnectionState): void {

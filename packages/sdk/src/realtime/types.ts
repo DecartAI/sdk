@@ -48,14 +48,13 @@ export type ErrorMessage = {
 
 // Avatar Live message types
 export type SetAvatarImageMessage = {
-  type: "set_avatar_image";
-  image: string; // Base64-encoded image data
+  type: "set_image";
+  image_data: string; // Base64-encoded image data
 };
 
-export type AvatarReadyMessage = {
-  type: "avatar_ready";
-  success: boolean;
-  error: string | null;
+export type ImageSetMessage = {
+  type: "image_set";
+  status: string;
 };
 
 // Incoming message types (from server)
@@ -67,7 +66,7 @@ export type IncomingWebRTCMessage =
   | IceRestartMessage
   | PromptAckMessage
   | ErrorMessage
-  | AvatarReadyMessage;
+  | ImageSetMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =

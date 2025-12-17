@@ -4,9 +4,22 @@ import { z } from "zod";
 import { modelDefinitionSchema } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { createWebrtcError, type DecartSDKError } from "../utils/errors";
-import { avatarMethods } from "./avatar-methods";
 import { realtimeMethods } from "./methods";
 import { WebRTCManager } from "./webrtc-manager";
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      // Remove data URL prefix (e.g., "data:image/png;base64,")
+      const base64 = result.split(",")[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 export type RealTimeClientOptions = {
   baseUrl: string;
@@ -76,6 +89,20 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     // For avatar-live, create empty MediaStream if none provided
     const inputStream = stream ?? new MediaStream();
 
+    // For avatar-live: prepare avatar image base64 before connection
+    let avatarImageBase64: string | undefined;
+    if (isAvatarLive && avatar?.avatarImage) {
+      let imageBlob: Blob;
+      if (typeof avatar.avatarImage === "string") {
+        // Fetch image from URL
+        const response = await fetch(avatar.avatarImage);
+        imageBlob = await response.blob();
+      } else {
+        imageBlob = avatar.avatarImage;
+      }
+      avatarImageBase64 = await blobToBase64(imageBlob);
+    }
+
     const url = `${baseUrl}${options.model.urlPath}`;
     const webrtcManager = new WebRTCManager({
       webrtcUrl: `${url}?api_key=${apiKey}&model=${options.model.name}`,
@@ -96,25 +123,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       vp8MinBitrate: 300,
       vp8StartBitrate: 600,
       isAvatarLive,
+      avatarImageBase64,
     });
 
     await webrtcManager.connect(inputStream);
 
     const methods = realtimeMethods(webrtcManager);
-    const avatarMethodsInstance = avatarMethods(webrtcManager);
-
-    // For avatar-live: set up avatar image after connection
-    if (isAvatarLive && avatar?.avatarImage) {
-      let imageBlob: Blob;
-      if (typeof avatar.avatarImage === "string") {
-        // Fetch image from URL
-        const response = await fetch(avatar.avatarImage);
-        imageBlob = await response.blob();
-      } else {
-        imageBlob = avatar.avatarImage;
-      }
-      await avatarMethodsInstance.setAvatarImage(imageBlob);
-    }
 
     if (options.initialState) {
       if (options.initialState.prompt) {

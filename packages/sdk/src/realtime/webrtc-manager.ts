@@ -17,6 +17,7 @@ export interface WebRTCConfig {
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
   isAvatarLive?: boolean;
+  avatarImageBase64?: string;
 }
 
 const PERMANENT_ERRORS = [
@@ -42,6 +43,7 @@ export class WebRTCManager {
       vp8MinBitrate: config.vp8MinBitrate,
       vp8StartBitrate: config.vp8StartBitrate,
       isAvatarLive: config.isAvatarLive,
+      avatarImageBase64: config.avatarImageBase64,
     });
   }
 
