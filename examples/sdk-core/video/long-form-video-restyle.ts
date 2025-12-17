@@ -1,18 +1,23 @@
 import fs from "node:fs";
 import { createDecartClient, models } from "@decartai/sdk";
-import { run } from "../lib/run";
+import { run } from "../lib/run.js";
 
 run(async () => {
+  const apiKey = process.env.DECART_API_KEY;
+  if (!apiKey) {
+    throw new Error("DECART_API_KEY environment variable is required");
+  }
+
   const client = createDecartClient({
-    apiKey: process.env.DECART_API_KEY!,
+    apiKey,
   });
 
-  console.log("Editing video with mirage-v2-v2v...");
+  console.log("Editing video with lucy-restyle-v2v...");
 
   const inputVideo = fs.readFileSync("input.mp4");
 
   const result = await client.queue.submitAndPoll({
-    model: models.video("mirage-v2-v2v"),
+    model: models.video("lucy-restyle-v2v"),
     prompt: "Transform to anime style",
     enhance_prompt: true,
     data: new Blob([inputVideo]),

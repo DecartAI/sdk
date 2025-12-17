@@ -41,7 +41,7 @@ Video models use the asynchronous Queue API - jobs are submitted and polled for 
 - `video/text-to-video.ts` - Generate video from text prompt
 - `video/image-to-video.ts` - Generate video from image
 - `video/video-to-video.ts` - Transform existing video
-- `video/mirage-v2-v2v.ts` - Transform existing video with Mirage
+- `video/mirage-v2v.ts` - Transform existing video with `lucy-restyle-v2v`
 - `video/first-last-frame.ts` - Generate video from first/last frames
 - `video/manual-polling.ts` - Manual job status polling
 

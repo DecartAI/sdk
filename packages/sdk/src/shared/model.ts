@@ -10,7 +10,7 @@ export const videoModels = z.union([
   z.literal("lucy-pro-v2v"),
   z.literal("lucy-pro-flf2v"),
   z.literal("lucy-motion"),
-  z.literal("mirage-v2-v2v"),
+  z.literal("lucy-restyle-v2v"),
 ]);
 export const imageModels = z.union([z.literal("lucy-pro-t2i"), z.literal("lucy-pro-i2i")]);
 
@@ -146,7 +146,7 @@ export const modelInputSchemas = {
     seed: z.number().optional().describe("The seed to use for the generation"),
     resolution: motionResolutionSchema,
   }),
-  "mirage-v2-v2v": z.object({
+  "lucy-restyle-v2v": z.object({
     prompt: z.string().min(1).max(1000).describe("Text prompt for the video editing"),
     data: fileInputSchema.describe("Video file to process (File, Blob, ReadableStream, URL, or string URL)"),
     seed: z.number().optional().describe("Seed for the video generation"),
@@ -300,14 +300,14 @@ const _models = {
       height: 704,
       inputSchema: modelInputSchemas["lucy-motion"],
     },
-    "mirage-v2-v2v": {
-      urlPath: "/v1/generate/mirage-v2-v2v",
-      queueUrlPath: "/v1/jobs/mirage-v2-v2v",
-      name: "mirage-v2-v2v" as const,
+    "lucy-restyle-v2v": {
+      urlPath: "/v1/generate/lucy_restyle_v2v",
+      queueUrlPath: "/v1/jobs/lucy_restyle_v2v",
+      name: "lucy-restyle-v2v" as const,
       fps: 22,
       width: 1280,
       height: 704,
-      inputSchema: modelInputSchemas["mirage-v2-v2v"],
+      inputSchema: modelInputSchemas["lucy-restyle-v2v"],
     },
   },
 } as const;
@@ -330,6 +330,7 @@ export const models = {
    *   - `"lucy-pro-flf2v"` - First-last-frame-to-video
    * 	 - `"lucy-dev-i2v"` - Image-to-video (Dev quality)
    *   - `"lucy-fast-v2v"` - Video-to-video (Fast quality)
+   *   - `"lucy-restyle-v2v"` - Video restyling (video-to-video)
    */
   video: <T extends VideoModels>(model: T): ModelDefinition<T> => {
     const modelDefinition = _models.video[model];
