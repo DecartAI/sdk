@@ -330,7 +330,7 @@ export const models = {
    *   - `"lucy-pro-flf2v"` - First-last-frame-to-video
    * 	 - `"lucy-dev-i2v"` - Image-to-video (Dev quality)
    *   - `"lucy-fast-v2v"` - Video-to-video (Fast quality)
-   *   - `"lucy-restyle-v2v"` - Video restyling (video-to-video)
+   *   - `"lucy-restyle-v2v"` - Video-to-video (Restyling)
    */
   video: <T extends VideoModels>(model: T): ModelDefinition<T> => {
     const modelDefinition = _models.video[model];
