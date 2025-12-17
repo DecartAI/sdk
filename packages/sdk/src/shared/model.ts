@@ -10,6 +10,7 @@ export const videoModels = z.union([
   z.literal("lucy-pro-v2v"),
   z.literal("lucy-pro-flf2v"),
   z.literal("lucy-motion"),
+  z.literal("lucy-restyle-v2v"),
 ]);
 export const imageModels = z.union([z.literal("lucy-pro-t2i"), z.literal("lucy-pro-i2i")]);
 
@@ -144,6 +145,13 @@ export const modelInputSchemas = {
       .describe("The trajectory of the desired movement of the object in the image"),
     seed: z.number().optional().describe("The seed to use for the generation"),
     resolution: motionResolutionSchema,
+  }),
+  "lucy-restyle-v2v": z.object({
+    prompt: z.string().min(1).max(1000).describe("Text prompt for the video editing"),
+    data: fileInputSchema.describe("Video file to process (File, Blob, ReadableStream, URL, or string URL)"),
+    seed: z.number().optional().describe("Seed for the video generation"),
+    resolution: proV2vResolutionSchema,
+    enhance_prompt: z.boolean().default(true).optional().describe("Whether to enhance the prompt"),
   }),
 } as const;
 
@@ -292,6 +300,15 @@ const _models = {
       height: 704,
       inputSchema: modelInputSchemas["lucy-motion"],
     },
+    "lucy-restyle-v2v": {
+      urlPath: "/v1/generate/lucy-restyle-v2v",
+      queueUrlPath: "/v1/jobs/lucy-restyle-v2v",
+      name: "lucy-restyle-v2v" as const,
+      fps: 22,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-restyle-v2v"],
+    },
   },
 } as const;
 
@@ -313,6 +330,7 @@ export const models = {
    *   - `"lucy-pro-flf2v"` - First-last-frame-to-video
    * 	 - `"lucy-dev-i2v"` - Image-to-video (Dev quality)
    *   - `"lucy-fast-v2v"` - Video-to-video (Fast quality)
+   *   - `"lucy-restyle-v2v"` - Video-to-video (Restyling)
    */
   video: <T extends VideoModels>(model: T): ModelDefinition<T> => {
     const modelDefinition = _models.video[model];

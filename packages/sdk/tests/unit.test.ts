@@ -334,6 +334,38 @@ describe("Queue API", () => {
       expect(dataFile).toBeInstanceOf(File);
     });
 
+    it("submits video restyle job", async () => {
+      server.use(
+        http.post("http://localhost/v1/jobs/lucy-restyle-v2v", async ({ request }) => {
+          lastRequest = request;
+          lastFormData = await request.formData();
+          return HttpResponse.json({
+            job_id: "job_restyle",
+            status: "pending",
+          });
+        }),
+      );
+
+      const testBlob = new Blob(["test-video"], { type: "video/mp4" });
+
+      const result = await decart.queue.submit({
+        model: models.video("lucy-restyle-v2v"),
+        prompt: "Transform to anime style",
+        data: testBlob,
+        enhance_prompt: true,
+        seed: 42,
+      });
+
+      expect(result.job_id).toBe("job_restyle");
+      expect(result.status).toBe("pending");
+      expect(lastFormData?.get("prompt")).toBe("Transform to anime style");
+      expect(lastFormData?.get("enhance_prompt")).toBe("true");
+      expect(lastFormData?.get("seed")).toBe("42");
+
+      const dataFile = lastFormData?.get("data") as File;
+      expect(dataFile).toBeInstanceOf(File);
+    });
+
     it("submits image-to-video job", async () => {
       server.use(
         http.post("http://localhost/v1/jobs/lucy-pro-i2v", async ({ request }) => {
