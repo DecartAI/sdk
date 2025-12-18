@@ -30,13 +30,12 @@ export {
   isVideoModel,
   type Model,
   type ModelDefinition,
-  modelSchema,
   models,
   type RealTimeModels,
   type VideoModelDefinition,
   type VideoModels,
 } from "./shared/model";
-export { type ModelState, modelStateSchema } from "./shared/types";
+export type { ModelState } from "./shared/types";
 export type { CreateTokenResponse, TokensClient } from "./tokens/client";
 export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
 
