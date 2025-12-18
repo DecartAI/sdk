@@ -25,14 +25,19 @@ export type {
 export {
   type ImageModelDefinition,
   type ImageModels,
+  imageModels,
   type Model,
   type ModelDefinition,
+  modelInputSchemas,
+  modelSchema,
   models,
   type RealTimeModels,
+  realtimeModels,
   type VideoModelDefinition,
   type VideoModels,
+  videoModels,
 } from "./shared/model";
-export type { ModelState } from "./shared/types";
+export { type ModelState, modelStateSchema } from "./shared/types";
 export type { CreateTokenResponse, TokensClient } from "./tokens/client";
 export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
 
