@@ -25,7 +25,9 @@ export type {
 export {
   type ImageModelDefinition,
   type ImageModels,
-  imageModels,
+  isImageModel,
+  isRealtimeModel,
+  isVideoModel,
   type Model,
   type ModelDefinition,
   modelSchema,
@@ -33,7 +35,6 @@ export {
   type RealTimeModels,
   type VideoModelDefinition,
   type VideoModels,
-  videoModels,
 } from "./shared/model";
 export { type ModelState, modelStateSchema } from "./shared/types";
 export type { CreateTokenResponse, TokensClient } from "./tokens/client";
