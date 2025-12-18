@@ -21,6 +21,18 @@ export type RealTimeModels = z.infer<typeof realtimeModels>;
 export type VideoModels = z.infer<typeof videoModels>;
 export type ImageModels = z.infer<typeof imageModels>;
 
+export function isRealtimeModel(model: string): model is RealTimeModels {
+  return realtimeModels.safeParse(model).success;
+}
+
+export function isVideoModel(model: string): model is VideoModels {
+  return videoModels.safeParse(model).success;
+}
+
+export function isImageModel(model: string): model is ImageModels {
+  return imageModels.safeParse(model).success;
+}
+
 const fileInputSchema = z.union([
   z.instanceof(File),
   z.instanceof(Blob),

@@ -25,6 +25,9 @@ export type {
 export {
   type ImageModelDefinition,
   type ImageModels,
+  isImageModel,
+  isRealtimeModel,
+  isVideoModel,
   type Model,
   type ModelDefinition,
   models,
