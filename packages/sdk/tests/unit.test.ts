@@ -334,6 +334,38 @@ describe("Queue API", () => {
       expect(dataFile).toBeInstanceOf(File);
     });
 
+    it("submits video restyle job", async () => {
+      server.use(
+        http.post("http://localhost/v1/jobs/lucy-restyle-v2v", async ({ request }) => {
+          lastRequest = request;
+          lastFormData = await request.formData();
+          return HttpResponse.json({
+            job_id: "job_restyle",
+            status: "pending",
+          });
+        }),
+      );
+
+      const testBlob = new Blob(["test-video"], { type: "video/mp4" });
+
+      const result = await decart.queue.submit({
+        model: models.video("lucy-restyle-v2v"),
+        prompt: "Transform to anime style",
+        data: testBlob,
+        enhance_prompt: true,
+        seed: 42,
+      });
+
+      expect(result.job_id).toBe("job_restyle");
+      expect(result.status).toBe("pending");
+      expect(lastFormData?.get("prompt")).toBe("Transform to anime style");
+      expect(lastFormData?.get("enhance_prompt")).toBe("true");
+      expect(lastFormData?.get("seed")).toBe("42");
+
+      const dataFile = lastFormData?.get("data") as File;
+      expect(dataFile).toBeInstanceOf(File);
+    });
+
     it("submits image-to-video job", async () => {
       server.use(
         http.post("http://localhost/v1/jobs/lucy-pro-i2v", async ({ request }) => {
@@ -700,5 +732,72 @@ describe("UserAgent", () => {
     // Test unknown runtime
     const mockUnknown = {};
     expect(getRuntimeEnvironment(mockUnknown)).toEqual("runtime/unknown");
+  });
+});
+
+describe("Tokens API", () => {
+  let decart: ReturnType<typeof createDecartClient>;
+  let lastRequest: Request | null = null;
+
+  const server = setupServer();
+
+  beforeAll(() => {
+    server.listen({ onUnhandledRequest: "error" });
+  });
+
+  afterAll(() => {
+    server.close();
+  });
+
+  beforeEach(() => {
+    lastRequest = null;
+    decart = createDecartClient({
+      apiKey: "test-api-key",
+      baseUrl: "http://localhost",
+    });
+  });
+
+  afterEach(() => {
+    server.resetHandlers();
+  });
+
+  describe("create", () => {
+    it("creates a client token", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({
+            apiKey: "ek_test123",
+            expiresAt: "2024-12-15T12:10:00Z",
+          });
+        }),
+      );
+
+      const result = await decart.tokens.create();
+
+      expect(result.apiKey).toBe("ek_test123");
+      expect(result.expiresAt).toBe("2024-12-15T12:10:00Z");
+      expect(lastRequest?.headers.get("x-api-key")).toBe("test-api-key");
+    });
+
+    it("handles 401 error", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", () => {
+          return HttpResponse.json({ error: "Invalid API key" }, { status: 401 });
+        }),
+      );
+
+      await expect(decart.tokens.create()).rejects.toThrow("Failed to create token");
+    });
+
+    it("handles 403 error", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", () => {
+          return HttpResponse.json({ error: "Cannot create token from client token" }, { status: 403 });
+        }),
+      );
+
+      await expect(decart.tokens.create()).rejects.toThrow("Failed to create token");
+    });
   });
 });

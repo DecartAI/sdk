@@ -75,6 +75,7 @@
 - `lucy-pro-v2v` - video-to-video (Pro quality)
 - `lucy-pro-flf2v` - first-last-frame-to-video (Pro quality)
 - `lucy-motion` - motion-based image-to-video (trajectory-guided animation)
+- `lucy-restyle-v2v` - video restyling (video-to-video)
 
 ### Image Models (Process API)
 - `lucy-pro-t2i` - text-to-image (Pro quality)

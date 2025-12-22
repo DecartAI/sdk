@@ -1,6 +1,11 @@
 "use client";
 
-import { createDecartClient, type DecartSDKError, models, type RealTimeClient } from "@decartai/sdk";
+import {
+  createDecartClient,
+  type DecartSDKError,
+  models,
+  type RealTimeClient,
+} from "@decartai/sdk";
 import { useEffect, useRef, useState } from "react";
 
 interface VideoStreamProps {
@@ -35,16 +40,20 @@ export function VideoStream({ prompt }: VideoStreamProps) {
           inputRef.current.srcObject = stream;
         }
 
+        // Fetch client token from our backend API
+        const tokenResponse = await fetch("/api/realtime-token", {
+          method: "POST",
+        });
+        if (!tokenResponse.ok) {
+          throw new Error("Failed to get client token");
+        }
+        const { apiKey } = await tokenResponse.json();
+
+        if (!mounted) return;
+
         setStatus("connecting...");
 
-        const apiKey = process.env.NEXT_PUBLIC_DECART_API_KEY;
-        if (!apiKey) {
-          throw new Error("NEXT_PUBLIC_DECART_API_KEY is not set");
-        }
-
-        const client = createDecartClient({
-          apiKey,
-        });
+        const client = createDecartClient({ apiKey });
 
         const realtimeClient = await client.realtime.connect(stream, {
           model,

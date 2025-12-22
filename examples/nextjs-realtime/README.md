@@ -34,10 +34,12 @@ pnpm dev
 
 ## How it works
 
-1. The app captures your webcam feed using `getUserMedia`
-2. The video stream is sent to Decart's realtime API
-3. The transformed video is displayed side-by-side with the original
-4. You can change the style prompt in real-time
+1. The frontend requests a short-lived client token from `/api/realtime-token`
+2. The backend uses `client.tokens.create()` to generate the token
+3. The frontend uses the client token to connect to Decart's Realtime API
+4. Webcam feed is captured and sent to Decart's realtime API
+5. Transformed video is displayed side-by-side with the original
+6. You can change the style prompt in real-time
 
 ## Models
 

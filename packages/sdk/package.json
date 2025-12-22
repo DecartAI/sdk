@@ -1,6 +1,6 @@
 {
   "name": "@decartai/sdk",
-  "version": "0.0.24",
+  "version": "0.0.27",
   "description": "Decart's JavaScript SDK",
   "type": "module",
   "license": "MIT",
