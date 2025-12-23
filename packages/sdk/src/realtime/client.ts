@@ -4,6 +4,7 @@ import { z } from "zod";
 import { modelDefinitionSchema } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { createWebrtcError, type DecartSDKError } from "../utils/errors";
+import { AudioStreamManager } from "./audio-stream-manager";
 import { realtimeMethods } from "./methods";
 import { WebRTCManager } from "./webrtc-manager";
 
@@ -65,6 +66,10 @@ export type RealTimeClient = {
   on: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   off: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   sessionId: string;
+  // Avatar-live audio methods (only available when model is avatar-live)
+  playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
+  stopAudio?: () => void;
+  isPlayingAudio?: () => boolean;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
@@ -86,8 +91,16 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
     const { onRemoteStream, initialState, avatar } = parsedOptions.data;
 
-    // For avatar-live, create empty MediaStream if none provided
-    const inputStream = stream ?? new MediaStream();
+    // For avatar-live: create AudioStreamManager for continuous silent stream with audio injection
+    let audioStreamManager: AudioStreamManager | undefined;
+    let inputStream: MediaStream;
+
+    if (isAvatarLive) {
+      audioStreamManager = new AudioStreamManager();
+      inputStream = audioStreamManager.getStream();
+    } else {
+      inputStream = stream ?? new MediaStream();
+    }
 
     // For avatar-live: prepare avatar image base64 before connection
     let avatarImageBase64: string | undefined;
@@ -137,15 +150,28 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       }
     }
 
-    return {
+    const client: RealTimeClient = {
       setPrompt: methods.setPrompt,
       isConnected: () => webrtcManager.isConnected(),
       getConnectionState: () => webrtcManager.getConnectionState(),
-      disconnect: () => webrtcManager.cleanup(),
+      disconnect: () => {
+        webrtcManager.cleanup();
+        audioStreamManager?.cleanup();
+      },
       on: eventEmitter.on,
       off: eventEmitter.off,
       sessionId,
     };
+
+    // Add avatar-live specific audio methods
+    if (isAvatarLive && audioStreamManager) {
+      const manager = audioStreamManager; // Capture for closures
+      client.playAudio = (audio: Blob | File | ArrayBuffer) => manager.playAudio(audio);
+      client.stopAudio = () => manager.stopAudio();
+      client.isPlayingAudio = () => manager.isPlaying();
+    }
+
+    return client;
   };
 
   return {

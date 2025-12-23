@@ -66,7 +66,6 @@ export class WebRTCConnection {
       };
       this.ws.onerror = () => {
         clearTimeout(timer);
-        // reject(new Error("WebSocket failed"));
       };
       this.ws.onclose = () => this.setState("disconnected");
     });
@@ -95,19 +94,27 @@ export class WebRTCConnection {
   }
 
   private async handleSignalingMessage(msg: IncomingWebRTCMessage): Promise<void> {
-    if (!this.pc) return;
-
     try {
-      switch (msg.type) {
-        case "error": {
-          const error = new Error(msg.error);
-          this.callbacks.onError?.(error);
-          if (this.connectionReject) {
-            this.connectionReject(error);
-            this.connectionReject = null;
-          }
-          break;
+      // Handle messages that don't require peer connection first
+      if (msg.type === "error") {
+        const error = new Error(msg.error);
+        this.callbacks.onError?.(error);
+        if (this.connectionReject) {
+          this.connectionReject(error);
+          this.connectionReject = null;
         }
+        return;
+      }
+
+      if (msg.type === "image_set") {
+        this.websocketMessagesEmitter.emit("imageSet", msg);
+        return;
+      }
+
+      // All other messages require peer connection
+      if (!this.pc) return;
+
+      switch (msg.type) {
         case "ready": {
           await this.applyCodecPreference("video/VP8");
           const offer = await this.pc.createOffer();
@@ -142,10 +149,6 @@ export class WebRTCConnection {
         }
         case "prompt_ack": {
           this.websocketMessagesEmitter.emit("promptAck", msg);
-          break;
-        }
-        case "image_set": {
-          this.websocketMessagesEmitter.emit("imageSet", msg);
           break;
         }
       }
@@ -186,7 +189,6 @@ export class WebRTCConnection {
   private setState(state: ConnectionState): void {
     if (this.state !== state) {
       this.state = state;
-      console.log(`[WebRTC] State: ${state}`);
       this.callbacks.onStateChange?.(state);
     }
   }
@@ -203,7 +205,7 @@ export class WebRTCConnection {
       });
       this.pc.close();
     }
-    const iceServers: RTCIceServer[] = ICE_SERVERS;
+    const iceServers: RTCIceServer[] = [...ICE_SERVERS];
     if (turnConfig) {
       iceServers.push({
         urls: turnConfig.server_url,
@@ -260,7 +262,9 @@ export class WebRTCConnection {
   async applyCodecPreference(preferredCodecName: "video/VP8" | "video/H264") {
     if (!this.pc) return;
 
-    const videoTransceiver = this.pc.getTransceivers().find((r) => r.sender.track?.kind === "video");
+    const videoTransceiver = this.pc.getTransceivers().find(
+      (r) => r.sender.track?.kind === "video" || r.receiver.track?.kind === "video",
+    );
     if (!videoTransceiver) {
       console.error("Could not find video transceiver. Ensure track is added to peer connection.");
       return;
