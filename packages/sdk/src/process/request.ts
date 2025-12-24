@@ -1,6 +1,7 @@
 import type { ModelDefinition } from "../shared/model";
 import { buildAuthHeaders, buildFormData } from "../shared/request";
 import { createSDKError } from "../utils/errors";
+import { buildUserAgent } from "../utils/user-agent";
 
 export async function sendRequest({
   baseUrl,
@@ -9,6 +10,7 @@ export async function sendRequest({
   inputs,
   signal,
   integration,
+  proxy = false,
 }: {
   baseUrl: string;
   apiKey: string;
@@ -16,13 +18,18 @@ export async function sendRequest({
   inputs: Record<string, unknown>;
   signal?: AbortSignal;
   integration?: string;
+  proxy?: boolean;
 }): Promise<Blob> {
   const formData = buildFormData(inputs);
 
   const endpoint = `${baseUrl}${model.urlPath}`;
+  const headers = proxy
+    ? { "User-Agent": buildUserAgent(integration) }
+    : buildAuthHeaders(apiKey, integration);
+
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: buildAuthHeaders(apiKey, integration),
+    headers,
     body: formData,
     signal,
   });

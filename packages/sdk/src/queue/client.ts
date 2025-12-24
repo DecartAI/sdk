@@ -83,10 +83,11 @@ export type QueueClientOptions = {
   apiKey: string;
   baseUrl: string;
   integration?: string;
+  proxy?: boolean;
 };
 
 export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
-  const { apiKey, baseUrl, integration } = opts;
+  const { apiKey, baseUrl, integration, proxy = false } = opts;
 
   const submit = async <T extends VideoModelDefinition>(options: QueueSubmitOptions<T>): Promise<JobSubmitResponse> => {
     const { model, signal, ...inputs } = options;
@@ -114,6 +115,7 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
       inputs: processedInputs,
       signal,
       integration,
+      proxy,
     });
   };
 
@@ -123,6 +125,7 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
       apiKey,
       jobId,
       integration,
+      proxy,
     });
   };
 
@@ -132,6 +135,7 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
       apiKey,
       jobId,
       integration,
+      proxy,
     });
   };
 
@@ -157,6 +161,7 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
           jobId: job.job_id,
           signal,
           integration,
+          proxy,
         }),
       getContent: () =>
         getJobContent({
@@ -165,6 +170,7 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
           jobId: job.job_id,
           signal,
           integration,
+          proxy,
         }),
       onStatusChange,
       signal,

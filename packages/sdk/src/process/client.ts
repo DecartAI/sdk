@@ -14,10 +14,11 @@ export type ProcessClientOptions = {
   apiKey: string;
   baseUrl: string;
   integration?: string;
+  proxy?: boolean;
 };
 
 export const createProcessClient = (opts: ProcessClientOptions): ProcessClient => {
-  const { apiKey, baseUrl, integration } = opts;
+  const { apiKey, baseUrl, integration, proxy = false } = opts;
 
   const _process = async <T extends ImageModelDefinition>(options: ProcessOptions<T>): Promise<Blob> => {
     const { model, signal, ...inputs } = options;
@@ -43,6 +44,7 @@ export const createProcessClient = (opts: ProcessClientOptions): ProcessClient =
       inputs: processedInputs,
       signal,
       integration,
+      proxy,
     });
 
     return response;
