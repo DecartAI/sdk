@@ -262,9 +262,9 @@ export class WebRTCConnection {
   async applyCodecPreference(preferredCodecName: "video/VP8" | "video/H264") {
     if (!this.pc) return;
 
-    const videoTransceiver = this.pc.getTransceivers().find(
-      (r) => r.sender.track?.kind === "video" || r.receiver.track?.kind === "video",
-    );
+    const videoTransceiver = this.pc
+      .getTransceivers()
+      .find((r) => r.sender.track?.kind === "video" || r.receiver.track?.kind === "video");
     if (!videoTransceiver) {
       console.error("Could not find video transceiver. Ensure track is added to peer connection.");
       return;
