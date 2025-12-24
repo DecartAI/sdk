@@ -18,6 +18,7 @@ export type {
   QueueSubmitOptions,
 } from "./queue/types";
 export type {
+  AvatarOptions,
   RealTimeClient,
   RealTimeClientConnectOptions,
   RealTimeClientInitialState,

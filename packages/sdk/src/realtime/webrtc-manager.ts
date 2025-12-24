@@ -16,6 +16,8 @@ export interface WebRTCConfig {
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
+  isAvatarLive?: boolean;
+  avatarImageBase64?: string;
 }
 
 const PERMANENT_ERRORS = [
@@ -40,6 +42,8 @@ export class WebRTCManager {
       customizeOffer: config.customizeOffer,
       vp8MinBitrate: config.vp8MinBitrate,
       vp8StartBitrate: config.vp8StartBitrate,
+      isAvatarLive: config.isAvatarLive,
+      avatarImageBase64: config.avatarImageBase64,
     });
   }
 
