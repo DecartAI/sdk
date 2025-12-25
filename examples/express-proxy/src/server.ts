@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { handler as decartProxy } from "@decartai/proxy/express";
+import { handler, route } from "@decartai/proxy/express";
 import express from "express";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,7 +29,7 @@ app.use(
 
 // Mount the Decart proxy middleware
 // All requests to /api/decart/* will be proxied to api.decart.ai
-app.use("/api/decart", decartProxy());
+app.use(route, handler());
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {

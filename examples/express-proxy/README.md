@@ -48,9 +48,9 @@ The Express server:
 3. The proxy intercepts requests and forwards them to `api.decart.ai` with your API key
 
 ```typescript
-import { decartProxy } from "@decartai/proxy/express";
+import { handler, route } from "@decartai/proxy/express";
 
-app.use("/api/decart", decartProxy({
+app.use(route, handler({
   apiKey: process.env.DECART_API_KEY!,
 }));
 ```
