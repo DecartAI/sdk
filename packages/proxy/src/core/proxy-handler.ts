@@ -6,8 +6,6 @@ const DECART_API_KEY = process.env.DECART_API_KEY;
 
 export type HeaderValue = string | string[] | undefined | null;
 
-const DECART_URL_REG_EXP = /(\.|^)decart\.ai$/;
-
 export interface ProxyBehavior<ResponseType> {
   id: string;
   method: string;
@@ -18,6 +16,7 @@ export interface ProxyBehavior<ResponseType> {
   getHeader(name: string): HeaderValue;
   sendHeader(name: string, value: string): void;
   getRequestBody(): Promise<string | undefined>;
+  getRequestPath(): string;
 }
 
 /**
@@ -46,25 +45,18 @@ const EXCLUDED_HEADERS = ["content-length", "content-encoding"];
  * @returns Promise<any> the promise that will be resolved once the request is done.
  */
 export async function handleRequest<ResponseType>(behavior: ProxyBehavior<ResponseType>) {
-  const targetUrl = singleHeaderValue(behavior.getHeader(TARGET_URL_HEADER));
-  if (!targetUrl) {
-    return behavior.respondWith(400, `Missing the ${TARGET_URL_HEADER} header`);
-  }
-
-  const urlHost = new URL(targetUrl).host;
-
-  if (!DECART_URL_REG_EXP.test(urlHost)) {
-    return behavior.respondWith(412, `Invalid ${TARGET_URL_HEADER} header`);
-  }
-
   if (!DECART_API_KEY) {
     return behavior.respondWith(401, "Missing Decart API key");
   }
 
+  // Use the request path from the middleware
+  const requestPath = behavior.getRequestPath();
+  const targetUrl = new URL(requestPath, "https://api.decart.ai");
+
   // pass over headers prefixed with x-decart-*
   const proxyUserAgent = `@decart-ai/server-proxy/${behavior.id}`;
   const userAgent = singleHeaderValue(behavior.getHeader("user-agent"));
-  const res = await fetch(targetUrl, {
+  const res = await fetch(targetUrl.toString(), {
     method: behavior.method,
     headers: {
       "x-api-key": DECART_API_KEY,

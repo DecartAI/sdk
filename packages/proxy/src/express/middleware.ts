@@ -23,6 +23,7 @@ export const handler: RequestHandler = async (request, response, next) => {
     getHeader: (name) => request.headers[name],
     sendHeader: (name, value) => response.setHeader(name, value),
     respondWith: (status, data) => response.status(status).json(data),
+    getRequestPath: () => request.path,
     sendResponse: async (res) => {
       console.log("sending back response", res);
       response.status(res.status);
