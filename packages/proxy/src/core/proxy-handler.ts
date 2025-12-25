@@ -30,16 +30,17 @@ const EXCLUDED_HEADERS = ["content-length", "content-encoding"];
  * @returns Promise<any> the promise that will be resolved once the request is done.
  */
 export async function handleRequest<ResponseType>(behavior: ProxyBehavior<ResponseType>) {
-  // Use API key from behavior if provided, otherwise fall back to environment variable
   const apiKey = behavior.apiKey ?? DECART_API_KEY;
 
   if (!apiKey) {
     return behavior.respondWith(401, "Missing Decart API key");
   }
 
+  const baseUrl = behavior.baseUrl ?? "https://api.decart.ai";
+
   // Use the request path from the middleware
   const requestPath = behavior.getRequestPath();
-  const targetUrl = new URL(requestPath, "https://api.decart.ai");
+  const targetUrl = new URL(requestPath, baseUrl);
 
   // pass over headers prefixed with x-decart-*
   const proxyUserAgent = `@decart-ai/server-proxy/${behavior.id}`;
