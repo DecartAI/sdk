@@ -1,5 +1,7 @@
 import type { HeaderValue, ProxyBehavior } from "./types";
 
+export const DEFAULT_PROXY_ROUTE = "/api/decart";
+
 const DECART_API_KEY = process.env.DECART_API_KEY;
 
 /**
