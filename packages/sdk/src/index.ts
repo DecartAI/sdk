@@ -107,6 +107,10 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
   if (!parsedOptions.success) {
     const issue = parsedOptions.error.issues[0];
 
+    if (issue.path.includes("apiKey")) {
+      throw createInvalidApiKeyError();
+    }
+
     if (issue.path.includes("baseUrl")) {
       throw createInvalidBaseUrlError(
         issue.path.includes("baseUrl") ? (options as { baseUrl?: string }).baseUrl : undefined,

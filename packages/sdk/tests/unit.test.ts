@@ -31,8 +31,12 @@ describe("Decart SDK", () => {
       expect(() => createDecartClient()).toThrow("Missing API key");
     });
 
-    it("throws an error if api key is empty string", () => {
+    it("throw an error if api key is empty string", () => {
       expect(() => createDecartClient({ apiKey: "" })).toThrow("Missing API key");
+    });
+
+    it("does not throw an error if proxy is provided", () => {
+      expect(() => createDecartClient({ proxy: "/pai/decart" })).not.toThrow("Missing API key");
     });
 
     it("throws an error if env var is empty string", () => {
