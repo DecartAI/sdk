@@ -170,7 +170,6 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     baseUrl,
     apiKey: apiKey || "",
     integration,
-    proxy: isProxyMode,
   });
 
   return {

@@ -1,7 +1,6 @@
 import type { ModelDefinition } from "../shared/model";
 import { buildAuthHeaders, buildFormData } from "../shared/request";
 import { createQueueResultError, createQueueStatusError, createQueueSubmitError } from "../utils/errors";
-import { buildUserAgent } from "../utils/user-agent";
 import type { JobStatusResponse, JobSubmitResponse } from "./types";
 
 export type QueueRequestOptions = {
@@ -21,7 +20,6 @@ export async function submitJob({
   inputs,
   signal,
   integration,
-  proxy = false,
 }: QueueRequestOptions & {
   model: ModelDefinition;
   inputs: Record<string, unknown>;
@@ -35,9 +33,7 @@ export async function submitJob({
   }
 
   const endpoint = `${baseUrl}${model.queueUrlPath}`;
-  const headers = proxy
-    ? { "User-Agent": buildUserAgent(integration) }
-    : buildAuthHeaders(apiKey, integration);
+  const headers = buildAuthHeaders({ apiKey, integration });
 
   const response = await fetch(endpoint, {
     method: "POST",
@@ -71,9 +67,7 @@ export async function getJobStatus({
   proxy?: boolean;
 }): Promise<JobStatusResponse> {
   const endpoint = `${baseUrl}/v1/jobs/${jobId}`;
-  const headers = proxy
-    ? { "User-Agent": buildUserAgent(integration) }
-    : buildAuthHeaders(apiKey, integration);
+  const headers = buildAuthHeaders({ apiKey: proxy ? undefined : apiKey, integration });
 
   const response = await fetch(endpoint, {
     method: "GET",
@@ -106,9 +100,7 @@ export async function getJobContent({
   proxy?: boolean;
 }): Promise<Blob> {
   const endpoint = `${baseUrl}/v1/jobs/${jobId}/content`;
-  const headers = proxy
-    ? { "User-Agent": buildUserAgent(integration) }
-    : buildAuthHeaders(apiKey, integration);
+  const headers = buildAuthHeaders({ apiKey: proxy ? undefined : apiKey, integration });
 
   const response = await fetch(endpoint, {
     method: "GET",

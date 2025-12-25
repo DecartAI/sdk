@@ -1,12 +1,10 @@
 import { buildAuthHeaders } from "../shared/request";
 import { createSDKError } from "../utils/errors";
-import { buildUserAgent } from "../utils/user-agent";
 
 export type TokensClientOptions = {
   baseUrl: string;
   apiKey: string;
   integration?: string;
-  proxy?: boolean;
 };
 
 export type CreateTokenResponse = {
@@ -29,12 +27,10 @@ export type TokensClient = {
 };
 
 export const createTokensClient = (opts: TokensClientOptions): TokensClient => {
-  const { baseUrl, apiKey, integration, proxy = false } = opts;
+  const { baseUrl, apiKey, integration } = opts;
 
   const create = async (): Promise<CreateTokenResponse> => {
-    const headers = proxy
-      ? { "User-Agent": buildUserAgent(integration) }
-      : buildAuthHeaders(apiKey, integration);
+    const headers = buildAuthHeaders({ apiKey, integration });
 
     const response = await fetch(`${baseUrl}/v1/client/tokens`, {
       method: "POST",
