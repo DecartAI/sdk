@@ -82,10 +82,10 @@ export type DecartClientOptions =
 /**
  * Create a Decart API client.
  *
- * @param options - Configuration options. Must provide either `proxy` (for proxy mode) or `apiKey` (for direct API access).
+ * @param options - Configuration options
  * @param options.proxy - URL of the proxy server. When set, the client will use the proxy instead of direct API access and apiKey is not required.
- * @param options.apiKey - API key for authentication. Required when not using proxy. Defaults to the DECART_API_KEY environment variable.
- * @param options.baseUrl - Override the default API base URL. Only used in direct API mode (when proxy is not set).
+ * @param options.apiKey - API key for authentication.
+ * @param options.baseUrl - Override the default API base URL.
  * @param options.integration - Optional integration identifier.
  *
  * @example
