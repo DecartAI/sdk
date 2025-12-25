@@ -40,6 +40,7 @@ export const handler = (options?: DecartProxyOptions) => {
       id: "express",
       apiKey: options?.apiKey,
       baseUrl: options?.baseUrl,
+      integration: options?.integration,
       method: request.method,
       getRequestBody: async () => readRequestBody(request),
       getHeaders: () => request.headers,

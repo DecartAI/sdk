@@ -24,6 +24,7 @@ export interface ProxyBehavior<ResponseType> {
   method: string;
   apiKey?: string;
   baseUrl?: string;
+  integration?: string;
   // biome-ignore lint/suspicious/noExplicitAny: data can be any type
   respondWith(status: number, data: string | any): ResponseType;
   sendResponse(response: Response): Promise<ResponseType>;
