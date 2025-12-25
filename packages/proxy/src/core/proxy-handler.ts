@@ -46,6 +46,7 @@ export async function handleRequest<ResponseType>(behavior: ProxyBehavior<Respon
   const proxyUserAgent = behavior.integration
     ? `@decart-ai/server-proxy/${behavior.id} (integration: ${behavior.integration})`
     : `@decart-ai/server-proxy/${behavior.id}`;
+
   const userAgent = singleHeaderValue(behavior.getHeader("user-agent"));
   const requestBody = await behavior.getRequestBody();
 
