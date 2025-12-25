@@ -4,8 +4,9 @@
 export type DecartProxyOptions = {
   /**
    * API key to use for authenticating requests to api.decart.ai
+   * We recommend using the DECART_API_KEY environment variable instead.
    */
-  apiKey: string;
+  apiKey?: string;
   /**
    * Base URL for the Decart API. Defaults to "https://api.decart.ai"
    */

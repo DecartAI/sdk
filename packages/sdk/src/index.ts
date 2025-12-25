@@ -40,11 +40,14 @@ export type { CreateTokenResponse, TokensClient } from "./tokens/client";
 export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
 
 // Schema with validation to ensure proxy and apiKey are mutually exclusive
+// Proxy can be a full URL or a relative path (starts with /)
+const proxySchema = z.union([z.string().url(), z.string().startsWith("/")]);
+
 const decartClientOptionsSchema = z
   .object({
     apiKey: z.string().min(1).optional(),
     baseUrl: z.url().optional(),
-    proxy: z.url().optional(),
+    proxy: proxySchema.optional(),
     integration: z.string().optional(),
   })
   .refine(
@@ -141,12 +144,8 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
 
   // Realtime (WebRTC) always requires direct API access with API key
   // Proxy mode is only for HTTP endpoints (process, queue, tokens)
+  // Note: Realtime will fail at connection time if no API key is provided
   const wsBaseUrl = "wss://api3.decart.ai";
-  if (isProxyMode && !apiKey) {
-    // For realtime, we still need an API key even in proxy mode
-    // Users should use client tokens for realtime in proxy scenarios
-    throw createInvalidApiKeyError();
-  }
   const realtime = createRealTimeClient({
     baseUrl: wsBaseUrl,
     apiKey: apiKey || "",

@@ -17,7 +17,6 @@
  * ```
  */
 
-export { handleProxyRequest } from "./core/proxy-handler";
+export { handleRequest } from "./core/proxy-handler";
 export type { DecartProxyOptions } from "./core/types";
-export { decartProxy } from "./express/middleware";
-export { createDecartProxyHandler } from "./nextjs/handlers";
+export { handler as decartProxy } from "./express/middleware";

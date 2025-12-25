@@ -1,102 +1,88 @@
-import type { DecartProxyOptions } from "./types";
+export const TARGET_URL_HEADER = "x-decart-target-url";
+
+export const DEFAULT_PROXY_ROUTE = "/api/decart";
+
+const DECART_API_KEY = process.env.DECART_API_KEY;
+
+export type HeaderValue = string | string[] | undefined | null;
+
+const DECART_URL_REG_EXP = /(\.|^)decart\.ai$/;
+
+export interface ProxyBehavior<ResponseType> {
+  id: string;
+  method: string;
+  // biome-ignore lint/suspicious/noExplicitAny: data can be any type
+  respondWith(status: number, data: string | any): ResponseType;
+  sendResponse(response: Response): Promise<ResponseType>;
+  getHeaders(): Record<string, HeaderValue>;
+  getHeader(name: string): HeaderValue;
+  sendHeader(name: string, value: string): void;
+  getRequestBody(): Promise<string | undefined>;
+}
 
 /**
- * Core proxy handler that forwards requests to the Decart API.
- * This is a Web API-compatible handler that can be used with Next.js or converted for Express.
+ * Utility to get a header value as `string` from a Headers object.
  *
- * @param request - The incoming request to proxy
- * @param options - Proxy configuration options
- * @returns Response from the Decart API
+ * @private
+ * @param request the header value.
+ * @returns the header value as `string` or `undefined` if the header is not set.
  */
-export async function handleProxyRequest(request: Request, options: DecartProxyOptions): Promise<Response> {
-  const { apiKey, baseUrl = "https://api.decart.ai", integration } = options;
+function singleHeaderValue(value: HeaderValue): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}
 
-  // Extract the path from the request URL
-  const url = new URL(request.url);
-  const path = url.pathname;
+const EXCLUDED_HEADERS = ["content-length", "content-encoding"];
 
-  // Build the target URL
-  const targetUrl = `${baseUrl}${path}${url.search}`;
+/**
+ * A request handler that proxies the request to the Decart API endpoint.
+ *
+ * @param behavior the request proxy behavior.
+ * @returns Promise<any> the promise that will be resolved once the request is done.
+ */
+export async function handleRequest<ResponseType>(behavior: ProxyBehavior<ResponseType>) {
+  const targetUrl = singleHeaderValue(behavior.getHeader(TARGET_URL_HEADER));
+  if (!targetUrl) {
+    return behavior.respondWith(400, `Missing the ${TARGET_URL_HEADER} header`);
+  }
 
-  // Prepare headers
-  const headers = new Headers();
+  const urlHost = new URL(targetUrl).host;
 
-  // Copy relevant headers from the incoming request
-  // Skip X-API-KEY as we'll add our own
-  // Preserve User-Agent from client (SDK will set it)
-  for (const [key, value] of request.headers.entries()) {
-    const lowerKey = key.toLowerCase();
-    if (lowerKey !== "x-api-key" && lowerKey !== "host" && lowerKey !== "connection") {
-      headers.set(key, value);
+  if (!DECART_URL_REG_EXP.test(urlHost)) {
+    return behavior.respondWith(412, `Invalid ${TARGET_URL_HEADER} header`);
+  }
+
+  if (!DECART_API_KEY) {
+    return behavior.respondWith(401, "Missing Decart API key");
+  }
+
+  // pass over headers prefixed with x-decart-*
+  const proxyUserAgent = `@decart-ai/server-proxy/${behavior.id}`;
+  const userAgent = singleHeaderValue(behavior.getHeader("user-agent"));
+  const res = await fetch(targetUrl, {
+    method: behavior.method,
+    headers: {
+      "x-api-key": DECART_API_KEY,
+      accept: "application/json",
+      "content-type": "application/json",
+      "user-agent": userAgent,
+      "x-decart-client-proxy": proxyUserAgent,
+    } as HeadersInit,
+    body: await behavior.getRequestBody(),
+  });
+
+  res.headers.forEach((value, key) => {
+    if (!EXCLUDED_HEADERS.includes(key.toLowerCase())) {
+      behavior.sendHeader(key, value);
     }
-  }
+  });
 
-  // Add API key header (this is the server's API key)
-  headers.set("X-API-KEY", apiKey);
+  console.log("response", res);
 
-  // If integration is provided and User-Agent doesn't exist, set it
-  // Otherwise, preserve the client's User-Agent (which includes SDK info)
-  if (integration && !headers.has("User-Agent")) {
-    headers.set("User-Agent", `decart-proxy/${integration}`);
-  }
-
-  // Prepare the request body
-  let body: BodyInit | undefined;
-  const contentType = request.headers.get("content-type");
-
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    if (contentType?.includes("multipart/form-data")) {
-      // For FormData, we need to preserve it as-is
-      body = await request.formData();
-    } else {
-      // For other content types, clone the body
-      body = await request.arrayBuffer();
-    }
-  }
-
-  try {
-    // Forward the request to the Decart API
-    const response = await fetch(targetUrl, {
-      method: request.method,
-      headers,
-      body,
-      signal: request.signal,
-    });
-
-    // Create a new response with the same status and headers
-    const responseHeaders = new Headers(response.headers);
-
-    // Copy CORS headers if present
-    const corsHeaders = [
-      "access-control-allow-origin",
-      "access-control-allow-methods",
-      "access-control-allow-headers",
-      "access-control-expose-headers",
-    ];
-
-    // Preserve original response headers
-    const proxiedResponse = new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeaders,
-    });
-
-    return proxiedResponse;
-  } catch (error) {
-    // Handle network errors
-    console.error("[Decart Proxy] Error forwarding request:", error);
-
-    return new Response(
-      JSON.stringify({
-        error: "Proxy error",
-        message: error instanceof Error ? error.message : "Unknown error",
-      }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
-  }
+  return behavior.sendResponse(res);
 }
