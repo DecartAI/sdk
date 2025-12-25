@@ -156,14 +156,12 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     baseUrl,
     apiKey: apiKey || "",
     integration,
-    proxy: isProxyMode,
   });
 
   const queue = createQueueClient({
     baseUrl,
     apiKey: apiKey || "",
     integration,
-    proxy: isProxyMode,
   });
 
   const tokens = createTokensClient({

@@ -24,7 +24,6 @@ export async function submitJob({
   model: ModelDefinition;
   inputs: Record<string, unknown>;
   signal?: AbortSignal;
-  proxy?: boolean;
 }): Promise<JobSubmitResponse> {
   const formData = buildFormData(inputs);
 
@@ -60,14 +59,12 @@ export async function getJobStatus({
   jobId,
   signal,
   integration,
-  proxy = false,
 }: QueueRequestOptions & {
   jobId: string;
   signal?: AbortSignal;
-  proxy?: boolean;
 }): Promise<JobStatusResponse> {
   const endpoint = `${baseUrl}/v1/jobs/${jobId}`;
-  const headers = buildAuthHeaders({ apiKey: proxy ? undefined : apiKey, integration });
+  const headers = buildAuthHeaders({ apiKey, integration });
 
   const response = await fetch(endpoint, {
     method: "GET",
@@ -93,14 +90,12 @@ export async function getJobContent({
   jobId,
   signal,
   integration,
-  proxy = false,
 }: QueueRequestOptions & {
   jobId: string;
   signal?: AbortSignal;
-  proxy?: boolean;
 }): Promise<Blob> {
   const endpoint = `${baseUrl}/v1/jobs/${jobId}/content`;
-  const headers = buildAuthHeaders({ apiKey: proxy ? undefined : apiKey, integration });
+  const headers = buildAuthHeaders({ apiKey, integration });
 
   const response = await fetch(endpoint, {
     method: "GET",
