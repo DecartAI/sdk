@@ -13,7 +13,6 @@ const app = express();
 app.use(express.static("public"));
 
 // Serve SDK from node_modules for the example
-// __dirname is examples/express-proxy/src, so we need to go up 3 levels to reach repo root
 const sdkDistPath = join(__dirname, "../../../packages/sdk/dist");
 console.log(`Serving SDK from: ${sdkDistPath}`);
 app.use(
