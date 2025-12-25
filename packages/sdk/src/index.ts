@@ -90,10 +90,10 @@ export type DecartClientOptions =
  *
  * @example
  * ```ts
- * // Option 1: Explicit API key (direct API access)
+ * //  (direct API access)Option 1: Explicit API key
  * const client = createDecartClient({ apiKey: "your-api-key" });
  *
- * // Option 2: Using DECART_API_KEY environment variable (direct API access)
+ * // Option 2: Using DECART_API_KEY environment variable
  * const client = createDecartClient();
  *
  * // Option 3: Using proxy (client-side, no API key needed)
