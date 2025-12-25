@@ -1,5 +1,3 @@
-export const TARGET_URL_HEADER = "x-decart-target-url";
-
 export const DEFAULT_PROXY_ROUTE = "/api/decart";
 
 const DECART_API_KEY = process.env.DECART_API_KEY;
@@ -15,7 +13,7 @@ export interface ProxyBehavior<ResponseType> {
   getHeaders(): Record<string, HeaderValue>;
   getHeader(name: string): HeaderValue;
   sendHeader(name: string, value: string): void;
-  getRequestBody(): Promise<string | undefined>;
+  getRequestBody(): Promise<string | ArrayBuffer | undefined>;
   getRequestPath(): string;
 }
 
@@ -56,16 +54,28 @@ export async function handleRequest<ResponseType>(behavior: ProxyBehavior<Respon
   // pass over headers prefixed with x-decart-*
   const proxyUserAgent = `@decart-ai/server-proxy/${behavior.id}`;
   const userAgent = singleHeaderValue(behavior.getHeader("user-agent"));
+  const requestBody = await behavior.getRequestBody();
+
+  const headers: Record<string, string> = {
+    "x-api-key": DECART_API_KEY,
+    accept: "application/json",
+    "x-decart-client-proxy": proxyUserAgent,
+  };
+
+  if (userAgent) {
+    headers["user-agent"] = userAgent;
+  }
+
+  // Preserve the original content-type header (will be multipart/form-data for FormData)
+  const contentType = singleHeaderValue(behavior.getHeader("content-type"));
+  if (contentType) {
+    headers["content-type"] = contentType;
+  }
+
   const res = await fetch(targetUrl.toString(), {
     method: behavior.method,
-    headers: {
-      "x-api-key": DECART_API_KEY,
-      accept: "application/json",
-      "content-type": "application/json",
-      "user-agent": userAgent,
-      "x-decart-client-proxy": proxyUserAgent,
-    } as HeadersInit,
-    body: await behavior.getRequestBody(),
+    headers: headers as HeadersInit,
+    body: requestBody || undefined,
   });
 
   res.headers.forEach((value, key) => {
@@ -73,8 +83,6 @@ export async function handleRequest<ResponseType>(behavior: ProxyBehavior<Respon
       behavior.sendHeader(key, value);
     }
   });
-
-  console.log("response", res);
 
   return behavior.sendResponse(res);
 }
