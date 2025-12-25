@@ -35,11 +35,18 @@ export async function fileInputToBlob(input: FileInput): Promise<Blob> {
 /**
  * Build common headers for API requests.
  */
-export function buildAuthHeaders(apiKey: string, integration?: string): HeadersInit {
-  return {
-    "X-API-KEY": apiKey,
+export function buildAuthHeaders(options: { apiKey?: string; integration?: string } = {}): HeadersInit {
+  const { apiKey, integration } = options;
+
+  const headers: HeadersInit = {
     "User-Agent": buildUserAgent(integration),
   };
+
+  if (apiKey) {
+    headers["X-API-KEY"] = apiKey;
+  }
+
+  return headers;
 }
 
 /**
