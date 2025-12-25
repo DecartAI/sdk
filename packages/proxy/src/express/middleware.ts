@@ -1,6 +1,14 @@
 import { Readable } from "node:stream";
-import type { Request, RequestHandler } from "express";
+import { buffer } from "node:stream/consumers";
+import type { NextFunction, Request, Response } from "express";
 import { DEFAULT_PROXY_ROUTE, handleRequest } from "../core/proxy-handler";
+
+
+/**
+ * The default Express route for the Decart API client proxy.
+ */
+export const route = DEFAULT_PROXY_ROUTE;
+
 
 /**
  * Read the raw request body as FormData (ArrayBuffer)
@@ -11,33 +19,13 @@ async function readRequestBody(req: Request): Promise<ArrayBuffer | undefined> {
     return undefined;
   }
 
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
+  const buf = await buffer(req);
+  if (buf.length === 0) return undefined;
 
-    // Check if stream is already consumed
-    if (req.readableEnded) {
-      resolve(undefined);
-      return;
-    }
-
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    req.on("end", () => {
-      if (chunks.length === 0) {
-        resolve(undefined);
-      } else {
-        const body = Buffer.concat(chunks);
-        // Convert Buffer to ArrayBuffer to preserve binary data for FormData
-        resolve(body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
-      }
-    });
-    req.on("error", reject);
-  });
+  // Convert Buffer to ArrayBuffer to preserve binary data for FormData
+  const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  return arrayBuffer as ArrayBuffer;
 }
-
-/**
- * The default Express route for the Decart API client proxy.
- */
-export const route = DEFAULT_PROXY_ROUTE;
 
 /**
  * The Express route handler for the Decart API client proxy.
@@ -46,7 +34,7 @@ export const route = DEFAULT_PROXY_ROUTE;
  * @param response The Express response object.
  * @param next The Express next function.
  */
-export const handler: RequestHandler = async (request, response, next) => {
+export const handler = async (request: Request, response: Response, next: NextFunction) => {
   await handleRequest({
     id: "express",
     method: request.method,

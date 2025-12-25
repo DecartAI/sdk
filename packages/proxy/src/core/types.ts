@@ -16,3 +16,18 @@ export type DecartProxyOptions = {
    */
   integration?: string;
 };
+
+export type HeaderValue = string | string[] | undefined | null;
+
+export interface ProxyBehavior<ResponseType> {
+  id: string;
+  method: string;
+  // biome-ignore lint/suspicious/noExplicitAny: data can be any type
+  respondWith(status: number, data: string | any): ResponseType;
+  sendResponse(response: Response): Promise<ResponseType>;
+  getHeaders(): Record<string, HeaderValue>;
+  getHeader(name: string): HeaderValue;
+  sendHeader(name: string, value: string): void;
+  getRequestBody(): Promise<string | ArrayBuffer | undefined>;
+  getRequestPath(): string;
+}
