@@ -29,7 +29,7 @@ app.use(
 
 // Mount the Decart proxy middleware
 // All requests to /api/decart/* will be proxied to api.decart.ai
-app.use("/api/decart", decartProxy);
+app.use("/api/decart", decartProxy());
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
