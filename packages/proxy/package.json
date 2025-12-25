@@ -24,7 +24,6 @@
   "exports": {
     ".": "./dist/index.js",
     "./express": "./dist/express/middleware.js",
-    "./nextjs": "./dist/nextjs/handlers.js",
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -54,4 +53,3 @@
     }
   }
 }
-

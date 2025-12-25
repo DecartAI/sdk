@@ -30,7 +30,10 @@ const EXCLUDED_HEADERS = ["content-length", "content-encoding"];
  * @returns Promise<any> the promise that will be resolved once the request is done.
  */
 export async function handleRequest<ResponseType>(behavior: ProxyBehavior<ResponseType>) {
-  if (!DECART_API_KEY) {
+  // Use API key from behavior if provided, otherwise fall back to environment variable
+  const apiKey = behavior.apiKey ?? DECART_API_KEY;
+
+  if (!apiKey) {
     return behavior.respondWith(401, "Missing Decart API key");
   }
 
@@ -44,7 +47,7 @@ export async function handleRequest<ResponseType>(behavior: ProxyBehavior<Respon
   const requestBody = await behavior.getRequestBody();
 
   const headers: Record<string, string> = {
-    "x-api-key": DECART_API_KEY,
+    "x-api-key": apiKey,
     accept: "application/json",
     "x-decart-client-proxy": proxyUserAgent,
   };

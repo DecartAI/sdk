@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 import { buffer } from "node:stream/consumers";
 import type { NextFunction, Request, Response } from "express";
 import { DEFAULT_PROXY_ROUTE, handleRequest } from "../core/proxy-handler";
+import type { DecartProxyOptions } from "../core/types";
 
 
 /**
@@ -30,31 +31,33 @@ async function readRequestBody(req: Request): Promise<ArrayBuffer | undefined> {
 /**
  * The Express route handler for the Decart API client proxy.
  *
- * @param request The Express request object.
- * @param response The Express response object.
- * @param next The Express next function.
+ * @param options Optional configuration options, including API key.
+ * @returns Express middleware handler function.
  */
-export const handler = async (request: Request, response: Response, next: NextFunction) => {
-  await handleRequest({
-    id: "express",
-    method: request.method,
-    getRequestBody: async () => readRequestBody(request),
-    getHeaders: () => request.headers,
-    getHeader: (name) => request.headers[name],
-    sendHeader: (name, value) => response.setHeader(name, value),
-    respondWith: (status, data) => response.status(status).json(data),
-    getRequestPath: () => request.path,
-    sendResponse: async (res) => {
-      response.status(res.status);
-      if (res.body) {
-        // @ts-expect-error - Readable.fromWeb handles Web ReadableStream
-        Readable.fromWeb(res.body).pipe(response);
-      } else {
-        response.end();
-      }
+export const handler = (options?: DecartProxyOptions) => {
+  return async (request: Request, response: Response, next: NextFunction) => {
+    await handleRequest({
+      id: "express",
+      apiKey: options?.apiKey,
+      method: request.method,
+      getRequestBody: async () => readRequestBody(request),
+      getHeaders: () => request.headers,
+      getHeader: (name) => request.headers[name],
+      sendHeader: (name, value) => response.setHeader(name, value),
+      respondWith: (status, data) => response.status(status).json(data),
+      getRequestPath: () => request.path,
+      sendResponse: async (res) => {
+        response.status(res.status);
+        if (res.body) {
+          // @ts-expect-error - Readable.fromWeb handles Web ReadableStream
+          Readable.fromWeb(res.body).pipe(response);
+        } else {
+          response.end();
+        }
 
-      return response;
-    },
-  });
-  next();
+        return response;
+      },
+    });
+    next();
+  };
 };
