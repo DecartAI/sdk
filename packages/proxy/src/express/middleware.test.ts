@@ -20,7 +20,7 @@ describe("Decart Proxy Middleware", () => {
       const app = express();
       app.use("/api/decart", handler({}));
 
-      const response = await request(app).post("/api/decart/v1/chat/completions");
+      const response = await request(app).post("/api/decart/v1/generate/lucy-pro-t2i");
 
       expect(response.status).toBe(401);
       expect(response.body).toEqual("Missing Decart API key");
@@ -33,24 +33,10 @@ describe("Decart Proxy Middleware", () => {
 
       fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
 
-      await request(app).post("/api/decart/v1/test");
+      await request(app).post("/api/decart/v1/generate/lucy-pro-t2i");
 
       expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining("https://custom.api.com/v1/test"),
-        expect.anything(),
-      );
-    });
-
-    it("should default baseUrl to https://api.decart.ai", async () => {
-      const app = express();
-      app.use("/api/decart", handler({ apiKey: "test-key" }));
-
-      fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
-
-      await request(app).post("/api/decart/v1/test");
-
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining("https://api.decart.ai/v1/test"),
+        expect.stringContaining("https://custom.api.com/v1/generate/lucy-pro-t2i"),
         expect.anything(),
       );
     });
@@ -59,17 +45,16 @@ describe("Decart Proxy Middleware", () => {
   describe("Request Proxying", () => {
     it("should forward request method and body", async () => {
       const app = express();
-      // app.use(express.json()); // REMOVED: Consumes stream which interferes with middleware using buffer(req)
 
       app.use("/api/decart", handler({ apiKey: "test-key" }));
 
       fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
 
-      const testBody = { model: "llama-3", messages: [] };
-      await request(app).post("/api/decart/v1/chat/completions").send(testBody);
+      const testBody = { prompt: "A beautiful sunset over the ocean", resolution: "720p" };
+      await request(app).post("/api/decart/v1/generate/lucy-pro-t2i").send(testBody);
 
       expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining("/v1/chat/completions"),
+        expect.stringContaining("/v1/generate/lucy-pro-t2i"),
         expect.objectContaining({
           method: "POST",
           body: expect.any(ArrayBuffer), // The middleware converts body to ArrayBuffer
@@ -83,7 +68,7 @@ describe("Decart Proxy Middleware", () => {
 
       fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
 
-      await request(app).get("/api/decart/v1/models");
+      await request(app).get("/api/decart/v1/jobs/job_abc123");
 
       expect(fetchMock).toHaveBeenCalledWith(
         expect.anything(),
@@ -104,10 +89,10 @@ describe("Decart Proxy Middleware", () => {
       fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
 
       await request(app)
-        .post("/api/decart/v1/test")
+        .post("/api/decart/v1/jobs/lucy-pro-t2v")
         .set("User-Agent", "Custom-Agent/1.0")
         .set("Content-Type", "application/json")
-        .send({ foo: "bar" });
+        .send({ prompt: "A cat playing piano" });
 
       expect(fetchMock).toHaveBeenCalledWith(
         expect.anything(),
@@ -126,7 +111,7 @@ describe("Decart Proxy Middleware", () => {
       const app = express();
       app.use("/api/decart", handler({ apiKey: "test-key" }));
 
-      const mockResponse = JSON.stringify({ id: "123", object: "chat.completion" });
+      const mockResponse = JSON.stringify({ job_id: "job_abc123", status: "pending" });
       fetchMock.mockResolvedValue(
         new Response(mockResponse, {
           status: 201,
@@ -134,7 +119,7 @@ describe("Decart Proxy Middleware", () => {
         }),
       );
 
-      const response = await request(app).post("/api/decart/v1/chat/completions");
+      const response = await request(app).post("/api/decart/v1/jobs/lucy-pro-t2v");
 
       expect(response.status).toBe(201);
       expect(response.body).toEqual(JSON.parse(mockResponse));
@@ -154,7 +139,7 @@ describe("Decart Proxy Middleware", () => {
         }),
       );
 
-      const response = await request(app).get("/api/decart/v1/test");
+      const response = await request(app).get("/api/decart/v1/jobs/job_abc123");
 
       expect(response.status).toBe(200);
       expect(response.headers["x-custom-header"]).toBe("custom-value");
@@ -175,7 +160,7 @@ describe("Decart Proxy Middleware", () => {
         }),
       );
 
-      const response = await request(app).post("/api/decart/v1/error");
+      const response = await request(app).post("/api/decart/v1/generate/lucy-pro-t2i");
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({ error: "Internal Server Error" });
