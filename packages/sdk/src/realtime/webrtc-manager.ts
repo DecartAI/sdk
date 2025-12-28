@@ -89,4 +89,8 @@ export class WebRTCManager {
   getWebsocketMessageEmitter() {
     return this.connection.websocketMessagesEmitter;
   }
+
+  sendImage(imageBase64: string): Promise<void> {
+    return this.connection.sendImageBase64(imageBase64);
+  }
 }

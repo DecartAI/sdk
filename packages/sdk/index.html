@@ -289,6 +289,25 @@
             <strong>Status:</strong> <span id="promise-status-text">Ready</span>
         </div>
     </div>
+
+    <!-- Image Reference -->
+    <div class="controls">
+        <h3>Image Reference (Style Transfer)</h3>
+        <div class="control-group">
+            <label for="reference-image">Select a reference image:</label>
+            <input type="file" id="reference-image" accept="image/*" disabled>
+        </div>
+        <div class="inline-controls">
+            <button id="send-image" disabled>Send Reference Image</button>
+        </div>
+        <div id="image-status" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 6px; display: none;">
+            <strong>Status:</strong> <span id="image-status-text">Ready</span>
+        </div>
+        <div id="image-preview" style="margin-top: 10px; display: none;">
+            <img id="preview-img" style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 2px solid #ddd;">
+        </div>
+    </div>
+
     <!-- Video File Processing -->
     <div class="controls">
         <h3>Video File Processing</h3>
@@ -368,6 +387,13 @@
             sessionInfo: document.getElementById('session-info'),
             sessionIdText: document.getElementById('session-id-text'),
             logsContainer: document.getElementById('logs-container'),
+            // Image reference elements
+            referenceImage: document.getElementById('reference-image'),
+            sendImage: document.getElementById('send-image'),
+            imageStatus: document.getElementById('image-status'),
+            imageStatusText: document.getElementById('image-status-text'),
+            imagePreview: document.getElementById('image-preview'),
+            previewImg: document.getElementById('preview-img'),
             // Video processing elements
             videoFile: document.getElementById('video-file'),
             processPrompt: document.getElementById('process-prompt'),
@@ -493,7 +519,8 @@
                     elements.sendPrompt.disabled = false;
                     elements.promisePromptInput.disabled = false;
                     elements.sendPromisePrompt.disabled = false;
-                    
+                    elements.referenceImage.disabled = false;
+
                     // Show session ID
                     currentSessionId = decartRealtime.sessionId;
                     elements.sessionIdText.textContent = currentSessionId;
@@ -549,7 +576,12 @@
             elements.promisePromptInput.value = '';
             elements.promiseStatus.style.display = 'none';
             elements.sessionInfo.style.display = 'none';
-            
+            elements.referenceImage.disabled = true;
+            elements.sendImage.disabled = true;
+            elements.referenceImage.value = '';
+            elements.imageStatus.style.display = 'none';
+            elements.imagePreview.style.display = 'none';
+
             addLog('Disconnected successfully', 'info');
         });
         
@@ -642,7 +674,58 @@
                 sendPromisePrompt();
             }
         });
-        
+
+        // Reference image selection handler
+        elements.referenceImage.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                addLog(`Selected reference image: ${file.name}`, 'info');
+                elements.sendImage.disabled = false;
+
+                // Show preview
+                const url = URL.createObjectURL(file);
+                elements.previewImg.src = url;
+                elements.imagePreview.style.display = 'block';
+            }
+        });
+
+        // Send reference image
+        elements.sendImage.addEventListener('click', async () => {
+            const file = elements.referenceImage.files[0];
+            if (!file) {
+                addLog('Please select an image first', 'error');
+                return;
+            }
+
+            if (!decartRealtime || !isConnected) {
+                addLog('Not connected to Decart', 'error');
+                return;
+            }
+
+            try {
+                // Show status
+                elements.imageStatus.style.display = 'block';
+                elements.imageStatusText.textContent = '⏳ Sending image...';
+                elements.imageStatusText.style.color = '#ff9800';
+                elements.sendImage.disabled = true;
+
+                addLog('Sending reference image...', 'info');
+
+                await decartRealtime.sendImage(file);
+
+                elements.imageStatusText.textContent = '✅ Image sent successfully!';
+                elements.imageStatusText.style.color = '#4CAF50';
+                addLog('Reference image sent and acknowledged', 'success');
+
+            } catch (error) {
+                elements.imageStatusText.textContent = `❌ Failed: ${error.message}`;
+                elements.imageStatusText.style.color = '#f44336';
+                addLog(`Failed to send image: ${error.message}`, 'error');
+            } finally {
+                elements.sendImage.disabled = false;
+            }
+        });
+
         // Video file selection handler
         elements.videoFile.addEventListener('change', (e) => {
             const file = e.target.files[0];
