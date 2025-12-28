@@ -165,4 +165,27 @@ describe("Decart Proxy Middleware", () => {
       expect(response.body).toEqual({ error: "Internal Server Error" });
     });
   });
+
+  describe("Error Handling", () => {
+    it("should handle network errors gracefully", async () => {
+      const app = express();
+      app.use("/api/decart", handler({ apiKey: "test-key" }));
+
+      // Add error handler middleware to verify error is passed correctly
+      const errorHandler = vi.fn((err, _req, res, _next) => {
+        res.status(500).json({ error: err.message });
+      });
+      app.use(errorHandler);
+
+      const networkError = new Error("Network request failed");
+      fetchMock.mockRejectedValue(networkError);
+
+      const response = await request(app).post("/api/decart/v1/generate/lucy-pro-t2i");
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: "Network request failed" });
+      expect(errorHandler).toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalled();
+    });
+  });
 });
