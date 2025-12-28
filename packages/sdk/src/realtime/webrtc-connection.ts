@@ -205,7 +205,7 @@ export class WebRTCConnection {
       });
       this.pc.close();
     }
-    const iceServers: RTCIceServer[] = [...ICE_SERVERS];
+    const iceServers: RTCIceServer[] = ICE_SERVERS;
     if (turnConfig) {
       iceServers.push({
         urls: turnConfig.server_url,

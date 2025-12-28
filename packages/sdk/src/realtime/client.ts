@@ -66,10 +66,8 @@ export type RealTimeClient = {
   on: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   off: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   sessionId: string;
-  // Avatar-live audio methods (only available when model is avatar-live)
+  // Avatar-live audio method (only available when model is avatar-live and no stream is provided)
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
-  stopAudio?: () => void;
-  isPlayingAudio?: () => boolean;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
@@ -91,11 +89,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
     const { onRemoteStream, initialState, avatar } = parsedOptions.data;
 
-    // For avatar-live: create AudioStreamManager for continuous silent stream with audio injection
+    // For avatar-live without user-provided stream: create AudioStreamManager for continuous silent stream with audio injection
+    // If user provides their own stream (e.g., mic input), use it directly
     let audioStreamManager: AudioStreamManager | undefined;
     let inputStream: MediaStream;
 
-    if (isAvatarLive) {
+    if (isAvatarLive && !stream) {
       audioStreamManager = new AudioStreamManager();
       inputStream = audioStreamManager.getStream();
     } else {
@@ -163,12 +162,10 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       sessionId,
     };
 
-    // Add avatar-live specific audio methods
+    // Add avatar-live specific audio method (only when using internal AudioStreamManager)
     if (isAvatarLive && audioStreamManager) {
       const manager = audioStreamManager; // Capture for closures
       client.playAudio = (audio: Blob | File | ArrayBuffer) => manager.playAudio(audio);
-      client.stopAudio = () => manager.stopAudio();
-      client.isPlayingAudio = () => manager.isPlaying();
     }
 
     return client;
