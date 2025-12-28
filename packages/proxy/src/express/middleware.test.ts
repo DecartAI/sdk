@@ -135,6 +135,7 @@ describe("Decart Proxy Middleware", () => {
           headers: {
             "X-Custom-Header": "custom-value",
             "Content-Length": "123", // Should be excluded
+            "Content-Encoding": "gzip", // Should be excluded
           },
         }),
       );
@@ -143,10 +144,8 @@ describe("Decart Proxy Middleware", () => {
 
       expect(response.status).toBe(200);
       expect(response.headers["x-custom-header"]).toBe("custom-value");
-      // Content-Length is managed by Express/Node, but our logic explicitly excludes the upstream one.
-      // However, supertest/express might add its own Content-Length.
-      // We can verify that our logic *called* sendHeader for X-Custom-Header.
-      // Ideally we assume the excluded list works if we test one that is allowed.
+      expect(response.headers["content-length"]).toBeUndefined();
+      expect(response.headers["content-encoding"]).toBeUndefined();
     });
 
     it("should handle 500 from upstream", async () => {
