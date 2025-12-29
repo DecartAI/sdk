@@ -40,11 +40,8 @@ export function buildAuthHeaders(options: { apiKey?: string; integration?: strin
 
   const headers: HeadersInit = {
     "User-Agent": buildUserAgent(integration),
+    ...(apiKey ? { "X-API-KEY": apiKey } : {}),
   };
-
-  if (apiKey) {
-    headers["X-API-KEY"] = apiKey;
-  }
 
   return headers;
 }
