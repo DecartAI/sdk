@@ -162,14 +162,27 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       off: eventEmitter.off,
       sessionId,
       sendImage: async (image: Blob | File | string) => {
-        let imageBlob: Blob;
+        let imageBase64: string;
         if (typeof image === "string") {
-          const response = await fetch(image);
-          imageBlob = await response.blob();
+          let url: URL | null = null;
+          try {
+            url = new URL(image);
+          } catch {
+            // Not a valid URL, treat as raw base64
+          }
+
+          if (url?.protocol === "data:") {
+            imageBase64 = image.split(",")[1];
+          } else if (url?.protocol === "http:" || url?.protocol === "https:") {
+            const response = await fetch(image);
+            const imageBlob = await response.blob();
+            imageBase64 = await blobToBase64(imageBlob);
+          } else {
+            imageBase64 = image;
+          }
         } else {
-          imageBlob = image;
+          imageBase64 = await blobToBase64(image);
         }
-        const imageBase64 = await blobToBase64(imageBlob);
         return webrtcManager.sendImage(imageBase64);
       },
     };
