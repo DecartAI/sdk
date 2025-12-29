@@ -34,7 +34,7 @@ app.use(route, handler());
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
-  console.log(`Proxy endpoint: http://localhost:${port}/api/decart`);
+  console.log(`Proxy endpoint: http://localhost:${port}${route}`);
   console.log("");
   console.log("Make sure to set DECART_API_KEY in your .env file");
 });
