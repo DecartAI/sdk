@@ -801,3 +801,62 @@ describe("Tokens API", () => {
     });
   });
 });
+
+describe("Avatar-Live Model", () => {
+  describe("Model Definition", () => {
+    it("has correct model name", () => {
+      const avatarModel = models.realtime("avatar-live");
+      expect(avatarModel.name).toBe("avatar-live");
+    });
+
+    it("has correct URL path for avatar-live", () => {
+      const avatarModel = models.realtime("avatar-live");
+      expect(avatarModel.urlPath).toBe("/v1/avatar-live/stream");
+    });
+
+    it("has expected dimensions", () => {
+      const avatarModel = models.realtime("avatar-live");
+      expect(avatarModel.width).toBe(1280);
+      expect(avatarModel.height).toBe(720);
+    });
+
+    it("has correct fps", () => {
+      const avatarModel = models.realtime("avatar-live");
+      expect(avatarModel.fps).toBe(25);
+    });
+
+    it("is recognized as a realtime model", () => {
+      expect(models.realtime("avatar-live")).toBeDefined();
+    });
+  });
+
+  describe("Avatar-Live Message Types", () => {
+    it("SetAvatarImageMessage has correct structure", () => {
+      const message: import("../src/realtime/types").SetAvatarImageMessage = {
+        type: "set_image",
+        image_data: "base64encodeddata",
+      };
+
+      expect(message.type).toBe("set_image");
+      expect(message.image_data).toBe("base64encodeddata");
+    });
+
+    it("ImageSetMessage has correct structure", () => {
+      const successMessage: import("../src/realtime/types").ImageSetMessage = {
+        type: "image_set",
+        status: "success",
+      };
+
+      expect(successMessage.type).toBe("image_set");
+      expect(successMessage.status).toBe("success");
+
+      const failureMessage: import("../src/realtime/types").ImageSetMessage = {
+        type: "image_set",
+        status: "error: invalid image",
+      };
+
+      expect(failureMessage.type).toBe("image_set");
+      expect(failureMessage.status).toBe("error: invalid image");
+    });
+  });
+});
