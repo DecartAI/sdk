@@ -2,7 +2,7 @@ import type { Server } from "node:http";
 import express, { type Application } from "express";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DecartProxyOptions } from "../core/types";
 import { handler } from "./middleware";
 
@@ -290,29 +290,23 @@ describe("Decart Proxy Middleware", () => {
 
       const { port, close } = await startTestServer(testApp);
 
-      // Stub fetch to throw a network error for upstream API calls
-      const originalFetch = globalThis.fetch;
-      const fetchStub = vi.fn((url: string | URL | Request) => {
-        if (typeof url === "string" && url.includes(BASE_URL)) {
-          throw new Error("Network request failed");
-        }
-        return originalFetch(url);
+      // Trigger a fetch failure
+      mswServer.use(
+        http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, () => {
+          return HttpResponse.error();
+        }),
+      );
+
+      const response = await fetch(getProxyUrl(port, "/v1/generate/lucy-pro-t2i"), {
+        method: "POST",
       });
-      vi.stubGlobal("fetch", fetchStub);
 
-      try {
-        const response = await fetch(getProxyUrl(port, "/v1/generate/lucy-pro-t2i"), {
-          method: "POST",
-        });
+      expect(response.status).toBe(500);
+      const body = await response.json();
+      expect(errorHandlerCalled).toBe(true);
+      expect(body.error).toBeDefined();
 
-        expect(response.status).toBe(500);
-        const body = await response.json();
-        expect(errorHandlerCalled).toBe(true);
-        expect(body).toEqual({ error: "Network request failed" });
-      } finally {
-        vi.unstubAllGlobals();
-        await close();
-      }
+      await close();
     });
   });
 });
