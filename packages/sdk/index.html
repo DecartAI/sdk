@@ -389,7 +389,7 @@
             logsContainer: document.getElementById('logs-container'),
             // Image reference elements
             referenceImage: document.getElementById('reference-image'),
-            sendImage: document.getElementById('send-image'),
+            setImage: document.getElementById('send-image'),
             imageStatus: document.getElementById('image-status'),
             imageStatusText: document.getElementById('image-status-text'),
             imagePreview: document.getElementById('image-preview'),
@@ -577,7 +577,7 @@
             elements.promiseStatus.style.display = 'none';
             elements.sessionInfo.style.display = 'none';
             elements.referenceImage.disabled = true;
-            elements.sendImage.disabled = true;
+            elements.setImage.disabled = true;
             elements.referenceImage.value = '';
             elements.imageStatus.style.display = 'none';
             elements.imagePreview.style.display = 'none';
@@ -680,7 +680,7 @@
             const file = e.target.files[0];
             if (file) {
                 addLog(`Selected reference image: ${file.name}`, 'info');
-                elements.sendImage.disabled = false;
+                elements.setImage.disabled = false;
 
                 // Show preview
                 const url = URL.createObjectURL(file);
@@ -690,7 +690,7 @@
         });
 
         // Send reference image
-        elements.sendImage.addEventListener('click', async () => {
+        elements.setImage.addEventListener('click', async () => {
             const file = elements.referenceImage.files[0];
             if (!file) {
                 addLog('Please select an image first', 'error');
@@ -707,11 +707,11 @@
                 elements.imageStatus.style.display = 'block';
                 elements.imageStatusText.textContent = '⏳ Sending image...';
                 elements.imageStatusText.style.color = '#ff9800';
-                elements.sendImage.disabled = true;
+                elements.setImage.disabled = true;
 
                 addLog('Sending reference image...', 'info');
 
-                await decartRealtime.sendImage(file);
+                await decartRealtime.setImage(file);
 
                 elements.imageStatusText.textContent = '✅ Image sent successfully!';
                 elements.imageStatusText.style.color = '#4CAF50';
@@ -722,7 +722,7 @@
                 elements.imageStatusText.style.color = '#f44336';
                 addLog(`Failed to send image: ${error.message}`, 'error');
             } finally {
-                elements.sendImage.disabled = false;
+                elements.setImage.disabled = false;
             }
         });
 

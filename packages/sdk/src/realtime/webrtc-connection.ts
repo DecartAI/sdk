@@ -165,14 +165,14 @@ export class WebRTCConnection {
   }
 
   private async sendAvatarImage(imageBase64: string): Promise<void> {
-    return this.sendImageBase64(imageBase64);
+    return this.setImageBase64(imageBase64);
   }
 
   /**
    * Send an image to the server (e.g., as a reference for inference).
    * Can be called after connection is established.
    */
-  async sendImageBase64(imageBase64: string): Promise<void> {
+  async setImageBase64(imageBase64: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.websocketMessagesEmitter.off("imageSet", listener);

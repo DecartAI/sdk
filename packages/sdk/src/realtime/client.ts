@@ -66,7 +66,7 @@ export type RealTimeClient = {
   on: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   off: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   sessionId: string;
-  sendImage: (image: Blob | File | string) => Promise<void>;
+  setImage: (image: Blob | File | string) => Promise<void>;
   // Avatar-live audio method (only available when model is avatar-live and no stream is provided)
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
 };
@@ -161,7 +161,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       on: eventEmitter.on,
       off: eventEmitter.off,
       sessionId,
-      sendImage: async (image: Blob | File | string) => {
+      setImage: async (image: Blob | File | string) => {
         let imageBase64: string;
         if (typeof image === "string") {
           let url: URL | null = null;
@@ -183,7 +183,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         } else {
           imageBase64 = await blobToBase64(image);
         }
-        return webrtcManager.sendImage(imageBase64);
+        return webrtcManager.setImage(imageBase64);
       },
     };
 
