@@ -13,17 +13,11 @@ export const route = DEFAULT_PROXY_ROUTE;
  * Read the raw request body as FormData (ArrayBuffer)
  */
 async function readRequestBody(req: Request): Promise<ArrayBuffer | undefined> {
-  // GET, HEAD, and OPTIONS requests don't have bodies
-  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") {
-    return undefined;
-  }
-
   const buf = await buffer(req);
   if (buf.length === 0) return undefined;
 
   // Convert Buffer to ArrayBuffer to preserve binary data for FormData
-  const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  return arrayBuffer as ArrayBuffer;
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
 }
 
 /**
