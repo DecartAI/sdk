@@ -53,12 +53,8 @@ export async function handleRequest<ResponseType>(behavior: ProxyBehavior<Respon
   const headers: Record<string, string> = {
     "x-api-key": apiKey,
     accept: "application/json",
-    "x-decart-client-proxy": proxyUserAgent,
+    "user-agent": userAgent ? `${userAgent} ${proxyUserAgent}` : proxyUserAgent,
   };
-
-  if (userAgent) {
-    headers["user-agent"] = userAgent;
-  }
 
   // Preserve the original content-type header (will be multipart/form-data for FormData)
   const contentType = singleHeaderValue(behavior.getHeader("content-type"));
