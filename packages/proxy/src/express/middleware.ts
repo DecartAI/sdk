@@ -1,6 +1,7 @@
 import { Readable } from "node:stream";
 import { buffer } from "node:stream/consumers";
 import type { NextFunction, Request, Response } from "express";
+import { version } from "../../package.json";
 import { DEFAULT_PROXY_ROUTE, handleRequest } from "../core/proxy-handler";
 import type { DecartProxyOptions } from "../core/types";
 
@@ -30,7 +31,7 @@ export const handler = (options?: DecartProxyOptions) => {
   return async (request: Request, response: Response, next: NextFunction) => {
     try {
       await handleRequest({
-        id: "express",
+        id: `${version}/express`,
         apiKey: options?.apiKey,
         baseUrl: options?.baseUrl,
         integration: options?.integration,
