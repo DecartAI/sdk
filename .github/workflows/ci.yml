@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  test-sdk:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -48,8 +48,49 @@ jobs:
       - name: Test
         run: pnpm test
 
+  test-proxy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./packages/proxy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4.1.0
+        with:
+          version: 10.7.1
+
+      - name: Set node LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install
+
+      - name: Build
+        run: pnpm build
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
   release:
-    needs: test
+    needs: [test-sdk, test-proxy]
     runs-on: ubuntu-latest
     defaults:
       run:

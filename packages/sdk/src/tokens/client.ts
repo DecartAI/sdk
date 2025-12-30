@@ -30,9 +30,11 @@ export const createTokensClient = (opts: TokensClientOptions): TokensClient => {
   const { baseUrl, apiKey, integration } = opts;
 
   const create = async (): Promise<CreateTokenResponse> => {
+    const headers = buildAuthHeaders({ apiKey, integration });
+
     const response = await fetch(`${baseUrl}/v1/client/tokens`, {
       method: "POST",
-      headers: buildAuthHeaders(apiKey, integration),
+      headers,
     });
 
     if (!response.ok) {
