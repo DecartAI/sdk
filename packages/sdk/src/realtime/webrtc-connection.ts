@@ -1,8 +1,15 @@
 import mitt from "mitt";
 import { buildUserAgent } from "../utils/user-agent";
-import type { IncomingWebRTCMessage, OutgoingWebRTCMessage, PromptAckMessage, TurnConfig } from "./types";
+import type {
+  ImageSetMessage,
+  IncomingWebRTCMessage,
+  OutgoingWebRTCMessage,
+  PromptAckMessage,
+  TurnConfig,
+} from "./types";
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+const AVATAR_SETUP_TIMEOUT_MS = 15000;
 
 interface ConnectionCallbacks {
   onRemoteStream?: (stream: MediaStream) => void;
@@ -11,12 +18,15 @@ interface ConnectionCallbacks {
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
+  isAvatarLive?: boolean;
+  avatarImageBase64?: string;
 }
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
 
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
+  imageSet: ImageSetMessage;
 };
 
 export class WebRTCConnection {
@@ -56,10 +66,14 @@ export class WebRTCConnection {
       };
       this.ws.onerror = () => {
         clearTimeout(timer);
-        // reject(new Error("WebSocket failed"));
       };
       this.ws.onclose = () => this.setState("disconnected");
     });
+
+    // For avatar-live: send avatar image before WebRTC handshake
+    if (this.callbacks.avatarImageBase64) {
+      await this.sendAvatarImage(this.callbacks.avatarImageBase64);
+    }
 
     await this.setupNewPeerConnection();
 
@@ -80,19 +94,27 @@ export class WebRTCConnection {
   }
 
   private async handleSignalingMessage(msg: IncomingWebRTCMessage): Promise<void> {
-    if (!this.pc) return;
-
     try {
-      switch (msg.type) {
-        case "error": {
-          const error = new Error(msg.error);
-          this.callbacks.onError?.(error);
-          if (this.connectionReject) {
-            this.connectionReject(error);
-            this.connectionReject = null;
-          }
-          break;
+      // Handle messages that don't require peer connection first
+      if (msg.type === "error") {
+        const error = new Error(msg.error);
+        this.callbacks.onError?.(error);
+        if (this.connectionReject) {
+          this.connectionReject(error);
+          this.connectionReject = null;
         }
+        return;
+      }
+
+      if (msg.type === "image_set") {
+        this.websocketMessagesEmitter.emit("imageSet", msg);
+        return;
+      }
+
+      // All other messages require peer connection
+      if (!this.pc) return;
+
+      switch (msg.type) {
         case "ready": {
           await this.applyCodecPreference("video/VP8");
           const offer = await this.pc.createOffer();
@@ -142,10 +164,39 @@ export class WebRTCConnection {
     }
   }
 
+  private async sendAvatarImage(imageBase64: string): Promise<void> {
+    return this.setImageBase64(imageBase64);
+  }
+
+  /**
+   * Send an image to the server (e.g., as a reference for inference).
+   * Can be called after connection is established.
+   */
+  async setImageBase64(imageBase64: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.websocketMessagesEmitter.off("imageSet", listener);
+        reject(new Error("Image send timed out"));
+      }, AVATAR_SETUP_TIMEOUT_MS);
+
+      const listener = (msg: ImageSetMessage) => {
+        clearTimeout(timeoutId);
+        this.websocketMessagesEmitter.off("imageSet", listener);
+        if (msg.status === "success") {
+          resolve();
+        } else {
+          reject(new Error(`Failed to send image: ${msg.status}`));
+        }
+      };
+
+      this.websocketMessagesEmitter.on("imageSet", listener);
+      this.send({ type: "set_image", image_data: imageBase64 });
+    });
+  }
+
   private setState(state: ConnectionState): void {
     if (this.state !== state) {
       this.state = state;
-      console.log(`[WebRTC] State: ${state}`);
       this.callbacks.onStateChange?.(state);
     }
   }
@@ -171,6 +222,11 @@ export class WebRTCConnection {
       });
     }
     this.pc = new RTCPeerConnection({ iceServers });
+
+    // For avatar-live: add receive-only video transceiver (sends audio only, receives audio+video)
+    if (this.callbacks.isAvatarLive) {
+      this.pc.addTransceiver("video", { direction: "recvonly" });
+    }
 
     this.localStream.getTracks().forEach((track) => {
       if (this.pc && this.localStream) {
@@ -214,7 +270,9 @@ export class WebRTCConnection {
   async applyCodecPreference(preferredCodecName: "video/VP8" | "video/H264") {
     if (!this.pc) return;
 
-    const videoTransceiver = this.pc.getTransceivers().find((r) => r.sender.track?.kind === "video");
+    const videoTransceiver = this.pc
+      .getTransceivers()
+      .find((r) => r.sender.track?.kind === "video" || r.receiver.track?.kind === "video");
     if (!videoTransceiver) {
       console.error("Could not find video transceiver. Ensure track is added to peer connection.");
       return;
