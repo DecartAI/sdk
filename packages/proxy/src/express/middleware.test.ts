@@ -158,7 +158,7 @@ describe("Decart Proxy Middleware", () => {
       expect(lastRequest).not.toBeNull();
       expect(lastRequest?.headers.get("x-api-key")).toBe("test-key");
       expect(lastRequest?.headers.get("accept")).toBe("application/json");
-      expect(lastRequest?.headers.get("x-decart-client-proxy")).toContain("integration: test-integration");
+      expect(lastRequest?.headers.get("user-agent")).toContain("integration: test-integration");
 
       await close();
     });
@@ -184,7 +184,7 @@ describe("Decart Proxy Middleware", () => {
       });
 
       expect(lastRequest).not.toBeNull();
-      expect(lastRequest?.headers.get("user-agent")).toBe("Custom-Agent/1.0");
+      expect(lastRequest?.headers.get("user-agent")).toContain("Custom-Agent/1.0");
       expect(lastRequest?.headers.get("content-type")).toContain("application/json");
 
       await close();
