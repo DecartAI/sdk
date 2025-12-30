@@ -366,6 +366,79 @@ describe("Queue API", () => {
       expect(dataFile).toBeInstanceOf(File);
     });
 
+    it("submits video restyle job with reference_image", async () => {
+      server.use(
+        http.post("http://localhost/v1/jobs/lucy-restyle-v2v", async ({ request }) => {
+          lastRequest = request;
+          lastFormData = await request.formData();
+          return HttpResponse.json({
+            job_id: "job_restyle_ref",
+            status: "pending",
+          });
+        }),
+      );
+
+      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
+      const testImageBlob = new Blob(["test-image"], { type: "image/png" });
+
+      const result = await decart.queue.submit({
+        model: models.video("lucy-restyle-v2v"),
+        reference_image: testImageBlob,
+        data: testVideoBlob,
+        seed: 123,
+      });
+
+      expect(result.job_id).toBe("job_restyle_ref");
+      expect(result.status).toBe("pending");
+      expect(lastFormData?.get("prompt")).toBeNull();
+      expect(lastFormData?.get("seed")).toBe("123");
+
+      const dataFile = lastFormData?.get("data") as File;
+      expect(dataFile).toBeInstanceOf(File);
+
+      const refImageFile = lastFormData?.get("reference_image") as File;
+      expect(refImageFile).toBeInstanceOf(File);
+    });
+
+    it("rejects video restyle job when both prompt and reference_image are provided", async () => {
+      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
+      const testImageBlob = new Blob(["test-image"], { type: "image/png" });
+
+      await expect(
+        decart.queue.submit({
+          model: models.video("lucy-restyle-v2v"),
+          prompt: "Transform to anime style",
+          reference_image: testImageBlob,
+          data: testVideoBlob,
+        } as Parameters<typeof decart.queue.submit>[0]),
+      ).rejects.toThrow("Must provide either 'prompt' or 'reference_image', but not both");
+    });
+
+    it("rejects video restyle job when neither prompt nor reference_image is provided", async () => {
+      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
+
+      await expect(
+        decart.queue.submit({
+          model: models.video("lucy-restyle-v2v"),
+          data: testVideoBlob,
+        } as Parameters<typeof decart.queue.submit>[0]),
+      ).rejects.toThrow("Must provide either 'prompt' or 'reference_image', but not both");
+    });
+
+    it("rejects video restyle job when enhance_prompt is used with reference_image", async () => {
+      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
+      const testImageBlob = new Blob(["test-image"], { type: "image/png" });
+
+      await expect(
+        decart.queue.submit({
+          model: models.video("lucy-restyle-v2v"),
+          reference_image: testImageBlob,
+          data: testVideoBlob,
+          enhance_prompt: true,
+        } as Parameters<typeof decart.queue.submit>[0]),
+      ).rejects.toThrow("'enhance_prompt' is only valid when using 'prompt', not 'reference_image'");
+    });
+
     it("submits image-to-video job", async () => {
       server.use(
         http.post("http://localhost/v1/jobs/lucy-pro-i2v", async ({ request }) => {

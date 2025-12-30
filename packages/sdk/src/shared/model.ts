@@ -163,13 +163,26 @@ export const modelInputSchemas = {
     seed: z.number().optional().describe("The seed to use for the generation"),
     resolution: motionResolutionSchema,
   }),
-  "lucy-restyle-v2v": z.object({
-    prompt: z.string().min(1).max(1000).describe("Text prompt for the video editing"),
-    data: fileInputSchema.describe("Video file to process (File, Blob, ReadableStream, URL, or string URL)"),
-    seed: z.number().optional().describe("Seed for the video generation"),
-    resolution: proV2vResolutionSchema,
-    enhance_prompt: z.boolean().default(true).optional().describe("Whether to enhance the prompt"),
-  }),
+  "lucy-restyle-v2v": z
+    .object({
+      prompt: z.string().min(1).max(1000).optional().describe("Text prompt for the video editing"),
+      reference_image: fileInputSchema
+        .optional()
+        .describe("Reference image to transform into a prompt (File, Blob, ReadableStream, URL, or string URL)"),
+      data: fileInputSchema.describe("Video file to process (File, Blob, ReadableStream, URL, or string URL)"),
+      seed: z.number().optional().describe("Seed for the video generation"),
+      resolution: proV2vResolutionSchema,
+      enhance_prompt: z
+        .boolean()
+        .optional()
+        .describe("Whether to enhance the prompt (only valid with text prompt, defaults to true on backend)"),
+    })
+    .refine((data) => (data.prompt !== undefined) !== (data.reference_image !== undefined), {
+      message: "Must provide either 'prompt' or 'reference_image', but not both",
+    })
+    .refine((data) => !(data.reference_image !== undefined && data.enhance_prompt !== undefined), {
+      message: "'enhance_prompt' is only valid when using 'prompt', not 'reference_image'",
+    }),
 } as const;
 
 export type ModelInputSchemas = typeof modelInputSchemas;
