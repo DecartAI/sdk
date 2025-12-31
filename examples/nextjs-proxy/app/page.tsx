@@ -20,12 +20,7 @@ export default function Home() {
 
     try {
       const client = createDecartClient({ proxy: PROXY_ROUTE });
-
-      const blob = await client.process({
-        model: models.image("lucy-pro-t2i"),
-        prompt,
-      });
-
+      const blob = await client.process({ model: models.image("lucy-pro-t2i"), prompt });
       const url = URL.createObjectURL(blob);
       setImageUrl(url);
     } catch (err) {
