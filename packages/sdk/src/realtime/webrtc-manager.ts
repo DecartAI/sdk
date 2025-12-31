@@ -93,4 +93,7 @@ export class WebRTCManager {
   setImage(imageBase64: string): Promise<void> {
     return this.connection.setImageBase64(imageBase64);
   }
+  getSessionInfo(): any {
+    return this.connection.sessionInfo;
+  }
 }

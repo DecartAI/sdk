@@ -5,6 +5,7 @@ import type {
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
+  GenerationStartedMessage,
   TurnConfig,
 } from "./types";
 
@@ -24,16 +25,26 @@ interface ConnectionCallbacks {
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
 
-type WsMessageEvents = {
+export type WsMessageEvents = {
   promptAck: PromptAckMessage;
   imageSet: ImageSetMessage;
+  generationStarted: GenerationStartedMessage; 
 };
+
+export type sessionInfo = {
+  sessionId: string;
+  serverIp: string;
+  serverPort: number;
+};
+
 
 export class WebRTCConnection {
   private pc: RTCPeerConnection | null = null;
   private ws: WebSocket | null = null;
   private localStream: MediaStream | null = null;
   private connectionReject: ((error: Error) => void) | null = null;
+  public sessionInfo: sessionInfo | undefined = undefined;
+
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
   constructor(private callbacks: ConnectionCallbacks = {}) {}
@@ -149,6 +160,18 @@ export class WebRTCConnection {
         }
         case "prompt_ack": {
           this.websocketMessagesEmitter.emit("promptAck", msg);
+          break;
+        }
+        case "generation_started": {
+          this.websocketMessagesEmitter.emit("generationStarted", msg);          
+          break;
+        }
+        case "session_id": {                    
+          this.sessionInfo = {
+            sessionId: msg.session_id,
+            serverIp: msg.server_ip,
+            serverPort: msg.server_port,
+          };
           break;
         }
       }

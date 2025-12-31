@@ -6,7 +6,8 @@ import { modelStateSchema } from "../shared/types";
 import { createWebrtcError, type DecartSDKError } from "../utils/errors";
 import { AudioStreamManager } from "./audio-stream-manager";
 import { realtimeMethods } from "./methods";
-import { WebRTCManager } from "./webrtc-manager";
+import type { WsMessageEvents, sessionInfo } from "./webrtc-connection";
+import { WebRTCManager} from "./webrtc-manager";
 
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -53,10 +54,15 @@ const realTimeClientConnectOptionsSchema = z.object({
 });
 export type RealTimeClientConnectOptions = z.infer<typeof realTimeClientConnectOptionsSchema>;
 
+// Reuse WsMessageEvents from webrtc-connection.ts
+const WS_MESSAGE_EVENT_KEYS: Array<keyof WsMessageEvents> = ["promptAck", "imageSet", "generationStarted"] as const;
+
+
+
 export type Events = {
   connectionChange: "connected" | "connecting" | "disconnected";
   error: DecartSDKError;
-};
+} & WsMessageEvents;
 
 export type RealTimeClient = {
   setPrompt: (prompt: string, { enhance }?: { enhance?: boolean }) => Promise<void>;
@@ -69,6 +75,7 @@ export type RealTimeClient = {
   setImage: (image: Blob | File | string) => Promise<void>;
   // Avatar-live audio method (only available when model is avatar-live and no stream is provided)
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
+  getSessionInfo: () => sessionInfo | undefined;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
@@ -139,6 +146,21 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       avatarImageBase64,
     });
 
+    // Register event listeners BEFORE connecting
+    // This ensures we catch events that are emitted during the connection process
+    const wsEmitter = webrtcManager.getWebsocketMessageEmitter();
+
+    const forwardEvent = <K extends keyof WsMessageEvents>(event: K) => {
+      (wsEmitter.on as (type: K, handler: (msg: WsMessageEvents[K]) => void) => void)(event, (msg) => {
+        eventEmitter.emit(event, msg as Events[K]);
+      });
+    };
+
+    // Forward all websocket message events to main event emitter dynamically
+    // This ensures all WsMessageEvents are available through the public API
+    WS_MESSAGE_EVENT_KEYS.forEach(forwardEvent);
+
+    // NOW connect - listeners are already registered and will catch events during connection
     await webrtcManager.connect(inputStream);
 
     const methods = realtimeMethods(webrtcManager);
@@ -185,6 +207,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         }
         return webrtcManager.setImage(imageBase64);
       },
+      getSessionInfo: () => webrtcManager.getSessionInfo(),
     };
 
     // Add avatar-live specific audio method (only when using internal AudioStreamManager)

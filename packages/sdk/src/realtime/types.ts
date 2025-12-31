@@ -57,6 +57,17 @@ export type ImageSetMessage = {
   status: string;
 };
 
+export type GenerationStartedMessage = {
+  type: "generation_started";  
+};
+
+export type SessionIdMessage = {
+  type: "session_id";
+  session_id: string;
+  server_ip: string;
+  server_port: number;
+};
+
 // Incoming message types (from server)
 export type IncomingWebRTCMessage =
   | ReadyMessage
@@ -66,7 +77,9 @@ export type IncomingWebRTCMessage =
   | IceRestartMessage
   | PromptAckMessage
   | ErrorMessage
-  | ImageSetMessage;
+  | ImageSetMessage
+  | GenerationStartedMessage
+  | SessionIdMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =
