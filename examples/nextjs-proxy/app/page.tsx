@@ -1,6 +1,7 @@
 "use client";
 
 import { createDecartClient, models } from "@decartai/sdk";
+import Image from "next/image";
 import { useState } from "react";
 
 export default function Home() {
@@ -49,7 +50,7 @@ export default function Home() {
           disabled={loading}
           onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
         />
-        <button onClick={handleGenerate} disabled={loading || !prompt.trim()}>
+        <button onClick={handleGenerate} disabled={loading || !prompt.trim()} type="button">
           {loading ? "Generating..." : "Generate Image"}
         </button>
       </div>
@@ -58,7 +59,7 @@ export default function Home() {
 
       {imageUrl && (
         <div className="result">
-          <img src={imageUrl} alt="Generated" />
+          <Image src={imageUrl} alt="Generated" />
         </div>
       )}
 
@@ -137,4 +138,3 @@ export default function Home() {
     </main>
   );
 }
-
