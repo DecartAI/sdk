@@ -1,3 +1,7 @@
+body {
+  font-family: "system-ui", sans-serif;
+}
+
 .container {
   max-width: 800px;
   margin: 0 auto;
@@ -40,6 +44,7 @@
   border-radius: 4px;
   font-size: 1rem;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .button:hover:not(:disabled) {
@@ -67,4 +72,10 @@
   max-width: 100%;
   border-radius: 8px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: all 0.25s;
+}
+
+.result img:hover {
+  transform: scale(1.03);
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2);
 }
