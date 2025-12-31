@@ -34,8 +34,6 @@ export type WsMessageEvents = {
 
 // Re-export for backwards compatibility
 export type { SessionInfo };
-/** @deprecated Use SessionInfo instead */
-export type sessionInfo = SessionInfo;
 
 export class WebRTCConnection {
   private pc: RTCPeerConnection | null = null;
