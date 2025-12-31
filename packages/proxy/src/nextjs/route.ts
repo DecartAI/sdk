@@ -123,7 +123,6 @@ export const route = (options?: DecartProxyOptions) => ({
   handler: (request: NextRequest) => routeHandler(request, options),
   GET: (request: NextRequest) => routeHandler(request, options),
   POST: (request: NextRequest) => routeHandler(request, options),
-  PUT: (request: NextRequest) => routeHandler(request, options),
 });
 
 /**

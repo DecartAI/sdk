@@ -7,4 +7,4 @@ export {
   handlerPagesRouter as decartProxyPagesRouter,
   PROXY_ROUTE as nextjsRoute,
   route,
-} from "./nextjs/middleware";
+} from "./nextjs/route";

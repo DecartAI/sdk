@@ -1,4 +1,4 @@
-# Decart Next.js Proxy Middleware
+# Decart Next.js Proxy Route
 
 > [!IMPORTANT]  
 > Before setting up the proxy, ensure you have `DECART_API_KEY` set as an environment variable.
