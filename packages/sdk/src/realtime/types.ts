@@ -58,7 +58,7 @@ export type ImageSetMessage = {
 };
 
 export type GenerationStartedMessage = {
-  type: "generation_started";  
+  type: "generation_started";
 };
 
 export type SessionIdMessage = {

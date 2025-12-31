@@ -8,7 +8,7 @@ import { AudioStreamManager } from "./audio-stream-manager";
 import { realtimeMethods } from "./methods";
 import type { SessionInfo } from "./types";
 import type { WsMessageEvents } from "./webrtc-connection";
-import { WebRTCManager} from "./webrtc-manager";
+import { WebRTCManager } from "./webrtc-manager";
 
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -57,8 +57,6 @@ export type RealTimeClientConnectOptions = z.infer<typeof realTimeClientConnectO
 
 // Reuse WsMessageEvents from webrtc-connection.ts
 const WS_MESSAGE_EVENT_KEYS: Array<keyof WsMessageEvents> = ["promptAck", "imageSet", "generationStarted"] as const;
-
-
 
 export type Events = {
   connectionChange: "connected" | "connecting" | "disconnected";
@@ -147,7 +145,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       avatarImageBase64,
     });
 
-    // Register event listeners BEFORE connecting
     // This ensures we catch events that are emitted during the connection process
     const wsEmitter = webrtcManager.getWebsocketMessageEmitter();
 
@@ -161,7 +158,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     // This ensures all WsMessageEvents are available through the public API
     WS_MESSAGE_EVENT_KEYS.forEach(forwardEvent);
 
-    // NOW connect - listeners are already registered and will catch events during connection
     await webrtcManager.connect(inputStream);
 
     const methods = realtimeMethods(webrtcManager);

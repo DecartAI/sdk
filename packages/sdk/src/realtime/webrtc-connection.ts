@@ -160,10 +160,10 @@ export class WebRTCConnection {
           break;
         }
         case "generation_started": {
-          this.websocketMessagesEmitter.emit("generationStarted", msg);          
+          this.websocketMessagesEmitter.emit("generationStarted", msg);
           break;
         }
-        case "session_id": {                    
+        case "session_id": {
           this.sessionInfo = {
             sessionId: msg.session_id,
             serverIp: msg.server_ip,
