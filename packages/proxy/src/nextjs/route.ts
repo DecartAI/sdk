@@ -11,17 +11,6 @@ import type { DecartProxyOptions } from "../core/types";
 export const PROXY_ROUTE = DEFAULT_PROXY_ROUTE;
 
 /**
- * Convert Headers to a record for compatibility
- */
-function fromHeaders(headers: Headers): Record<string, string | string[]> {
-  const result: Record<string, string | string[]> = {};
-  headers.forEach((value, key) => {
-    result[key] = value;
-  });
-  return result;
-}
-
-/**
  * Response passthrough helper for App Router
  */
 const responsePassthrough = async (res: Response, responseHeaders: Headers): Promise<NextResponse> => {
@@ -98,7 +87,7 @@ async function routeHandler(request: NextRequest, options?: DecartProxyOptions):
     integration: options?.integration,
     method: request.method,
     getRequestBody: async () => request.text(),
-    getHeaders: () => fromHeaders(request.headers),
+    getHeaders: () => request.headers,
     getHeader: (name) => request.headers.get(name),
     sendHeader: (name, value) => responseHeaders.set(name, value),
     respondWith: (status, data) =>
