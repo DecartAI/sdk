@@ -33,16 +33,10 @@ export const handler = (options?: DecartProxyOptions): NextApiHandler => {
         getHeader: (name) => request.headers[name],
         sendHeader: (name, value) => response.setHeader(name, value),
         respondWith: (status, data) => response.status(status).json(data),
+        // Catch-all route [...path] provides an array of path segments
         getRequestPath: () => {
-          // Extract path from catch-all route query param
-          if (request.query?.path) {
-            const path = Array.isArray(request.query.path) ? request.query.path.join("/") : request.query.path;
-            return `/${path}`;
-          }
-          // Fallback: extract from URL
-          const url = request.url?.split("?")[0] || "/";
-          const routePath = PROXY_ROUTE.replace(/\/$/, "");
-          return url.startsWith(routePath) ? url.slice(routePath.length) || "/" : url;
+          const path = request.query?.path as string[] | undefined;
+          return path?.length ? `/${path.join("/")}` : "/";
         },
         sendResponse: async (res) => {
           if (res.headers.get("content-type")?.includes("application/json")) {
@@ -82,10 +76,8 @@ async function routeHandler(request: NextRequest, options?: DecartProxyOptions):
         headers: responseHeaders,
       }),
     getRequestPath: () => {
-      const url = new URL(request.url);
-      const routePath = PROXY_ROUTE.replace(/\/$/, "");
-      const pathname = url.pathname;
-      return pathname.startsWith(routePath) ? pathname.slice(routePath.length) || "/" : pathname;
+      const basePath = PROXY_ROUTE.replace(/\/$/, "");
+      return request.nextUrl.pathname.replace(basePath, "") || "/";
     },
     sendResponse: async (res) =>
       new NextResponse(res.body, {
