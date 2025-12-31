@@ -24,6 +24,7 @@
   "exports": {
     ".": "./dist/index.js",
     "./express": "./dist/express/middleware.js",
+    "./nextjs": "./dist/nextjs/middleware.js",
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -48,10 +49,14 @@
     "vitest": "^3.2.4"
   },
   "peerDependencies": {
-    "express": "^4.18.0"
+    "express": "^4.18.0",
+    "next": "^13.0.0 || ^14.0.0 || ^15.0.0 || ^16.0.0"
   },
   "peerDependenciesMeta": {
     "express": {
+      "optional": true
+    },
+    "next": {
       "optional": true
     }
   }
