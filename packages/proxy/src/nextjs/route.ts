@@ -6,18 +6,15 @@ import { DEFAULT_PROXY_ROUTE, handleRequest } from "../core/proxy-handler";
 import type { DecartProxyOptions } from "../core/types";
 
 /**
- * The default Next API route for the Decart API client proxy.
+ * The default Next route for the Decart proxy.
  */
 export const PROXY_ROUTE = DEFAULT_PROXY_ROUTE;
 
 /**
- * The Next API route handler for the Decart API client proxy.
+ * Next API route handler for the Decart proxy.
  * Use it with the /pages router in Next.js.
  *
  * Note: the page routers proxy doesn't support streaming responses.
- *
- * @param options Optional configuration options, including API key.
- * @returns Next.js API route handler function.
  */
 export const handler = (options?: DecartProxyOptions): NextApiHandler => {
   return async (request: NextApiRequest, response: NextApiResponse) => {
