@@ -1,11 +1,11 @@
 import mitt from "mitt";
 import { buildUserAgent } from "../utils/user-agent";
 import type {
+  GenerationStartedMessage,
   ImageSetMessage,
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
-  GenerationStartedMessage,
   SessionInfo,
   TurnConfig,
 } from "./types";
