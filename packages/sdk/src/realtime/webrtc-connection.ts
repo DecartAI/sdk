@@ -43,7 +43,7 @@ export class WebRTCConnection {
   private ws: WebSocket | null = null;
   private localStream: MediaStream | null = null;
   private connectionReject: ((error: Error) => void) | null = null;
-  public sessionInfo: sessionInfo | undefined = undefined;
+  public sessionInfo: sessionInfo | null = null;
 
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();

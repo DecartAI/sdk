@@ -75,7 +75,7 @@ export type RealTimeClient = {
   setImage: (image: Blob | File | string) => Promise<void>;
   // Avatar-live audio method (only available when model is avatar-live and no stream is provided)
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
-  getSessionInfo: () => sessionInfo | undefined;
+  getSessionInfo: () => sessionInfo | null;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
