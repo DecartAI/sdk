@@ -11,20 +11,6 @@ import type { DecartProxyOptions } from "../core/types";
 export const PROXY_ROUTE = DEFAULT_PROXY_ROUTE;
 
 /**
- * Response passthrough helper for App Router
- */
-const responsePassthrough = async (res: Response, responseHeaders: Headers): Promise<NextResponse> => {
-  // Copy response headers
-  res.headers.forEach((value, key) => {
-    responseHeaders.set(key, value);
-  });
-  return new NextResponse(res.body, {
-    status: res.status,
-    headers: responseHeaders,
-  });
-};
-
-/**
  * The Next API route handler for the Decart API client proxy.
  * Use it with the /pages router in Next.js.
  *
@@ -101,7 +87,11 @@ async function routeHandler(request: NextRequest, options?: DecartProxyOptions):
       const pathname = url.pathname;
       return pathname.startsWith(routePath) ? pathname.slice(routePath.length) || "/" : pathname;
     },
-    sendResponse: async (res) => responsePassthrough(res, responseHeaders),
+    sendResponse: async (res) =>
+      new NextResponse(res.body, {
+        status: res.status,
+        headers: responseHeaders,
+      }),
   });
 }
 
