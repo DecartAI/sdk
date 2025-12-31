@@ -1,5 +1,6 @@
 "use client";
 
+import { PROXY_ROUTE } from "@decartai/proxy/nextjs";
 import { createDecartClient, models } from "@decartai/sdk";
 import Image from "next/image";
 import { useState } from "react";
@@ -18,9 +19,7 @@ export default function Home() {
     setImageUrl(null);
 
     try {
-      const client = createDecartClient({
-        proxy: "/api/decart",
-      });
+      const client = createDecartClient({ proxy: PROXY_ROUTE });
 
       const blob = await client.process({
         model: models.image("lucy-pro-t2i"),
