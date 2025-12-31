@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createProcessClient } from "./process/client";
 import { createQueueClient } from "./queue/client";
 import { createRealTimeClient } from "./realtime/client";
+import { createRealTimeSubscribeClient } from "./realtime/subscribe-client";
 import { createTokensClient } from "./tokens/client";
 import { readEnv } from "./utils/env";
 import { createInvalidApiKeyError, createInvalidBaseUrlError } from "./utils/errors";
@@ -23,6 +24,12 @@ export type {
   RealTimeClientConnectOptions,
   RealTimeClientInitialState,
 } from "./realtime/client";
+export type {
+  RealTimeSubscribeClient,
+  RealTimeSubscribeClientOptions,
+  RealTimeSubscribeConnectOptions,
+  SubscribeEvents,
+} from "./realtime/subscribe-client";
 export {
   type ImageModelDefinition,
   type ImageModels,
@@ -96,6 +103,12 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     integration,
   });
 
+  const realtimeSubscribe = createRealTimeSubscribeClient({
+    baseUrl: wsBaseUrl,
+    apiKey,
+    integration,
+  });
+
   const process = createProcessClient({
     baseUrl,
     apiKey,
@@ -116,6 +129,29 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
 
   return {
     realtime,
+    /**
+     * Client for subscribing to an existing realtime session.
+     * Use this to receive streams from a session created by another client.
+     *
+     * @example
+     * ```ts
+     * // Get sessionInfo from an existing session
+     * const sessionInfo = existingClient.getSessionInfo();
+     *
+     * // Subscribe to the session
+     * const subscriber = await client.realtimeSubscribe.connect({
+     *   sessionInfo,
+     *   onRemoteStream: (stream) => {
+     *     videoElement.srcObject = stream;
+     *   }
+     * });
+     *
+     * // Subscriber is read-only
+     * subscriber.on('connectionChange', (state) => console.log(state));
+     * subscriber.disconnect();
+     * ```
+     */
+    realtimeSubscribe,
     /**
      * Client for synchronous image generation.
      * Only image models support the sync/process API.

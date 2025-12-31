@@ -1,6 +1,6 @@
 import pRetry from "p-retry";
 import type { RealTimeClientInitialState } from "./client";
-import type { OutgoingMessage } from "./types";
+import type { OutgoingMessage, SessionInfo } from "./types";
 import { WebRTCConnection } from "./webrtc-connection";
 
 export interface WebRTCConfig {
@@ -93,7 +93,7 @@ export class WebRTCManager {
   setImage(imageBase64: string): Promise<void> {
     return this.connection.setImageBase64(imageBase64);
   }
-  getSessionInfo(): any {
+  getSessionInfo(): SessionInfo | null {
     return this.connection.sessionInfo;
   }
 }

@@ -68,6 +68,12 @@ export type SessionIdMessage = {
   server_port: number;
 };
 
+export type SessionInfo = {
+  sessionId: string;
+  serverIp: string;
+  serverPort: number;
+};
+
 // Incoming message types (from server)
 export type IncomingWebRTCMessage =
   | ReadyMessage

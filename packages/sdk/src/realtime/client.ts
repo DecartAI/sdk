@@ -6,7 +6,8 @@ import { modelStateSchema } from "../shared/types";
 import { createWebrtcError, type DecartSDKError } from "../utils/errors";
 import { AudioStreamManager } from "./audio-stream-manager";
 import { realtimeMethods } from "./methods";
-import type { WsMessageEvents, sessionInfo } from "./webrtc-connection";
+import type { SessionInfo } from "./types";
+import type { WsMessageEvents } from "./webrtc-connection";
 import { WebRTCManager} from "./webrtc-manager";
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -75,7 +76,7 @@ export type RealTimeClient = {
   setImage: (image: Blob | File | string) => Promise<void>;
   // Avatar-live audio method (only available when model is avatar-live and no stream is provided)
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
-  getSessionInfo: () => sessionInfo | null;
+  getSessionInfo: () => SessionInfo | null;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
