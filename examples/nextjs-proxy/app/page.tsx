@@ -53,7 +53,17 @@ export default function Home() {
 
       {imageUrl && (
         <div className="result">
-          <Image src={imageUrl} alt="Generated" />
+          <Image
+            src={imageUrl}
+            alt="Generated"
+            sizes="100vw"
+            width={800}
+            height={450}
+            style={{
+              width: "100%",
+              height: "auto",
+            }}
+          />
         </div>
       )}
 
