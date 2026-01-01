@@ -246,7 +246,7 @@ const _models = {
       inputSchema: z.object({}),
     },
     live_avatar: {
-      urlPath: "/v1/live_avatar/stream",
+      urlPath: "/v1/stream",
       name: "live_avatar" as const,
       fps: 25,
       width: 1280,

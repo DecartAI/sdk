@@ -884,7 +884,7 @@ describe("live_avatar Model", () => {
 
     it("has correct URL path for live_avatar", () => {
       const avatarModel = models.realtime("live_avatar");
-      expect(avatarModel.urlPath).toBe("/v1/live_avatar/stream");
+      expect(avatarModel.urlPath).toBe("/v1/stream");
     });
 
     it("has expected dimensions", () => {
