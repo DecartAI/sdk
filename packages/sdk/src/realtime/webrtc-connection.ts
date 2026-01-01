@@ -70,7 +70,7 @@ export class WebRTCConnection {
       this.ws.onclose = () => this.setState("disconnected");
     });
 
-    // For avatar-live: send avatar image before WebRTC handshake
+    // For live_avatar: send avatar image before WebRTC handshake
     if (this.callbacks.avatarImageBase64) {
       await this.sendAvatarImage(this.callbacks.avatarImageBase64);
     }
@@ -223,7 +223,7 @@ export class WebRTCConnection {
     }
     this.pc = new RTCPeerConnection({ iceServers });
 
-    // For avatar-live: add receive-only video transceiver (sends audio only, receives audio+video)
+    // For live_avatar: add receive-only video transceiver (sends audio only, receives audio+video)
     if (this.callbacks.isAvatarLive) {
       this.pc.addTransceiver("video", { direction: "recvonly" });
     }

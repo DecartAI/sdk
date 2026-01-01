@@ -10,7 +10,7 @@ import { createDecartClient, models } from "@decartai/sdk";
  * Pass null for stream - the SDK creates an internal audio stream
  */
 async function withPlayAudio() {
-  const model = models.realtime("avatar-live");
+  const model = models.realtime("live_avatar");
 
   const client = createDecartClient({
     apiKey: process.env.DECART_API_KEY!,
@@ -42,7 +42,7 @@ async function withPlayAudio() {
  * Pass user's audio stream - avatar speaks what user says
  */
 async function withMicInput() {
-  const model = models.realtime("avatar-live");
+  const model = models.realtime("live_avatar");
 
   // Get user's microphone stream
   const micStream = await navigator.mediaDevices.getUserMedia({
