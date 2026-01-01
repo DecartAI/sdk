@@ -302,12 +302,13 @@ export class WebRTCConnection {
     if (!this.pc) return null;
 
     const stats = await this.pc.getStats();
-    for (const report of stats.values()) {
-      if (report.type === "candidate-pair" && report.state === "succeeded") {
-        return report.currentRoundTripTime ? report.currentRoundTripTime * 1000 : null;
+    let rtt: number | null = null;
+    stats.forEach((report) => {
+      if (report.type === "candidate-pair" && report.state === "succeeded" && report.currentRoundTripTime) {
+        rtt = report.currentRoundTripTime * 1000;
       }
-    }
-    return null;
+    });
+    return rtt;
   }
 
   async getStats(): Promise<RTCStatsReport | null> {
