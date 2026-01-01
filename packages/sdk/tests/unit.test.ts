@@ -914,22 +914,26 @@ describe("Avatar-Live Model", () => {
       expect(message.image_data).toBe("base64encodeddata");
     });
 
-    it("ImageSetMessage has correct structure", () => {
-      const successMessage: import("../src/realtime/types").ImageSetMessage = {
-        type: "image_set",
-        status: "success",
+    it("SetImageAckMessage has correct structure", () => {
+      const successMessage: import("../src/realtime/types").SetImageAckMessage = {
+        type: "set_image_ack",
+        success: true,
+        error: null,
       };
 
-      expect(successMessage.type).toBe("image_set");
-      expect(successMessage.status).toBe("success");
+      expect(successMessage.type).toBe("set_image_ack");
+      expect(successMessage.success).toBe(true);
+      expect(successMessage.error).toBeNull();
 
-      const failureMessage: import("../src/realtime/types").ImageSetMessage = {
-        type: "image_set",
-        status: "error: invalid image",
+      const failureMessage: import("../src/realtime/types").SetImageAckMessage = {
+        type: "set_image_ack",
+        success: false,
+        error: "invalid image",
       };
 
-      expect(failureMessage.type).toBe("image_set");
-      expect(failureMessage.status).toBe("error: invalid image");
+      expect(failureMessage.type).toBe("set_image_ack");
+      expect(failureMessage.success).toBe(false);
+      expect(failureMessage.error).toBe("invalid image");
     });
   });
 });

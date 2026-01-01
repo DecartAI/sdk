@@ -52,9 +52,10 @@ export type SetAvatarImageMessage = {
   image_data: string; // Base64-encoded image data
 };
 
-export type ImageSetMessage = {
-  type: "image_set";
-  status: string;
+export type SetImageAckMessage = {
+  type: "set_image_ack";
+  success: boolean;
+  error: null | string;
 };
 
 // Incoming message types (from server)
@@ -66,7 +67,7 @@ export type IncomingWebRTCMessage =
   | IceRestartMessage
   | PromptAckMessage
   | ErrorMessage
-  | ImageSetMessage;
+  | SetImageAckMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =
