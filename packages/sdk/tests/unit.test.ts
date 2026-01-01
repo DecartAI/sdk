@@ -903,7 +903,7 @@ describe("live_avatar Model", () => {
     });
   });
 
-  describe("Avatar-Live Message Types", () => {
+  describe("Live_Avatar Message Types", () => {
     it("SetAvatarImageMessage has correct structure", () => {
       const message: import("../src/realtime/types").SetAvatarImageMessage = {
         type: "set_image",
