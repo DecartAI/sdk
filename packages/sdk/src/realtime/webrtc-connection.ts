@@ -1,10 +1,12 @@
 import mitt from "mitt";
 import { buildUserAgent } from "../utils/user-agent";
 import type {
+  GenerationStartedMessage,
   ImageSetMessage,
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
+  SessionInfo,
   TurnConfig,
 } from "./types";
 
@@ -24,21 +26,35 @@ interface ConnectionCallbacks {
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
 
-type WsMessageEvents = {
+export type WsMessageEvents = {
   promptAck: PromptAckMessage;
   imageSet: ImageSetMessage;
+  generationStarted: GenerationStartedMessage;
 };
+
+// Re-export for backwards compatibility
+export type { SessionInfo };
 
 export class WebRTCConnection {
   private pc: RTCPeerConnection | null = null;
   private ws: WebSocket | null = null;
   private localStream: MediaStream | null = null;
   private connectionReject: ((error: Error) => void) | null = null;
+  public sessionInfo: SessionInfo | null = null;
+
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
   constructor(private callbacks: ConnectionCallbacks = {}) {}
 
-  async connect(url: string, localStream: MediaStream, timeout = 60000, integration?: string): Promise<void> {
+  /**
+   * Establish a WebRTC connection to the server.
+   * @param url - WebSocket URL for signaling
+   * @param localStream - Local media stream to send, or null for receive-only mode
+   *   (e.g., when subscribing to an existing session without sending media)
+   * @param timeout - Connection timeout in milliseconds (default: 60000)
+   * @param integration - Optional integration identifier for user agent
+   */
+  async connect(url: string, localStream: MediaStream | null, timeout = 60000, integration?: string): Promise<void> {
     const deadline = Date.now() + timeout;
     this.localStream = localStream;
 
@@ -151,6 +167,18 @@ export class WebRTCConnection {
           this.websocketMessagesEmitter.emit("promptAck", msg);
           break;
         }
+        case "generation_started": {
+          this.websocketMessagesEmitter.emit("generationStarted", msg);
+          break;
+        }
+        case "session_id": {
+          this.sessionInfo = {
+            sessionId: msg.session_id,
+            serverIp: msg.server_ip,
+            serverPort: msg.server_port,
+          };
+          break;
+        }
       }
     } catch (error) {
       console.error("[WebRTC] Error:", error);
@@ -202,9 +230,6 @@ export class WebRTCConnection {
   }
 
   private async setupNewPeerConnection(turnConfig?: TurnConfig): Promise<void> {
-    if (!this.localStream) {
-      throw new Error("No local stream found");
-    }
     if (this.pc) {
       this.pc.getSenders().forEach((sender) => {
         if (sender.track && this.pc) {
@@ -223,16 +248,22 @@ export class WebRTCConnection {
     }
     this.pc = new RTCPeerConnection({ iceServers });
 
-    // For avatar-live: add receive-only video transceiver (sends audio only, receives audio+video)
-    if (this.callbacks.isAvatarLive) {
+    // When localStream is null (receive-only mode): add recvonly transceivers for video and audio
+    if (!this.localStream) {
       this.pc.addTransceiver("video", { direction: "recvonly" });
-    }
-
-    this.localStream.getTracks().forEach((track) => {
-      if (this.pc && this.localStream) {
-        this.pc.addTrack(track, this.localStream);
+      this.pc.addTransceiver("audio", { direction: "recvonly" });
+    } else {
+      // For avatar-live: add receive-only video transceiver (sends audio only, receives audio+video)
+      if (this.callbacks.isAvatarLive) {
+        this.pc.addTransceiver("video", { direction: "recvonly" });
       }
-    });
+
+      this.localStream.getTracks().forEach((track) => {
+        if (this.pc && this.localStream) {
+          this.pc.addTrack(track, this.localStream);
+        }
+      });
+    }
 
     this.pc.ontrack = (e) => {
       if (e.streams?.[0]) this.callbacks.onRemoteStream?.(e.streams[0]);
@@ -265,6 +296,24 @@ export class WebRTCConnection {
     this.ws = null;
     this.localStream = null;
     this.setState("disconnected");
+  }
+
+  async getRtt(): Promise<number | null> {
+    if (!this.pc) return null;
+
+    const stats = await this.pc.getStats();
+    let rtt: number | null = null;
+    stats.forEach((report) => {
+      if (report.type === "candidate-pair" && report.state === "succeeded" && report.currentRoundTripTime) {
+        rtt = report.currentRoundTripTime * 1000;
+      }
+    });
+    return rtt;
+  }
+
+  async getStats(): Promise<RTCStatsReport | null> {
+    if (!this.pc) return null;
+    return this.pc.getStats();
   }
 
   async applyCodecPreference(preferredCodecName: "video/VP8" | "video/H264") {

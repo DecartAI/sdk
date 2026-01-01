@@ -125,3 +125,26 @@ const realtimeClient = await client.realtime.connect(micStream, {
   avatar: { avatarImage: avatarFile },
 });
 ```
+
+### Realtime Subscribe (WebRTC)
+
+Subscribe to an existing realtime session for read-only access (spectating/monitoring).
+
+```typescript
+// Get sessionInfo from an existing session
+const sessionInfo = existingClient.getSessionInfo();
+if (!sessionInfo) {
+  throw new Error("Session info is not available. Ensure the existing session is active before subscribing.");
+}
+
+// Subscribe to the session from another client
+const subscriber = await client.realtimeSubscribe.connect({
+  sessionInfo,
+  onRemoteStream: (stream) => {
+    videoElement.srcObject = stream;
+  }
+});
+
+subscriber.on('connectionChange', (state) => console.log(state));
+subscriber.disconnect();
+```
