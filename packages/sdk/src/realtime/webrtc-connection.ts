@@ -248,7 +248,7 @@ export class WebRTCConnection {
     }
     this.pc = new RTCPeerConnection({ iceServers });
 
-    // For receive-only mode (no local stream): add recvonly transceivers for video and audio
+    // When localStream is null (receive-only mode): add recvonly transceivers for video and audio
     if (!this.localStream) {
       this.pc.addTransceiver("video", { direction: "recvonly" });
       this.pc.addTransceiver("audio", { direction: "recvonly" });
