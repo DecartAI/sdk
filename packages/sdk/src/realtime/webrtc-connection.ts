@@ -290,6 +290,23 @@ export class WebRTCConnection {
     this.setState("disconnected");
   }
 
+  async getRtt(): Promise<number | null> {
+    if (!this.pc) return null;
+
+    const stats = await this.pc.getStats();
+    for (const report of stats.values()) {
+      if (report.type === "candidate-pair" && report.state === "succeeded") {
+        return report.currentRoundTripTime ? report.currentRoundTripTime * 1000 : null;
+      }
+    }
+    return null;
+  }
+
+  async getStats(): Promise<RTCStatsReport | null> {
+    if (!this.pc) return null;
+    return this.pc.getStats();
+  }
+
   async applyCodecPreference(preferredCodecName: "video/VP8" | "video/H264") {
     if (!this.pc) return;
 

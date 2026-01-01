@@ -96,4 +96,12 @@ export class WebRTCManager {
   getSessionInfo(): SessionInfo | null {
     return this.connection.sessionInfo;
   }
+
+  getRtt(): Promise<number | null> {
+    return this.connection.getRtt();
+  }
+
+  getStats(): Promise<RTCStatsReport | null> {
+    return this.connection.getStats();
+  }
 }
