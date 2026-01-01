@@ -46,6 +46,14 @@ export class WebRTCConnection {
   websocketMessagesEmitter = mitt<WsMessageEvents>();
   constructor(private callbacks: ConnectionCallbacks = {}) {}
 
+  /**
+   * Establish a WebRTC connection to the server.
+   * @param url - WebSocket URL for signaling
+   * @param localStream - Local media stream to send, or null for receive-only mode
+   *   (e.g., when subscribing to an existing session without sending media)
+   * @param timeout - Connection timeout in milliseconds (default: 60000)
+   * @param integration - Optional integration identifier for user agent
+   */
   async connect(url: string, localStream: MediaStream | null, timeout = 60000, integration?: string): Promise<void> {
     const deadline = Date.now() + timeout;
     this.localStream = localStream;
