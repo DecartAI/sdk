@@ -75,6 +75,8 @@ export type RealTimeClient = {
   // Avatar-live audio method (only available when model is avatar-live and no stream is provided)
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
   getSessionInfo: () => SessionInfo | null;
+  getRtt: () => Promise<number | null>;
+  getStats: () => Promise<RTCStatsReport | null>;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
@@ -200,6 +202,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         return webrtcManager.setImage(imageBase64);
       },
       getSessionInfo: () => webrtcManager.getSessionInfo(),
+      getRtt: () => webrtcManager.getRtt(),
+      getStats: () => webrtcManager.getStats(),
     };
 
     // Add avatar-live specific audio method (only when using internal AudioStreamManager)
