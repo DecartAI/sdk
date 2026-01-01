@@ -20,6 +20,7 @@ interface ConnectionCallbacks {
   vp8StartBitrate?: number;
   isAvatarLive?: boolean;
   avatarImageBase64?: string;
+  initialPrompt?: { text: string; enhance?: boolean };
 }
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -75,6 +76,11 @@ export class WebRTCConnection {
       await this.sendAvatarImage(this.callbacks.avatarImageBase64);
     }
 
+    // Send initial prompt before WebRTC handshake
+    if (this.callbacks.initialPrompt) {
+      await this.sendInitialPrompt(this.callbacks.initialPrompt);
+    }
+
     await this.setupNewPeerConnection();
 
     return new Promise<void>((resolve, reject) => {
@@ -108,6 +114,11 @@ export class WebRTCConnection {
 
       if (msg.type === "set_image_ack") {
         this.websocketMessagesEmitter.emit("setImageAck", msg);
+        return;
+      }
+
+      if (msg.type === "prompt_ack") {
+        this.websocketMessagesEmitter.emit("promptAck", msg);
         return;
       }
 
@@ -145,10 +156,6 @@ export class WebRTCConnection {
           if (turnConfig) {
             await this.setupNewPeerConnection(turnConfig);
           }
-          break;
-        }
-        case "prompt_ack": {
-          this.websocketMessagesEmitter.emit("promptAck", msg);
           break;
         }
       }
@@ -191,6 +198,33 @@ export class WebRTCConnection {
 
       this.websocketMessagesEmitter.on("setImageAck", listener);
       this.send({ type: "set_image", image_data: imageBase64 });
+    });
+  }
+
+  /**
+   * Send the initial prompt to the server before WebRTC handshake.
+   */
+  private async sendInitialPrompt(prompt: { text: string; enhance?: boolean }): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.websocketMessagesEmitter.off("promptAck", listener);
+        reject(new Error("Prompt send timed out"));
+      }, AVATAR_SETUP_TIMEOUT_MS);
+
+      const listener = (msg: PromptAckMessage) => {
+        if (msg.prompt === prompt.text) {
+          clearTimeout(timeoutId);
+          this.websocketMessagesEmitter.off("promptAck", listener);
+          if (msg.success) {
+            resolve();
+          } else {
+            reject(new Error(msg.error ?? "Failed to send prompt"));
+          }
+        }
+      };
+
+      this.websocketMessagesEmitter.on("promptAck", listener);
+      this.send({ type: "prompt", prompt: prompt.text, enhance_prompt: prompt.enhance ?? true });
     });
   }
 
