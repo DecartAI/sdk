@@ -875,35 +875,35 @@ describe("Tokens API", () => {
   });
 });
 
-describe("Avatar-Live Model", () => {
+describe("live_avatar Model", () => {
   describe("Model Definition", () => {
     it("has correct model name", () => {
-      const avatarModel = models.realtime("avatar-live");
-      expect(avatarModel.name).toBe("avatar-live");
+      const avatarModel = models.realtime("live_avatar");
+      expect(avatarModel.name).toBe("live_avatar");
     });
 
-    it("has correct URL path for avatar-live", () => {
-      const avatarModel = models.realtime("avatar-live");
-      expect(avatarModel.urlPath).toBe("/v1/avatar-live/stream");
+    it("has correct URL path for live_avatar", () => {
+      const avatarModel = models.realtime("live_avatar");
+      expect(avatarModel.urlPath).toBe("/v1/live_avatar/stream");
     });
 
     it("has expected dimensions", () => {
-      const avatarModel = models.realtime("avatar-live");
+      const avatarModel = models.realtime("live_avatar");
       expect(avatarModel.width).toBe(1280);
       expect(avatarModel.height).toBe(720);
     });
 
     it("has correct fps", () => {
-      const avatarModel = models.realtime("avatar-live");
+      const avatarModel = models.realtime("live_avatar");
       expect(avatarModel.fps).toBe(25);
     });
 
     it("is recognized as a realtime model", () => {
-      expect(models.realtime("avatar-live")).toBeDefined();
+      expect(models.realtime("live_avatar")).toBeDefined();
     });
   });
 
-  describe("Avatar-Live Message Types", () => {
+  describe("Live_Avatar Message Types", () => {
     it("SetAvatarImageMessage has correct structure", () => {
       const message: import("../src/realtime/types").SetAvatarImageMessage = {
         type: "set_image",
