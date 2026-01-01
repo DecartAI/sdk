@@ -148,15 +148,10 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     // This ensures we catch events that are emitted during the connection process
     const wsEmitter = webrtcManager.getWebsocketMessageEmitter();
 
-    const forwardEvent = <K extends keyof WsMessageEvents>(event: K) => {
-      (wsEmitter.on as (type: K, handler: (msg: WsMessageEvents[K]) => void) => void)(event, (msg) => {
-        eventEmitter.emit(event, msg as Events[K]);
-      });
-    };
-
-    // Forward all websocket message events to main event emitter dynamically
-    // This ensures all WsMessageEvents are available through the public API
-    WS_MESSAGE_EVENT_KEYS.forEach(forwardEvent);
+    // Forward all websocket message events to main event emitter
+    WS_MESSAGE_EVENT_KEYS.forEach((event) => {
+      wsEmitter.on(event, (msg) => eventEmitter.emit(event, msg));
+    });
 
     await webrtcManager.connect(inputStream);
 
