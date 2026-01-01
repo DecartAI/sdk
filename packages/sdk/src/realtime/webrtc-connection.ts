@@ -1,10 +1,10 @@
 import mitt from "mitt";
 import { buildUserAgent } from "../utils/user-agent";
 import type {
-  SetImageAckMessage,
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
+  SetImageAckMessage,
   TurnConfig,
 } from "./types";
 
