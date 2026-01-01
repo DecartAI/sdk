@@ -116,6 +116,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       avatarImageBase64 = await blobToBase64(imageBlob);
     }
 
+    // For live_avatar: prepare initial prompt to send before WebRTC handshake
+    const initialPrompt =
+      isAvatarLive && options.initialState?.prompt
+        ? { text: options.initialState.prompt.text, enhance: options.initialState.prompt.enhance }
+        : undefined;
+
     const url = `${baseUrl}${options.model.urlPath}`;
     const webrtcManager = new WebRTCManager({
       webrtcUrl: `${url}?api_key=${apiKey}&model=${options.model.name}`,
@@ -137,17 +143,17 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       vp8StartBitrate: 600,
       isAvatarLive,
       avatarImageBase64,
+      initialPrompt,
     });
 
     await webrtcManager.connect(inputStream);
 
     const methods = realtimeMethods(webrtcManager);
 
-    if (options.initialState) {
-      if (options.initialState.prompt) {
-        const { text, enhance } = options.initialState.prompt;
-        methods.setPrompt(text, { enhance });
-      }
+    // For non-live_avatar models: send initial prompt after connection is established
+    if (!isAvatarLive && options.initialState?.prompt) {
+      const { text, enhance } = options.initialState.prompt;
+      methods.setPrompt(text, { enhance });
     }
 
     const client: RealTimeClient = {

@@ -25,6 +25,9 @@ async function withPlayAudio() {
     avatar: {
       avatarImage: "https://example.com/avatar.png", // or File/Blob
     },
+    initialState: {
+      prompt: { text: "A friendly assistant", enhance: true },
+    },
   });
 
   console.log("Session ID:", realtimeClient.sessionId);
@@ -62,6 +65,9 @@ async function withMicInput() {
     },
     avatar: {
       avatarImage: "https://example.com/avatar.png",
+    },
+    initialState: {
+      prompt: { text: "A friendly assistant", enhance: true },
     },
   });
 
