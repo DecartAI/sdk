@@ -48,8 +48,11 @@ All requests to `/api/decart/*` are automatically proxied to `api.decart.ai` wit
 The frontend uses the SDK pointing to the proxy endpoint:
 
 ```typescript
+import { PROXY_ROUTE } from "@decartai/proxy/nextjs";
+import { createDecartClient, models } from "@decartai/sdk";
+
 const client = createDecartClient({
-  proxy: "/api/decart",
+  proxy: PROXY_ROUTE, // "/api/decart"
 });
 
 const blob = await client.process({
