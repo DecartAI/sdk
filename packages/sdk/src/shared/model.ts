@@ -117,7 +117,9 @@ export const modelInputSchemas = {
     ),
     reference_image: fileInputSchema
       .optional()
-      .describe("Optional reference image to guide what to add to the video (File, Blob, ReadableStream, URL, or string URL)"),
+      .describe(
+        "Optional reference image to guide what to add to the video (File, Blob, ReadableStream, URL, or string URL)",
+      ),
     seed: z.number().optional().describe("The seed to use for the generation"),
     resolution: proV2vResolutionSchema,
     enhance_prompt: z.boolean().optional().describe("Whether to enhance the prompt"),
