@@ -102,7 +102,8 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
     for (const [key, value] of Object.entries(parsedInputs.data as Record<string, unknown>)) {
       if (key === "data" || key === "start" || key === "end" || key === "reference_image") {
         const blob = await fileInputToBlob(value as FileInput);
-        if (key === "reference_image") {
+        // Validate reference_image dimensions only for lucy-pro-v2v since lucy restyle model not really use the image
+        if (key === "reference_image" && model.name === "lucy-pro-v2v") {
           await validateImageDimensions(blob);
         }
         processedInputs[key] = blob;

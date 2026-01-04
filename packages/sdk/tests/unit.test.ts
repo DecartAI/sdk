@@ -439,10 +439,6 @@ describe("Queue API", () => {
         }),
       );
 
-      // Mock createImageBitmap for image validation
-      const mockBitmap = { width: 200, height: 200, close: vi.fn() };
-      vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue(mockBitmap));
-
       const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
       const testImageBlob = new Blob(["test-image"], { type: "image/png" });
 
@@ -463,8 +459,6 @@ describe("Queue API", () => {
 
       const refImageFile = lastFormData?.get("reference_image") as File;
       expect(refImageFile).toBeInstanceOf(File);
-
-      vi.unstubAllGlobals();
     });
 
     it("rejects video restyle job when both prompt and reference_image are provided", async () => {
