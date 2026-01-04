@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { type NextRequest, NextResponse } from "next/server";
 import type { NextApiHandler } from "next/types";
 import { version } from "../../package.json";
-import { DEFAULT_PROXY_ROUTE, handleRequest } from "../core/proxy-handler";
+import { DEFAULT_PROXY_ROUTE, fromHeaders, handleRequest } from "../core/proxy-handler";
 import type { DecartProxyOptions } from "../core/types";
 
 /**
@@ -64,7 +64,7 @@ async function routeHandler(request: NextRequest, options?: DecartProxyOptions):
     integration: options?.integration,
     method: request.method,
     getRequestBody: async () => request.text(),
-    getHeaders: () => request.headers,
+    getHeaders: () => fromHeaders(request.headers),
     getHeader: (name) => request.headers.get(name),
     sendHeader: (name, value) => responseHeaders.set(name, value),
     respondWith: (status, data) =>

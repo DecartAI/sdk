@@ -5,6 +5,26 @@ export const DEFAULT_PROXY_ROUTE = "/api/decart";
 const DECART_API_KEY = process.env.DECART_API_KEY;
 
 /**
+ * Converts a Web API Headers object to a Record<string, HeaderValue>.
+ * Handles multiple values for the same header key by combining them into arrays.
+ *
+ * @param headers the Headers object to convert.
+ * @returns a record mapping header names to their values.
+ */
+export function fromHeaders(headers: Headers): Record<string, HeaderValue> {
+  const result: Record<string, HeaderValue> = {};
+  headers.forEach((value, key) => {
+    const existing = result[key];
+    if (existing) {
+      result[key] = Array.isArray(existing) ? [...existing, value] : [existing, value];
+    } else {
+      result[key] = value;
+    }
+  });
+  return result;
+}
+
+/**
  * Utility to get a header value as `string` from a Headers object.
  *
  * @private
