@@ -1,6 +1,6 @@
 import type { FileInput } from "../process/types";
 import type { VideoModelDefinition } from "../shared/model";
-import { fileInputToBlob } from "../shared/request";
+import { fileInputToBlob, validateImageDimensions } from "../shared/request";
 import { createInvalidInputError } from "../utils/errors";
 import { pollUntilComplete } from "./polling";
 import { getJobContent, getJobStatus, submitJob } from "./request";
@@ -101,7 +101,11 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
     const processedInputs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(parsedInputs.data as Record<string, unknown>)) {
       if (key === "data" || key === "start" || key === "end" || key === "reference_image") {
-        processedInputs[key] = await fileInputToBlob(value as FileInput);
+        const blob = await fileInputToBlob(value as FileInput);
+        if (key === "reference_image") {
+          await validateImageDimensions(blob);
+        }
+        processedInputs[key] = blob;
       } else {
         processedInputs[key] = value;
       }

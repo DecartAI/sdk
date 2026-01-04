@@ -1,6 +1,6 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDecartClient, models } from "../src/index.js";
 
 const MOCK_RESPONSE_DATA = new Uint8Array([0x00, 0x01, 0x02]).buffer;
@@ -346,6 +346,10 @@ describe("Queue API", () => {
         }),
       );
 
+      // Mock createImageBitmap for image validation
+      const mockBitmap = { width: 200, height: 200, close: vi.fn() };
+      vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue(mockBitmap));
+
       const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
       const testImageBlob = new Blob(["test-image"], { type: "image/png" });
 
@@ -367,6 +371,28 @@ describe("Queue API", () => {
 
       const refImageFile = lastFormData?.get("reference_image") as File;
       expect(refImageFile).toBeInstanceOf(File);
+
+      vi.unstubAllGlobals();
+    });
+
+    it("rejects reference_image smaller than 100x100", async () => {
+      // Mock createImageBitmap to return small dimensions
+      const mockBitmap = { width: 50, height: 50, close: vi.fn() };
+      vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue(mockBitmap));
+
+      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
+      const testImageBlob = new Blob(["test-image"], { type: "image/png" });
+
+      await expect(
+        decart.queue.submit({
+          model: models.video("lucy-pro-v2v"),
+          prompt: "Make it artistic",
+          data: testVideoBlob,
+          reference_image: testImageBlob,
+        }),
+      ).rejects.toThrow("Image must be at least 100x100 pixels, got 50x50");
+
+      vi.unstubAllGlobals();
     });
 
     it("submits video restyle job", async () => {
