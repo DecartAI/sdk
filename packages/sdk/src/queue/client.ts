@@ -1,6 +1,6 @@
 import type { FileInput } from "../process/types";
 import type { VideoModelDefinition } from "../shared/model";
-import { fileInputToBlob, validateImageDimensions } from "../shared/request";
+import { fileInputToBlob } from "../shared/request";
 import { createInvalidInputError } from "../utils/errors";
 import { pollUntilComplete } from "./polling";
 import { getJobContent, getJobStatus, submitJob } from "./request";
@@ -101,12 +101,7 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
     const processedInputs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(parsedInputs.data as Record<string, unknown>)) {
       if (key === "data" || key === "start" || key === "end" || key === "reference_image") {
-        const blob = await fileInputToBlob(value as FileInput);
-        // Validate reference_image dimensions only for lucy-pro-v2v since lucy restyle model not really use the image
-        if (key === "reference_image" && model.name === "lucy-pro-v2v") {
-          await validateImageDimensions(blob);
-        }
-        processedInputs[key] = blob;
+        processedInputs[key] = await fileInputToBlob(value as FileInput);
       } else {
         processedInputs[key] = value;
       }

@@ -2,29 +2,6 @@ import type { FileInput } from "../process/types";
 import { createInvalidInputError } from "../utils/errors";
 import { buildUserAgent } from "../utils/user-agent";
 
-const MIN_IMAGE_DIMENSION = 100;
-
-/**
- * Validate that an image blob has minimum dimensions (100x100).
- */
-export async function validateImageDimensions(blob: Blob): Promise<void> {
-  let bitmap: ImageBitmap;
-  try {
-    bitmap = await createImageBitmap(blob);
-  } catch {
-    throw createInvalidInputError("Invalid image format for reference_image");
-  }
-
-  const { width, height } = bitmap;
-  bitmap.close();
-
-  if (width < MIN_IMAGE_DIMENSION || height < MIN_IMAGE_DIMENSION) {
-    throw createInvalidInputError(
-      `Image must be at least ${MIN_IMAGE_DIMENSION}x${MIN_IMAGE_DIMENSION} pixels, got ${width}x${height}`,
-    );
-  }
-}
-
 /**
  * Convert various file input types to a Blob.
  */
