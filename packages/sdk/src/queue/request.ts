@@ -32,9 +32,11 @@ export async function submitJob({
   }
 
   const endpoint = `${baseUrl}${model.queueUrlPath}`;
+  const headers = buildAuthHeaders({ apiKey, integration });
+
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: buildAuthHeaders(apiKey, integration),
+    headers,
     body: formData,
     signal,
   });
@@ -62,9 +64,11 @@ export async function getJobStatus({
   signal?: AbortSignal;
 }): Promise<JobStatusResponse> {
   const endpoint = `${baseUrl}/v1/jobs/${jobId}`;
+  const headers = buildAuthHeaders({ apiKey, integration });
+
   const response = await fetch(endpoint, {
     method: "GET",
-    headers: buildAuthHeaders(apiKey, integration),
+    headers,
     signal,
   });
 
@@ -91,9 +95,11 @@ export async function getJobContent({
   signal?: AbortSignal;
 }): Promise<Blob> {
   const endpoint = `${baseUrl}/v1/jobs/${jobId}/content`;
+  const headers = buildAuthHeaders({ apiKey, integration });
+
   const response = await fetch(endpoint, {
     method: "GET",
-    headers: buildAuthHeaders(apiKey, integration),
+    headers,
     signal,
   });
 

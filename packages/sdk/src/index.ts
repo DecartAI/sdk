@@ -40,77 +40,138 @@ export type { ModelState } from "./shared/types";
 export type { CreateTokenResponse, TokensClient } from "./tokens/client";
 export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
 
-const decartClientOptionsSchema = z.object({
-  apiKey: z.string().min(1).optional(),
-  baseUrl: z.url().optional(),
-  integration: z.string().optional(),
-});
+// Schema with validation to ensure proxy and apiKey are mutually exclusive
+// Proxy can be a full URL or a relative path (starts with /)
+const proxySchema = z.union([z.string().url(), z.string().startsWith("/")]);
 
-export type DecartClientOptions = z.infer<typeof decartClientOptionsSchema>;
+const decartClientOptionsSchema = z
+  .object({
+    apiKey: z.string().min(1).optional(),
+    baseUrl: z.url().optional(),
+    proxy: proxySchema.optional(),
+    integration: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      // Must provide either proxy OR apiKey (or neither, which will use env var)
+      // But cannot provide both
+      const hasProxy = !!data.proxy;
+      const hasApiKey = !!data.apiKey;
+      return !(hasProxy && hasApiKey);
+    },
+    {
+      message:
+        "Cannot provide both 'proxy' and 'apiKey'. Use 'proxy' for proxy mode or 'apiKey' for direct API access.",
+    },
+  );
+
+// Type-safe options: proxy mode or direct mode
+export type DecartClientOptions =
+  | {
+      proxy: string;
+      apiKey?: never;
+      baseUrl?: string;
+      integration?: string;
+    }
+  | {
+      proxy?: never;
+      apiKey?: string;
+      baseUrl?: string;
+      integration?: string;
+    };
 
 /**
  * Create a Decart API client.
  *
  * @param options - Configuration options
- * @param options.apiKey - API key for authentication. Defaults to the DECART_API_KEY environment variable.
+ * @param options.proxy - URL of the proxy server. When set, the client will use the proxy instead of direct API access and apiKey is not required.
+ * @param options.apiKey - API key for authentication.
  * @param options.baseUrl - Override the default API base URL.
  * @param options.integration - Optional integration identifier.
  *
  * @example
  * ```ts
- * // Option 1: Explicit API key
+ * //  (direct API access)Option 1: Explicit API key
  * const client = createDecartClient({ apiKey: "your-api-key" });
  *
  * // Option 2: Using DECART_API_KEY environment variable
  * const client = createDecartClient();
+ *
+ * // Option 3: Using proxy (client-side, no API key needed)
+ * const client = createDecartClient({ proxy: "https://your-server.com/api/decart" });
  * ```
  */
 export const createDecartClient = (options: DecartClientOptions = {}) => {
-  const apiKey = options.apiKey ?? readEnv("DECART_API_KEY");
-
-  if (!apiKey) {
-    throw createInvalidApiKeyError();
-  }
-
-  const parsedOptions = decartClientOptionsSchema.safeParse({
-    ...options,
-    apiKey,
-  });
+  // Validate the options schema
+  const parsedOptions = decartClientOptionsSchema.safeParse(options);
 
   if (!parsedOptions.success) {
     const issue = parsedOptions.error.issues[0];
 
-    if (issue.path.includes("baseUrl")) {
-      throw createInvalidBaseUrlError(options.baseUrl);
+    if (issue.path.includes("apiKey")) {
+      throw createInvalidApiKeyError();
     }
 
+    if (issue.path.includes("baseUrl")) {
+      throw createInvalidBaseUrlError(
+        issue.path.includes("baseUrl") ? (options as { baseUrl?: string }).baseUrl : undefined,
+      );
+    }
+
+    if (issue.path.includes("proxy")) {
+      throw createInvalidBaseUrlError(issue.path.includes("proxy") ? (options as { proxy?: string }).proxy : undefined);
+    }
+
+    // The schema refinement will catch mutual exclusivity issues
     throw parsedOptions.error;
   }
 
-  const { baseUrl = "https://api.decart.ai", integration } = parsedOptions.data;
+  const isProxyMode = "proxy" in parsedOptions.data && !!parsedOptions.data.proxy;
 
+  // In proxy mode, apiKey is not required
+  // In direct mode, apiKey is required (either provided or from env)
+  const apiKey = isProxyMode
+    ? undefined
+    : (("apiKey" in parsedOptions.data ? parsedOptions.data.apiKey : undefined) ?? readEnv("DECART_API_KEY"));
+
+  if (!isProxyMode && !apiKey) {
+    throw createInvalidApiKeyError();
+  }
+
+  // Use proxy as baseUrl if provided, otherwise use default or provided baseUrl
+  let baseUrl: string;
+  if (isProxyMode && "proxy" in parsedOptions.data && parsedOptions.data.proxy) {
+    baseUrl = parsedOptions.data.proxy;
+  } else {
+    baseUrl = parsedOptions.data.baseUrl || "https://api.decart.ai";
+  }
+  const { integration } = parsedOptions.data;
+
+  // Realtime (WebRTC) always requires direct API access with API key
+  // Proxy mode is only for HTTP endpoints (process, queue, tokens)
+  // Note: Realtime will fail at connection time if no API key is provided
   const wsBaseUrl = "wss://api3.decart.ai";
   const realtime = createRealTimeClient({
     baseUrl: wsBaseUrl,
-    apiKey,
+    apiKey: apiKey || "",
     integration,
   });
 
   const process = createProcessClient({
     baseUrl,
-    apiKey,
+    apiKey: apiKey || "",
     integration,
   });
 
   const queue = createQueueClient({
     baseUrl,
-    apiKey,
+    apiKey: apiKey || "",
     integration,
   });
 
   const tokens = createTokensClient({
     baseUrl,
-    apiKey,
+    apiKey: apiKey || "",
     integration,
   });
 

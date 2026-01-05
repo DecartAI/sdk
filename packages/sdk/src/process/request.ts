@@ -20,9 +20,11 @@ export async function sendRequest({
   const formData = buildFormData(inputs);
 
   const endpoint = `${baseUrl}${model.urlPath}`;
+  const headers = buildAuthHeaders({ apiKey, integration });
+
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: buildAuthHeaders(apiKey, integration),
+    headers,
     body: formData,
     signal,
   });
