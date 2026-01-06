@@ -112,6 +112,66 @@ describe("Next.js Proxy Adapter", () => {
         expect(body).toBe("Missing Decart API key");
       });
 
+      it("should fall back to DECART_API_KEY env var when apiKey not provided", async () => {
+        const originalApiKey = process.env.DECART_API_KEY;
+        process.env.DECART_API_KEY = "env-api-key";
+
+        try {
+          // Reset modules so proxy-handler.ts re-reads DECART_API_KEY at import time
+          vi.resetModules();
+          const { route: envRoute } = await import("./route");
+
+          mswServer.use(
+            http.get(`${BASE_URL}/v1/jobs/job_env_fallback`, async ({ request }) => {
+              lastRequest = request;
+              return HttpResponse.json({});
+            }),
+          );
+
+          const request = createNextRequest("/v1/jobs/job_env_fallback", { method: "GET" });
+          await envRoute({}).GET(request);
+
+          expect(lastRequest).not.toBeNull();
+          expect(lastRequest?.headers.get("x-api-key")).toBe("env-api-key");
+        } finally {
+          if (originalApiKey === undefined) {
+            delete process.env.DECART_API_KEY;
+          } else {
+            process.env.DECART_API_KEY = originalApiKey;
+          }
+        }
+      });
+
+      it("should prefer explicit apiKey over DECART_API_KEY env var", async () => {
+        const originalApiKey = process.env.DECART_API_KEY;
+        process.env.DECART_API_KEY = "env-api-key";
+
+        try {
+          // Reset modules so proxy-handler.ts re-reads DECART_API_KEY at import time
+          vi.resetModules();
+          const { route: envRoute } = await import("./route");
+
+          mswServer.use(
+            http.get(`${BASE_URL}/v1/jobs/job_explicit_key`, async ({ request }) => {
+              lastRequest = request;
+              return HttpResponse.json({});
+            }),
+          );
+
+          const request = createNextRequest("/v1/jobs/job_explicit_key", { method: "GET" });
+          await envRoute({ apiKey: "explicit-api-key" }).GET(request);
+
+          expect(lastRequest).not.toBeNull();
+          expect(lastRequest?.headers.get("x-api-key")).toBe("explicit-api-key");
+        } finally {
+          if (originalApiKey === undefined) {
+            delete process.env.DECART_API_KEY;
+          } else {
+            process.env.DECART_API_KEY = originalApiKey;
+          }
+        }
+      });
+
       it("should use configured baseUrl", async () => {
         const handlers = route({ apiKey: "test-key", baseUrl: CUSTOM_BASE_URL });
 
