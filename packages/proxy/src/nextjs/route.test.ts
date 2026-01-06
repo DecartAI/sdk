@@ -128,7 +128,7 @@ describe("Next.js Proxy Adapter", () => {
           await envRoute({}).GET(request);
 
           expect(captureRequest).toHaveBeenCalledTimes(1);
-          const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+          const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
           expect(capturedRequest.headers.get("x-api-key")).toBe("env-api-key");
         } finally {
           if (originalApiKey === undefined) {
@@ -160,7 +160,7 @@ describe("Next.js Proxy Adapter", () => {
           await envRoute({ apiKey: "explicit-api-key" }).GET(request);
 
           expect(captureRequest).toHaveBeenCalledTimes(1);
-          const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+          const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
           expect(capturedRequest.headers.get("x-api-key")).toBe("explicit-api-key");
         } finally {
           if (originalApiKey === undefined) {
@@ -186,7 +186,7 @@ describe("Next.js Proxy Adapter", () => {
         await handlers.POST(request);
 
         expect(captureRequest).toHaveBeenCalledTimes(1);
-        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(capturedRequest.url).toContain(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`);
       });
     });
@@ -214,7 +214,7 @@ describe("Next.js Proxy Adapter", () => {
 
         expect(response.status).toBe(200);
         expect(captureRequest).toHaveBeenCalledTimes(1);
-        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(capturedRequest.method).toBe("POST");
         expect(capturedRequest.url).toContain("/v1/generate/lucy-pro-t2i");
 
@@ -237,7 +237,7 @@ describe("Next.js Proxy Adapter", () => {
         await handlers.GET(request);
 
         expect(captureRequest).toHaveBeenCalledTimes(1);
-        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(capturedRequest.headers.get("x-api-key")).toBe("test-key");
         expect(capturedRequest.headers.get("accept")).toBe("application/json");
         expect(capturedRequest.headers.get("user-agent")).toContain("integration: test-integration");
@@ -266,7 +266,7 @@ describe("Next.js Proxy Adapter", () => {
         await handlers.POST(request);
 
         expect(captureRequest).toHaveBeenCalledTimes(1);
-        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(capturedRequest.headers.get("user-agent")).toContain("Custom-Agent/1.0");
         expect(capturedRequest.headers.get("content-type")).toContain("application/json");
       });
@@ -380,7 +380,7 @@ describe("Next.js Proxy Adapter", () => {
         await handlers.GET(request);
 
         expect(captureRequest).toHaveBeenCalledTimes(1);
-        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(new URL(capturedRequest.url).pathname).toBe("/");
       });
 
@@ -399,7 +399,7 @@ describe("Next.js Proxy Adapter", () => {
         await handlers.GET(request);
 
         expect(captureRequest).toHaveBeenCalledTimes(1);
-        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(new URL(capturedRequest.url).pathname).toBe("/v1/jobs/job_12345");
       });
     });
@@ -440,7 +440,7 @@ describe("Next.js Proxy Adapter", () => {
         await proxyHandler(req, res);
 
         expect(captureRequest).toHaveBeenCalledTimes(1);
-        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(capturedRequest.url).toContain(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`);
       });
     });
@@ -470,7 +470,7 @@ describe("Next.js Proxy Adapter", () => {
         const response = getResponse();
         expect(response.status).toBe(200);
         expect(captureRequest).toHaveBeenCalledTimes(1);
-        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(capturedRequest.method).toBe("POST");
         expect(capturedRequest.url).toContain("/v1/generate/lucy-pro-t2i");
 
@@ -497,7 +497,7 @@ describe("Next.js Proxy Adapter", () => {
         await proxyHandler(req, res);
 
         expect(captureRequest).toHaveBeenCalledTimes(1);
-        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(capturedRequest.headers.get("x-api-key")).toBe("test-key");
         expect(capturedRequest.headers.get("accept")).toBe("application/json");
         expect(capturedRequest.headers.get("user-agent")).toContain("integration: test-integration");
@@ -527,7 +527,7 @@ describe("Next.js Proxy Adapter", () => {
         await proxyHandler(req, res);
 
         expect(captureRequest).toHaveBeenCalledTimes(1);
-        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(capturedRequest.headers.get("user-agent")).toContain("Custom-Agent/1.0");
         expect(capturedRequest.headers.get("content-type")).toContain("application/json");
       });
@@ -662,7 +662,7 @@ describe("Next.js Proxy Adapter", () => {
         await proxyHandler(req, res);
 
         expect(captureRequest).toHaveBeenCalledTimes(1);
-        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(new URL(capturedRequest.url).pathname).toBe("/");
       });
     });
