@@ -279,6 +279,25 @@ describe("Next.js Proxy Adapter", () => {
         expect(body).toEqual({ error: "Internal Server Error" });
       });
     });
+
+    describe("Error Handling", () => {
+      it("should handle network errors gracefully", async () => {
+        const handlers = route({ apiKey: "test-key" });
+
+        mswServer.use(
+          http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, () => {
+            return HttpResponse.error();
+          }),
+        );
+
+        const request = createNextRequest("/v1/generate/lucy-pro-t2i", { method: "POST" });
+        const response = await handlers.POST(request);
+
+        expect(response.status).toBe(500);
+        const body = await response.json();
+        expect(body).toEqual({ error: "Internal server error" });
+      });
+    });
   });
 
   describe("Pages Router", () => {
