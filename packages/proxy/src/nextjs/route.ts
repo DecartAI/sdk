@@ -57,31 +57,38 @@ export const handler = (options?: DecartProxyOptions): NextApiHandler => {
  */
 async function routeHandler(request: NextRequest, options?: DecartProxyOptions): Promise<NextResponse> {
   const responseHeaders = new Headers();
-  return await handleRequest({
-    id: `${version}/nextjs-app-router`,
-    apiKey: options?.apiKey,
-    baseUrl: options?.baseUrl,
-    integration: options?.integration,
-    method: request.method,
-    getRequestBody: async () => request.text(),
-    getHeaders: () => fromHeaders(request.headers),
-    getHeader: (name) => request.headers.get(name),
-    sendHeader: (name, value) => responseHeaders.set(name, value),
-    respondWith: (status, data) =>
-      NextResponse.json(data, {
-        status,
-        headers: responseHeaders,
-      }),
-    getRequestPath: () => {
-      const basePath = PROXY_ROUTE.replace(/\/$/, "");
-      return request.nextUrl.pathname.replace(basePath, "") || "/";
-    },
-    sendResponse: async (res) =>
-      new NextResponse(res.body, {
-        status: res.status,
-        headers: responseHeaders,
-      }),
-  });
+  try {
+    return await handleRequest({
+      id: `${version}/nextjs-app-router`,
+      apiKey: options?.apiKey,
+      baseUrl: options?.baseUrl,
+      integration: options?.integration,
+      method: request.method,
+      getRequestBody: async () => request.text(),
+      getHeaders: () => fromHeaders(request.headers),
+      getHeader: (name) => request.headers.get(name),
+      sendHeader: (name, value) => responseHeaders.set(name, value),
+      respondWith: (status, data) =>
+        NextResponse.json(data, {
+          status,
+          headers: responseHeaders,
+        }),
+      getRequestPath: () => {
+        const basePath = PROXY_ROUTE.replace(/\/$/, "");
+        return request.nextUrl.pathname.replace(basePath, "") || "/";
+      },
+      sendResponse: async (res) =>
+        new NextResponse(res.body, {
+          status: res.status,
+          headers: responseHeaders,
+        }),
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500, headers: responseHeaders }
+    );
+  }
 }
 
 /**
