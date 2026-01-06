@@ -1,5 +1,5 @@
 /**
- * Manages an audio stream for avatar-live mode.
+ * Manages an audio stream for live_avatar mode.
  * Creates a continuous audio stream that outputs silence by default,
  * and allows playing audio files through the stream.
  */

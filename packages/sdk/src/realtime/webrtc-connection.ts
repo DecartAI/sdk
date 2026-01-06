@@ -1,10 +1,10 @@
 import mitt from "mitt";
 import { buildUserAgent } from "../utils/user-agent";
 import type {
-  ImageSetMessage,
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
+  SetImageAckMessage,
   TurnConfig,
 } from "./types";
 
@@ -20,13 +20,14 @@ interface ConnectionCallbacks {
   vp8StartBitrate?: number;
   isAvatarLive?: boolean;
   avatarImageBase64?: string;
+  initialPrompt?: { text: string; enhance?: boolean };
 }
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
 
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
-  imageSet: ImageSetMessage;
+  setImageAck: SetImageAckMessage;
 };
 
 export class WebRTCConnection {
@@ -70,9 +71,14 @@ export class WebRTCConnection {
       this.ws.onclose = () => this.setState("disconnected");
     });
 
-    // For avatar-live: send avatar image before WebRTC handshake
+    // For live_avatar: send avatar image before WebRTC handshake
     if (this.callbacks.avatarImageBase64) {
       await this.sendAvatarImage(this.callbacks.avatarImageBase64);
+    }
+
+    // Send initial prompt before WebRTC handshake
+    if (this.callbacks.initialPrompt) {
+      await this.sendInitialPrompt(this.callbacks.initialPrompt);
     }
 
     await this.setupNewPeerConnection();
@@ -106,8 +112,13 @@ export class WebRTCConnection {
         return;
       }
 
-      if (msg.type === "image_set") {
-        this.websocketMessagesEmitter.emit("imageSet", msg);
+      if (msg.type === "set_image_ack") {
+        this.websocketMessagesEmitter.emit("setImageAck", msg);
+        return;
+      }
+
+      if (msg.type === "prompt_ack") {
+        this.websocketMessagesEmitter.emit("promptAck", msg);
         return;
       }
 
@@ -147,10 +158,6 @@ export class WebRTCConnection {
           }
           break;
         }
-        case "prompt_ack": {
-          this.websocketMessagesEmitter.emit("promptAck", msg);
-          break;
-        }
       }
     } catch (error) {
       console.error("[WebRTC] Error:", error);
@@ -175,22 +182,49 @@ export class WebRTCConnection {
   async setImageBase64(imageBase64: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        this.websocketMessagesEmitter.off("imageSet", listener);
+        this.websocketMessagesEmitter.off("setImageAck", listener);
         reject(new Error("Image send timed out"));
       }, AVATAR_SETUP_TIMEOUT_MS);
 
-      const listener = (msg: ImageSetMessage) => {
+      const listener = (msg: SetImageAckMessage) => {
         clearTimeout(timeoutId);
-        this.websocketMessagesEmitter.off("imageSet", listener);
-        if (msg.status === "success") {
+        this.websocketMessagesEmitter.off("setImageAck", listener);
+        if (msg.success) {
           resolve();
         } else {
-          reject(new Error(`Failed to send image: ${msg.status}`));
+          reject(new Error(msg.error ?? "Failed to send image"));
         }
       };
 
-      this.websocketMessagesEmitter.on("imageSet", listener);
+      this.websocketMessagesEmitter.on("setImageAck", listener);
       this.send({ type: "set_image", image_data: imageBase64 });
+    });
+  }
+
+  /**
+   * Send the initial prompt to the server before WebRTC handshake.
+   */
+  private async sendInitialPrompt(prompt: { text: string; enhance?: boolean }): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.websocketMessagesEmitter.off("promptAck", listener);
+        reject(new Error("Prompt send timed out"));
+      }, AVATAR_SETUP_TIMEOUT_MS);
+
+      const listener = (msg: PromptAckMessage) => {
+        if (msg.prompt === prompt.text) {
+          clearTimeout(timeoutId);
+          this.websocketMessagesEmitter.off("promptAck", listener);
+          if (msg.success) {
+            resolve();
+          } else {
+            reject(new Error(msg.error ?? "Failed to send prompt"));
+          }
+        }
+      };
+
+      this.websocketMessagesEmitter.on("promptAck", listener);
+      this.send({ type: "prompt", prompt: prompt.text, enhance_prompt: prompt.enhance ?? true });
     });
   }
 
@@ -223,7 +257,7 @@ export class WebRTCConnection {
     }
     this.pc = new RTCPeerConnection({ iceServers });
 
-    // For avatar-live: add receive-only video transceiver (sends audio only, receives audio+video)
+    // For live_avatar: add receive-only video transceiver (sends audio only, receives audio+video)
     if (this.callbacks.isAvatarLive) {
       this.pc.addTransceiver("video", { direction: "recvonly" });
     }

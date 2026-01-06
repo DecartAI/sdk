@@ -5,7 +5,7 @@ export const realtimeModels = z.union([
   z.literal("mirage"),
   z.literal("mirage_v2"),
   z.literal("lucy_v2v_720p_rt"),
-  z.literal("avatar-live"),
+  z.literal("live_avatar"),
 ]);
 export const videoModels = z.union([
   z.literal("lucy-dev-i2v"),
@@ -115,6 +115,11 @@ export const modelInputSchemas = {
     data: fileInputSchema.describe(
       "The video data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
     ),
+    reference_image: fileInputSchema
+      .optional()
+      .describe(
+        "Optional reference image to guide what to add to the video (File, Blob, ReadableStream, URL, or string URL)",
+      ),
     seed: z.number().optional().describe("The seed to use for the generation"),
     resolution: proV2vResolutionSchema,
     enhance_prompt: z.boolean().optional().describe("Whether to enhance the prompt"),
@@ -163,13 +168,26 @@ export const modelInputSchemas = {
     seed: z.number().optional().describe("The seed to use for the generation"),
     resolution: motionResolutionSchema,
   }),
-  "lucy-restyle-v2v": z.object({
-    prompt: z.string().min(1).max(1000).describe("Text prompt for the video editing"),
-    data: fileInputSchema.describe("Video file to process (File, Blob, ReadableStream, URL, or string URL)"),
-    seed: z.number().optional().describe("Seed for the video generation"),
-    resolution: proV2vResolutionSchema,
-    enhance_prompt: z.boolean().default(true).optional().describe("Whether to enhance the prompt"),
-  }),
+  "lucy-restyle-v2v": z
+    .object({
+      prompt: z.string().min(1).max(1000).optional().describe("Text prompt for the video editing"),
+      reference_image: fileInputSchema
+        .optional()
+        .describe("Reference image to transform into a prompt (File, Blob, ReadableStream, URL, or string URL)"),
+      data: fileInputSchema.describe("Video file to process (File, Blob, ReadableStream, URL, or string URL)"),
+      seed: z.number().optional().describe("Seed for the video generation"),
+      resolution: proV2vResolutionSchema,
+      enhance_prompt: z
+        .boolean()
+        .optional()
+        .describe("Whether to enhance the prompt (only valid with text prompt, defaults to true on backend)"),
+    })
+    .refine((data) => (data.prompt !== undefined) !== (data.reference_image !== undefined), {
+      message: "Must provide either 'prompt' or 'reference_image', but not both",
+    })
+    .refine((data) => !(data.reference_image !== undefined && data.enhance_prompt !== undefined), {
+      message: "'enhance_prompt' is only valid when using 'prompt', not 'reference_image'",
+    }),
 } as const;
 
 export type ModelInputSchemas = typeof modelInputSchemas;
@@ -232,9 +250,9 @@ const _models = {
       height: 704,
       inputSchema: z.object({}),
     },
-    "avatar-live": {
-      urlPath: "/v1/avatar-live/stream",
-      name: "avatar-live" as const,
+    live_avatar: {
+      urlPath: "/v1/stream",
+      name: "live_avatar" as const,
       fps: 25,
       width: 1280,
       height: 720,

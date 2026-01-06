@@ -338,6 +338,41 @@ describe("Queue API", () => {
       expect(dataFile).toBeInstanceOf(File);
     });
 
+    it("submits video-to-video job with optional reference_image", async () => {
+      server.use(
+        http.post("http://localhost/v1/jobs/lucy-pro-v2v", async ({ request }) => {
+          lastRequest = request;
+          lastFormData = await request.formData();
+          return HttpResponse.json({
+            job_id: "job_v2v_ref",
+            status: "pending",
+          });
+        }),
+      );
+
+      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
+      const testImageBlob = new Blob(["test-image"], { type: "image/png" });
+
+      const result = await decart.queue.submit({
+        model: models.video("lucy-pro-v2v"),
+        prompt: "Make it artistic",
+        data: testVideoBlob,
+        reference_image: testImageBlob,
+        seed: 123,
+      });
+
+      expect(result.job_id).toBe("job_v2v_ref");
+      expect(result.status).toBe("pending");
+      expect(lastFormData?.get("prompt")).toBe("Make it artistic");
+      expect(lastFormData?.get("seed")).toBe("123");
+
+      const dataFile = lastFormData?.get("data") as File;
+      expect(dataFile).toBeInstanceOf(File);
+
+      const refImageFile = lastFormData?.get("reference_image") as File;
+      expect(refImageFile).toBeInstanceOf(File);
+    });
+
     it("submits video restyle job", async () => {
       server.use(
         http.post("http://localhost/v1/jobs/lucy-restyle-v2v", async ({ request }) => {
@@ -368,6 +403,79 @@ describe("Queue API", () => {
 
       const dataFile = lastFormData?.get("data") as File;
       expect(dataFile).toBeInstanceOf(File);
+    });
+
+    it("submits video restyle job with reference_image", async () => {
+      server.use(
+        http.post("http://localhost/v1/jobs/lucy-restyle-v2v", async ({ request }) => {
+          lastRequest = request;
+          lastFormData = await request.formData();
+          return HttpResponse.json({
+            job_id: "job_restyle_ref",
+            status: "pending",
+          });
+        }),
+      );
+
+      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
+      const testImageBlob = new Blob(["test-image"], { type: "image/png" });
+
+      const result = await decart.queue.submit({
+        model: models.video("lucy-restyle-v2v"),
+        reference_image: testImageBlob,
+        data: testVideoBlob,
+        seed: 123,
+      });
+
+      expect(result.job_id).toBe("job_restyle_ref");
+      expect(result.status).toBe("pending");
+      expect(lastFormData?.get("prompt")).toBeNull();
+      expect(lastFormData?.get("seed")).toBe("123");
+
+      const dataFile = lastFormData?.get("data") as File;
+      expect(dataFile).toBeInstanceOf(File);
+
+      const refImageFile = lastFormData?.get("reference_image") as File;
+      expect(refImageFile).toBeInstanceOf(File);
+    });
+
+    it("rejects video restyle job when both prompt and reference_image are provided", async () => {
+      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
+      const testImageBlob = new Blob(["test-image"], { type: "image/png" });
+
+      await expect(
+        decart.queue.submit({
+          model: models.video("lucy-restyle-v2v"),
+          prompt: "Transform to anime style",
+          reference_image: testImageBlob,
+          data: testVideoBlob,
+        } as Parameters<typeof decart.queue.submit>[0]),
+      ).rejects.toThrow("Must provide either 'prompt' or 'reference_image', but not both");
+    });
+
+    it("rejects video restyle job when neither prompt nor reference_image is provided", async () => {
+      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
+
+      await expect(
+        decart.queue.submit({
+          model: models.video("lucy-restyle-v2v"),
+          data: testVideoBlob,
+        } as Parameters<typeof decart.queue.submit>[0]),
+      ).rejects.toThrow("Must provide either 'prompt' or 'reference_image', but not both");
+    });
+
+    it("rejects video restyle job when enhance_prompt is used with reference_image", async () => {
+      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
+      const testImageBlob = new Blob(["test-image"], { type: "image/png" });
+
+      await expect(
+        decart.queue.submit({
+          model: models.video("lucy-restyle-v2v"),
+          reference_image: testImageBlob,
+          data: testVideoBlob,
+          enhance_prompt: true,
+        } as Parameters<typeof decart.queue.submit>[0]),
+      ).rejects.toThrow("'enhance_prompt' is only valid when using 'prompt', not 'reference_image'");
     });
 
     it("submits image-to-video job", async () => {
@@ -806,35 +914,35 @@ describe("Tokens API", () => {
   });
 });
 
-describe("Avatar-Live Model", () => {
+describe("live_avatar Model", () => {
   describe("Model Definition", () => {
     it("has correct model name", () => {
-      const avatarModel = models.realtime("avatar-live");
-      expect(avatarModel.name).toBe("avatar-live");
+      const avatarModel = models.realtime("live_avatar");
+      expect(avatarModel.name).toBe("live_avatar");
     });
 
-    it("has correct URL path for avatar-live", () => {
-      const avatarModel = models.realtime("avatar-live");
-      expect(avatarModel.urlPath).toBe("/v1/avatar-live/stream");
+    it("has correct URL path for live_avatar", () => {
+      const avatarModel = models.realtime("live_avatar");
+      expect(avatarModel.urlPath).toBe("/v1/stream");
     });
 
     it("has expected dimensions", () => {
-      const avatarModel = models.realtime("avatar-live");
+      const avatarModel = models.realtime("live_avatar");
       expect(avatarModel.width).toBe(1280);
       expect(avatarModel.height).toBe(720);
     });
 
     it("has correct fps", () => {
-      const avatarModel = models.realtime("avatar-live");
+      const avatarModel = models.realtime("live_avatar");
       expect(avatarModel.fps).toBe(25);
     });
 
     it("is recognized as a realtime model", () => {
-      expect(models.realtime("avatar-live")).toBeDefined();
+      expect(models.realtime("live_avatar")).toBeDefined();
     });
   });
 
-  describe("Avatar-Live Message Types", () => {
+  describe("Live_Avatar Message Types", () => {
     it("SetAvatarImageMessage has correct structure", () => {
       const message: import("../src/realtime/types").SetAvatarImageMessage = {
         type: "set_image",
@@ -845,22 +953,26 @@ describe("Avatar-Live Model", () => {
       expect(message.image_data).toBe("base64encodeddata");
     });
 
-    it("ImageSetMessage has correct structure", () => {
-      const successMessage: import("../src/realtime/types").ImageSetMessage = {
-        type: "image_set",
-        status: "success",
+    it("SetImageAckMessage has correct structure", () => {
+      const successMessage: import("../src/realtime/types").SetImageAckMessage = {
+        type: "set_image_ack",
+        success: true,
+        error: null,
       };
 
-      expect(successMessage.type).toBe("image_set");
-      expect(successMessage.status).toBe("success");
+      expect(successMessage.type).toBe("set_image_ack");
+      expect(successMessage.success).toBe(true);
+      expect(successMessage.error).toBeNull();
 
-      const failureMessage: import("../src/realtime/types").ImageSetMessage = {
-        type: "image_set",
-        status: "error: invalid image",
+      const failureMessage: import("../src/realtime/types").SetImageAckMessage = {
+        type: "set_image_ack",
+        success: false,
+        error: "invalid image",
       };
 
-      expect(failureMessage.type).toBe("image_set");
-      expect(failureMessage.status).toBe("error: invalid image");
+      expect(failureMessage.type).toBe("set_image_ack");
+      expect(failureMessage.success).toBe(false);
+      expect(failureMessage.error).toBe("invalid image");
     });
   });
 });

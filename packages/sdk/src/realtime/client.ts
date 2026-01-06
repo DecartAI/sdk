@@ -67,7 +67,7 @@ export type RealTimeClient = {
   off: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   sessionId: string;
   setImage: (image: Blob | File | string) => Promise<void>;
-  // Avatar-live audio method (only available when model is avatar-live and no stream is provided)
+  // live_avatar audio method (only available when model is live_avatar and no stream is provided)
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
 };
 
@@ -86,11 +86,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     }
 
     const sessionId = uuidv4();
-    const isAvatarLive = options.model.name === "avatar-live";
+    const isAvatarLive = options.model.name === "live_avatar";
 
     const { onRemoteStream, initialState, avatar } = parsedOptions.data;
 
-    // For avatar-live without user-provided stream: create AudioStreamManager for continuous silent stream with audio injection
+    // For live_avatar without user-provided stream: create AudioStreamManager for continuous silent stream with audio injection
     // If user provides their own stream (e.g., mic input), use it directly
     let audioStreamManager: AudioStreamManager | undefined;
     let inputStream: MediaStream;
@@ -102,7 +102,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       inputStream = stream ?? new MediaStream();
     }
 
-    // For avatar-live: prepare avatar image base64 before connection
+    // For live_avatar: prepare avatar image base64 before connection
     let avatarImageBase64: string | undefined;
     if (isAvatarLive && avatar?.avatarImage) {
       let imageBlob: Blob;
@@ -115,6 +115,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       }
       avatarImageBase64 = await blobToBase64(imageBlob);
     }
+
+    // For live_avatar: prepare initial prompt to send before WebRTC handshake
+    const initialPrompt =
+      isAvatarLive && options.initialState?.prompt
+        ? { text: options.initialState.prompt.text, enhance: options.initialState.prompt.enhance }
+        : undefined;
 
     const url = `${baseUrl}${options.model.urlPath}`;
     const webrtcManager = new WebRTCManager({
@@ -137,17 +143,17 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       vp8StartBitrate: 600,
       isAvatarLive,
       avatarImageBase64,
+      initialPrompt,
     });
 
     await webrtcManager.connect(inputStream);
 
     const methods = realtimeMethods(webrtcManager);
 
-    if (options.initialState) {
-      if (options.initialState.prompt) {
-        const { text, enhance } = options.initialState.prompt;
-        methods.setPrompt(text, { enhance });
-      }
+    // For non-live_avatar models: send initial prompt after connection is established
+    if (!isAvatarLive && options.initialState?.prompt) {
+      const { text, enhance } = options.initialState.prompt;
+      methods.setPrompt(text, { enhance });
     }
 
     const client: RealTimeClient = {
@@ -187,7 +193,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       },
     };
 
-    // Add avatar-live specific audio method (only when using internal AudioStreamManager)
+    // Add live_avatar specific audio method (only when using internal AudioStreamManager)
     if (isAvatarLive && audioStreamManager) {
       const manager = audioStreamManager; // Capture for closures
       client.playAudio = (audio: Blob | File | ArrayBuffer) => manager.playAudio(audio);

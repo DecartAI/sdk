@@ -18,6 +18,7 @@ export interface WebRTCConfig {
   vp8StartBitrate?: number;
   isAvatarLive?: boolean;
   avatarImageBase64?: string;
+  initialPrompt?: { text: string; enhance?: boolean };
 }
 
 const PERMANENT_ERRORS = [
@@ -44,6 +45,7 @@ export class WebRTCManager {
       vp8StartBitrate: config.vp8StartBitrate,
       isAvatarLive: config.isAvatarLive,
       avatarImageBase64: config.avatarImageBase64,
+      initialPrompt: config.initialPrompt,
     });
   }
 
