@@ -1,7 +1,7 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { NextRequest } from "next/server";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { fromHeaders } from "../core/proxy-handler";
 import { handler, PROXY_ROUTE, route } from "./route";
 
@@ -80,8 +80,6 @@ function createMockPagesRouter(
 }
 
 describe("Next.js Proxy Adapter", () => {
-  let lastRequest: Request | null = null;
-
   const mswServer = setupServer();
 
   beforeAll(() => {
@@ -90,10 +88,6 @@ describe("Next.js Proxy Adapter", () => {
 
   afterAll(() => {
     mswServer.close();
-  });
-
-  beforeEach(() => {
-    lastRequest = null;
   });
 
   afterEach(() => {
@@ -122,9 +116,10 @@ describe("Next.js Proxy Adapter", () => {
           vi.resetModules();
           const { route: envRoute } = await import("./route");
 
+          const captureRequest = vi.fn();
           mswServer.use(
             http.get(`${BASE_URL}/v1/jobs/job_env_fallback`, async ({ request }) => {
-              lastRequest = request;
+              captureRequest(request);
               return HttpResponse.json({});
             }),
           );
@@ -132,8 +127,9 @@ describe("Next.js Proxy Adapter", () => {
           const request = createNextRequest("/v1/jobs/job_env_fallback", { method: "GET" });
           await envRoute({}).GET(request);
 
-          expect(lastRequest).not.toBeNull();
-          expect(lastRequest?.headers.get("x-api-key")).toBe("env-api-key");
+          expect(captureRequest).toHaveBeenCalledTimes(1);
+          const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+          expect(capturedRequest.headers.get("x-api-key")).toBe("env-api-key");
         } finally {
           if (originalApiKey === undefined) {
             delete process.env.DECART_API_KEY;
@@ -152,9 +148,10 @@ describe("Next.js Proxy Adapter", () => {
           vi.resetModules();
           const { route: envRoute } = await import("./route");
 
+          const captureRequest = vi.fn();
           mswServer.use(
             http.get(`${BASE_URL}/v1/jobs/job_explicit_key`, async ({ request }) => {
-              lastRequest = request;
+              captureRequest(request);
               return HttpResponse.json({});
             }),
           );
@@ -162,8 +159,9 @@ describe("Next.js Proxy Adapter", () => {
           const request = createNextRequest("/v1/jobs/job_explicit_key", { method: "GET" });
           await envRoute({ apiKey: "explicit-api-key" }).GET(request);
 
-          expect(lastRequest).not.toBeNull();
-          expect(lastRequest?.headers.get("x-api-key")).toBe("explicit-api-key");
+          expect(captureRequest).toHaveBeenCalledTimes(1);
+          const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+          expect(capturedRequest.headers.get("x-api-key")).toBe("explicit-api-key");
         } finally {
           if (originalApiKey === undefined) {
             delete process.env.DECART_API_KEY;
@@ -176,9 +174,10 @@ describe("Next.js Proxy Adapter", () => {
       it("should use configured baseUrl", async () => {
         const handlers = route({ apiKey: "test-key", baseUrl: CUSTOM_BASE_URL });
 
+        const captureRequest = vi.fn();
         mswServer.use(
           http.post(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`, async ({ request }) => {
-            lastRequest = request;
+            captureRequest(request);
             return HttpResponse.json({});
           }),
         );
@@ -186,8 +185,9 @@ describe("Next.js Proxy Adapter", () => {
         const request = createNextRequest("/v1/generate/lucy-pro-t2i", { method: "POST" });
         await handlers.POST(request);
 
-        expect(lastRequest).not.toBeNull();
-        expect(lastRequest?.url).toContain(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`);
+        expect(captureRequest).toHaveBeenCalledTimes(1);
+        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        expect(capturedRequest.url).toContain(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`);
       });
     });
 
@@ -195,9 +195,10 @@ describe("Next.js Proxy Adapter", () => {
       it("should forward request method and body", async () => {
         const handlers = route({ apiKey: "test-key" });
 
+        const captureRequest = vi.fn();
         mswServer.use(
           http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, async ({ request }) => {
-            lastRequest = request;
+            captureRequest(request);
             return HttpResponse.json({});
           }),
         );
@@ -212,22 +213,22 @@ describe("Next.js Proxy Adapter", () => {
         const response = await handlers.POST(request);
 
         expect(response.status).toBe(200);
-        expect(lastRequest).not.toBeNull();
-        expect(lastRequest?.method).toBe("POST");
-        expect(lastRequest?.url).toContain("/v1/generate/lucy-pro-t2i");
+        expect(captureRequest).toHaveBeenCalledTimes(1);
+        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        expect(capturedRequest.method).toBe("POST");
+        expect(capturedRequest.url).toContain("/v1/generate/lucy-pro-t2i");
 
-        if (lastRequest) {
-          const body = await lastRequest.text();
-          expect(body).toBe(testBody);
-        }
+        const body = await capturedRequest.text();
+        expect(body).toBe(testBody);
       });
 
       it("should add internal headers", async () => {
         const handlers = route({ apiKey: "test-key", integration: "test-integration" });
 
+        const captureRequest = vi.fn();
         mswServer.use(
           http.get(`${BASE_URL}/v1/jobs/job_abc123`, async ({ request }) => {
-            lastRequest = request;
+            captureRequest(request);
             return HttpResponse.json({});
           }),
         );
@@ -235,18 +236,20 @@ describe("Next.js Proxy Adapter", () => {
         const request = createNextRequest("/v1/jobs/job_abc123", { method: "GET" });
         await handlers.GET(request);
 
-        expect(lastRequest).not.toBeNull();
-        expect(lastRequest?.headers.get("x-api-key")).toBe("test-key");
-        expect(lastRequest?.headers.get("accept")).toBe("application/json");
-        expect(lastRequest?.headers.get("user-agent")).toContain("integration: test-integration");
+        expect(captureRequest).toHaveBeenCalledTimes(1);
+        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        expect(capturedRequest.headers.get("x-api-key")).toBe("test-key");
+        expect(capturedRequest.headers.get("accept")).toBe("application/json");
+        expect(capturedRequest.headers.get("user-agent")).toContain("integration: test-integration");
       });
 
       it("should preserve User-Agent and Content-Type from original request", async () => {
         const handlers = route({ apiKey: "test-key" });
 
+        const captureRequest = vi.fn();
         mswServer.use(
           http.post(`${BASE_URL}/v1/jobs/lucy-pro-t2v`, async ({ request }) => {
-            lastRequest = request;
+            captureRequest(request);
             return HttpResponse.json({});
           }),
         );
@@ -262,9 +265,10 @@ describe("Next.js Proxy Adapter", () => {
 
         await handlers.POST(request);
 
-        expect(lastRequest).not.toBeNull();
-        expect(lastRequest?.headers.get("user-agent")).toContain("Custom-Agent/1.0");
-        expect(lastRequest?.headers.get("content-type")).toContain("application/json");
+        expect(captureRequest).toHaveBeenCalledTimes(1);
+        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        expect(capturedRequest.headers.get("user-agent")).toContain("Custom-Agent/1.0");
+        expect(capturedRequest.headers.get("content-type")).toContain("application/json");
       });
     });
 
@@ -364,9 +368,10 @@ describe("Next.js Proxy Adapter", () => {
       it("should handle empty path", async () => {
         const handlers = route({ apiKey: "test-key" });
 
+        const captureRequest = vi.fn();
         mswServer.use(
           http.get(`${BASE_URL}/`, async ({ request }) => {
-            lastRequest = request;
+            captureRequest(request);
             return HttpResponse.json({ message: "root" });
           }),
         );
@@ -374,19 +379,18 @@ describe("Next.js Proxy Adapter", () => {
         const request = createNextRequest("", { method: "GET" });
         await handlers.GET(request);
 
-        expect(lastRequest).not.toBeNull();
-        if (!lastRequest?.url) {
-          throw new Error("Expected request url to be defined");
-        }
-        expect(new URL(lastRequest.url).pathname).toBe("/");
+        expect(captureRequest).toHaveBeenCalledTimes(1);
+        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        expect(new URL(capturedRequest.url).pathname).toBe("/");
       });
 
       it("should correctly extract path from request.nextUrl.pathname", async () => {
         const handlers = route({ apiKey: "test-key" });
 
+        const captureRequest = vi.fn();
         mswServer.use(
           http.get(`${BASE_URL}/v1/jobs/job_12345`, async ({ request }) => {
-            lastRequest = request;
+            captureRequest(request);
             return HttpResponse.json({ job_id: "job_12345", status: "completed" });
           }),
         );
@@ -394,11 +398,9 @@ describe("Next.js Proxy Adapter", () => {
         const request = createNextRequest("/v1/jobs/job_12345", { method: "GET" });
         await handlers.GET(request);
 
-        expect(lastRequest).not.toBeNull();
-        if (!lastRequest?.url) {
-          throw new Error("Expected request url to be defined");
-        }
-        expect(new URL(lastRequest.url).pathname).toBe("/v1/jobs/job_12345");
+        expect(captureRequest).toHaveBeenCalledTimes(1);
+        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        expect(new URL(capturedRequest.url).pathname).toBe("/v1/jobs/job_12345");
       });
     });
   });
@@ -422,9 +424,10 @@ describe("Next.js Proxy Adapter", () => {
       it("should use configured baseUrl", async () => {
         const proxyHandler = handler({ apiKey: "test-key", baseUrl: CUSTOM_BASE_URL });
 
+        const captureRequest = vi.fn();
         mswServer.use(
           http.post(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`, async ({ request }) => {
-            lastRequest = request;
+            captureRequest(request);
             return HttpResponse.json({});
           }),
         );
@@ -436,8 +439,9 @@ describe("Next.js Proxy Adapter", () => {
         // @ts-expect-error - mock objects don't fully implement the types
         await proxyHandler(req, res);
 
-        expect(lastRequest).not.toBeNull();
-        expect(lastRequest?.url).toContain(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`);
+        expect(captureRequest).toHaveBeenCalledTimes(1);
+        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        expect(capturedRequest.url).toContain(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`);
       });
     });
 
@@ -445,9 +449,10 @@ describe("Next.js Proxy Adapter", () => {
       it("should forward request method and body", async () => {
         const proxyHandler = handler({ apiKey: "test-key" });
 
+        const captureRequest = vi.fn();
         mswServer.use(
           http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, async ({ request }) => {
-            lastRequest = request;
+            captureRequest(request);
             return HttpResponse.json({});
           }),
         );
@@ -464,22 +469,22 @@ describe("Next.js Proxy Adapter", () => {
 
         const response = getResponse();
         expect(response.status).toBe(200);
-        expect(lastRequest).not.toBeNull();
-        expect(lastRequest?.method).toBe("POST");
-        expect(lastRequest?.url).toContain("/v1/generate/lucy-pro-t2i");
+        expect(captureRequest).toHaveBeenCalledTimes(1);
+        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        expect(capturedRequest.method).toBe("POST");
+        expect(capturedRequest.url).toContain("/v1/generate/lucy-pro-t2i");
 
-        if (lastRequest) {
-          const body = await lastRequest.text();
-          expect(body).toBe(JSON.stringify(testBody));
-        }
+        const body = await capturedRequest.text();
+        expect(body).toBe(JSON.stringify(testBody));
       });
 
       it("should add internal headers", async () => {
         const proxyHandler = handler({ apiKey: "test-key", integration: "test-integration" });
 
+        const captureRequest = vi.fn();
         mswServer.use(
           http.get(`${BASE_URL}/v1/jobs/job_abc123`, async ({ request }) => {
-            lastRequest = request;
+            captureRequest(request);
             return HttpResponse.json({});
           }),
         );
@@ -491,18 +496,20 @@ describe("Next.js Proxy Adapter", () => {
         // @ts-expect-error - mock objects don't fully implement the types
         await proxyHandler(req, res);
 
-        expect(lastRequest).not.toBeNull();
-        expect(lastRequest?.headers.get("x-api-key")).toBe("test-key");
-        expect(lastRequest?.headers.get("accept")).toBe("application/json");
-        expect(lastRequest?.headers.get("user-agent")).toContain("integration: test-integration");
+        expect(captureRequest).toHaveBeenCalledTimes(1);
+        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        expect(capturedRequest.headers.get("x-api-key")).toBe("test-key");
+        expect(capturedRequest.headers.get("accept")).toBe("application/json");
+        expect(capturedRequest.headers.get("user-agent")).toContain("integration: test-integration");
       });
 
       it("should preserve User-Agent and Content-Type from original request", async () => {
         const proxyHandler = handler({ apiKey: "test-key" });
 
+        const captureRequest = vi.fn();
         mswServer.use(
           http.post(`${BASE_URL}/v1/jobs/lucy-pro-t2v`, async ({ request }) => {
-            lastRequest = request;
+            captureRequest(request);
             return HttpResponse.json({});
           }),
         );
@@ -519,9 +526,10 @@ describe("Next.js Proxy Adapter", () => {
         // @ts-expect-error - mock objects don't fully implement the types
         await proxyHandler(req, res);
 
-        expect(lastRequest).not.toBeNull();
-        expect(lastRequest?.headers.get("user-agent")).toContain("Custom-Agent/1.0");
-        expect(lastRequest?.headers.get("content-type")).toContain("application/json");
+        expect(captureRequest).toHaveBeenCalledTimes(1);
+        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        expect(capturedRequest.headers.get("user-agent")).toContain("Custom-Agent/1.0");
+        expect(capturedRequest.headers.get("content-type")).toContain("application/json");
       });
     });
 
@@ -638,9 +646,10 @@ describe("Next.js Proxy Adapter", () => {
       it("should handle empty path", async () => {
         const proxyHandler = handler({ apiKey: "test-key" });
 
+        const captureRequest = vi.fn();
         mswServer.use(
           http.get(`${BASE_URL}/`, async ({ request }) => {
-            lastRequest = request;
+            captureRequest(request);
             return HttpResponse.json({ message: "root" });
           }),
         );
@@ -652,11 +661,9 @@ describe("Next.js Proxy Adapter", () => {
         // @ts-expect-error - mock objects don't fully implement the types
         await proxyHandler(req, res);
 
-        expect(lastRequest).not.toBeNull();
-        if (!lastRequest?.url) {
-          throw new Error("Expected request url to be defined");
-        }
-        expect(new URL(lastRequest.url).pathname).toBe("/");
+        expect(captureRequest).toHaveBeenCalledTimes(1);
+        const capturedRequest = captureRequest.mock.lastCall![0] as Request;
+        expect(new URL(capturedRequest.url).pathname).toBe("/");
       });
     });
   });
