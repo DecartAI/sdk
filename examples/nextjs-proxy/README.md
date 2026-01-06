@@ -36,9 +36,9 @@ The Next.js App Router route handler uses the proxy middleware to forward reques
 ```typescript
 import { route } from "@decartai/proxy/nextjs";
 
-const { GET, POST, PUT } = route();
+const { GET, POST } = route();
 
-export { GET, POST, PUT };
+export { GET, POST };
 ```
 
 All requests to `/api/decart/*` are automatically proxied to `api.decart.ai` with your API key attached.
