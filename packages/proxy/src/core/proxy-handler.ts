@@ -7,18 +7,20 @@ const DECART_API_KEY = process.env.DECART_API_KEY;
 /**
  * Converts a Web API Headers object to a Record<string, HeaderValue>.
  * Handles multiple values for the same header key by combining them into arrays.
+ * Header names are normalized to lowercase for case-insensitive matching.
  *
  * @param headers the Headers object to convert.
- * @returns a record mapping header names to their values.
+ * @returns a record mapping header names (lowercase) to their values.
  */
 export function fromHeaders(headers: Headers): Record<string, HeaderValue> {
   const result: Record<string, HeaderValue> = {};
   headers.forEach((value, key) => {
-    const existing = result[key];
+    const normalizedKey = key.toLowerCase();
+    const existing = result[normalizedKey];
     if (existing) {
-      result[key] = Array.isArray(existing) ? [...existing, value] : [existing, value];
+      result[normalizedKey] = Array.isArray(existing) ? [...existing, value] : [existing, value];
     } else {
-      result[key] = value;
+      result[normalizedKey] = value;
     }
   });
   return result;
