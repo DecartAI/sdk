@@ -14,6 +14,9 @@ export const { GET, POST } = route();
 
 ## Next.js Pages Router
 
+> [!NOTE]
+> The proxy adapter does not support realtime models.
+
 Create an API route at `pages/api/decart/[...path].ts`:
 
 ```typescript
