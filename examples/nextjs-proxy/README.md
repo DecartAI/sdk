@@ -61,26 +61,3 @@ const blob = await client.process({
 });
 ```
 
-## Features
-
-- ✅ **Secure**: API key never leaves the server
-- ✅ **Simple**: Client code is identical to direct SDK usage
-- ✅ **Type-safe**: Full TypeScript support
-- ✅ **Next.js App Router**: Uses the latest Next.js routing
-
-## Architecture
-
-```
-Browser (SDK) → Next.js API Route (Proxy) → api.decart.ai
-              (no API key)                  (API key attached)
-```
-
-The client-side SDK makes requests to your Next.js API route, which securely attaches your API key and forwards them to Decart's API.
-
-## Security Notes
-
-- Your `DECART_API_KEY` is stored in `.env.local` (gitignored)
-- The API key is only used server-side in the proxy middleware
-- Client-side code never sees or needs the API key
-- All requests go through your proxy, giving you full control
-
