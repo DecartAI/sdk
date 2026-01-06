@@ -359,6 +359,48 @@ describe("Next.js Proxy Adapter", () => {
         expect(body).toEqual({ error: "Internal server error" });
       });
     });
+
+    describe("Path Handling", () => {
+      it("should handle empty path", async () => {
+        const handlers = route({ apiKey: "test-key" });
+
+        mswServer.use(
+          http.get(`${BASE_URL}/`, async ({ request }) => {
+            lastRequest = request;
+            return HttpResponse.json({ message: "root" });
+          }),
+        );
+
+        const request = createNextRequest("", { method: "GET" });
+        await handlers.GET(request);
+
+        expect(lastRequest).not.toBeNull();
+        if (!lastRequest?.url) {
+          throw new Error("Expected request url to be defined");
+        }
+        expect(new URL(lastRequest.url).pathname).toBe("/");
+      });
+
+      it("should correctly extract path from request.nextUrl.pathname", async () => {
+        const handlers = route({ apiKey: "test-key" });
+
+        mswServer.use(
+          http.get(`${BASE_URL}/v1/jobs/job_12345`, async ({ request }) => {
+            lastRequest = request;
+            return HttpResponse.json({ job_id: "job_12345", status: "completed" });
+          }),
+        );
+
+        const request = createNextRequest("/v1/jobs/job_12345", { method: "GET" });
+        await handlers.GET(request);
+
+        expect(lastRequest).not.toBeNull();
+        if (!lastRequest?.url) {
+          throw new Error("Expected request url to be defined");
+        }
+        expect(new URL(lastRequest.url).pathname).toBe("/v1/jobs/job_12345");
+      });
+    });
   });
 
   describe("Pages Router", () => {
