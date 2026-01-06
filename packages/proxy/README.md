@@ -15,7 +15,8 @@ yarn add @decartai/proxy
 ## Integrations
 
 We offer built in integrations for the following libraries:
-- Express
+- [Express](./src/express/README.md)
+- [Next.js](./src/nextjs/README.md)
 
 You can also create your own custom integration. See docs here.
 

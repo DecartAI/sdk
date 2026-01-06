@@ -1,0 +1,114 @@
+import type { NextApiRequest, NextApiResponse } from "next";
+import { type NextRequest, NextResponse } from "next/server";
+import type { NextApiHandler } from "next/types";
+import { version } from "../../package.json";
+import { DEFAULT_PROXY_ROUTE, fromHeaders, handleRequest } from "../core/proxy-handler";
+import type { DecartProxyOptions } from "../core/types";
+
+/**
+ * The default Next route for the Decart proxy.
+ */
+export const PROXY_ROUTE = DEFAULT_PROXY_ROUTE;
+
+/**
+ * Next API route handler for the Decart proxy.
+ * Use it with the /pages router in Next.js.
+ *
+ * Note: the page routers proxy doesn't support streaming responses.
+ */
+export const handler = (options?: DecartProxyOptions): NextApiHandler => {
+  return async (request: NextApiRequest, response: NextApiResponse) => {
+    try {
+      return await handleRequest({
+        id: `${version}/nextjs-page-router`,
+        apiKey: options?.apiKey,
+        baseUrl: options?.baseUrl,
+        integration: options?.integration,
+        method: request.method || "POST",
+        getRequestBody: async () => JSON.stringify(request.body),
+        getHeaders: () => request.headers,
+        getHeader: (name) => request.headers[name],
+        sendHeader: (name, value) => response.setHeader(name, value),
+        respondWith: (status, data) => response.status(status).json(data),
+        // Catch-all route [...path] provides an array of path segments
+        getRequestPath: () => {
+          const path = request.query?.path as string[] | undefined;
+          return path?.length ? `/${path.join("/")}` : "/";
+        },
+        sendResponse: async (res) => {
+          if (res.headers.get("content-type")?.includes("application/json")) {
+            return response.status(res.status).json(await res.json());
+          }
+          return response.status(res.status).send(await res.text());
+        },
+      });
+    } catch {
+      response.status(500).json({ error: "Internal server error" });
+    }
+  };
+};
+
+/**
+ * The Next API route handler for the Decart API client proxy on App Router apps.
+ *
+ * @param request the Next API request object.
+ * @param options Optional configuration options, including API key.
+ * @returns a promise that resolves when the request is handled.
+ */
+async function routeHandler(request: NextRequest, options?: DecartProxyOptions): Promise<NextResponse> {
+  const responseHeaders = new Headers();
+  try {
+    return await handleRequest({
+      id: `${version}/nextjs-app-router`,
+      apiKey: options?.apiKey,
+      baseUrl: options?.baseUrl,
+      integration: options?.integration,
+      method: request.method,
+      getRequestBody: async () => request.text(),
+      getHeaders: () => fromHeaders(request.headers),
+      getHeader: (name) => request.headers.get(name),
+      sendHeader: (name, value) => responseHeaders.set(name, value),
+      respondWith: (status, data) =>
+        NextResponse.json(data, {
+          status,
+          headers: responseHeaders,
+        }),
+      getRequestPath: () => {
+        const basePath = PROXY_ROUTE.replace(/\/$/, "");
+        return request.nextUrl.pathname.replace(basePath, "") || "/";
+      },
+      sendResponse: async (res) =>
+        new NextResponse(res.body, {
+          status: res.status,
+          headers: responseHeaders,
+        }),
+    });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500, headers: responseHeaders });
+  }
+}
+
+/**
+ * Create route handlers with optional configuration
+ */
+export const route = (options?: DecartProxyOptions) => ({
+  handler: (request: NextRequest) => routeHandler(request, options),
+  GET: (request: NextRequest) => routeHandler(request, options),
+  POST: (request: NextRequest) => routeHandler(request, options),
+});
+
+/**
+ * Default export for Next.js Pages Router compatibility.
+ * Usage in pages/api/decart/[...path].ts:
+ * ```typescript
+ * import decartProxy from "@decartai/proxy/nextjs";
+ * export default decartProxy();
+ * ```
+ */
+export default handler;
+
+// Legacy exports for backwards compatibility
+export const handlerPagesRouter = handler;
+export const handlerAppRouter = (options?: DecartProxyOptions) => {
+  return (req: NextRequest) => routeHandler(req, options);
+};
