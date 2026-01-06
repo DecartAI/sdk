@@ -2,6 +2,7 @@ import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { NextRequest } from "next/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { fromHeaders } from "../core/proxy-handler";
 import { handler, PROXY_ROUTE, route } from "./route";
 
 const BASE_URL = "https://api.decart.ai";
@@ -615,6 +616,51 @@ describe("Next.js Proxy Adapter", () => {
         }
         expect(new URL(lastRequest.url).pathname).toBe("/");
       });
+    });
+  });
+
+  describe("fromHeaders Utility", () => {
+    it("should convert Headers to a record with lowercase keys", () => {
+      const headers = new Headers();
+      headers.set("Content-Type", "application/json");
+      headers.set("X-Custom-Header", "custom-value");
+
+      const result = fromHeaders(headers);
+
+      expect(result["content-type"]).toBe("application/json");
+      expect(result["x-custom-header"]).toBe("custom-value");
+    });
+
+    it("should combine duplicate header values into arrays", () => {
+      const headers = new Headers();
+      headers.append("Set-Cookie", "cookie1=value1");
+      headers.append("Set-Cookie", "cookie2=value2");
+
+      const result = fromHeaders(headers);
+
+      expect(result["set-cookie"]).toEqual(["cookie1=value1", "cookie2=value2"]);
+    });
+
+    it("should handle headers with comma-separated values", () => {
+      // Note: The Headers API combines multiple values into comma-separated strings
+      // except for Set-Cookie. This test verifies fromHeaders handles that correctly.
+      const headers = new Headers();
+      headers.append("X-Multi", "first");
+      headers.append("X-Multi", "second");
+      headers.append("X-Multi", "third");
+
+      const result = fromHeaders(headers);
+
+      // Headers API combines values with ", " so this becomes a single string
+      expect(result["x-multi"]).toBe("first, second, third");
+    });
+
+    it("should return an empty record for empty Headers", () => {
+      const headers = new Headers();
+
+      const result = fromHeaders(headers);
+
+      expect(result).toEqual({});
     });
   });
 });
