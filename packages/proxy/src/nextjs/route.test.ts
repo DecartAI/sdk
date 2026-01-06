@@ -531,7 +531,10 @@ describe("Next.js Proxy Adapter", () => {
         await proxyHandler(req, res);
 
         expect(lastRequest).not.toBeNull();
-        expect(new URL(lastRequest?.url).pathname).toBe("/");
+        if (!lastRequest?.url) {
+          throw new Error("Expected request url to be defined");
+        }
+        expect(new URL(lastRequest.url).pathname).toBe("/");
       });
     });
   });
