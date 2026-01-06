@@ -84,10 +84,7 @@ async function routeHandler(request: NextRequest, options?: DecartProxyOptions):
         }),
     });
   } catch {
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500, headers: responseHeaders }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500, headers: responseHeaders });
   }
 }
 

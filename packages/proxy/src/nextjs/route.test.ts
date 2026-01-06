@@ -2,8 +2,7 @@ import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { NextRequest } from "next/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DecartProxyOptions } from "../core/types";
-import { PROXY_ROUTE, handler, route } from "./route";
+import { handler, PROXY_ROUTE, route } from "./route";
 
 const BASE_URL = "https://api.decart.ai";
 const CUSTOM_BASE_URL = "https://custom.api.com";
@@ -532,7 +531,7 @@ describe("Next.js Proxy Adapter", () => {
         await proxyHandler(req, res);
 
         expect(lastRequest).not.toBeNull();
-        expect(new URL(lastRequest!.url).pathname).toBe("/");
+        expect(new URL(lastRequest?.url).pathname).toBe("/");
       });
     });
   });
