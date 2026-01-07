@@ -7,7 +7,7 @@ import { readEnv } from "./utils/env";
 import { createInvalidApiKeyError, createInvalidBaseUrlError } from "./utils/errors";
 
 export type { ProcessClient } from "./process/client";
-export type { FileInput, ProcessOptions } from "./process/types";
+export type { FileInput, ProcessOptions, ReactNativeFile } from "./process/types";
 export type { QueueClient } from "./queue/client";
 export type {
   JobStatus,
