@@ -37,10 +37,12 @@
     "format": "biome format --write",
     "format:check": "biome check",
     "lint": "biome lint",
-    "test": "vitest"
+    "test": "vitest",
+    "release": "bumpp --tag 'proxy-v%s'"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.8",
+    "bumpp": "^10.1.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.15.17",
     "msw": "^2.11.3",
