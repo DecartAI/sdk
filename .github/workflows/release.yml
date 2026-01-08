@@ -21,6 +21,9 @@ jobs:
             echo "name=sdk" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == refs/tags/proxy-v* ]]; then
             echo "name=proxy" >> $GITHUB_OUTPUT
+          else
+            echo "Unknown tag format: ${{ github.ref }}"
+            exit 1
           fi
 
       - uses: actions/checkout@v4
