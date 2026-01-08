@@ -11,14 +11,18 @@ on:
       - "proxy-v*"
 
 jobs:
-  release-sdk:
-    if: startsWith(github.ref, 'refs/tags/sdk-v')
+  release:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./packages/sdk
-
     steps:
+      - name: Determine package
+        id: package
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/sdk-v* ]]; then
+            echo "name=sdk" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/proxy-v* ]]; then
+            echo "name=proxy" >> $GITHUB_OUTPUT
+          fi
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -37,52 +41,15 @@ jobs:
 
       - name: Install
         run: pnpm install
+        working-directory: ./packages/${{ steps.package.outputs.name }}
 
       - name: Build
         run: pnpm build
+        working-directory: ./packages/${{ steps.package.outputs.name }}
 
       - name: Publish
         run: pnpm publish --no-git-checks
-        env:
-          NPM_CONFIG_PROVENANCE: true
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - run: npx changelogithub
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  release-proxy:
-    if: startsWith(github.ref, 'refs/tags/proxy-v')
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./packages/proxy
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4.1.0
-        with:
-          version: 10.7.1
-
-      - name: Set node LTS
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: pnpm
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Install
-        run: pnpm install
-
-      - name: Build
-        run: pnpm build
-
-      - name: Publish
-        run: pnpm publish --no-git-checks
+        working-directory: ./packages/${{ steps.package.outputs.name }}
         env:
           NPM_CONFIG_PROVENANCE: true
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
