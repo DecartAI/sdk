@@ -19,7 +19,7 @@ export type DecartProxyOptions = {
 
 export type HeaderValue = string | string[] | undefined | null;
 
-export interface ProxyBehavior<ResponseType> {
+export interface ProxyBehavior<ResponseType = void> {
   /**
    * Internal identifier for built-in adapters. Custom adapters should use
    * `integration` instead to identify themselves.

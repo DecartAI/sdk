@@ -40,12 +40,16 @@ You can create a proxy adapter for any HTTP framework by implementing the `Proxy
 ### Example: Fastify Adapter
 
 ```typescript
-import { handleRequest, type DecartProxyOptions } from "@decartai/proxy";
+import {
+  handleRequest,
+  type DecartProxyOptions,
+  type ProxyBehavior,
+} from "@decartai/proxy";
 import type { FastifyRequest, FastifyReply } from "fastify";
 
 export function createDecartProxy(options?: DecartProxyOptions) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    await handleRequest({
+    const behavior: ProxyBehavior = {
       integration: "fastify",
       baseUrl: options?.baseUrl,
       method: request.method,
@@ -55,8 +59,12 @@ export function createDecartProxy(options?: DecartProxyOptions) {
       sendHeader: (name, value) => reply.header(name, value),
       respondWith: (status, data) => reply.status(status).send(data),
       getRequestPath: () => request.url,
-      sendResponse: (response) => reply.status(response.status).send(response.body),
-    });
+      sendResponse: async (response) => {
+        reply.status(response.status).send(response.body);
+      },
+    };
+
+    await handleRequest(behavior);
   };
 }
 ```
