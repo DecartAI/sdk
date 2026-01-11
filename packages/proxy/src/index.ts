@@ -1,2 +1,2 @@
-export { handleRequest } from "./core/proxy-handler";
-export type { DecartProxyOptions } from "./core/types";
+export { handleRequest, fromHeaders, DEFAULT_PROXY_ROUTE } from "./core/proxy-handler";
+export type { DecartProxyOptions, ProxyBehavior, HeaderValue } from "./core/types";
