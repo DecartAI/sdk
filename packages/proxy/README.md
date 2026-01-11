@@ -38,7 +38,6 @@ The proxy supports all model endpoints, apart from the realtime models.
 You can create a proxy adapter for any HTTP framework by implementing the `ProxyBehavior` interface with the framework specific implementation, and passing it to `handleRequest()`.
 
 ### Example: Fastify Adapter
-In the following example we pass Fastify 
 
 ```typescript
 import { handleRequest, type DecartProxyOptions } from "@decartai/proxy";
@@ -47,17 +46,14 @@ import type { FastifyRequest, FastifyReply } from "fastify";
 export function createDecartProxy(options?: DecartProxyOptions) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     await handleRequest({
-      id: "1.0.0/fastify",
+      integration: "fastify",
       baseUrl: options?.baseUrl,
-      integration: options?.integration,
       method: request.method,
       getHeaders: () => request.headers as Record<string, string>,
       getHeader: (name) => request.headers[name],
-      getRequestBody: JSON.stringify(body),
+      getRequestBody: async () => JSON.stringify(request.body),
       sendHeader: (name, value) => reply.header(name, value),
-      respondWith: (status, data) => {
-        reply.status(status).send(data);
-      },
+      respondWith: (status, data) => reply.status(status).send(data),
       getRequestPath: () => request.url,
       sendResponse: (response) => reply.status(response.status).send(response.body),
     });

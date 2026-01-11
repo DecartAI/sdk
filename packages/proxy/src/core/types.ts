@@ -21,10 +21,10 @@ export type HeaderValue = string | string[] | undefined | null;
 
 export interface ProxyBehavior<ResponseType> {
   /**
-   * Identifier for the adapter, typically in format "version/framework-name".
-   * @example "1.0.0/express", "2.1.0/fastify"
+   * Internal identifier for built-in adapters. Custom adapters should use
+   * `integration` instead to identify themselves.
    */
-  id: string;
+  id?: string;
 
   /**
    * HTTP method of the incoming request (GET, POST, etc.)
