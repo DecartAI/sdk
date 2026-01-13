@@ -9,9 +9,6 @@ function isReactNativeFile(value: unknown): value is ReactNativeFile {
   return (
     typeof value === "object" &&
     value !== null &&
-    "uri" in value &&
-    "type" in value &&
-    "name" in value &&
     typeof (value as ReactNativeFile).uri === "string" &&
     typeof (value as ReactNativeFile).type === "string" &&
     typeof (value as ReactNativeFile).name === "string"
