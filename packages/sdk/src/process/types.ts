@@ -7,7 +7,17 @@ import type {
   VideoModels,
 } from "../shared/model";
 
-export type FileInput = File | Blob | ReadableStream | URL | string;
+/**
+ * React Native file object format for file uploads.
+ * This format is used by React Native's FormData to properly handle file uploads with MIME types.
+ */
+export interface ReactNativeFile {
+  uri: string;
+  type: string;
+  name: string;
+}
+
+export type FileInput = File | Blob | ReadableStream | URL | string | ReactNativeFile;
 
 export type InferModelInputs<T extends ModelDefinition> = T["name"] extends keyof ModelInputSchemas
   ? z.input<ModelInputSchemas[T["name"]]>

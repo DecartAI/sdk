@@ -44,6 +44,12 @@ const fileInputSchema = z.union([
   z.instanceof(ReadableStream),
   z.instanceof(URL),
   z.url(),
+  // React Native file object format
+  z.object({
+    uri: z.string(),
+    type: z.string(),
+    name: z.string(),
+  }),
 ]);
 
 /**

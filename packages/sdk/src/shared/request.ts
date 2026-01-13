@@ -1,11 +1,30 @@
-import type { FileInput } from "../process/types";
+import type { FileInput, ReactNativeFile } from "../process/types";
 import { createInvalidInputError } from "../utils/errors";
 import { buildUserAgent } from "../utils/user-agent";
 
 /**
- * Convert various file input types to a Blob.
+ * Type guard to check if a value is a React Native file object.
  */
-export async function fileInputToBlob(input: FileInput): Promise<Blob> {
+function isReactNativeFile(value: unknown): value is ReactNativeFile {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as ReactNativeFile).uri === "string" &&
+    typeof (value as ReactNativeFile).type === "string" &&
+    typeof (value as ReactNativeFile).name === "string"
+  );
+}
+
+/**
+ * Convert various file input types to a Blob or React Native file object.
+ * React Native file objects are passed through as-is for proper FormData handling.
+ */
+export async function fileInputToBlob(input: FileInput): Promise<Blob | ReactNativeFile> {
+  // React Native file object - pass through as-is
+  if (isReactNativeFile(input)) {
+    return input;
+  }
+
   if (input instanceof Blob || input instanceof File) {
     return input;
   }
@@ -54,7 +73,10 @@ export function buildFormData(inputs: Record<string, unknown>): FormData {
 
   for (const [key, value] of Object.entries(inputs)) {
     if (value !== undefined && value !== null) {
-      if (value instanceof Blob) {
+      // React Native file object - append as-is for native file upload handling
+      if (isReactNativeFile(value)) {
+        formData.append(key, value as unknown as Blob);
+      } else if (value instanceof Blob) {
         formData.append(key, value);
       } else if (typeof value === "object" && value !== null) {
         formData.append(key, JSON.stringify(value));
