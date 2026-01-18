@@ -35,6 +35,7 @@ export class WebRTCConnection {
   private ws: WebSocket | null = null;
   private localStream: MediaStream | null = null;
   private connectionReject: ((error: Error) => void) | null = null;
+  private turnConfig: TurnConfig | null = null;
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
   constructor(private callbacks: ConnectionCallbacks = {}) {}
@@ -122,6 +123,14 @@ export class WebRTCConnection {
         return;
       }
 
+      // Handle session_id message - store TURN config for use when setting up peer connection
+      if (msg.type === "session_id") {
+        if (msg.turn_config) {
+          this.turnConfig = msg.turn_config;
+        }
+        return;
+      }
+
       // All other messages require peer connection
       if (!this.pc) return;
 
@@ -152,10 +161,10 @@ export class WebRTCConnection {
           if (msg.candidate) await this.pc.addIceCandidate(msg.candidate);
           break;
         case "ice-restart": {
-          const turnConfig = msg.turn_config;
-          if (turnConfig) {
-            await this.setupNewPeerConnection(turnConfig);
+          if (msg.turn_config) {
+            this.turnConfig = msg.turn_config;
           }
+          await this.setupNewPeerConnection();
           break;
         }
       }
@@ -235,7 +244,7 @@ export class WebRTCConnection {
     }
   }
 
-  private async setupNewPeerConnection(turnConfig?: TurnConfig): Promise<void> {
+  private async setupNewPeerConnection(): Promise<void> {
     if (!this.localStream) {
       throw new Error("No local stream found");
     }
@@ -247,12 +256,12 @@ export class WebRTCConnection {
       });
       this.pc.close();
     }
-    const iceServers: RTCIceServer[] = ICE_SERVERS;
-    if (turnConfig) {
+    const iceServers: RTCIceServer[] = [...ICE_SERVERS];
+    if (this.turnConfig) {
       iceServers.push({
-        urls: turnConfig.server_url,
-        credential: turnConfig.credential,
-        username: turnConfig.username,
+        urls: this.turnConfig.server_url,
+        credential: this.turnConfig.credential,
+        username: this.turnConfig.username,
       });
     }
     this.pc = new RTCPeerConnection({ iceServers });

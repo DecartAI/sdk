@@ -17,6 +17,14 @@ export type ReadyMessage = {
   type: "ready";
 };
 
+export type SessionIdMessage = {
+  type: "session_id";
+  session_id: string;
+  server_port?: number;
+  server_ip?: string;
+  turn_config?: TurnConfig;
+};
+
 export type PromptMessage = {
   type: "prompt";
   prompt: string;
@@ -61,6 +69,7 @@ export type SetImageAckMessage = {
 // Incoming message types (from server)
 export type IncomingWebRTCMessage =
   | ReadyMessage
+  | SessionIdMessage
   | OfferMessage
   | AnswerMessage
   | IceCandidateMessage
