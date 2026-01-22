@@ -16,7 +16,7 @@ export function VideoStream({ prompt }: VideoStreamProps) {
 
     async function start() {
       try {
-        const model = models.realtime("lucy_v2v_14b_rt");
+        const model = models.realtime("mirage_v2");
 
         setStatus("requesting camera...");
         const stream = await navigator.mediaDevices.getUserMedia({
