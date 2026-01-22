@@ -914,6 +914,35 @@ describe("Tokens API", () => {
   });
 });
 
+describe("Lucy 14b realtime", () => {
+  describe("Model Definition", () => {
+    it("has correct model name", () => {
+      const lucyModel = models.realtime("lucy_v2v_14b_rt");
+      expect(lucyModel.name).toBe("lucy_v2v_14b_rt");
+    });
+
+    it("has correct URL path", () => {
+      const lucyModel = models.realtime("lucy_v2v_14b_rt");
+      expect(lucyModel.urlPath).toBe("/v1/stream");
+    });
+
+    it("has expected dimensions", () => {
+      const lucyModel = models.realtime("lucy_v2v_14b_rt");
+      expect(lucyModel.width).toBe(1280);
+      expect(lucyModel.height).toBe(704);
+    });
+
+    it("has correct fps", () => {
+      const lucyModel = models.realtime("lucy_v2v_14b_rt");
+      expect(lucyModel.fps).toBe(15);
+    });
+
+    it("is recognized as a realtime model", () => {
+      expect(models.realtime("lucy_v2v_14b_rt")).toBeDefined();
+    });
+  });
+});
+
 describe("live_avatar Model", () => {
   describe("Model Definition", () => {
     it("has correct model name", () => {
