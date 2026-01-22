@@ -47,3 +47,4 @@ This example uses `mirage_v2` for style transformation. You can also use:
 
 - `mirage` - MirageLSD video restyling model (older)
 - `lucy_v2v_720p_rt` - Lucy for video editing (add objects, change elements)
+- `lucy_v2v_14b_rt` - Lucy 14B for video editing with reference image support (better quality)

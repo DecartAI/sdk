@@ -66,6 +66,7 @@
 - `mirage` - Real-time video restyling model
 - `mirage_v2` - Real-time video restyling model (v2)
 - `lucy_v2v_720p_rt` - Real-time video editing model
+- `lucy_v2v_14b_rt` - Real-time video editing model (14B, supports reference image)
 
 ### Video Models (Queue API)
 - `lucy-dev-i2v` - image-to-video (Dev quality)
