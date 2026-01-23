@@ -178,8 +178,9 @@ export class WebRTCConnection {
   /**
    * Send an image to the server (e.g., as a reference for inference).
    * Can be called after connection is established.
+   * Pass null to clear the reference image.
    */
-  async setImageBase64(imageBase64: string): Promise<void> {
+  async setImageBase64(imageBase64: string | null): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.websocketMessagesEmitter.off("setImageAck", listener);
