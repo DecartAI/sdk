@@ -92,7 +92,7 @@ export class WebRTCManager {
     return this.connection.websocketMessagesEmitter;
   }
 
-  setImage(imageBase64: string | null): Promise<void> {
-    return this.connection.setImageBase64(imageBase64);
+  setImage(imageBase64: string | null, options?: { prompt?: string; enhance?: boolean }): Promise<void> {
+    return this.connection.setImageBase64(imageBase64, options);
   }
 }

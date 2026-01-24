@@ -178,9 +178,13 @@ export class WebRTCConnection {
   /**
    * Send an image to the server (e.g., as a reference for inference).
    * Can be called after connection is established.
-   * Pass null to clear the reference image.
+   * Pass null to clear the reference image or use a placeholder.
+   * Optionally include a prompt to send with the image.
    */
-  async setImageBase64(imageBase64: string | null): Promise<void> {
+  async setImageBase64(
+    imageBase64: string | null,
+    options?: { prompt?: string; enhance?: boolean },
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.websocketMessagesEmitter.off("setImageAck", listener);
@@ -198,7 +202,20 @@ export class WebRTCConnection {
       };
 
       this.websocketMessagesEmitter.on("setImageAck", listener);
-      this.send({ type: "set_image", image_data: imageBase64 });
+
+      const message: { type: "set_image"; image_data: string | null; prompt?: string; enhance_prompt?: boolean } = {
+        type: "set_image",
+        image_data: imageBase64,
+      };
+
+      if (options?.prompt !== undefined) {
+        message.prompt = options.prompt;
+      }
+      if (options?.enhance !== undefined) {
+        message.enhance_prompt = options.enhance;
+      }
+
+      this.send(message);
     });
   }
 

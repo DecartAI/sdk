@@ -49,7 +49,9 @@ export type ErrorMessage = {
 // Avatar Live message types
 export type SetAvatarImageMessage = {
   type: "set_image";
-  image_data: string | null; // Base64-encoded image data, or null to clear
+  image_data: string | null; // Base64-encoded image data, or null to clear/use placeholder
+  prompt?: string; // Optional prompt to send with the image
+  enhance_prompt?: boolean; // Optional flag to enhance the prompt
 };
 
 export type SetImageAckMessage = {
