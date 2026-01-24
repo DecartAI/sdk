@@ -260,9 +260,9 @@ const _models = {
     lucy_v2v_14b_rt: {
       urlPath: "/v1/stream",
       name: "lucy_v2v_14b_rt" as const,
-      fps: 15,
+      fps: 20,
       width: 1280,
-      height: 704,
+      height: 720,
       inputSchema: z.object({}),
     },
     live_avatar: {

@@ -929,12 +929,12 @@ describe("Lucy 14b realtime", () => {
     it("has expected dimensions", () => {
       const lucyModel = models.realtime("lucy_v2v_14b_rt");
       expect(lucyModel.width).toBe(1280);
-      expect(lucyModel.height).toBe(704);
+      expect(lucyModel.height).toBe(720);
     });
 
     it("has correct fps", () => {
       const lucyModel = models.realtime("lucy_v2v_14b_rt");
-      expect(lucyModel.fps).toBe(15);
+      expect(lucyModel.fps).toBe(20);
     });
 
     it("is recognized as a realtime model", () => {
