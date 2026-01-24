@@ -305,9 +305,10 @@ export class WebRTCConnection {
   }
 
   cleanup(): void {
-    this.pc?.getSenders().forEach((s) => {
-      s.track?.stop();
-    });
+    // Note: We intentionally do NOT stop the tracks here.
+    // The tracks belong to the user's source stream, not the SDK.
+    // Stopping them would break retries and local preview.
+    //TODO: Think of this more carefully.
     this.pc?.close();
     this.pc = null;
     this.ws?.close();
