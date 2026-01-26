@@ -1,6 +1,6 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDecartClient, models } from "../src/index.js";
 
 const MOCK_RESPONSE_DATA = new Uint8Array([0x00, 0x01, 0x02]).buffer;
@@ -939,6 +939,67 @@ describe("Lucy 14b realtime", () => {
 
     it("is recognized as a realtime model", () => {
       expect(models.realtime("lucy_v2v_14b_rt")).toBeDefined();
+    });
+  });
+});
+
+describe("WebRTCConnection", () => {
+  describe("setImageBase64 timeout", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("uses custom timeout when provided", async () => {
+      const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+      const connection = new WebRTCConnection();
+
+      const customTimeout = 5000;
+      let rejected = false;
+      let rejectionError: Error | null = null;
+
+      const promise = connection.setImageBase64("base64data", { timeout: customTimeout }).catch((err) => {
+        rejected = true;
+        rejectionError = err;
+      });
+
+      // Advance time to just before the custom timeout - should not have rejected yet
+      await vi.advanceTimersByTimeAsync(customTimeout - 1);
+      expect(rejected).toBe(false);
+
+      // Advance past the custom timeout - now it should reject
+      await vi.advanceTimersByTimeAsync(2);
+      await promise;
+
+      expect(rejected).toBe(true);
+      expect(rejectionError?.message).toBe("Image send timed out");
+    });
+
+    it("uses default timeout (15000ms) when not provided", async () => {
+      const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+      const connection = new WebRTCConnection();
+
+      let rejected = false;
+      let rejectionError: Error | null = null;
+
+      const promise = connection.setImageBase64("base64data").catch((err) => {
+        rejected = true;
+        rejectionError = err;
+      });
+
+      // Advance to just before the default timeout (15000ms) - should not reject yet
+      await vi.advanceTimersByTimeAsync(14999);
+      expect(rejected).toBe(false);
+
+      // Now advance past the default timeout
+      await vi.advanceTimersByTimeAsync(2);
+      await promise;
+
+      expect(rejected).toBe(true);
+      expect(rejectionError?.message).toBe("Image send timed out");
     });
   });
 });
