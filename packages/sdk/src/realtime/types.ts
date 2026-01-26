@@ -60,6 +60,18 @@ export type SetImageAckMessage = {
   error: null | string;
 };
 
+// Queue message types
+export type StatusMessage = {
+  type: "status";
+  status: string;
+};
+
+export type QueuePositionMessage = {
+  type: "queue_position";
+  position: number;
+  queue_size: number;
+};
+
 // Incoming message types (from server)
 export type IncomingWebRTCMessage =
   | ReadyMessage
@@ -69,7 +81,9 @@ export type IncomingWebRTCMessage =
   | IceRestartMessage
   | PromptAckMessage
   | ErrorMessage
-  | SetImageAckMessage;
+  | SetImageAckMessage
+  | StatusMessage
+  | QueuePositionMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =

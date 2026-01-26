@@ -56,6 +56,8 @@ export type RealTimeClientConnectOptions = z.infer<typeof realTimeClientConnectO
 export type Events = {
   connectionChange: "connected" | "connecting" | "disconnected";
   error: DecartSDKError;
+  status: string;
+  queuePosition: { position: number; queueSize: number };
 };
 
 export type RealTimeClient = {
@@ -144,6 +146,15 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       isAvatarLive,
       avatarImageBase64,
       initialPrompt,
+    });
+
+    // Wire up queue status events
+    const wsEmitter = webrtcManager.getWebsocketMessageEmitter();
+    wsEmitter.on("status", (msg) => {
+      eventEmitter.emit("status", msg.status);
+    });
+    wsEmitter.on("queuePosition", (msg) => {
+      eventEmitter.emit("queuePosition", { position: msg.position, queueSize: msg.queue_size });
     });
 
     await webrtcManager.connect(inputStream);
