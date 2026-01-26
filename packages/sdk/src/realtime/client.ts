@@ -42,6 +42,9 @@ const avatarOptionsSchema = z.object({
 });
 export type AvatarOptions = z.infer<typeof avatarOptionsSchema>;
 
+type OnStatusFn = (status: string) => void;
+type OnQueuePositionFn = (data: { position: number; queueSize: number }) => void;
+
 const realTimeClientConnectOptionsSchema = z.object({
   model: modelDefinitionSchema,
   onRemoteStream: z.custom<OnRemoteStreamFn>((val) => typeof val === "function", {
@@ -50,6 +53,16 @@ const realTimeClientConnectOptionsSchema = z.object({
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
   avatar: avatarOptionsSchema.optional(),
+  onStatus: z
+    .custom<OnStatusFn>((val) => typeof val === "function", {
+      message: "onStatus must be a function",
+    })
+    .optional(),
+  onQueuePosition: z
+    .custom<OnQueuePositionFn>((val) => typeof val === "function", {
+      message: "onQueuePosition must be a function",
+    })
+    .optional(),
 });
 export type RealTimeClientConnectOptions = z.infer<typeof realTimeClientConnectOptionsSchema>;
 
@@ -148,13 +161,16 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       initialPrompt,
     });
 
-    // Wire up queue status events
+    // Wire up queue status events (called before connect so we don't miss early messages)
     const wsEmitter = webrtcManager.getWebsocketMessageEmitter();
     wsEmitter.on("status", (msg) => {
       eventEmitter.emit("status", msg.status);
+      options.onStatus?.(msg.status);
     });
     wsEmitter.on("queuePosition", (msg) => {
-      eventEmitter.emit("queuePosition", { position: msg.position, queueSize: msg.queue_size });
+      const data = { position: msg.position, queueSize: msg.queue_size };
+      eventEmitter.emit("queuePosition", data);
+      options.onQueuePosition?.(data);
     });
 
     await webrtcManager.connect(inputStream);
