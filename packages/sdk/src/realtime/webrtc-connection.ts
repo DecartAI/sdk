@@ -181,12 +181,15 @@ export class WebRTCConnection {
    * Pass null to clear the reference image or use a placeholder.
    * Optionally include a prompt to send with the image.
    */
-  async setImageBase64(imageBase64: string | null, options?: { prompt?: string; enhance?: boolean }): Promise<void> {
+  async setImageBase64(
+    imageBase64: string | null,
+    options?: { prompt?: string; enhance?: boolean; timeout?: number },
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.websocketMessagesEmitter.off("setImageAck", listener);
         reject(new Error("Image send timed out"));
-      }, AVATAR_SETUP_TIMEOUT_MS);
+      }, options?.timeout ?? AVATAR_SETUP_TIMEOUT_MS);
 
       const listener = (msg: SetImageAckMessage) => {
         clearTimeout(timeoutId);
