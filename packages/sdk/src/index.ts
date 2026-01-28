@@ -17,6 +17,14 @@ export type {
   QueueSubmitAndPollOptions,
   QueueSubmitOptions,
 } from "./queue/types";
+// New unified types
+export type {
+  GenerateOptions,
+  SubmitOptions,
+  SubmitAndWaitOptions,
+  SyncCapableModelDefinition,
+  AsyncCapableModelDefinition,
+} from "./shared/unified-types";
 export type {
   AvatarOptions,
   RealTimeClient,
@@ -175,9 +183,100 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     integration,
   });
 
+  // Create unified generate method (new API)
+  const generate: typeof process = async (options) => {
+    return process(options);
+  };
+
+  // Create unified submit method (new API)
+  const submit = queue.submit;
+
+  // Create unified submitAndWait method (new API)
+  const submitAndWait: typeof queue.submitAndPoll = async (options) => {
+    // Support both onProgress (new) and onStatusChange (deprecated)
+    const { onStatusChange, onProgress, ...rest } = options as any;
+    const callback = onProgress || onStatusChange;
+    return queue.submitAndPoll({ ...rest, onStatusChange: callback } as any);
+  };
+
+  // Create unified getJobStatus method (new API)
+  const getJobStatus = queue.status;
+
+  // Create unified getJobResult method (new API)
+  const getJobResult = queue.result;
+
   return {
     realtime,
     /**
+     * Generate content synchronously.
+     * Works with any model that supports synchronous generation.
+     *
+     * @example
+     * ```ts
+     * const client = createDecartClient({ apiKey: "your-api-key" });
+     * const result = await client.generate({
+     *   model: models.image("lucy-pro-t2i"),
+     *   prompt: "A beautiful sunset over the ocean"
+     * });
+     * ```
+     */
+    generate,
+    /**
+     * Submit a job for asynchronous processing.
+     * Returns immediately with job_id for manual polling.
+     *
+     * @example
+     * ```ts
+     * const client = createDecartClient({ apiKey: "your-api-key" });
+     * const job = await client.submit({
+     *   model: models.video("lucy-pro-t2v"),
+     *   prompt: "A beautiful sunset over the ocean"
+     * });
+     * console.log(`Job ID: ${job.job_id}`);
+     * ```
+     */
+    submit,
+    /**
+     * Submit a job and wait for completion with automatic polling.
+     *
+     * @example
+     * ```ts
+     * const client = createDecartClient({ apiKey: "your-api-key" });
+     * const result = await client.submitAndWait({
+     *   model: models.video("lucy-pro-t2v"),
+     *   prompt: "A beautiful sunset over the ocean",
+     *   onProgress: (job) => console.log(`Job ${job.job_id}: ${job.status}`)
+     * });
+     *
+     * if (result.status === "completed") {
+     *   videoElement.src = URL.createObjectURL(result.data);
+     * }
+     * ```
+     */
+    submitAndWait,
+    /**
+     * Get the current status of a job.
+     *
+     * @example
+     * ```ts
+     * const status = await client.getJobStatus("job_abc123");
+     * console.log(`Status: ${status.status}`);
+     * ```
+     */
+    getJobStatus,
+    /**
+     * Get the result of a completed job.
+     *
+     * @example
+     * ```ts
+     * const blob = await client.getJobResult("job_abc123");
+     * videoElement.src = URL.createObjectURL(blob);
+     * ```
+     */
+    getJobResult,
+    /**
+     * @deprecated Use `client.generate()` instead. This will be removed in a future version.
+     *
      * Client for synchronous image generation.
      * Only image models support the sync/process API.
      *
@@ -192,6 +291,8 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
      */
     process,
     /**
+     * @deprecated Use the new methods `client.submit()`, `client.submitAndWait()`, `client.getJobStatus()`, and `client.getJobResult()` instead.
+     *
      * Client for queue-based async video generation.
      * Only video models support the queue API.
      * Jobs are submitted and processed asynchronously.

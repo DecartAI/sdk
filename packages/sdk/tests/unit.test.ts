@@ -1004,6 +1004,222 @@ describe("WebRTCConnection", () => {
   });
 });
 
+describe("New Unified API", () => {
+  let decart: ReturnType<typeof createDecartClient>;
+  let lastFormData: FormData | null = null;
+  let lastRequest: Request | null = null;
+
+  const createMockHandler = (endpoint: string) => {
+    return http.post(`${BASE_URL}${endpoint}`, async ({ request }) => {
+      lastRequest = request;
+      lastFormData = await request.formData();
+      return HttpResponse.arrayBuffer(MOCK_RESPONSE_DATA, {
+        headers: { "Content-Type": "application/octet-stream" },
+      });
+    });
+  };
+
+  const server = setupServer();
+
+  beforeAll(() => {
+    server.listen({ onUnhandledRequest: "error" });
+  });
+
+  afterAll(() => {
+    server.close();
+  });
+
+  beforeEach(() => {
+    lastFormData = null;
+    lastRequest = null;
+    decart = createDecartClient({
+      apiKey: TEST_API_KEY,
+      baseUrl: BASE_URL,
+    });
+  });
+
+  afterEach(() => {
+    server.resetHandlers();
+  });
+
+  describe("generate", () => {
+    it("generates image using new API", async () => {
+      server.use(createMockHandler("/v1/generate/lucy-pro-t2i"));
+
+      const result = await decart.generate({
+        model: models.image("lucy-pro-t2i"),
+        prompt: "A cat playing piano",
+        seed: 42,
+      });
+
+      expect(result).toBeInstanceOf(Blob);
+      expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
+      expect(lastFormData?.get("prompt")).toBe("A cat playing piano");
+      expect(lastFormData?.get("seed")).toBe("42");
+    });
+  });
+
+  describe("submit", () => {
+    it("submits job using new API", async () => {
+      server.use(
+        http.post(`${BASE_URL}/v1/jobs/lucy-pro-t2v`, async ({ request }) => {
+          lastRequest = request;
+          lastFormData = await request.formData();
+          return HttpResponse.json({
+            job_id: "job_new_api",
+            status: "pending",
+          });
+        }),
+      );
+
+      const result = await decart.submit({
+        model: models.video("lucy-pro-t2v"),
+        prompt: "A cat playing piano",
+        seed: 42,
+      });
+
+      expect(result.job_id).toBe("job_new_api");
+      expect(result.status).toBe("pending");
+      expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
+      expect(lastFormData?.get("prompt")).toBe("A cat playing piano");
+      expect(lastFormData?.get("seed")).toBe("42");
+    });
+  });
+
+  describe("getJobStatus", () => {
+    it("gets job status using new API", async () => {
+      server.use(
+        http.get(`${BASE_URL}/v1/jobs/job_status_test`, ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({
+            job_id: "job_status_test",
+            status: "processing",
+          });
+        }),
+      );
+
+      const result = await decart.getJobStatus("job_status_test");
+
+      expect(result.job_id).toBe("job_status_test");
+      expect(result.status).toBe("processing");
+      expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
+    });
+  });
+
+  describe("getJobResult", () => {
+    it("gets job result using new API", async () => {
+      server.use(
+        http.get(`${BASE_URL}/v1/jobs/job_result_test/content`, ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.arrayBuffer(MOCK_RESPONSE_DATA, {
+            headers: { "Content-Type": "video/mp4" },
+          });
+        }),
+      );
+
+      const result = await decart.getJobResult("job_result_test");
+
+      expect(result).toBeInstanceOf(Blob);
+      expect(lastRequest?.headers.get("x-api-key")).toBe(TEST_API_KEY);
+    });
+  });
+
+  describe("submitAndWait", () => {
+    it("submits and waits using new API with onProgress", async () => {
+      let pollCount = 0;
+      const progressUpdates: Array<{ job_id: string; status: string }> = [];
+
+      server.use(
+        http.post(`${BASE_URL}/v1/jobs/lucy-pro-t2v`, async ({ request }) => {
+          lastFormData = await request.formData();
+          return HttpResponse.json({
+            job_id: "job_wait_new",
+            status: "pending",
+          });
+        }),
+        http.get(`${BASE_URL}/v1/jobs/job_wait_new`, () => {
+          pollCount++;
+          if (pollCount < 2) {
+            return HttpResponse.json({
+              job_id: "job_wait_new",
+              status: "processing",
+            });
+          }
+          return HttpResponse.json({
+            job_id: "job_wait_new",
+            status: "completed",
+          });
+        }),
+        http.get(`${BASE_URL}/v1/jobs/job_wait_new/content`, () => {
+          return HttpResponse.arrayBuffer(MOCK_RESPONSE_DATA, {
+            headers: { "Content-Type": "video/mp4" },
+          });
+        }),
+      );
+
+      const result = await decart.submitAndWait({
+        model: models.video("lucy-pro-t2v"),
+        prompt: "A beautiful sunset",
+        onProgress: (job) => {
+          progressUpdates.push({ job_id: job.job_id, status: job.status });
+        },
+      });
+
+      expect(result.status).toBe("completed");
+      if (result.status === "completed") {
+        expect(result.data).toBeInstanceOf(Blob);
+      }
+      expect(progressUpdates.length).toBeGreaterThan(0);
+      expect(progressUpdates[0].job_id).toBe("job_wait_new");
+    });
+
+    it("supports deprecated onStatusChange callback", async () => {
+      let pollCount = 0;
+      const statusUpdates: Array<{ job_id: string; status: string }> = [];
+
+      server.use(
+        http.post(`${BASE_URL}/v1/jobs/lucy-pro-t2v`, async ({ request }) => {
+          lastFormData = await request.formData();
+          return HttpResponse.json({
+            job_id: "job_wait_old_callback",
+            status: "pending",
+          });
+        }),
+        http.get(`${BASE_URL}/v1/jobs/job_wait_old_callback`, () => {
+          pollCount++;
+          if (pollCount < 2) {
+            return HttpResponse.json({
+              job_id: "job_wait_old_callback",
+              status: "processing",
+            });
+          }
+          return HttpResponse.json({
+            job_id: "job_wait_old_callback",
+            status: "completed",
+          });
+        }),
+        http.get(`${BASE_URL}/v1/jobs/job_wait_old_callback/content`, () => {
+          return HttpResponse.arrayBuffer(MOCK_RESPONSE_DATA, {
+            headers: { "Content-Type": "video/mp4" },
+          });
+        }),
+      );
+
+      const result = await decart.submitAndWait({
+        model: models.video("lucy-pro-t2v"),
+        prompt: "A beautiful sunset",
+        onStatusChange: (job) => {
+          statusUpdates.push({ job_id: job.job_id, status: job.status });
+        },
+      } as any);
+
+      expect(result.status).toBe("completed");
+      expect(statusUpdates.length).toBeGreaterThan(0);
+      expect(statusUpdates[0].job_id).toBe("job_wait_old_callback");
+    });
+  });
+});
+
 describe("live_avatar Model", () => {
   describe("Model Definition", () => {
     it("has correct model name", () => {
