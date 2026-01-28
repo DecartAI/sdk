@@ -77,7 +77,7 @@ export function VideoStream({ prompt }: VideoStreamProps) {
       mounted = false;
       realtimeClientRef.current?.disconnect();
     };
-  }, []);
+  }, [prompt]);
 
   // Update prompt when it changes
   useEffect(() => {

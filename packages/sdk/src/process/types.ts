@@ -6,6 +6,7 @@ import type {
   ModelInputSchemas,
   VideoModels,
 } from "../shared/model";
+import type { MergeDocumentedFields } from "../shared/type-helpers";
 
 /**
  * React Native file object format for file uploads.
@@ -201,25 +202,6 @@ export interface ProcessInputs {
 type ModelSpecificProcessInputs<T extends ModelDefinition> = ProcessInputs & ModelSpecificInputs<T>;
 
 /**
- * Pick only the fields from ModelSpecificProcessInputs that exist in the inferred model inputs,
- * so JSDoc comments will be preserved, while type inference will be accurate.
- */
-type PickDocumentedInputs<T extends ModelDefinition> = Pick<
-  ModelSpecificProcessInputs<T>,
-  keyof ModelSpecificProcessInputs<T> & keyof InferModelInputs<T>
->;
-
-/**
- * Merge documented inputs with inferred inputs, ensuring zod types take precedence
- * while preserving JSDoc comments from ModelSpecificProcessInputs.
- *
- * By intersecting PickDocumentedInputs with InferModelInputs, we get:
- * - JSDoc comments from ModelSpecificProcessInputs (from PickDocumentedInputs)
- * - Accurate types from zod schemas (from InferModelInputs, takes precedence in intersection)
- */
-type MergeDocumentedInputs<T extends ModelDefinition> = PickDocumentedInputs<T> & InferModelInputs<T>;
-
-/**
  * Options for the process client to generate image content.
  * Only image models support the sync/process API.
  *
@@ -234,4 +216,4 @@ export type ProcessOptions<T extends ImageModelDefinition = ImageModelDefinition
    * Optional `AbortSignal` for canceling the request.
    */
   signal?: AbortSignal;
-} & MergeDocumentedInputs<T>;
+} & MergeDocumentedFields<ModelSpecificProcessInputs<T>, InferModelInputs<T>>;

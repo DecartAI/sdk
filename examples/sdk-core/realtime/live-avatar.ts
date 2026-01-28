@@ -44,7 +44,7 @@ async function withPlayAudio() {
  * Example 2: Using mic input directly
  * Pass user's audio stream - avatar speaks what user says
  */
-async function withMicInput() {
+async function _withMicInput() {
   const model = models.realtime("live_avatar");
 
   // Get user's microphone stream

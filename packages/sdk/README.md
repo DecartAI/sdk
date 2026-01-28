@@ -19,6 +19,8 @@ For complete documentation, guides, and examples, visit:
 
 ## Quick Start
 
+> **Note**: We've improved the SDK API! Check out the [new simplified API](#new-api) below. The old API still works but is deprecated.
+
 ### Real-time Video Transformation
 
 ```typescript
@@ -109,6 +111,84 @@ if (status.status === "completed") {
   videoElement.src = URL.createObjectURL(blob);
 }
 ```
+
+## New API
+
+We've redesigned the SDK API for better clarity and consistency! The new API provides:
+
+- **Clearer method names**: `generate()` instead of `process()`, `submitAndWait()` instead of `submitAndPoll()`
+- **Flatter structure**: No more `queue.` prefix for async operations
+- **Better naming**: `onProgress` instead of `onStatusChange`, `getJobStatus()` instead of `status()`
+- **Type safety**: Works with any model that supports the operation
+
+### Synchronous Generation
+
+```typescript
+import { createDecartClient, models } from "@decartai/sdk";
+
+const client = createDecartClient({
+  apiKey: "your-api-key-here"
+});
+
+// Generate an image synchronously
+const blob = await client.generate({
+  model: models.image("lucy-pro-t2i"),
+  prompt: "A beautiful sunset over the ocean"
+});
+```
+
+### Async Generation with Auto-Polling
+
+```typescript
+// Submit and wait for completion
+const result = await client.submitAndWait({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A cat playing piano",
+  onProgress: (job) => {
+    console.log(`Job ${job.job_id}: ${job.status}`);
+  }
+});
+
+if (result.status === "completed") {
+  videoElement.src = URL.createObjectURL(result.data);
+} else {
+  console.error("Job failed:", result.error);
+}
+```
+
+### Manual Job Management
+
+```typescript
+// Submit the job
+const job = await client.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A cat playing piano"
+});
+console.log(`Job ID: ${job.job_id}`);
+
+// Poll for status
+const status = await client.getJobStatus(job.job_id);
+console.log(`Status: ${status.status}`);
+
+// Get result when completed
+if (status.status === "completed") {
+  const blob = await client.getJobResult(job.job_id);
+  videoElement.src = URL.createObjectURL(blob);
+}
+```
+
+### Migration from Old API
+
+| Old API | New API |
+|---------|---------|
+| `client.process()` | `client.generate()` |
+| `client.queue.submit()` | `client.submit()` |
+| `client.queue.submitAndPoll()` | `client.submitAndWait()` |
+| `client.queue.status()` | `client.getJobStatus()` |
+| `client.queue.result()` | `client.getJobResult()` |
+| `onStatusChange` callback | `onProgress` callback |
+
+The old API still works but is deprecated and will be removed in a future major version.
 
 ## Development
 
