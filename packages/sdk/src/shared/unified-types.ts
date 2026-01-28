@@ -1,4 +1,3 @@
-import type { z } from "zod";
 import type { InferModelInputs, ModelSpecificInputs, ProcessInputs } from "../process/types";
 import type { JobStatusResponse } from "../queue/types";
 import type { ImageModels, ModelDefinition, VideoModels } from "./model";
@@ -70,17 +69,18 @@ export type SubmitOptions<T extends AsyncCapableModelDefinition = AsyncCapableMo
  *
  * @template T - The model definition type (must support async queue)
  */
-export type SubmitAndWaitOptions<T extends AsyncCapableModelDefinition = AsyncCapableModelDefinition> = SubmitOptions<T> & {
-  /**
-   * Callback invoked when job status changes during polling.
-   * Receives the full job status response object.
-   *
-   * @deprecated Use `onProgress` instead. This will be removed in a future version.
-   */
-  onStatusChange?: (job: JobStatusResponse) => void;
-  /**
-   * Callback invoked when job status changes during polling.
-   * Receives the full job status response object.
-   */
-  onProgress?: (job: JobStatusResponse) => void;
-};
+export type SubmitAndWaitOptions<T extends AsyncCapableModelDefinition = AsyncCapableModelDefinition> =
+  SubmitOptions<T> & {
+    /**
+     * Callback invoked when job status changes during polling.
+     * Receives the full job status response object.
+     *
+     * @deprecated Use `onProgress` instead. This will be removed in a future version.
+     */
+    onStatusChange?: (job: JobStatusResponse) => void;
+    /**
+     * Callback invoked when job status changes during polling.
+     * Receives the full job status response object.
+     */
+    onProgress?: (job: JobStatusResponse) => void;
+  };

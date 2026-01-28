@@ -1211,7 +1211,7 @@ describe("New Unified API", () => {
         onStatusChange: (job) => {
           statusUpdates.push({ job_id: job.job_id, status: job.status });
         },
-      } as any);
+      });
 
       expect(result.status).toBe("completed");
       expect(statusUpdates.length).toBeGreaterThan(0);

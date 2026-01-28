@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { createProcessClient } from "./process/client";
 import { createQueueClient } from "./queue/client";
+import type { QueueJobResult } from "./queue/types";
 import { createRealTimeClient } from "./realtime/client";
+import type { VideoModelDefinition } from "./shared/model";
+import type { SubmitAndWaitOptions } from "./shared/unified-types";
 import { createTokensClient } from "./tokens/client";
 import { readEnv } from "./utils/env";
 import { createInvalidApiKeyError, createInvalidBaseUrlError } from "./utils/errors";
@@ -192,11 +195,13 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
   const submit = queue.submit;
 
   // Create unified submitAndWait method (new API)
-  const submitAndWait: typeof queue.submitAndPoll = async (options) => {
+  const submitAndWait = async <T extends VideoModelDefinition>(
+    options: SubmitAndWaitOptions<T>,
+  ): Promise<QueueJobResult> => {
     // Support both onProgress (new) and onStatusChange (deprecated)
-    const { onStatusChange, onProgress, ...rest } = options as any;
+    const { onStatusChange, onProgress, ...rest } = options;
     const callback = onProgress || onStatusChange;
-    return queue.submitAndPoll({ ...rest, onStatusChange: callback } as any);
+    return queue.submitAndPoll({ ...rest, onStatusChange: callback });
   };
 
   // Create unified getJobStatus method (new API)
