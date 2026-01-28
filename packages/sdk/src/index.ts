@@ -20,13 +20,6 @@ export type {
   QueueSubmitAndPollOptions,
   QueueSubmitOptions,
 } from "./queue/types";
-// New unified types
-export type {
-  GenerateOptions,
-  SubmitOptions,
-  SubmitAndWaitOptions,
-  GenerationCapableModelDefinition,
-} from "./shared/unified-types";
 export type {
   AvatarOptions,
   RealTimeClient,
@@ -47,6 +40,13 @@ export {
   type VideoModels,
 } from "./shared/model";
 export type { ModelState } from "./shared/types";
+// New unified types
+export type {
+  GenerateOptions,
+  GenerationCapableModelDefinition,
+  SubmitAndWaitOptions,
+  SubmitOptions,
+} from "./shared/unified-types";
 export type { CreateTokenResponse, TokensClient } from "./tokens/client";
 export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
 

@@ -1,6 +1,6 @@
 import "dotenv/config";
-import express from "express";
 import { createDecartClient, models } from "@decartai/sdk";
+import express from "express";
 
 const app = express();
 app.use(express.json());

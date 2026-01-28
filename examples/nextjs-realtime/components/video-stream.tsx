@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  createDecartClient,
-  type DecartSDKError,
-  models,
-  type RealTimeClient,
-} from "@decartai/sdk";
+import { createDecartClient, type DecartSDKError, models, type RealTimeClient } from "@decartai/sdk";
 import { useEffect, useRef, useState } from "react";
 
 interface VideoStreamProps {
@@ -88,7 +83,7 @@ export function VideoStream({ prompt }: VideoStreamProps) {
       mounted = false;
       realtimeClientRef.current?.disconnect();
     };
-  }, []);
+  }, [prompt]);
 
   // Update prompt when it changes
   useEffect(() => {
