@@ -25,8 +25,7 @@ export type {
   GenerateOptions,
   SubmitOptions,
   SubmitAndWaitOptions,
-  SyncCapableModelDefinition,
-  AsyncCapableModelDefinition,
+  GenerationCapableModelDefinition,
 } from "./shared/unified-types";
 export type {
   AvatarOptions,
@@ -186,10 +185,8 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     integration,
   });
 
-  // Create unified generate method (new API)
-  const generate: typeof process = async (options) => {
-    return process(options);
-  };
+  // Create unified generate method (new API) - direct assignment like other aliases
+  const generate = process;
 
   // Create unified submit method (new API)
   const submit = queue.submit;

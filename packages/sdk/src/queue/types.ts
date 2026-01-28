@@ -1,5 +1,6 @@
 import type { FileInput, InferModelInputs, ModelSpecificInputs, ProcessInputs } from "../process/types";
 import type { ModelDefinition, VideoModelDefinition } from "../shared/model";
+import type { MergeDocumentedFields } from "../shared/type-helpers";
 
 /**
  * Job status values returned by the queue API.
@@ -44,13 +45,6 @@ interface QueueInputs extends ProcessInputs {
 
 type ModelSpecificQueueInputs<T extends ModelDefinition> = QueueInputs & ModelSpecificInputs<T>;
 
-type PickDocumentedInputs<T extends ModelDefinition> = Pick<
-  ModelSpecificQueueInputs<T>,
-  keyof ModelSpecificQueueInputs<T> & keyof InferModelInputs<T>
->;
-
-type MergeDocumentedInputs<T extends ModelDefinition> = PickDocumentedInputs<T> & InferModelInputs<T>;
-
 /**
  * Options for queue.submit() - submit a job for async processing.
  * Only video models support the queue API.
@@ -64,7 +58,7 @@ export type QueueSubmitOptions<T extends VideoModelDefinition = VideoModelDefini
    * Optional `AbortSignal` for canceling the request.
    */
   signal?: AbortSignal;
-} & MergeDocumentedInputs<T>;
+} & MergeDocumentedFields<ModelSpecificQueueInputs<T>, InferModelInputs<T>>;
 
 /**
  * Options for queue.submitAndPoll() - submit and wait for completion.
