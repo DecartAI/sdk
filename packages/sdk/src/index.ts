@@ -50,6 +50,7 @@ const decartClientOptionsSchema = z
     baseUrl: z.url().optional(),
     proxy: proxySchema.optional(),
     integration: z.string().optional(),
+    queryParams: z.any().optional(),
   })
   .refine(
     (data) => {
@@ -72,12 +73,16 @@ export type DecartClientOptions =
       apiKey?: never;
       baseUrl?: string;
       integration?: string;
+      /** Additional query parameters to append to the WebSocket connection URL */
+      queryParams?: Record<string, string>;
     }
   | {
       proxy?: never;
       apiKey?: string;
       baseUrl?: string;
       integration?: string;
+      /** Additional query parameters to append to the WebSocket connection URL */
+      queryParams?: Record<string, string>;
     };
 
 /**
@@ -145,7 +150,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
   } else {
     baseUrl = parsedOptions.data.baseUrl || "https://api.decart.ai";
   }
-  const { integration } = parsedOptions.data;
+  const { integration, queryParams } = parsedOptions.data;
 
   // Realtime (WebRTC) always requires direct API access with API key
   // Proxy mode is only for HTTP endpoints (process, queue, tokens)
@@ -155,6 +160,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     baseUrl: wsBaseUrl,
     apiKey: apiKey || "",
     integration,
+    queryParams,
   });
 
   const process = createProcessClient({
