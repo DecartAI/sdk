@@ -26,6 +26,8 @@ export type RealTimeClientOptions = {
   baseUrl: string;
   apiKey: string;
   integration?: string;
+  /** Additional query parameters to append to the WebSocket connection URL */
+  queryParams?: Record<string, string>;
 };
 
 const realTimeClientInitialStateSchema = modelStateSchema;
@@ -90,7 +92,7 @@ export type RealTimeClient = {
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
-  const { baseUrl, apiKey, integration } = opts;
+  const { baseUrl, apiKey, integration, queryParams } = opts;
 
   const connect = async (
     stream: MediaStream | null,
@@ -141,8 +143,14 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         : undefined;
 
     const url = `${baseUrl}${options.model.urlPath}`;
+    // Build query string with api_key, model, and any additional query params
+    const urlParams = new URLSearchParams({
+      api_key: apiKey,
+      model: options.model.name,
+      ...(queryParams || {}),
+    });
     const webrtcManager = new WebRTCManager({
-      webrtcUrl: `${url}?api_key=${apiKey}&model=${options.model.name}`,
+      webrtcUrl: `${url}?${urlParams.toString()}`,
       apiKey,
       sessionId,
       fps: options.model.fps,
