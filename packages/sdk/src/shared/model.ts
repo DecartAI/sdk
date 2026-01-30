@@ -5,7 +5,7 @@ export const realtimeModels = z.union([
   z.literal("mirage"),
   z.literal("mirage_v2"),
   z.literal("lucy_v2v_720p_rt"),
-  z.literal("lucy_v2v_14b_rt"),
+  z.literal("lucy_2_rt"),
   z.literal("live_avatar"),
 ]);
 export const videoModels = z.union([
@@ -257,9 +257,9 @@ const _models = {
       height: 704,
       inputSchema: z.object({}),
     },
-    lucy_v2v_14b_rt: {
+    lucy_2_rt: {
       urlPath: "/v1/stream",
-      name: "lucy_v2v_14b_rt" as const,
+      name: "lucy_2_rt" as const,
       fps: 20,
       width: 1280,
       height: 720,
