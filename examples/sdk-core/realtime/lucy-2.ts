@@ -1,13 +1,13 @@
 /**
  * Browser-only example - requires WebRTC APIs
- * Lucy v2v 14B for realtime video editing with reference image support (better quality)
+ * Lucy 2 for realtime video editing with reference image support (better quality)
  * See examples/nextjs-realtime or examples/react-vite for runnable demos
  */
 
 import { createDecartClient, models } from "@decartai/sdk";
 
 async function main() {
-  const model = models.realtime("lucy_v2v_14b_rt");
+  const model = models.realtime("lucy_2_rt");
 
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: true,
