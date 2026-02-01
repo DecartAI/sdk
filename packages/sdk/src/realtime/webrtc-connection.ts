@@ -4,7 +4,9 @@ import type {
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
+  QueuePositionMessage,
   SetImageAckMessage,
+  StatusMessage,
   TurnConfig,
 } from "./types";
 
@@ -28,6 +30,8 @@ export type ConnectionState = "connecting" | "connected" | "disconnected";
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
   setImageAck: SetImageAckMessage;
+  status: StatusMessage;
+  queuePosition: QueuePositionMessage;
 };
 
 export class WebRTCConnection {
@@ -119,6 +123,16 @@ export class WebRTCConnection {
 
       if (msg.type === "prompt_ack") {
         this.websocketMessagesEmitter.emit("promptAck", msg);
+        return;
+      }
+
+      if (msg.type === "status") {
+        this.websocketMessagesEmitter.emit("status", msg);
+        return;
+      }
+
+      if (msg.type === "queue_position") {
+        this.websocketMessagesEmitter.emit("queuePosition", msg);
         return;
       }
 

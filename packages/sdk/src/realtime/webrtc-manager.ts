@@ -52,7 +52,7 @@ export class WebRTCManager {
   async connect(localStream: MediaStream): Promise<boolean> {
     return pRetry(
       async () => {
-        await this.connection.connect(this.config.webrtcUrl, localStream, 60000, this.config.integration);
+        await this.connection.connect(this.config.webrtcUrl, localStream, 300000, this.config.integration);
         return true;
       },
       {
