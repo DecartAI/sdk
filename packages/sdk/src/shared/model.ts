@@ -130,7 +130,6 @@ export const modelInputSchemas = {
     seed: z.number().optional().describe("The seed to use for the generation"),
     resolution: proV2vResolutionSchema,
     enhance_prompt: z.boolean().optional().describe("Whether to enhance the prompt"),
-    num_inference_steps: z.number().optional().describe("The number of inference steps"),
   }),
   "lucy-fast-v2v": z.object({
     prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),

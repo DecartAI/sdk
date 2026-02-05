@@ -130,7 +130,6 @@ describe("E2E Tests", { timeout: 120_000 }, () => {
         data: videoBlob,
         seed: 999,
         enhance_prompt: true,
-        num_inference_steps: 5,
       });
 
       expect(result.status).toBe("completed");
