@@ -1127,7 +1127,6 @@ describe("set()", () => {
     sendMessage: ReturnType<typeof vi.fn>;
   };
   let mockImageToBase64: ReturnType<typeof vi.fn>;
-  // biome-ignore lint/suspicious/noExplicitAny: testing with mock
   let methods: ReturnType<typeof import("../src/realtime/methods.js").realtimeMethods>;
 
   beforeEach(async () => {
