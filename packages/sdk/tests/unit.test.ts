@@ -1017,7 +1017,7 @@ describe("WebRTCConnection", () => {
       let rejected = false;
       let rejectionError: Error | null = null;
 
-      const promise = connection.sendSet({ type: "set", prompt: "test" }).catch((err) => {
+      const promise = connection.sendSet({ type: "set_input", prompt: "test" }).catch((err) => {
         rejected = true;
         rejectionError = err;
       });
@@ -1040,7 +1040,7 @@ describe("WebRTCConnection", () => {
       let rejected = false;
       let rejectionError: Error | null = null;
 
-      const promise = connection.sendSet({ type: "set", prompt: "test" }, customTimeout).catch((err) => {
+      const promise = connection.sendSet({ type: "set_input", prompt: "test" }, customTimeout).catch((err) => {
         rejected = true;
         rejectionError = err;
       });
@@ -1151,12 +1151,15 @@ describe("set()", () => {
 
   it("sends only prompt when no image provided", async () => {
     await methods.set({ prompt: "a cat" });
-    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set", prompt: "a cat" }, 30000);
+    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set_input", prompt: "a cat" }, 30000);
   });
 
   it("sends prompt with enhance flag", async () => {
     await methods.set({ prompt: "a cat", enhance: true });
-    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set", prompt: "a cat", enhance_prompt: true }, 30000);
+    expect(mockManager.sendSet).toHaveBeenCalledWith(
+      { type: "set_input", prompt: "a cat", enhance_prompt: true },
+      30000,
+    );
   });
 
   it("sends only image when no prompt provided", async () => {
@@ -1164,7 +1167,7 @@ describe("set()", () => {
     await methods.set({ image: "rawbase64data" });
 
     expect(mockImageToBase64).toHaveBeenCalledWith("rawbase64data");
-    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set", image_data: "convertedbase64" }, 30000);
+    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set_input", image_data: "convertedbase64" }, 30000);
   });
 
   it("sends prompt and image together", async () => {
@@ -1172,7 +1175,7 @@ describe("set()", () => {
     await methods.set({ prompt: "a cat", enhance: false, image: "rawbase64" });
 
     expect(mockManager.sendSet).toHaveBeenCalledWith(
-      { type: "set", prompt: "a cat", enhance_prompt: false, image_data: "convertedbase64" },
+      { type: "set_input", prompt: "a cat", enhance_prompt: false, image_data: "convertedbase64" },
       30000,
     );
   });
@@ -1183,14 +1186,14 @@ describe("set()", () => {
     await methods.set({ image: testBlob });
 
     expect(mockImageToBase64).toHaveBeenCalledWith(testBlob);
-    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set", image_data: "blobbase64" }, 30000);
+    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set_input", image_data: "blobbase64" }, 30000);
   });
 
   it("omits fields not provided from wire message", async () => {
     await methods.set({ prompt: "just a prompt" });
 
     const sentMessage = mockManager.sendSet.mock.calls[0][0];
-    expect(sentMessage).toEqual({ type: "set", prompt: "just a prompt" });
+    expect(sentMessage).toEqual({ type: "set_input", prompt: "just a prompt" });
     expect("image_data" in sentMessage).toBe(false);
     expect("enhance_prompt" in sentMessage).toBe(false);
   });

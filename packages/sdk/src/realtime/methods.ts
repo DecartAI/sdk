@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PromptAckMessage, SetMessage } from "./types";
+import type { PromptAckMessage, SetInputMessage } from "./types";
 import type { WebRTCManager } from "./webrtc-manager";
 
 const PROMPT_TIMEOUT_MS = 15 * 1000;
@@ -29,7 +29,7 @@ export const realtimeMethods = (
 
     const { prompt, enhance, image } = parsed.data;
 
-    const message: SetMessage = { type: "set" };
+    const message: SetInputMessage = { type: "set_input" };
 
     if (prompt !== undefined) {
       message.prompt = prompt;

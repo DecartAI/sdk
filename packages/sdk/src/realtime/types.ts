@@ -60,15 +60,15 @@ export type SetImageAckMessage = {
   error: null | string;
 };
 
-export type SetMessage = {
-  type: "set";
+export type SetInputMessage = {
+  type: "set_input";
   prompt?: string;
   enhance_prompt?: boolean;
   image_data?: string;
 };
 
-export type SetAckMessage = {
-  type: "set_ack";
+export type SetInputAckMessage = {
+  type: "set_input_ack";
   success: boolean;
   error: null | string;
 };
@@ -83,7 +83,7 @@ export type IncomingWebRTCMessage =
   | PromptAckMessage
   | ErrorMessage
   | SetImageAckMessage
-  | SetAckMessage;
+  | SetInputAckMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =
@@ -92,6 +92,6 @@ export type OutgoingWebRTCMessage =
   | IceCandidateMessage
   | PromptMessage
   | SetAvatarImageMessage
-  | SetMessage;
+  | SetInputMessage;
 
-export type OutgoingMessage = PromptMessage | SetAvatarImageMessage | SetMessage;
+export type OutgoingMessage = PromptMessage | SetAvatarImageMessage | SetInputMessage;
