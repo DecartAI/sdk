@@ -8,7 +8,7 @@ const UPDATE_TIMEOUT_MS = 30 * 1000;
 const setInputSchema = z
   .object({
     prompt: z.string().min(1).optional(),
-    enhance: z.boolean().optional(),
+    enhance: z.boolean().optional().default(true),
     image: z.union([z.instanceof(Blob), z.instanceof(File), z.string(), z.null()]).optional(),
   })
   .refine((data) => data.prompt !== undefined || data.image !== undefined, {

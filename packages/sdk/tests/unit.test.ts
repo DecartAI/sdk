@@ -1096,7 +1096,7 @@ describe("set()", () => {
 
   it("sends only prompt when no image provided", async () => {
     await methods.set({ prompt: "a cat" });
-    expect(mockManager.setImage).toHaveBeenCalledWith(null, { prompt: "a cat", enhance: undefined, timeout: 30000 });
+    expect(mockManager.setImage).toHaveBeenCalledWith(null, { prompt: "a cat", enhance: true, timeout: 30000 });
   });
 
   it("sends prompt with enhance flag", async () => {
@@ -1111,7 +1111,7 @@ describe("set()", () => {
     expect(mockImageToBase64).toHaveBeenCalledWith("rawbase64data");
     expect(mockManager.setImage).toHaveBeenCalledWith("convertedbase64", {
       prompt: undefined,
-      enhance: undefined,
+      enhance: true,
       timeout: 30000,
     });
   });
@@ -1135,7 +1135,7 @@ describe("set()", () => {
     expect(mockImageToBase64).toHaveBeenCalledWith(testBlob);
     expect(mockManager.setImage).toHaveBeenCalledWith("blobbase64", {
       prompt: undefined,
-      enhance: undefined,
+      enhance: true,
       timeout: 30000,
     });
   });
