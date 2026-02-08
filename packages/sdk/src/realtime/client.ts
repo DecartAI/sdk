@@ -13,6 +13,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
     const reader = new FileReader();
     reader.onloadend = () => {
       const result = reader.result as string;
+      // Remove data URL prefix (e.g., "data:image/png;base64,")
       const base64 = result.split(",")[1];
       resolve(base64);
     };
@@ -92,6 +93,7 @@ export type RealTimeClient = {
     image: Blob | File | string | null,
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
   ) => Promise<void>;
+  // live_avatar audio method (only available when model is live_avatar and no stream is provided)
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
 };
 

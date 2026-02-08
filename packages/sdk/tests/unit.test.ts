@@ -1000,8 +1000,6 @@ describe("WebRTCConnection", () => {
       expect(rejectionError?.message).toBe("Image send timed out");
     });
   });
-
-
 });
 
 describe("live_avatar Model", () => {

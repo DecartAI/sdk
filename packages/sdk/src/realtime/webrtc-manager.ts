@@ -99,5 +99,4 @@ export class WebRTCManager {
   ): Promise<void> {
     return this.connection.setImageBase64(imageBase64, options);
   }
-
 }
