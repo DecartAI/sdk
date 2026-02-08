@@ -52,7 +52,8 @@ export class WebRTCManager {
   async connect(localStream: MediaStream): Promise<boolean> {
     return pRetry(
       async () => {
-        await this.connection.connect(this.config.webrtcUrl, localStream, 60000, this.config.integration);
+        const TIMEOUT = 60_000 * 5; // 5 minutes
+        await this.connection.connect(this.config.webrtcUrl, localStream, TIMEOUT, this.config.integration);
         return true;
       },
       {

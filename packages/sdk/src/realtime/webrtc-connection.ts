@@ -9,7 +9,7 @@ import type {
 } from "./types";
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
-const AVATAR_SETUP_TIMEOUT_MS = 15000;
+const AVATAR_SETUP_TIMEOUT_MS = 30_000; // 30 seconds
 
 interface ConnectionCallbacks {
   onRemoteStream?: (stream: MediaStream) => void;
@@ -39,7 +39,7 @@ export class WebRTCConnection {
   websocketMessagesEmitter = mitt<WsMessageEvents>();
   constructor(private callbacks: ConnectionCallbacks = {}) {}
 
-  async connect(url: string, localStream: MediaStream, timeout = 60000, integration?: string): Promise<void> {
+  async connect(url: string, localStream: MediaStream, timeout: number, integration?: string): Promise<void> {
     const deadline = Date.now() + timeout;
     this.localStream = localStream;
 

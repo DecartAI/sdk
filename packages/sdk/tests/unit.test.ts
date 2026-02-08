@@ -978,7 +978,7 @@ describe("WebRTCConnection", () => {
       expect(rejectionError?.message).toBe("Image send timed out");
     });
 
-    it("uses default timeout (15000ms) when not provided", async () => {
+    it("uses default timeout (30000ms) when not provided", async () => {
       const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
       const connection = new WebRTCConnection();
 
@@ -990,8 +990,8 @@ describe("WebRTCConnection", () => {
         rejectionError = err;
       });
 
-      // Advance to just before the default timeout (15000ms) - should not reject yet
-      await vi.advanceTimersByTimeAsync(14999);
+      // Advance to just before the default timeout (30000ms) - should not reject yet
+      await vi.advanceTimersByTimeAsync(29999);
       expect(rejected).toBe(false);
 
       // Now advance past the default timeout
