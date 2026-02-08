@@ -1000,6 +1000,61 @@ describe("WebRTCConnection", () => {
       expect(rejectionError?.message).toBe("Image send timed out");
     });
   });
+
+  describe("sendSet", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("times out with default timeout when no ack received", async () => {
+      const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+      const connection = new WebRTCConnection();
+
+      let rejected = false;
+      let rejectionError: Error | null = null;
+
+      const promise = connection.sendSet({ type: "set_image", prompt: "test" }).catch((err) => {
+        rejected = true;
+        rejectionError = err;
+      });
+
+      await vi.advanceTimersByTimeAsync(29999);
+      expect(rejected).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(2);
+      await promise;
+
+      expect(rejected).toBe(true);
+      expect(rejectionError?.message).toBe("Set timed out");
+    });
+
+    it("uses custom timeout when provided", async () => {
+      const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+      const connection = new WebRTCConnection();
+
+      const customTimeout = 5000;
+      let rejected = false;
+      let rejectionError: Error | null = null;
+
+      const promise = connection.sendSet({ type: "set_image", prompt: "test" }, customTimeout).catch((err) => {
+        rejected = true;
+        rejectionError = err;
+      });
+
+      await vi.advanceTimersByTimeAsync(customTimeout - 1);
+      expect(rejected).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(2);
+      await promise;
+
+      expect(rejected).toBe(true);
+      expect(rejectionError?.message).toBe("Set timed out");
+    });
+  });
 });
 
 describe("live_avatar Model", () => {
@@ -1062,5 +1117,84 @@ describe("live_avatar Model", () => {
       expect(failureMessage.success).toBe(false);
       expect(failureMessage.error).toBe("invalid image");
     });
+  });
+});
+
+describe("set()", () => {
+  let mockManager: {
+    sendSet: ReturnType<typeof vi.fn>;
+    getWebsocketMessageEmitter: ReturnType<typeof vi.fn>;
+    sendMessage: ReturnType<typeof vi.fn>;
+  };
+  let mockImageToBase64: ReturnType<typeof vi.fn>;
+  let methods: ReturnType<typeof import("../src/realtime/methods.js").realtimeMethods>;
+
+  beforeEach(async () => {
+    const { realtimeMethods } = await import("../src/realtime/methods.js");
+    mockManager = {
+      sendSet: vi.fn().mockResolvedValue(undefined),
+      getWebsocketMessageEmitter: vi.fn(),
+      sendMessage: vi.fn(),
+    };
+    mockImageToBase64 = vi.fn().mockResolvedValue("base64data");
+    // biome-ignore lint/suspicious/noExplicitAny: testing with mock
+    methods = realtimeMethods(mockManager as any, mockImageToBase64);
+  });
+
+  it("rejects when neither prompt nor image is provided", async () => {
+    await expect(methods.set({})).rejects.toThrow("At least one of 'prompt' or 'image' must be provided");
+  });
+
+  it("rejects when prompt is empty string", async () => {
+    await expect(methods.set({ prompt: "" })).rejects.toThrow();
+  });
+
+  it("sends only prompt when no image provided", async () => {
+    await methods.set({ prompt: "a cat" });
+    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set_image", prompt: "a cat" }, 30000);
+  });
+
+  it("sends prompt with enhance flag", async () => {
+    await methods.set({ prompt: "a cat", enhance: true });
+    expect(mockManager.sendSet).toHaveBeenCalledWith(
+      { type: "set_image", prompt: "a cat", enhance_prompt: true },
+      30000,
+    );
+  });
+
+  it("sends only image when no prompt provided", async () => {
+    mockImageToBase64.mockResolvedValue("convertedbase64");
+    await methods.set({ image: "rawbase64data" });
+
+    expect(mockImageToBase64).toHaveBeenCalledWith("rawbase64data");
+    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set_image", image_data: "convertedbase64" }, 30000);
+  });
+
+  it("sends prompt and image together", async () => {
+    mockImageToBase64.mockResolvedValue("convertedbase64");
+    await methods.set({ prompt: "a cat", enhance: false, image: "rawbase64" });
+
+    expect(mockManager.sendSet).toHaveBeenCalledWith(
+      { type: "set_image", prompt: "a cat", enhance_prompt: false, image_data: "convertedbase64" },
+      30000,
+    );
+  });
+
+  it("converts Blob image to base64", async () => {
+    mockImageToBase64.mockResolvedValue("blobbase64");
+    const testBlob = new Blob(["test-image"], { type: "image/png" });
+    await methods.set({ image: testBlob });
+
+    expect(mockImageToBase64).toHaveBeenCalledWith(testBlob);
+    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set_image", image_data: "blobbase64" }, 30000);
+  });
+
+  it("omits fields not provided from wire message", async () => {
+    await methods.set({ prompt: "just a prompt" });
+
+    const sentMessage = mockManager.sendSet.mock.calls[0][0];
+    expect(sentMessage).toEqual({ type: "set_image", prompt: "just a prompt" });
+    expect("image_data" in sentMessage).toBe(false);
+    expect("enhance_prompt" in sentMessage).toBe(false);
   });
 });

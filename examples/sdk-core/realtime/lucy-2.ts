@@ -1,6 +1,6 @@
 /**
  * Browser-only example - requires WebRTC APIs
- * Lucy 2 for realtime video editing with reference image support (better quality)
+ * Lucy 2 for realtime video editing with reference image + prompt support
  * See examples/nextjs-realtime or examples/react-vite for runnable demos
  */
 
@@ -36,9 +36,28 @@ async function main() {
     },
   });
 
-  // Apply different edits
+  // set() replaces the full state — prompt + image atomically in a single message
+  await realtimeClient.set({
+    prompt: "A person wearing a superhero costume",
+    enhance: true,
+    image: "https://example.com/superhero-reference.png",
+  });
+
+  // Prompt-only set() clears the reference image (replace semantics).
+  // Use setPrompt() to update the prompt without affecting the image.
+  await realtimeClient.set({ prompt: "Add sunglasses to the person" });
+
+  // Accepts File, Blob, base64 string, or URL
+  const fileInput = document.getElementById("image-upload") as HTMLInputElement;
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files?.[0];
+    if (file) {
+      await realtimeClient.set({ image: file });
+    }
+  });
+
+  // setPrompt() as syntactic sugar for set() with prompt only
   realtimeClient.setPrompt("Change the person's shirt to red");
-  realtimeClient.setPrompt("Add sunglasses to the person");
 
   console.log("Session ID:", realtimeClient.sessionId);
 }

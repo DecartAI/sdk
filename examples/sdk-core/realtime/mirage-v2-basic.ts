@@ -38,8 +38,8 @@ async function main() {
   });
 
   // Change styles dynamically
-  realtimeClient.setPrompt("Cyberpunk city");
-  realtimeClient.setPrompt("Oil painting, renaissance style");
+  await realtimeClient.set({ prompt: "Cyberpunk city" });
+  await realtimeClient.set({ prompt: "Oil painting, renaissance style" });
 
   console.log("Session ID:", realtimeClient.sessionId);
   console.log("Connected:", realtimeClient.isConnected());

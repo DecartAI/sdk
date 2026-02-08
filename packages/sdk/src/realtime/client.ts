@@ -5,7 +5,7 @@ import { modelDefinitionSchema } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { createWebrtcError, type DecartSDKError } from "../utils/errors";
 import { AudioStreamManager } from "./audio-stream-manager";
-import { realtimeMethods } from "./methods";
+import { realtimeMethods, type SetInput } from "./methods";
 import { WebRTCManager } from "./webrtc-manager";
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -13,13 +13,34 @@ async function blobToBase64(blob: Blob): Promise<string> {
     const reader = new FileReader();
     reader.onloadend = () => {
       const result = reader.result as string;
-      // Remove data URL prefix (e.g., "data:image/png;base64,")
       const base64 = result.split(",")[1];
       resolve(base64);
     };
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+async function imageToBase64(image: Blob | File | string): Promise<string> {
+  if (typeof image === "string") {
+    let url: URL | null = null;
+    try {
+      url = new URL(image);
+    } catch {
+      // Not a valid URL, treat as raw base64
+    }
+
+    if (url?.protocol === "data:") {
+      return image.split(",")[1];
+    }
+    if (url?.protocol === "http:" || url?.protocol === "https:") {
+      const response = await fetch(image);
+      const imageBlob = await response.blob();
+      return blobToBase64(imageBlob);
+    }
+    return image;
+  }
+  return blobToBase64(image);
 }
 
 export type RealTimeClientOptions = {
@@ -59,6 +80,7 @@ export type Events = {
 };
 
 export type RealTimeClient = {
+  set: (input: SetInput) => Promise<void>;
   setPrompt: (prompt: string, { enhance }?: { enhance?: boolean }) => Promise<void>;
   isConnected: () => boolean;
   getConnectionState: () => "connected" | "connecting" | "disconnected";
@@ -70,7 +92,6 @@ export type RealTimeClient = {
     image: Blob | File | string | null,
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
   ) => Promise<void>;
-  // live_avatar audio method (only available when model is live_avatar and no stream is provided)
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
 };
 
@@ -151,7 +172,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
     await webrtcManager.connect(inputStream);
 
-    const methods = realtimeMethods(webrtcManager);
+    const methods = realtimeMethods(webrtcManager, imageToBase64);
 
     // For non-live_avatar models: send initial prompt after connection is established
     if (!isAvatarLive && options.initialState?.prompt) {
@@ -160,6 +181,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     }
 
     const client: RealTimeClient = {
+      set: methods.set,
       setPrompt: methods.setPrompt,
       isConnected: () => webrtcManager.isConnected(),
       getConnectionState: () => webrtcManager.getConnectionState(),
@@ -177,29 +199,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         if (image === null) {
           return webrtcManager.setImage(null, options);
         }
-
-        let imageBase64: string;
-        if (typeof image === "string") {
-          let url: URL | null = null;
-          try {
-            url = new URL(image);
-          } catch {
-            // Not a valid URL, treat as raw base64
-          }
-
-          if (url?.protocol === "data:") {
-            imageBase64 = image.split(",")[1];
-          } else if (url?.protocol === "http:" || url?.protocol === "https:") {
-            const response = await fetch(image);
-            const imageBlob = await response.blob();
-            imageBase64 = await blobToBase64(imageBlob);
-          } else {
-            imageBase64 = image;
-          }
-        } else {
-          imageBase64 = await blobToBase64(image);
-        }
-        return webrtcManager.setImage(imageBase64, options);
+        const base64 = await imageToBase64(image);
+        return webrtcManager.setImage(base64, options);
       },
     };
 

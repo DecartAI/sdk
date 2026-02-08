@@ -37,8 +37,8 @@ async function main() {
   });
 
   // Apply different edits
-  realtimeClient.setPrompt("Change the person's shirt to red");
-  realtimeClient.setPrompt("Add sunglasses to the person");
+  await realtimeClient.set({ prompt: "Change the person's shirt to red" });
+  await realtimeClient.set({ prompt: "Add sunglasses to the person" });
 
   console.log("Session ID:", realtimeClient.sessionId);
 }

@@ -246,6 +246,28 @@ export class WebRTCConnection {
     });
   }
 
+  async sendSet(message: OutgoingWebRTCMessage, timeout = AVATAR_SETUP_TIMEOUT_MS): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.websocketMessagesEmitter.off("setImageAck", listener);
+        reject(new Error("Set timed out"));
+      }, timeout);
+
+      const listener = (msg: SetImageAckMessage) => {
+        clearTimeout(timeoutId);
+        this.websocketMessagesEmitter.off("setImageAck", listener);
+        if (msg.success) {
+          resolve();
+        } else {
+          reject(new Error(msg.error ?? "Set failed"));
+        }
+      };
+
+      this.websocketMessagesEmitter.on("setImageAck", listener);
+      this.send(message);
+    });
+  }
+
   private setState(state: ConnectionState): void {
     if (this.state !== state) {
       this.state = state;

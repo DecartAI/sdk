@@ -2,9 +2,50 @@ import { z } from "zod";
 import type { PromptAckMessage } from "./types";
 import type { WebRTCManager } from "./webrtc-manager";
 
-const PROMPT_TIMEOUT_MS = 15 * 1000; // 15 seconds
+const PROMPT_TIMEOUT_MS = 15 * 1000;
+const UPDATE_TIMEOUT_MS = 30 * 1000;
 
-export const realtimeMethods = (webrtcManager: WebRTCManager) => {
+const setInputSchema = z
+  .object({
+    prompt: z.string().min(1).optional(),
+    enhance: z.boolean().optional(),
+    image: z.union([z.instanceof(Blob), z.instanceof(File), z.string(), z.null()]).optional(),
+  })
+  .refine((data) => data.prompt !== undefined || data.image !== undefined, {
+    message: "At least one of 'prompt' or 'image' must be provided",
+  });
+
+export type SetInput = z.input<typeof setInputSchema>;
+
+export const realtimeMethods = (
+  webrtcManager: WebRTCManager,
+  imageToBase64: (image: Blob | File | string) => Promise<string>,
+) => {
+  const set = async (input: SetInput): Promise<void> => {
+    const parsed = setInputSchema.safeParse(input);
+    if (!parsed.success) {
+      throw parsed.error;
+    }
+
+    const { prompt, enhance, image } = parsed.data;
+
+    const message: { type: "set_image"; prompt?: string; enhance_prompt?: boolean; image_data?: string | null } = {
+      type: "set_image",
+    };
+
+    if (prompt !== undefined) {
+      message.prompt = prompt;
+    }
+    if (enhance !== undefined) {
+      message.enhance_prompt = enhance;
+    }
+    if (image !== undefined && image !== null) {
+      message.image_data = await imageToBase64(image);
+    }
+
+    await webrtcManager.sendSet(message, UPDATE_TIMEOUT_MS);
+  };
+
   const setPrompt = async (prompt: string, { enhance }: { enhance?: boolean } = {}): Promise<void> => {
     const schema = z.object({
       prompt: z.string().min(1),
@@ -25,7 +66,6 @@ export const realtimeMethods = (webrtcManager: WebRTCManager) => {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     try {
-      // Set up the acknowledgment promise with listener
       const ackPromise = new Promise<void>((resolve, reject) => {
         promptAckListener = (promptAckMessage: PromptAckMessage) => {
           if (promptAckMessage.prompt === parsedInput.data.prompt) {
@@ -39,19 +79,16 @@ export const realtimeMethods = (webrtcManager: WebRTCManager) => {
         emitter.on("promptAck", promptAckListener);
       });
 
-      // Send the message first
       webrtcManager.sendMessage({
         type: "prompt",
         prompt: parsedInput.data.prompt,
         enhance_prompt: parsedInput.data.enhance,
       });
 
-      // Start the timeout after sending
       const timeoutPromise = new Promise<void>((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error("Prompt timed out")), PROMPT_TIMEOUT_MS);
       });
 
-      // Race between acknowledgment and timeout
       await Promise.race([ackPromise, timeoutPromise]);
     } finally {
       if (promptAckListener) {
@@ -64,6 +101,7 @@ export const realtimeMethods = (webrtcManager: WebRTCManager) => {
   };
 
   return {
+    set,
     setPrompt,
   };
 };

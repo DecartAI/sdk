@@ -32,18 +32,23 @@ async function main() {
     },
   });
 
-  // Update prompt from UI input (fire-and-forget)
+  // setPrompt() to update the prompt
   const promptInput = document.getElementById("prompt") as HTMLInputElement;
   promptInput.addEventListener("input", () => {
     realtimeClient.setPrompt(promptInput.value);
   });
 
-  // Update with pre-enhanced prompt (skip server enhancement)
-  realtimeClient.setPrompt("A very detailed and specific prompt that is already well-crafted", { enhance: false });
+  // Skip server-side prompt enhancement
+  await realtimeClient.setPrompt("A very detailed and specific prompt that is already well-crafted", {
+    enhance: false,
+  });
 
-  // Update and wait for acknowledgment
+  // setPrompt() returns a promise that resolves on server acknowledgment
   await realtimeClient.setPrompt("cyberpunk city");
   console.log("Prompt updated and acknowledged");
+
+  // set() replaces full state — use when updating both prompt and image atomically
+  await realtimeClient.set({ prompt: "cyberpunk city", image: "base64string" });
 }
 
 main();
