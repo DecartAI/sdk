@@ -37,13 +37,8 @@ export const realtimeMethods = (
     if (enhance !== undefined) {
       message.enhance_prompt = enhance;
     }
-
-    if (image !== undefined) {
-      if (image === null) {
-        message.image_data = null;
-      } else {
-        message.image_data = await imageToBase64(image);
-      }
+    if (image !== undefined && image !== null) {
+      message.image_data = await imageToBase64(image);
     }
 
     await webrtcManager.sendSet(message, UPDATE_TIMEOUT_MS);

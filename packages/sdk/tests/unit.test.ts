@@ -1149,7 +1149,7 @@ describe("set()", () => {
     await expect(methods.set({ prompt: "" })).rejects.toThrow();
   });
 
-  it("sends prompt only", async () => {
+  it("sends only prompt when no image provided", async () => {
     await methods.set({ prompt: "a cat" });
     expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set", prompt: "a cat" }, 30000);
   });
@@ -1159,19 +1159,12 @@ describe("set()", () => {
     expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set", prompt: "a cat", enhance_prompt: true }, 30000);
   });
 
-  it("converts and sends image as base64 string", async () => {
+  it("sends only image when no prompt provided", async () => {
     mockImageToBase64.mockResolvedValue("convertedbase64");
     await methods.set({ image: "rawbase64data" });
 
     expect(mockImageToBase64).toHaveBeenCalledWith("rawbase64data");
     expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set", image_data: "convertedbase64" }, 30000);
-  });
-
-  it("sends null image_data to clear reference", async () => {
-    await methods.set({ image: null });
-
-    expect(mockImageToBase64).not.toHaveBeenCalled();
-    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set", image_data: null }, 30000);
   });
 
   it("sends prompt and image together", async () => {
@@ -1193,7 +1186,7 @@ describe("set()", () => {
     expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set", image_data: "blobbase64" }, 30000);
   });
 
-  it("omits unset fields from wire message", async () => {
+  it("omits fields not provided from wire message", async () => {
     await methods.set({ prompt: "just a prompt" });
 
     const sentMessage = mockManager.sendSet.mock.calls[0][0];

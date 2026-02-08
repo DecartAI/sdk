@@ -65,7 +65,7 @@ export type SetMessage = {
   type: "set";
   prompt?: string;
   enhance_prompt?: boolean;
-  image_data?: string | null;
+  image_data?: string;
 };
 
 export type SetAckMessage = {
