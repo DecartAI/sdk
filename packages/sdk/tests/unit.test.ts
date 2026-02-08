@@ -1151,13 +1151,13 @@ describe("set()", () => {
 
   it("sends only prompt when no image provided", async () => {
     await methods.set({ prompt: "a cat" });
-    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set_image", prompt: "a cat" }, 30000);
+    expect(mockManager.sendSet).toHaveBeenCalledWith({ type: "set_image", image_data: null, prompt: "a cat" }, 30000);
   });
 
   it("sends prompt with enhance flag", async () => {
     await methods.set({ prompt: "a cat", enhance: true });
     expect(mockManager.sendSet).toHaveBeenCalledWith(
-      { type: "set_image", prompt: "a cat", enhance_prompt: true },
+      { type: "set_image", image_data: null, prompt: "a cat", enhance_prompt: true },
       30000,
     );
   });
@@ -1193,8 +1193,7 @@ describe("set()", () => {
     await methods.set({ prompt: "just a prompt" });
 
     const sentMessage = mockManager.sendSet.mock.calls[0][0];
-    expect(sentMessage).toEqual({ type: "set_image", prompt: "just a prompt" });
-    expect("image_data" in sentMessage).toBe(false);
+    expect(sentMessage).toEqual({ type: "set_image", image_data: null, prompt: "just a prompt" });
     expect("enhance_prompt" in sentMessage).toBe(false);
   });
 });

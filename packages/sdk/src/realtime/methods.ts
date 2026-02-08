@@ -29,8 +29,9 @@ export const realtimeMethods = (
 
     const { prompt, enhance, image } = parsed.data;
 
-    const message: { type: "set_image"; prompt?: string; enhance_prompt?: boolean; image_data?: string | null } = {
+    const message: { type: "set_image"; image_data: string | null; prompt?: string; enhance_prompt?: boolean } = {
       type: "set_image",
+      image_data: null,
     };
 
     if (prompt !== undefined) {
