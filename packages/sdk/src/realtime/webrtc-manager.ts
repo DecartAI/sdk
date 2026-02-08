@@ -1,6 +1,6 @@
 import pRetry from "p-retry";
 import type { RealTimeClientInitialState } from "./client";
-import type { OutgoingMessage, OutgoingWebRTCMessage } from "./types";
+import type { OutgoingMessage } from "./types";
 import { WebRTCConnection } from "./webrtc-connection";
 
 export interface WebRTCConfig {
@@ -100,7 +100,4 @@ export class WebRTCManager {
     return this.connection.setImageBase64(imageBase64, options);
   }
 
-  sendSet(message: OutgoingWebRTCMessage, timeout?: number): Promise<void> {
-    return this.connection.sendSet(message, timeout);
-  }
 }
