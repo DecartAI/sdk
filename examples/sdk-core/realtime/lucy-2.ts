@@ -43,8 +43,7 @@ async function main() {
     image: "https://example.com/superhero-reference.png",
   });
 
-  // Prompt-only set() clears the reference image (replace semantics).
-  // Use setPrompt() to update the prompt without affecting the image.
+  // Prompt-only set() clears the reference image.
   await realtimeClient.set({ prompt: "Add sunglasses to the person" });
 
   // Accepts File, Blob, base64 string, or URL
