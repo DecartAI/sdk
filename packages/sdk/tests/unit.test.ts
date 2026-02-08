@@ -1121,7 +1121,11 @@ describe("live_avatar Model", () => {
 });
 
 describe("set()", () => {
-  let mockManager: { sendSet: ReturnType<typeof vi.fn>; getWebsocketMessageEmitter: ReturnType<typeof vi.fn>; sendMessage: ReturnType<typeof vi.fn> };
+  let mockManager: {
+    sendSet: ReturnType<typeof vi.fn>;
+    getWebsocketMessageEmitter: ReturnType<typeof vi.fn>;
+    sendMessage: ReturnType<typeof vi.fn>;
+  };
   let mockImageToBase64: ReturnType<typeof vi.fn>;
   // biome-ignore lint/suspicious/noExplicitAny: testing with mock
   let methods: ReturnType<typeof import("../src/realtime/methods.js").realtimeMethods>;
