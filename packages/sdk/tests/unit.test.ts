@@ -325,14 +325,12 @@ describe("Queue API", () => {
         prompt: "Make it artistic",
         data: testBlob,
         enhance_prompt: true,
-        num_inference_steps: 50,
       });
 
       expect(result.job_id).toBe("job_v2v");
       expect(result.status).toBe("pending");
       expect(lastFormData?.get("prompt")).toBe("Make it artistic");
       expect(lastFormData?.get("enhance_prompt")).toBe("true");
-      expect(lastFormData?.get("num_inference_steps")).toBe("50");
 
       const dataFile = lastFormData?.get("data") as File;
       expect(dataFile).toBeInstanceOf(File);

@@ -184,12 +184,6 @@ export interface ProcessInputs {
    * @default true
    */
   enhance_prompt?: boolean;
-  /**
-   * The number of inference steps.
-   *
-   * @default 50
-   */
-  num_inference_steps?: number;
 }
 
 /**
