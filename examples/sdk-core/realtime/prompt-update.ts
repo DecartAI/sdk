@@ -32,18 +32,24 @@ async function main() {
     },
   });
 
-  // Update prompt from UI input (fire-and-forget)
+  // Use set() to update prompt from UI input
   const promptInput = document.getElementById("prompt") as HTMLInputElement;
   promptInput.addEventListener("input", () => {
-    realtimeClient.setPrompt(promptInput.value);
+    realtimeClient.set({ prompt: promptInput.value });
   });
 
-  // Update with pre-enhanced prompt (skip server enhancement)
-  realtimeClient.setPrompt("A very detailed and specific prompt that is already well-crafted", { enhance: false });
+  // Skip server-side prompt enhancement
+  await realtimeClient.set({
+    prompt: "A very detailed and specific prompt that is already well-crafted",
+    enhance: false,
+  });
 
-  // Update and wait for acknowledgment
-  await realtimeClient.setPrompt("cyberpunk city");
+  // set() returns a promise that resolves on server acknowledgment
+  await realtimeClient.set({ prompt: "cyberpunk city" });
   console.log("Prompt updated and acknowledged");
+
+  // setPrompt() still works for backward compatibility
+  realtimeClient.setPrompt("oil painting style");
 }
 
 main();
