@@ -5,6 +5,8 @@ import type {
   OutgoingWebRTCMessage,
   PromptAckMessage,
   SetImageAckMessage,
+  SetAckMessage,
+  SetMessage,
   TurnConfig,
 } from "./types";
 
@@ -28,6 +30,7 @@ export type ConnectionState = "connecting" | "connected" | "disconnected";
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
   setImageAck: SetImageAckMessage;
+  setAck: SetAckMessage;
 };
 
 export class WebRTCConnection {
@@ -119,6 +122,11 @@ export class WebRTCConnection {
 
       if (msg.type === "prompt_ack") {
         this.websocketMessagesEmitter.emit("promptAck", msg);
+        return;
+      }
+
+      if (msg.type === "set_ack") {
+        this.websocketMessagesEmitter.emit("setAck", msg);
         return;
       }
 
@@ -243,6 +251,28 @@ export class WebRTCConnection {
 
       this.websocketMessagesEmitter.on("promptAck", listener);
       this.send({ type: "prompt", prompt: prompt.text, enhance_prompt: prompt.enhance ?? true });
+    });
+  }
+
+  async sendSet(message: SetMessage, timeout = AVATAR_SETUP_TIMEOUT_MS): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.websocketMessagesEmitter.off("setAck", listener);
+        reject(new Error("Set timed out"));
+      }, timeout);
+
+      const listener = (msg: SetAckMessage) => {
+        clearTimeout(timeoutId);
+        this.websocketMessagesEmitter.off("setAck", listener);
+        if (msg.success) {
+          resolve();
+        } else {
+          reject(new Error(msg.error ?? "Set failed"));
+        }
+      };
+
+      this.websocketMessagesEmitter.on("setAck", listener);
+      this.send(message);
     });
   }
 

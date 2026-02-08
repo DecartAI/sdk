@@ -23,6 +23,7 @@ export type {
   RealTimeClientConnectOptions,
   RealTimeClientInitialState,
 } from "./realtime/client";
+export type { SetInput } from "./realtime/methods";
 export {
   type ImageModelDefinition,
   type ImageModels,
