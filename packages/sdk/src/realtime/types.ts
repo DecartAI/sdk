@@ -60,7 +60,6 @@ export type SetImageAckMessage = {
   error: null | string;
 };
 
-// Unified set message types
 export type SetMessage = {
   type: "set";
   prompt?: string;

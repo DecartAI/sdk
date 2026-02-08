@@ -36,14 +36,15 @@ async function main() {
     },
   });
 
-  // set() sends prompt + image atomically in a single message
+  // set() replaces the full state — prompt + image atomically in a single message
   await realtimeClient.set({
     prompt: "A person wearing a superhero costume",
     enhance: true,
     image: "https://example.com/superhero-reference.png",
   });
 
-  // set() also supports prompt-only updates
+  // Prompt-only set() clears the reference image (replace semantics).
+  // Use setPrompt() to update the prompt without affecting the image.
   await realtimeClient.set({ prompt: "Add sunglasses to the person" });
 
   // Accepts File, Blob, base64 string, or URL
