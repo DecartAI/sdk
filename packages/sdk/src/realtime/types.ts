@@ -60,6 +60,20 @@ export type SetImageAckMessage = {
   error: null | string;
 };
 
+// Unified set message types
+export type SetMessage = {
+  type: "set";
+  prompt?: string;
+  enhance_prompt?: boolean;
+  image_data?: string | null;
+};
+
+export type SetAckMessage = {
+  type: "set_ack";
+  success: boolean;
+  error: null | string;
+};
+
 // Incoming message types (from server)
 export type IncomingWebRTCMessage =
   | ReadyMessage
@@ -69,7 +83,8 @@ export type IncomingWebRTCMessage =
   | IceRestartMessage
   | PromptAckMessage
   | ErrorMessage
-  | SetImageAckMessage;
+  | SetImageAckMessage
+  | SetAckMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =
@@ -77,6 +92,7 @@ export type OutgoingWebRTCMessage =
   | AnswerMessage
   | IceCandidateMessage
   | PromptMessage
-  | SetAvatarImageMessage;
+  | SetAvatarImageMessage
+  | SetMessage;
 
-export type OutgoingMessage = PromptMessage | SetAvatarImageMessage;
+export type OutgoingMessage = PromptMessage | SetAvatarImageMessage | SetMessage;
