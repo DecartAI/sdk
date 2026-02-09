@@ -79,7 +79,9 @@ export class WebRTCConnection {
           };
           this.ws.onerror = () => {
             clearTimeout(timer);
-            reject(new Error("WebSocket error"));
+            const error = new Error("WebSocket error");
+            reject(error);
+            rejectConnect(error);
           };
           this.ws.onclose = () => {
             this.setState("disconnected");
@@ -314,6 +316,7 @@ export class WebRTCConnection {
       });
     }
     this.pc = new RTCPeerConnection({ iceServers });
+    this.setState("connecting");
 
     // For live_avatar: add receive-only video transceiver (sends audio only, receives audio+video)
     if (this.callbacks.isAvatarLive) {
@@ -365,7 +368,7 @@ export class WebRTCConnection {
     this.setState("disconnected");
   }
 
-  async applyCodecPreference(preferredCodecName: "video/VP8" | "video/H264") {
+  applyCodecPreference(preferredCodecName: "video/VP8" | "video/H264") {
     if (!this.pc) return;
     if (typeof RTCRtpSender === "undefined" || typeof RTCRtpSender.getCapabilities !== "function") {
       console.warn("RTCRtpSender capabilities are not available in this environment.");
@@ -401,7 +404,11 @@ export class WebRTCConnection {
       console.warn("No video codecs found to set preferences for.");
       return;
     }
-    await videoTransceiver.setCodecPreferences(orderedCodecs);
+    try {
+      videoTransceiver.setCodecPreferences(orderedCodecs);
+    } catch {
+      console.warn("[WebRTC] setCodecPreferences not supported, skipping codec preference.");
+    }
   }
 
   private modifyVP8Bitrate(offer: RTCSessionDescriptionInit): void {

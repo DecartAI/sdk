@@ -12,9 +12,16 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      const result = reader.result as string;
-      // Remove data URL prefix (e.g., "data:image/png;base64,")
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("FileReader did not return a string"));
+        return;
+      }
       const base64 = result.split(",")[1];
+      if (!base64) {
+        reject(new Error("Invalid data URL format"));
+        return;
+      }
       resolve(base64);
     };
     reader.onerror = reject;
@@ -152,7 +159,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       const url = `${baseUrl}${options.model.urlPath}`;
       webrtcManager = new WebRTCManager({
-        webrtcUrl: `${url}?api_key=${apiKey}&model=${options.model.name}`,
+        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
         integration,
         onRemoteStream,
         onConnectionStateChange: (state) => {

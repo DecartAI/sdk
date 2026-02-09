@@ -10,7 +10,7 @@ export type AnswerMessage = {
 
 export type IceCandidateMessage = {
   type: "ice-candidate";
-  candidate: RTCIceCandidate | null;
+  candidate: RTCIceCandidateInit | null;
 };
 
 export type ReadyMessage = {
@@ -31,7 +31,7 @@ export type TurnConfig = {
 
 export type IceRestartMessage = {
   type: "ice-restart";
-  turn_config: TurnConfig;
+  turn_config?: TurnConfig;
 };
 
 export type PromptAckMessage = {
