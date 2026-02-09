@@ -21,7 +21,16 @@ export const realtimeMethods = (
   webrtcManager: WebRTCManager,
   imageToBase64: (image: Blob | File | string) => Promise<string>,
 ) => {
+  const assertConnected = () => {
+    const state = webrtcManager.getConnectionState();
+    if (state !== "connected") {
+      throw new Error(`Cannot send message: connection is ${state}`);
+    }
+  };
+
   const set = async (input: SetInput): Promise<void> => {
+    assertConnected();
+
     const parsed = setInputSchema.safeParse(input);
     if (!parsed.success) {
       throw parsed.error;
@@ -38,6 +47,8 @@ export const realtimeMethods = (
   };
 
   const setPrompt = async (prompt: string, { enhance }: { enhance?: boolean } = {}): Promise<void> => {
+    assertConnected();
+
     const schema = z.object({
       prompt: z.string().min(1),
       enhance: z.boolean().optional().default(true),

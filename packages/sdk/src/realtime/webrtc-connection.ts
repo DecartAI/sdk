@@ -23,7 +23,7 @@ interface ConnectionCallbacks {
   initialPrompt?: { text: string; enhance?: boolean };
 }
 
-export type ConnectionState = "connecting" | "connected" | "disconnected";
+export type ConnectionState = "connecting" | "connected" | "disconnected" | "reconnecting";
 
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
@@ -48,55 +48,82 @@ export class WebRTCConnection {
     const separator = url.includes("?") ? "&" : "?";
     const wsUrl = `${url}${separator}user_agent=${userAgent}`;
 
-    // Setup WebSocket
-    await new Promise<void>((resolve, reject) => {
-      this.connectionReject = reject;
-      const timer = setTimeout(() => reject(new Error("WebSocket timeout")), timeout);
-      this.ws = new WebSocket(wsUrl);
-
-      this.ws.onopen = () => {
-        clearTimeout(timer);
-        resolve();
-      };
-      this.ws.onmessage = (e) => {
-        try {
-          this.handleSignalingMessage(JSON.parse(e.data));
-        } catch (err) {
-          console.error("[WebRTC] Parse error:", err);
-        }
-      };
-      this.ws.onerror = () => {
-        clearTimeout(timer);
-      };
-      this.ws.onclose = () => this.setState("disconnected");
+    // Shared abort mechanism: any phase failure aborts the entire connect flow.
+    // connectionReject is set once and stays active across all phases so that
+    // ws.onclose, server errors, or signaling failures during ANY phase abort immediately.
+    let rejectConnect!: (error: Error) => void;
+    const connectAbort = new Promise<never>((_, reject) => {
+      rejectConnect = reject;
     });
+    // Suppress unhandled rejection when connectAbort is not currently being raced
+    connectAbort.catch(() => {});
+    this.connectionReject = (error) => rejectConnect(error);
 
-    // For live_avatar: send avatar image before WebRTC handshake
-    if (this.callbacks.avatarImageBase64) {
-      await this.sendAvatarImage(this.callbacks.avatarImageBase64);
+    try {
+      // Phase 1: WebSocket setup
+      await Promise.race([
+        new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("WebSocket timeout")), timeout);
+          this.ws = new WebSocket(wsUrl);
+
+          this.ws.onopen = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+          this.ws.onmessage = (e) => {
+            try {
+              this.handleSignalingMessage(JSON.parse(e.data));
+            } catch (err) {
+              console.error("[WebRTC] Parse error:", err);
+            }
+          };
+          this.ws.onerror = () => {
+            clearTimeout(timer);
+            reject(new Error("WebSocket error"));
+          };
+          this.ws.onclose = () => {
+            this.setState("disconnected");
+            clearTimeout(timer);
+            reject(new Error("WebSocket closed before connection was established"));
+            rejectConnect(new Error("WebSocket closed"));
+          };
+        }),
+        connectAbort,
+      ]);
+
+      // Phase 2: Pre-handshake setup (avatar image + initial prompt)
+      // connectionReject is already active, so ws.onclose or server errors abort these too
+      if (this.callbacks.avatarImageBase64) {
+        await Promise.race([this.sendAvatarImage(this.callbacks.avatarImageBase64), connectAbort]);
+      }
+      if (this.callbacks.initialPrompt) {
+        await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
+      }
+
+      // Phase 3: WebRTC handshake
+      await this.setupNewPeerConnection();
+      await Promise.race([
+        new Promise<void>((resolve, reject) => {
+          const checkConnection = setInterval(() => {
+            if (this.state === "connected") {
+              clearInterval(checkConnection);
+              resolve();
+            } else if (this.state === "disconnected") {
+              clearInterval(checkConnection);
+              reject(new Error("Connection lost during WebRTC handshake"));
+            } else if (Date.now() >= deadline) {
+              clearInterval(checkConnection);
+              reject(new Error("Connection timeout"));
+            }
+          }, 100);
+          // Clean up interval if connectAbort fires
+          connectAbort.catch(() => clearInterval(checkConnection));
+        }),
+        connectAbort,
+      ]);
+    } finally {
+      this.connectionReject = null;
     }
-
-    // Send initial prompt before WebRTC handshake
-    if (this.callbacks.initialPrompt) {
-      await this.sendInitialPrompt(this.callbacks.initialPrompt);
-    }
-
-    await this.setupNewPeerConnection();
-
-    return new Promise<void>((resolve, reject) => {
-      this.connectionReject = reject;
-      const checkConnection = setInterval(() => {
-        if (this.state === "connected") {
-          clearInterval(checkConnection);
-          this.connectionReject = null;
-          resolve();
-        } else if (Date.now() >= deadline) {
-          clearInterval(checkConnection);
-          this.connectionReject = null;
-          reject(new Error("Connection timeout"));
-        }
-      }, 100);
-    });
   }
 
   private async handleSignalingMessage(msg: IncomingWebRTCMessage): Promise<void> {
@@ -162,13 +189,17 @@ export class WebRTCConnection {
     } catch (error) {
       console.error("[WebRTC] Error:", error);
       this.callbacks.onError?.(error as Error);
+      this.connectionReject?.(error as Error);
     }
   }
 
-  send(message: OutgoingWebRTCMessage): void {
+  send(message: OutgoingWebRTCMessage): boolean {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
+      return true;
     }
+    console.warn("[WebRTC] Message dropped: WebSocket is not open");
+    return false;
   }
 
   private async sendAvatarImage(imageBase64: string): Promise<void> {
@@ -215,7 +246,11 @@ export class WebRTCConnection {
         message.enhance_prompt = options.enhance;
       }
 
-      this.send(message);
+      if (!this.send(message)) {
+        clearTimeout(timeoutId);
+        this.websocketMessagesEmitter.off("setImageAck", listener);
+        reject(new Error("WebSocket is not open"));
+      }
     });
   }
 
@@ -242,7 +277,12 @@ export class WebRTCConnection {
       };
 
       this.websocketMessagesEmitter.on("promptAck", listener);
-      this.send({ type: "prompt", prompt: prompt.text, enhance_prompt: prompt.enhance ?? true });
+
+      if (!this.send({ type: "prompt", prompt: prompt.text, enhance_prompt: prompt.enhance ?? true })) {
+        clearTimeout(timeoutId);
+        this.websocketMessagesEmitter.off("promptAck", listener);
+        reject(new Error("WebSocket is not open"));
+      }
     });
   }
 
@@ -302,7 +342,12 @@ export class WebRTCConnection {
       );
     };
 
-    this.pc.oniceconnectionstatechange = () => {};
+    this.pc.oniceconnectionstatechange = () => {
+      if (this.pc?.iceConnectionState === "failed") {
+        this.setState("disconnected");
+        this.callbacks.onError?.(new Error("ICE connection failed"));
+      }
+    };
 
     this.handleSignalingMessage({ type: "ready" });
   }
