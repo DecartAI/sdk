@@ -1015,7 +1015,6 @@ describe("WebRTCConnection", () => {
         sendSpy.mockRestore();
       });
     });
-
   });
 
   describe("setupNewPeerConnection", () => {
