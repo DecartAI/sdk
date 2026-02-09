@@ -1016,46 +1016,6 @@ describe("WebRTCConnection", () => {
       });
     });
 
-    it("queues concurrent image sends so each call waits for its own ack", async () => {
-      const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-      const connection = new WebRTCConnection();
-      const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
-
-      let firstResolved = false;
-      let secondResolved = false;
-
-      const first = connection.setImageBase64("first").then(() => {
-        firstResolved = true;
-      });
-      const second = connection.setImageBase64("second").then(() => {
-        secondResolved = true;
-      });
-
-      await Promise.resolve();
-      expect(sendSpy).toHaveBeenCalledTimes(1);
-
-      connection.websocketMessagesEmitter.emit("setImageAck", {
-        type: "set_image_ack",
-        success: true,
-        error: null,
-      });
-      await first;
-      await Promise.resolve();
-
-      expect(firstResolved).toBe(true);
-      expect(secondResolved).toBe(false);
-      expect(sendSpy).toHaveBeenCalledTimes(2);
-
-      connection.websocketMessagesEmitter.emit("setImageAck", {
-        type: "set_image_ack",
-        success: true,
-        error: null,
-      });
-      await second;
-
-      expect(secondResolved).toBe(true);
-      sendSpy.mockRestore();
-    });
   });
 
   describe("setupNewPeerConnection", () => {
@@ -1301,7 +1261,6 @@ describe("set()", () => {
     });
 
     const promise = methods.setPrompt("a cat", { enhance: false });
-    await Promise.resolve();
     expect(promptAckListener).toBeDefined();
     expect(mockManager.sendMessage).toHaveBeenCalledWith({
       type: "prompt",
@@ -1319,56 +1278,6 @@ describe("set()", () => {
     expect(mockEmitter.off).toHaveBeenCalled();
   });
 
-  it("setPrompt queues repeated prompts so each call waits for its own ack", async () => {
-    const listeners = new Set<(msg: import("../src/realtime/types").PromptAckMessage) => void>();
-    mockEmitter.on.mockImplementation((event, listener) => {
-      if (event === "promptAck") {
-        listeners.add(listener);
-      }
-    });
-    mockEmitter.off.mockImplementation((event, listener) => {
-      if (event === "promptAck") {
-        listeners.delete(listener);
-      }
-    });
-
-    let secondResolved = false;
-    const first = methods.setPrompt("a cat");
-    const second = methods.setPrompt("a cat").then(() => {
-      secondResolved = true;
-    });
-
-    await Promise.resolve();
-    expect(mockManager.sendMessage).toHaveBeenCalledTimes(1);
-
-    for (const listener of [...listeners]) {
-      listener({
-        type: "prompt_ack",
-        prompt: "a cat",
-        success: true,
-        error: null,
-      });
-    }
-
-    await first;
-    await Promise.resolve();
-
-    expect(secondResolved).toBe(false);
-    expect(mockManager.sendMessage).toHaveBeenCalledTimes(2);
-
-    for (const listener of [...listeners]) {
-      listener({
-        type: "prompt_ack",
-        prompt: "a cat",
-        success: true,
-        error: null,
-      });
-    }
-
-    await second;
-    expect(secondResolved).toBe(true);
-  });
-
   it("setPrompt rejects with Error when ack reports failure", async () => {
     let promptAckListener: ((msg: import("../src/realtime/types").PromptAckMessage) => void) | undefined;
     mockEmitter.on.mockImplementation((event, listener) => {
@@ -1378,7 +1287,6 @@ describe("set()", () => {
     });
 
     const promise = methods.setPrompt("a cat");
-    await Promise.resolve();
     expect(promptAckListener).toBeDefined();
 
     promptAckListener?.({

@@ -35,7 +35,6 @@ export class WebRTCConnection {
   private ws: WebSocket | null = null;
   private localStream: MediaStream | null = null;
   private connectionReject: ((error: Error) => void) | null = null;
-  private setImageQueue: Promise<void> = Promise.resolve();
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
   constructor(private callbacks: ConnectionCallbacks = {}) {}
@@ -214,16 +213,6 @@ export class WebRTCConnection {
    * Optionally include a prompt to send with the image.
    */
   async setImageBase64(
-    imageBase64: string | null,
-    options?: { prompt?: string; enhance?: boolean; timeout?: number },
-  ): Promise<void> {
-    const run = () => this.sendSetImageBase64(imageBase64, options);
-    const task = this.setImageQueue.then(run, run);
-    this.setImageQueue = task.catch(() => {});
-    return task;
-  }
-
-  private async sendSetImageBase64(
     imageBase64: string | null,
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
   ): Promise<void> {

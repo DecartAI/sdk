@@ -26,8 +26,6 @@ export const realtimeMethods = (
   webrtcManager: WebRTCManager,
   imageToBase64: (image: Blob | File | string) => Promise<string>,
 ) => {
-  let promptQueue: Promise<void> = Promise.resolve();
-
   const assertConnected = () => {
     const state = webrtcManager.getConnectionState();
     if (state !== "connected") {
@@ -53,7 +51,7 @@ export const realtimeMethods = (
     await webrtcManager.setImage(imageBase64, { prompt, enhance, timeout: UPDATE_TIMEOUT_MS });
   };
 
-  const sendPrompt = async (prompt: string, { enhance }: { enhance?: boolean } = {}): Promise<void> => {
+  const setPrompt = async (prompt: string, { enhance }: { enhance?: boolean } = {}): Promise<void> => {
     assertConnected();
 
     const parsedInput = setPromptInputSchema.safeParse({
@@ -109,13 +107,6 @@ export const realtimeMethods = (
         clearTimeout(timeoutId);
       }
     }
-  };
-
-  const setPrompt = async (prompt: string, { enhance }: { enhance?: boolean } = {}): Promise<void> => {
-    const run = () => sendPrompt(prompt, { enhance });
-    const task = promptQueue.then(run, run);
-    promptQueue = task.catch(() => {});
-    return task;
   };
 
   return {
