@@ -35,6 +35,7 @@ export class WebRTCConnection {
   private ws: WebSocket | null = null;
   private localStream: MediaStream | null = null;
   private connectionReject: ((error: Error) => void) | null = null;
+  private setImageQueue: Promise<void> = Promise.resolve();
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
   constructor(private callbacks: ConnectionCallbacks = {}) {}
@@ -216,6 +217,16 @@ export class WebRTCConnection {
     imageBase64: string | null,
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
   ): Promise<void> {
+    const run = () => this.sendSetImageBase64(imageBase64, options);
+    const task = this.setImageQueue.then(run, run);
+    this.setImageQueue = task.catch(() => {});
+    return task;
+  }
+
+  private async sendSetImageBase64(
+    imageBase64: string | null,
+    options?: { prompt?: string; enhance?: boolean; timeout?: number },
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.websocketMessagesEmitter.off("setImageAck", listener);
@@ -305,7 +316,7 @@ export class WebRTCConnection {
       });
       this.pc.close();
     }
-    const iceServers: RTCIceServer[] = ICE_SERVERS;
+    const iceServers: RTCIceServer[] = [...ICE_SERVERS];
     if (turnConfig) {
       iceServers.push({
         urls: turnConfig.server_url,
@@ -367,6 +378,10 @@ export class WebRTCConnection {
 
   async applyCodecPreference(preferredCodecName: "video/VP8" | "video/H264") {
     if (!this.pc) return;
+    if (typeof RTCRtpSender === "undefined" || typeof RTCRtpSender.getCapabilities !== "function") {
+      console.warn("RTCRtpSender capabilities are not available in this environment.");
+      return;
+    }
 
     const videoTransceiver = this.pc
       .getTransceivers()
@@ -405,6 +420,10 @@ export class WebRTCConnection {
 
     const minBitrateInKbps = this.callbacks.vp8MinBitrate;
     const startBitrateInKbps = this.callbacks.vp8StartBitrate;
+
+    if (minBitrateInKbps === undefined || startBitrateInKbps === undefined) {
+      return;
+    }
 
     if (minBitrateInKbps === 0 && startBitrateInKbps === 0) {
       return;

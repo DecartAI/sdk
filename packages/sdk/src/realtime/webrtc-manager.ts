@@ -1,18 +1,13 @@
 import pRetry, { AbortError } from "p-retry";
-import type { RealTimeClientInitialState } from "./client";
 import type { OutgoingMessage } from "./types";
 import { type ConnectionState, WebRTCConnection } from "./webrtc-connection";
 
 export interface WebRTCConfig {
   webrtcUrl: string;
-  apiKey: string;
-  sessionId: string;
-  fps: number;
   integration?: string;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionStateChange?: (state: ConnectionState) => void;
   onError?: (error: Error) => void;
-  initialState?: RealTimeClientInitialState;
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
@@ -43,7 +38,7 @@ export class WebRTCManager {
   private connection: WebRTCConnection;
   private config: WebRTCConfig;
   private localStream: MediaStream | null = null;
-  private managerState: ConnectionState = "connecting";
+  private managerState: ConnectionState = "disconnected";
   private isReconnecting = false;
   private intentionalDisconnect = false;
   private reconnectGeneration = 0;
@@ -161,6 +156,9 @@ export class WebRTCManager {
 
     return pRetry(
       async () => {
+        if (this.intentionalDisconnect) {
+          throw new AbortError("Connect cancelled");
+        }
         await this.connection.connect(this.config.webrtcUrl, localStream, CONNECTION_TIMEOUT, this.config.integration);
         return true;
       },
@@ -171,6 +169,9 @@ export class WebRTCManager {
           this.connection.cleanup();
         },
         shouldRetry: (error) => {
+          if (this.intentionalDisconnect) {
+            return false;
+          }
           const msg = error.message.toLowerCase();
           return !PERMANENT_ERRORS.some((err) => msg.includes(err));
         },
@@ -178,8 +179,8 @@ export class WebRTCManager {
     );
   }
 
-  sendMessage(message: OutgoingMessage): void {
-    this.connection.send(message);
+  sendMessage(message: OutgoingMessage): boolean {
+    return this.connection.send(message);
   }
 
   cleanup(): void {

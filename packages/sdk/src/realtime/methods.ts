@@ -15,12 +15,19 @@ const setInputSchema = z
     message: "At least one of 'prompt' or 'image' must be provided",
   });
 
+const setPromptInputSchema = z.object({
+  prompt: z.string().min(1),
+  enhance: z.boolean().optional().default(true),
+});
+
 export type SetInput = z.input<typeof setInputSchema>;
 
 export const realtimeMethods = (
   webrtcManager: WebRTCManager,
   imageToBase64: (image: Blob | File | string) => Promise<string>,
 ) => {
+  let promptQueue: Promise<void> = Promise.resolve();
+
   const assertConnected = () => {
     const state = webrtcManager.getConnectionState();
     if (state !== "connected") {
@@ -46,15 +53,10 @@ export const realtimeMethods = (
     await webrtcManager.setImage(imageBase64, { prompt, enhance, timeout: UPDATE_TIMEOUT_MS });
   };
 
-  const setPrompt = async (prompt: string, { enhance }: { enhance?: boolean } = {}): Promise<void> => {
+  const sendPrompt = async (prompt: string, { enhance }: { enhance?: boolean } = {}): Promise<void> => {
     assertConnected();
 
-    const schema = z.object({
-      prompt: z.string().min(1),
-      enhance: z.boolean().optional().default(true),
-    });
-
-    const parsedInput = schema.safeParse({
+    const parsedInput = setPromptInputSchema.safeParse({
       prompt,
       enhance,
     });
@@ -75,7 +77,7 @@ export const realtimeMethods = (
             if (promptAckMessage.success) {
               resolve();
             } else {
-              reject(promptAckMessage.error);
+              reject(new Error(promptAckMessage.error ?? "Failed to send prompt"));
             }
           }
         };
@@ -83,11 +85,14 @@ export const realtimeMethods = (
       });
 
       // Send the message first
-      webrtcManager.sendMessage({
+      const sent = webrtcManager.sendMessage({
         type: "prompt",
         prompt: parsedInput.data.prompt,
         enhance_prompt: parsedInput.data.enhance,
       });
+      if (!sent) {
+        throw new Error("WebSocket is not open");
+      }
 
       // Start the timeout after sending
       const timeoutPromise = new Promise<void>((_, reject) => {
@@ -104,6 +109,13 @@ export const realtimeMethods = (
         clearTimeout(timeoutId);
       }
     }
+  };
+
+  const setPrompt = async (prompt: string, { enhance }: { enhance?: boolean } = {}): Promise<void> => {
+    const run = () => sendPrompt(prompt, { enhance });
+    const task = promptQueue.then(run, run);
+    promptQueue = task.catch(() => {});
+    return task;
   };
 
   return {

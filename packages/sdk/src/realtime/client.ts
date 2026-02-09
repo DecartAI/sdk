@@ -32,7 +32,11 @@ async function imageToBase64(image: Blob | File | string): Promise<string> {
     }
 
     if (url?.protocol === "data:") {
-      return image.split(",")[1];
+      const [, base64] = image.split(",", 2);
+      if (!base64) {
+        throw new Error("Invalid data URL image");
+      }
+      return base64;
     }
     if (url?.protocol === "http:" || url?.protocol === "https:") {
       const response = await fetch(image);
@@ -137,32 +141,18 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       // For live_avatar: prepare avatar image base64 before connection
       let avatarImageBase64: string | undefined;
       if (isAvatarLive && avatar?.avatarImage) {
-        let imageBlob: Blob;
-        if (typeof avatar.avatarImage === "string") {
-          const response = await fetch(avatar.avatarImage);
-          if (!response.ok) {
-            throw new Error(`Failed to fetch avatar image: ${response.status} ${response.statusText}`);
-          }
-          imageBlob = await response.blob();
-        } else {
-          imageBlob = avatar.avatarImage;
-        }
-        avatarImageBase64 = await blobToBase64(imageBlob);
+        avatarImageBase64 = await imageToBase64(avatar.avatarImage);
       }
 
       // For live_avatar: prepare initial prompt to send before WebRTC handshake
       const initialPrompt =
-        isAvatarLive && options.initialState?.prompt
-          ? { text: options.initialState.prompt.text, enhance: options.initialState.prompt.enhance }
+        isAvatarLive && initialState?.prompt
+          ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
           : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
       webrtcManager = new WebRTCManager({
         webrtcUrl: `${url}?api_key=${apiKey}&model=${options.model.name}`,
-        apiKey,
-        sessionId,
-        fps: options.model.fps,
-        initialState,
         integration,
         onRemoteStream,
         onConnectionStateChange: (state) => {
@@ -186,8 +176,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       const methods = realtimeMethods(manager, imageToBase64);
 
       // For non-live_avatar models: send initial prompt after connection is established
-      if (!isAvatarLive && options.initialState?.prompt) {
-        const { text, enhance } = options.initialState.prompt;
+      if (!isAvatarLive && initialState?.prompt) {
+        const { text, enhance } = initialState.prompt;
         await methods.setPrompt(text, { enhance });
       }
 
