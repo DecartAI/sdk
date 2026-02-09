@@ -39,6 +39,7 @@ export class WebRTCManager {
   private config: WebRTCConfig;
   private localStream: MediaStream | null = null;
   private managerState: ConnectionState = "disconnected";
+  private hasConnected = false;
   private isReconnecting = false;
   private intentionalDisconnect = false;
   private reconnectGeneration = 0;
@@ -61,6 +62,7 @@ export class WebRTCManager {
   private emitState(state: ConnectionState): void {
     if (this.managerState !== state) {
       this.managerState = state;
+      if (state === "connected") this.hasConnected = true;
       this.config.onConnectionStateChange?.(state);
     }
   }
@@ -82,8 +84,9 @@ export class WebRTCManager {
       return;
     }
 
-    // Unexpected disconnect while connected → trigger auto-reconnect
-    if (state === "disconnected" && !this.intentionalDisconnect && this.managerState === "connected") {
+    // Unexpected disconnect after having been connected → trigger auto-reconnect
+    // hasConnected guards against triggering during initial connect (which has its own retry loop)
+    if (state === "disconnected" && !this.intentionalDisconnect && this.hasConnected) {
       this.reconnect();
       return;
     }
@@ -150,6 +153,7 @@ export class WebRTCManager {
   async connect(localStream: MediaStream): Promise<boolean> {
     this.localStream = localStream;
     this.intentionalDisconnect = false;
+    this.hasConnected = false;
     this.isReconnecting = false;
     this.reconnectGeneration += 1;
     this.emitState("connecting");
