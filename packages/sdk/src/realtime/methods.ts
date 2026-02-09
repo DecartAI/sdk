@@ -15,13 +15,27 @@ const setInputSchema = z
     message: "At least one of 'prompt' or 'image' must be provided",
   });
 
+const setPromptInputSchema = z.object({
+  prompt: z.string().min(1),
+  enhance: z.boolean().optional().default(true),
+});
+
 export type SetInput = z.input<typeof setInputSchema>;
 
 export const realtimeMethods = (
   webrtcManager: WebRTCManager,
   imageToBase64: (image: Blob | File | string) => Promise<string>,
 ) => {
+  const assertConnected = () => {
+    const state = webrtcManager.getConnectionState();
+    if (state !== "connected") {
+      throw new Error(`Cannot send message: connection is ${state}`);
+    }
+  };
+
   const set = async (input: SetInput): Promise<void> => {
+    assertConnected();
+
     const parsed = setInputSchema.safeParse(input);
     if (!parsed.success) {
       throw parsed.error;
@@ -38,12 +52,9 @@ export const realtimeMethods = (
   };
 
   const setPrompt = async (prompt: string, { enhance }: { enhance?: boolean } = {}): Promise<void> => {
-    const schema = z.object({
-      prompt: z.string().min(1),
-      enhance: z.boolean().optional().default(true),
-    });
+    assertConnected();
 
-    const parsedInput = schema.safeParse({
+    const parsedInput = setPromptInputSchema.safeParse({
       prompt,
       enhance,
     });
@@ -64,7 +75,7 @@ export const realtimeMethods = (
             if (promptAckMessage.success) {
               resolve();
             } else {
-              reject(promptAckMessage.error);
+              reject(new Error(promptAckMessage.error ?? "Failed to send prompt"));
             }
           }
         };
@@ -72,11 +83,14 @@ export const realtimeMethods = (
       });
 
       // Send the message first
-      webrtcManager.sendMessage({
+      const sent = webrtcManager.sendMessage({
         type: "prompt",
         prompt: parsedInput.data.prompt,
         enhance_prompt: parsedInput.data.enhance,
       });
+      if (!sent) {
+        throw new Error("WebSocket is not open");
+      }
 
       // Start the timeout after sending
       const timeoutPromise = new Promise<void>((_, reject) => {

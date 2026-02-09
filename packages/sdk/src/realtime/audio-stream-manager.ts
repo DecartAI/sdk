@@ -114,6 +114,6 @@ export class AudioStreamManager {
     } catch {
       // Ignore if already stopped
     }
-    this.audioContext.close();
+    void this.audioContext.close().catch(() => {});
   }
 }

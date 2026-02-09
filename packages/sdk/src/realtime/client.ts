@@ -12,9 +12,16 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      const result = reader.result as string;
-      // Remove data URL prefix (e.g., "data:image/png;base64,")
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("FileReader did not return a string"));
+        return;
+      }
       const base64 = result.split(",")[1];
+      if (!base64) {
+        reject(new Error("Invalid data URL format"));
+        return;
+      }
       resolve(base64);
     };
     reader.onerror = reject;
@@ -32,10 +39,17 @@ async function imageToBase64(image: Blob | File | string): Promise<string> {
     }
 
     if (url?.protocol === "data:") {
-      return image.split(",")[1];
+      const [, base64] = image.split(",", 2);
+      if (!base64) {
+        throw new Error("Invalid data URL image");
+      }
+      return base64;
     }
     if (url?.protocol === "http:" || url?.protocol === "https:") {
       const response = await fetch(image);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+      }
       const imageBlob = await response.blob();
       return blobToBase64(imageBlob);
     }
@@ -76,7 +90,7 @@ const realTimeClientConnectOptionsSchema = z.object({
 export type RealTimeClientConnectOptions = z.infer<typeof realTimeClientConnectOptionsSchema>;
 
 export type Events = {
-  connectionChange: "connected" | "connecting" | "disconnected";
+  connectionChange: "connected" | "connecting" | "disconnected" | "reconnecting";
   error: DecartSDKError;
 };
 
@@ -84,7 +98,7 @@ export type RealTimeClient = {
   set: (input: SetInput) => Promise<void>;
   setPrompt: (prompt: string, { enhance }?: { enhance?: boolean }) => Promise<void>;
   isConnected: () => boolean;
-  getConnectionState: () => "connected" | "connecting" | "disconnected";
+  getConnectionState: () => "connected" | "connecting" | "disconnected" | "reconnecting";
   disconnect: () => void;
   on: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   off: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
@@ -128,91 +142,97 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       inputStream = stream ?? new MediaStream();
     }
 
-    // For live_avatar: prepare avatar image base64 before connection
-    let avatarImageBase64: string | undefined;
-    if (isAvatarLive && avatar?.avatarImage) {
-      let imageBlob: Blob;
-      if (typeof avatar.avatarImage === "string") {
-        // Fetch image from URL
-        const response = await fetch(avatar.avatarImage);
-        imageBlob = await response.blob();
-      } else {
-        imageBlob = avatar.avatarImage;
-      }
-      avatarImageBase64 = await blobToBase64(imageBlob);
-    }
+    let webrtcManager: WebRTCManager | undefined;
 
-    // For live_avatar: prepare initial prompt to send before WebRTC handshake
-    const initialPrompt =
-      isAvatarLive && options.initialState?.prompt
-        ? { text: options.initialState.prompt.text, enhance: options.initialState.prompt.enhance }
-        : undefined;
-
-    const url = `${baseUrl}${options.model.urlPath}`;
-    const webrtcManager = new WebRTCManager({
-      webrtcUrl: `${url}?api_key=${apiKey}&model=${options.model.name}`,
-      apiKey,
-      sessionId,
-      fps: options.model.fps,
-      initialState,
-      integration,
-      onRemoteStream,
-      onConnectionStateChange: (state: "connected" | "connecting" | "disconnected") => {
-        eventEmitter.emit("connectionChange", state);
-      },
-      onError: (error) => {
-        console.error("WebRTC error:", error);
-        eventEmitter.emit("error", createWebrtcError(error));
-      },
-      customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
-      vp8MinBitrate: 300,
-      vp8StartBitrate: 600,
-      isAvatarLive,
-      avatarImageBase64,
-      initialPrompt,
-    });
-
-    await webrtcManager.connect(inputStream);
-
-    const methods = realtimeMethods(webrtcManager, imageToBase64);
-
-    // For non-live_avatar models: send initial prompt after connection is established
-    if (!isAvatarLive && options.initialState?.prompt) {
-      const { text, enhance } = options.initialState.prompt;
-      methods.setPrompt(text, { enhance });
-    }
-
-    const client: RealTimeClient = {
-      set: methods.set,
-      setPrompt: methods.setPrompt,
-      isConnected: () => webrtcManager.isConnected(),
-      getConnectionState: () => webrtcManager.getConnectionState(),
-      disconnect: () => {
-        webrtcManager.cleanup();
-        audioStreamManager?.cleanup();
-      },
-      on: eventEmitter.on,
-      off: eventEmitter.off,
-      sessionId,
-      setImage: async (
-        image: Blob | File | string | null,
-        options?: { prompt?: string; enhance?: boolean; timeout?: number },
-      ) => {
-        if (image === null) {
-          return webrtcManager.setImage(null, options);
+    try {
+      // For live_avatar: prepare avatar image base64 before connection
+      let avatarImageBase64: string | undefined;
+      if (isAvatarLive && avatar?.avatarImage) {
+        if (typeof avatar.avatarImage === "string") {
+          const response = await fetch(avatar.avatarImage);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+          }
+          const imageBlob = await response.blob();
+          avatarImageBase64 = await blobToBase64(imageBlob);
+        } else {
+          avatarImageBase64 = await blobToBase64(avatar.avatarImage);
         }
-        const base64 = await imageToBase64(image);
-        return webrtcManager.setImage(base64, options);
-      },
-    };
+      }
 
-    // Add live_avatar specific audio method (only when using internal AudioStreamManager)
-    if (isAvatarLive && audioStreamManager) {
-      const manager = audioStreamManager; // Capture for closures
-      client.playAudio = (audio: Blob | File | ArrayBuffer) => manager.playAudio(audio);
+      // For live_avatar: prepare initial prompt to send before WebRTC handshake
+      const initialPrompt =
+        isAvatarLive && initialState?.prompt
+          ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
+          : undefined;
+
+      const url = `${baseUrl}${options.model.urlPath}`;
+      webrtcManager = new WebRTCManager({
+        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+        integration,
+        onRemoteStream,
+        onConnectionStateChange: (state) => {
+          eventEmitter.emit("connectionChange", state);
+        },
+        onError: (error) => {
+          console.error("WebRTC error:", error);
+          eventEmitter.emit("error", createWebrtcError(error));
+        },
+        customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
+        vp8MinBitrate: 300,
+        vp8StartBitrate: 600,
+        isAvatarLive,
+        avatarImageBase64,
+        initialPrompt,
+      });
+
+      const manager = webrtcManager;
+      await manager.connect(inputStream);
+
+      const methods = realtimeMethods(manager, imageToBase64);
+
+      // For non-live_avatar models: send initial prompt after connection is established
+      if (!isAvatarLive && initialState?.prompt) {
+        const { text, enhance } = initialState.prompt;
+        await methods.setPrompt(text, { enhance });
+      }
+
+      const client: RealTimeClient = {
+        set: methods.set,
+        setPrompt: methods.setPrompt,
+        isConnected: () => manager.isConnected(),
+        getConnectionState: () => manager.getConnectionState(),
+        disconnect: () => {
+          manager.cleanup();
+          audioStreamManager?.cleanup();
+        },
+        on: eventEmitter.on,
+        off: eventEmitter.off,
+        sessionId,
+        setImage: async (
+          image: Blob | File | string | null,
+          options?: { prompt?: string; enhance?: boolean; timeout?: number },
+        ) => {
+          if (image === null) {
+            return manager.setImage(null, options);
+          }
+          const base64 = await imageToBase64(image);
+          return manager.setImage(base64, options);
+        },
+      };
+
+      // Add live_avatar specific audio method (only when using internal AudioStreamManager)
+      if (isAvatarLive && audioStreamManager) {
+        const manager = audioStreamManager; // Capture for closures
+        client.playAudio = (audio: Blob | File | ArrayBuffer) => manager.playAudio(audio);
+      }
+
+      return client;
+    } catch (error) {
+      webrtcManager?.cleanup();
+      audioStreamManager?.cleanup();
+      throw error;
     }
-
-    return client;
   };
 
   return {

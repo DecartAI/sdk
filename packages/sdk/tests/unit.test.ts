@@ -942,63 +942,194 @@ describe("Lucy 2 realtime", () => {
 });
 
 describe("WebRTCConnection", () => {
-  describe("setImageBase64 timeout", () => {
-    beforeEach(() => {
-      vi.useFakeTimers();
-    });
-
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    it("uses custom timeout when provided", async () => {
+  describe("setImageBase64", () => {
+    it("rejects immediately when WebSocket is not open", async () => {
       const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
       const connection = new WebRTCConnection();
 
-      const customTimeout = 5000;
-      let rejected = false;
-      let rejectionError: Error | null = null;
-
-      const promise = connection.setImageBase64("base64data", { timeout: customTimeout }).catch((err) => {
-        rejected = true;
-        rejectionError = err;
-      });
-
-      // Advance time to just before the custom timeout - should not have rejected yet
-      await vi.advanceTimersByTimeAsync(customTimeout - 1);
-      expect(rejected).toBe(false);
-
-      // Advance past the custom timeout - now it should reject
-      await vi.advanceTimersByTimeAsync(2);
-      await promise;
-
-      expect(rejected).toBe(true);
-      expect(rejectionError?.message).toBe("Image send timed out");
+      await expect(connection.setImageBase64("base64data", { timeout: 5000 })).rejects.toThrow("WebSocket is not open");
     });
 
-    it("uses default timeout (30000ms) when not provided", async () => {
+    it("rejects immediately with default timeout when WebSocket is not open", async () => {
       const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
       const connection = new WebRTCConnection();
 
-      let rejected = false;
-      let rejectionError: Error | null = null;
+      await expect(connection.setImageBase64("base64data")).rejects.toThrow("WebSocket is not open");
+    });
 
-      const promise = connection.setImageBase64("base64data").catch((err) => {
-        rejected = true;
-        rejectionError = err;
+    describe("timeout behavior", () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
       });
 
-      // Advance to just before the default timeout (30000ms) - should not reject yet
-      await vi.advanceTimersByTimeAsync(29999);
-      expect(rejected).toBe(false);
+      afterEach(() => {
+        vi.useRealTimers();
+      });
 
-      // Now advance past the default timeout
-      await vi.advanceTimersByTimeAsync(2);
-      await promise;
+      it("uses custom timeout when send succeeds but ack is not received", async () => {
+        const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+        const connection = new WebRTCConnection();
+        const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
-      expect(rejected).toBe(true);
-      expect(rejectionError?.message).toBe("Image send timed out");
+        const customTimeout = 5000;
+        let rejected = false;
+        let rejectionError: Error | null = null;
+
+        const promise = connection.setImageBase64("base64data", { timeout: customTimeout }).catch((err) => {
+          rejected = true;
+          rejectionError = err;
+        });
+
+        await vi.advanceTimersByTimeAsync(customTimeout - 1);
+        expect(rejected).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(2);
+        await promise;
+
+        expect(rejected).toBe(true);
+        expect(rejectionError?.message).toBe("Image send timed out");
+        sendSpy.mockRestore();
+      });
+
+      it("uses default timeout (30000ms) when send succeeds but ack is not received", async () => {
+        const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+        const connection = new WebRTCConnection();
+        const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
+
+        let rejected = false;
+        let rejectionError: Error | null = null;
+
+        const promise = connection.setImageBase64("base64data").catch((err) => {
+          rejected = true;
+          rejectionError = err;
+        });
+
+        await vi.advanceTimersByTimeAsync(29999);
+        expect(rejected).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(2);
+        await promise;
+
+        expect(rejected).toBe(true);
+        expect(rejectionError?.message).toBe("Image send timed out");
+        sendSpy.mockRestore();
+      });
     });
+  });
+
+  describe("setupNewPeerConnection", () => {
+    it("does not persist TURN servers between peer connection recreations", async () => {
+      const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+      const iceServerCounts: number[] = [];
+
+      class FakePeerConnection {
+        connectionState: RTCPeerConnectionState = "new";
+        iceConnectionState: RTCIceConnectionState = "new";
+        ontrack: ((event: RTCTrackEvent) => void) | null = null;
+        onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null;
+        onconnectionstatechange: (() => void) | null = null;
+        oniceconnectionstatechange: (() => void) | null = null;
+
+        constructor(config: RTCConfiguration) {
+          iceServerCounts.push(config.iceServers?.length ?? 0);
+        }
+
+        getSenders(): RTCRtpSender[] {
+          return [];
+        }
+
+        removeTrack(): void {}
+
+        close(): void {}
+
+        addTrack(): RTCRtpSender {
+          return {} as RTCRtpSender;
+        }
+
+        addTransceiver(): RTCRtpTransceiver {
+          return {} as RTCRtpTransceiver;
+        }
+      }
+
+      vi.stubGlobal("RTCPeerConnection", FakePeerConnection as unknown as typeof RTCPeerConnection);
+
+      try {
+        const connection = new WebRTCConnection();
+        const internalConnection = connection as unknown as {
+          handleSignalingMessage: (msg: unknown) => Promise<void>;
+          localStream: { getTracks: () => MediaStreamTrack[] };
+          setupNewPeerConnection: (turnConfig?: {
+            username: string;
+            credential: string;
+            server_url: string;
+          }) => Promise<void>;
+        };
+
+        vi.spyOn(internalConnection, "handleSignalingMessage").mockResolvedValue(undefined);
+        internalConnection.localStream = { getTracks: () => [] };
+
+        await internalConnection.setupNewPeerConnection({
+          username: "user",
+          credential: "secret",
+          server_url: "turn:turn.example.com",
+        });
+        await internalConnection.setupNewPeerConnection();
+
+        expect(iceServerCounts).toEqual([2, 1]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+});
+
+describe("RealTimeClient cleanup", () => {
+  it("cleans up AudioStreamManager when avatar fetch fails before WebRTC connect", async () => {
+    class FakeAudioContext {
+      createMediaStreamDestination() {
+        return { stream: {} };
+      }
+      createOscillator() {
+        return { connect: vi.fn(), start: vi.fn(), stop: vi.fn() };
+      }
+      createGain() {
+        return { gain: { value: 0 }, connect: vi.fn() };
+      }
+      close() {
+        return Promise.resolve();
+      }
+    }
+
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+      }),
+    );
+
+    const { AudioStreamManager } = await import("../src/realtime/audio-stream-manager.js");
+    const cleanupSpy = vi.spyOn(AudioStreamManager.prototype, "cleanup");
+
+    try {
+      const { createRealTimeClient } = await import("../src/realtime/client.js");
+      const realtime = createRealTimeClient({ baseUrl: "wss://example.com", apiKey: "test-key" });
+
+      await expect(
+        realtime.connect(null, {
+          model: models.realtime("live_avatar"),
+          onRemoteStream: vi.fn(),
+          avatar: { avatarImage: "https://example.com/avatar.png" },
+        }),
+      ).rejects.toThrow("Failed to fetch image: 404 Not Found");
+
+      expect(cleanupSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      cleanupSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 });
 
@@ -1070,16 +1201,26 @@ describe("set()", () => {
     setImage: ReturnType<typeof vi.fn>;
     getWebsocketMessageEmitter: ReturnType<typeof vi.fn>;
     sendMessage: ReturnType<typeof vi.fn>;
+    getConnectionState: ReturnType<typeof vi.fn>;
+  };
+  let mockEmitter: {
+    on: ReturnType<typeof vi.fn>;
+    off: ReturnType<typeof vi.fn>;
   };
   let mockImageToBase64: ReturnType<typeof vi.fn>;
   let methods: ReturnType<typeof import("../src/realtime/methods.js").realtimeMethods>;
 
   beforeEach(async () => {
     const { realtimeMethods } = await import("../src/realtime/methods.js");
+    mockEmitter = {
+      on: vi.fn(),
+      off: vi.fn(),
+    };
     mockManager = {
       setImage: vi.fn().mockResolvedValue(undefined),
-      getWebsocketMessageEmitter: vi.fn(),
-      sendMessage: vi.fn(),
+      getWebsocketMessageEmitter: vi.fn().mockReturnValue(mockEmitter),
+      sendMessage: vi.fn().mockReturnValue(true),
+      getConnectionState: vi.fn().mockReturnValue("connected"),
     };
     mockImageToBase64 = vi.fn().mockResolvedValue("base64data");
     // biome-ignore lint/suspicious/noExplicitAny: testing with mock
@@ -1088,6 +1229,75 @@ describe("set()", () => {
 
   it("rejects when neither prompt nor image is provided", async () => {
     await expect(methods.set({})).rejects.toThrow("At least one of 'prompt' or 'image' must be provided");
+  });
+
+  it("rejects when not connected", async () => {
+    mockManager.getConnectionState.mockReturnValue("disconnected");
+    await expect(methods.set({ prompt: "a cat" })).rejects.toThrow("Cannot send message: connection is disconnected");
+  });
+
+  it("setPrompt rejects when not connected", async () => {
+    mockManager.getConnectionState.mockReturnValue("reconnecting");
+    await expect(methods.setPrompt("a cat")).rejects.toThrow("Cannot send message: connection is reconnecting");
+  });
+
+  it("setPrompt rejects immediately when send fails", async () => {
+    mockManager.sendMessage.mockReturnValue(false);
+    await expect(methods.setPrompt("a cat")).rejects.toThrow("WebSocket is not open");
+  });
+
+  it("setPrompt resolves on matching ack", async () => {
+    let promptAckListener: ((msg: import("../src/realtime/types").PromptAckMessage) => void) | undefined;
+    mockEmitter.on.mockImplementation((event, listener) => {
+      if (event === "promptAck") {
+        promptAckListener = listener;
+      }
+    });
+    mockEmitter.off.mockImplementation((event, listener) => {
+      if (event === "promptAck" && promptAckListener === listener) {
+        promptAckListener = undefined;
+      }
+    });
+
+    const promise = methods.setPrompt("a cat", { enhance: false });
+    expect(promptAckListener).toBeDefined();
+    expect(mockManager.sendMessage).toHaveBeenCalledWith({
+      type: "prompt",
+      prompt: "a cat",
+      enhance_prompt: false,
+    });
+
+    promptAckListener?.({
+      type: "prompt_ack",
+      prompt: "a cat",
+      success: true,
+      error: null,
+    });
+    await promise;
+    expect(mockEmitter.off).toHaveBeenCalled();
+  });
+
+  it("setPrompt rejects with Error when ack reports failure", async () => {
+    let promptAckListener: ((msg: import("../src/realtime/types").PromptAckMessage) => void) | undefined;
+    mockEmitter.on.mockImplementation((event, listener) => {
+      if (event === "promptAck") {
+        promptAckListener = listener;
+      }
+    });
+
+    const promise = methods.setPrompt("a cat");
+    expect(promptAckListener).toBeDefined();
+
+    promptAckListener?.({
+      type: "prompt_ack",
+      prompt: "a cat",
+      success: false,
+      error: "invalid prompt",
+    });
+
+    const error = await promise.catch((err) => err);
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toBe("invalid prompt");
   });
 
   it("rejects when prompt is empty string", async () => {

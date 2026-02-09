@@ -19,11 +19,13 @@ export type {
 } from "./queue/types";
 export type {
   AvatarOptions,
+  Events as RealTimeEvents,
   RealTimeClient,
   RealTimeClientConnectOptions,
   RealTimeClientInitialState,
 } from "./realtime/client";
 export type { SetInput } from "./realtime/methods";
+export type { ConnectionState } from "./realtime/webrtc-connection";
 export {
   type ImageModelDefinition,
   type ImageModels,
