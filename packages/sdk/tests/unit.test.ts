@@ -1064,3 +1064,79 @@ describe("live_avatar Model", () => {
     });
   });
 });
+
+describe("set()", () => {
+  let mockManager: {
+    setImage: ReturnType<typeof vi.fn>;
+    getWebsocketMessageEmitter: ReturnType<typeof vi.fn>;
+    sendMessage: ReturnType<typeof vi.fn>;
+  };
+  let mockImageToBase64: ReturnType<typeof vi.fn>;
+  let methods: ReturnType<typeof import("../src/realtime/methods.js").realtimeMethods>;
+
+  beforeEach(async () => {
+    const { realtimeMethods } = await import("../src/realtime/methods.js");
+    mockManager = {
+      setImage: vi.fn().mockResolvedValue(undefined),
+      getWebsocketMessageEmitter: vi.fn(),
+      sendMessage: vi.fn(),
+    };
+    mockImageToBase64 = vi.fn().mockResolvedValue("base64data");
+    // biome-ignore lint/suspicious/noExplicitAny: testing with mock
+    methods = realtimeMethods(mockManager as any, mockImageToBase64);
+  });
+
+  it("rejects when neither prompt nor image is provided", async () => {
+    await expect(methods.set({})).rejects.toThrow("At least one of 'prompt' or 'image' must be provided");
+  });
+
+  it("rejects when prompt is empty string", async () => {
+    await expect(methods.set({ prompt: "" })).rejects.toThrow();
+  });
+
+  it("sends only prompt when no image provided", async () => {
+    await methods.set({ prompt: "a cat" });
+    expect(mockManager.setImage).toHaveBeenCalledWith(null, { prompt: "a cat", enhance: true, timeout: 30000 });
+  });
+
+  it("sends prompt with enhance flag", async () => {
+    await methods.set({ prompt: "a cat", enhance: true });
+    expect(mockManager.setImage).toHaveBeenCalledWith(null, { prompt: "a cat", enhance: true, timeout: 30000 });
+  });
+
+  it("sends only image when no prompt provided", async () => {
+    mockImageToBase64.mockResolvedValue("convertedbase64");
+    await methods.set({ image: "rawbase64data" });
+
+    expect(mockImageToBase64).toHaveBeenCalledWith("rawbase64data");
+    expect(mockManager.setImage).toHaveBeenCalledWith("convertedbase64", {
+      prompt: undefined,
+      enhance: true,
+      timeout: 30000,
+    });
+  });
+
+  it("sends prompt and image together", async () => {
+    mockImageToBase64.mockResolvedValue("convertedbase64");
+    await methods.set({ prompt: "a cat", enhance: false, image: "rawbase64" });
+
+    expect(mockManager.setImage).toHaveBeenCalledWith("convertedbase64", {
+      prompt: "a cat",
+      enhance: false,
+      timeout: 30000,
+    });
+  });
+
+  it("converts Blob image to base64", async () => {
+    mockImageToBase64.mockResolvedValue("blobbase64");
+    const testBlob = new Blob(["test-image"], { type: "image/png" });
+    await methods.set({ image: testBlob });
+
+    expect(mockImageToBase64).toHaveBeenCalledWith(testBlob);
+    expect(mockManager.setImage).toHaveBeenCalledWith("blobbase64", {
+      prompt: undefined,
+      enhance: true,
+      timeout: 30000,
+    });
+  });
+});
