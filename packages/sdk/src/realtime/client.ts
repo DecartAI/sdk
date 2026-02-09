@@ -148,7 +148,16 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       // For live_avatar: prepare avatar image base64 before connection
       let avatarImageBase64: string | undefined;
       if (isAvatarLive && avatar?.avatarImage) {
-        avatarImageBase64 = await imageToBase64(avatar.avatarImage);
+        if (typeof avatar.avatarImage === "string") {
+          const response = await fetch(avatar.avatarImage);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+          }
+          const imageBlob = await response.blob();
+          avatarImageBase64 = await blobToBase64(imageBlob);
+        } else {
+          avatarImageBase64 = await blobToBase64(avatar.avatarImage);
+        }
       }
 
       // For live_avatar: prepare initial prompt to send before WebRTC handshake
