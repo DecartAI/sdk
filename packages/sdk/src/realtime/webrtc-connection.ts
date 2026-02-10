@@ -343,9 +343,15 @@ export class WebRTCConnection {
       this.pc.addTransceiver("audio", { direction: "recvonly" });
     }
 
+    let fallbackStream: MediaStream | null = null;
     this.pc.ontrack = (e) => {
-      const stream = e.streams?.[0] ?? new MediaStream([e.track]);
-      this.callbacks.onRemoteStream?.(stream);
+      if (e.streams?.[0]) {
+        this.callbacks.onRemoteStream?.(e.streams[0]);
+      } else {
+        if (!fallbackStream) fallbackStream = new MediaStream();
+        fallbackStream.addTrack(e.track);
+        this.callbacks.onRemoteStream?.(fallbackStream);
+      }
     };
 
     this.pc.onicecandidate = (e) => {
