@@ -1,6 +1,6 @@
 import pRetry, { AbortError } from "p-retry";
-import type { OutgoingMessage } from "./types";
-import { type ConnectionState, WebRTCConnection } from "./webrtc-connection";
+import type { ConnectionState, OutgoingMessage } from "./types";
+import { WebRTCConnection } from "./webrtc-connection";
 
 export interface WebRTCConfig {
   webrtcUrl: string;
@@ -62,7 +62,7 @@ export class WebRTCManager {
   private emitState(state: ConnectionState): void {
     if (this.managerState !== state) {
       this.managerState = state;
-      if (state === "connected") this.hasConnected = true;
+      if (state === "connected" || state === "generating") this.hasConnected = true;
       this.config.onConnectionStateChange?.(state);
     }
   }
@@ -75,12 +75,10 @@ export class WebRTCManager {
 
     // During reconnection, intercept state changes from the connection layer
     if (this.isReconnecting) {
-      if (state === "connected") {
-        // Reconnection succeeded
+      if (state === "connected" || state === "generating") {
         this.isReconnecting = false;
-        this.emitState("connected");
+        this.emitState(state);
       }
-      // Swallow other states during reconnection (connecting, disconnected)
       return;
     }
 
@@ -197,7 +195,7 @@ export class WebRTCManager {
   }
 
   isConnected(): boolean {
-    return this.managerState === "connected";
+    return this.managerState === "connected" || this.managerState === "generating";
   }
 
   getConnectionState(): ConnectionState {

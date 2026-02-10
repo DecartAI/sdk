@@ -1350,3 +1350,210 @@ describe("set()", () => {
     });
   });
 });
+
+describe("PR1 resilience", () => {
+  it("connect resolves when state becomes generating before poll observes connected", async () => {
+    const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+
+    class FakeWebSocket {
+      static OPEN = 1;
+      static CLOSED = 3;
+      readyState = FakeWebSocket.OPEN;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: { data: string }) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+
+      constructor(_url: string) {
+        setTimeout(() => this.onopen?.(), 0);
+      }
+
+      send(): void {}
+
+      close(): void {
+        this.readyState = FakeWebSocket.CLOSED;
+        this.onclose?.();
+      }
+    }
+
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+
+    try {
+      const connection = new WebRTCConnection();
+      const internal = connection as unknown as {
+        setState: (state: import("../src/realtime/types").ConnectionState) => void;
+        setupNewPeerConnection: () => Promise<void>;
+      };
+
+      vi.spyOn(internal, "setupNewPeerConnection").mockImplementation(async () => {
+        internal.setState("connected");
+        setTimeout(() => internal.setState("generating"), 0);
+      });
+
+      await expect(
+        connection.connect("wss://example.com", { getTracks: () => [] } as MediaStream, 750),
+      ).resolves.toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("transitions from generating to disconnected when peer connection disconnects", async () => {
+    const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+
+    class FakePeerConnection {
+      connectionState: RTCPeerConnectionState = "new";
+      iceConnectionState: RTCIceConnectionState = "new";
+      ontrack: ((event: RTCTrackEvent) => void) | null = null;
+      onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null;
+      onconnectionstatechange: (() => void) | null = null;
+      oniceconnectionstatechange: (() => void) | null = null;
+
+      getSenders(): RTCRtpSender[] {
+        return [];
+      }
+
+      removeTrack(): void {}
+
+      close(): void {}
+
+      addTrack(): RTCRtpSender {
+        return {} as RTCRtpSender;
+      }
+
+      addTransceiver(): RTCRtpTransceiver {
+        return {} as RTCRtpTransceiver;
+      }
+    }
+
+    vi.stubGlobal("RTCPeerConnection", FakePeerConnection as unknown as typeof RTCPeerConnection);
+
+    try {
+      const connection = new WebRTCConnection();
+      const internal = connection as unknown as {
+        handleSignalingMessage: (msg: unknown) => Promise<void>;
+        localStream: { getTracks: () => MediaStreamTrack[] };
+        setupNewPeerConnection: () => Promise<void>;
+        pc: { connectionState: RTCPeerConnectionState; onconnectionstatechange: (() => void) | null } | null;
+      };
+
+      vi.spyOn(internal, "handleSignalingMessage").mockResolvedValue(undefined);
+      internal.localStream = { getTracks: () => [] };
+      await internal.setupNewPeerConnection();
+
+      connection.state = "generating";
+      if (!internal.pc?.onconnectionstatechange) {
+        throw new Error("Peer connection state callback was not set");
+      }
+
+      internal.pc.connectionState = "disconnected";
+      internal.pc.onconnectionstatechange();
+
+      expect(connection.state).toBe("disconnected");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("treats generating as an established connection for reconnect decisions", async () => {
+    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+    const manager = new WebRTCManager({
+      webrtcUrl: "wss://example.com",
+      onRemoteStream: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    const internal = manager as unknown as {
+      handleConnectionStateChange: (state: import("../src/realtime/types").ConnectionState) => void;
+      reconnect: () => Promise<void>;
+    };
+
+    const reconnectSpy = vi.spyOn(internal, "reconnect").mockResolvedValue(undefined);
+    try {
+      internal.handleConnectionStateChange("generating");
+      internal.handleConnectionStateChange("disconnected");
+      expect(reconnectSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      reconnectSpy.mockRestore();
+    }
+  });
+
+  it("replays connection events emitted during connect before returning client", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+
+    const promptAckListeners = new Set<(msg: import("../src/realtime/types").PromptAckMessage) => void>();
+    const websocketEmitter = {
+      on: (event: string, listener: (msg: import("../src/realtime/types").PromptAckMessage) => void) => {
+        if (event === "promptAck") promptAckListeners.add(listener);
+      },
+      off: (event: string, listener: (msg: import("../src/realtime/types").PromptAckMessage) => void) => {
+        if (event === "promptAck") promptAckListeners.delete(listener);
+      },
+    };
+
+    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+      const manager = this as unknown as {
+        config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
+        managerState: import("../src/realtime/types").ConnectionState;
+      };
+      manager.managerState = "connected";
+      manager.config.onConnectionStateChange?.("connected");
+      return true;
+    });
+    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockImplementation(function () {
+      const manager = this as unknown as { managerState: import("../src/realtime/types").ConnectionState };
+      return manager.managerState ?? "connected";
+    });
+    const emitterSpy = vi
+      .spyOn(WebRTCManager.prototype, "getWebsocketMessageEmitter")
+      .mockReturnValue(websocketEmitter as never);
+    const sendSpy = vi.spyOn(WebRTCManager.prototype, "sendMessage").mockImplementation(function (message) {
+      if (message.type === "prompt") {
+        setTimeout(() => {
+          const manager = this as unknown as {
+            config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
+            managerState: import("../src/realtime/types").ConnectionState;
+          };
+          manager.managerState = "generating";
+          manager.config.onConnectionStateChange?.("generating");
+          for (const listener of promptAckListeners) {
+            listener({
+              type: "prompt_ack",
+              prompt: message.prompt,
+              success: true,
+              error: null,
+            });
+          }
+        }, 0);
+      }
+      return true;
+    });
+    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+
+    try {
+      const realtime = createRealTimeClient({ baseUrl: "wss://example.com", apiKey: "test-key" });
+      const client = await realtime.connect({} as MediaStream, {
+        model: models.realtime("mirage_v2"),
+        onRemoteStream: vi.fn(),
+        initialState: {
+          prompt: {
+            text: "test",
+          },
+        },
+      });
+
+      const states: import("../src/realtime/types").ConnectionState[] = [];
+      client.on("connectionChange", (state) => states.push(state));
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(states).toEqual(["connected", "generating"]);
+    } finally {
+      connectSpy.mockRestore();
+      stateSpy.mockRestore();
+      emitterSpy.mockRestore();
+      sendSpy.mockRestore();
+      cleanupSpy.mockRestore();
+    }
+  });
+});

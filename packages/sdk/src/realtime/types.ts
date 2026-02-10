@@ -60,6 +60,12 @@ export type SetImageAckMessage = {
   error: null | string;
 };
 
+export type GenerationStartedMessage = {
+  type: "generation_started";
+};
+
+export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
+
 // Incoming message types (from server)
 export type IncomingWebRTCMessage =
   | ReadyMessage
@@ -69,7 +75,8 @@ export type IncomingWebRTCMessage =
   | IceRestartMessage
   | PromptAckMessage
   | ErrorMessage
-  | SetImageAckMessage;
+  | SetImageAckMessage
+  | GenerationStartedMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =

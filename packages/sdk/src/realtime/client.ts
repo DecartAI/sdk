@@ -6,6 +6,7 @@ import { modelStateSchema } from "../shared/types";
 import { createWebrtcError, type DecartSDKError } from "../utils/errors";
 import { AudioStreamManager } from "./audio-stream-manager";
 import { realtimeMethods, type SetInput } from "./methods";
+import type { ConnectionState } from "./types";
 import { WebRTCManager } from "./webrtc-manager";
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -90,7 +91,7 @@ const realTimeClientConnectOptionsSchema = z.object({
 export type RealTimeClientConnectOptions = z.infer<typeof realTimeClientConnectOptionsSchema>;
 
 export type Events = {
-  connectionChange: "connected" | "connecting" | "disconnected" | "reconnecting";
+  connectionChange: ConnectionState;
   error: DecartSDKError;
 };
 
@@ -98,7 +99,7 @@ export type RealTimeClient = {
   set: (input: SetInput) => Promise<void>;
   setPrompt: (prompt: string, { enhance }?: { enhance?: boolean }) => Promise<void>;
   isConnected: () => boolean;
-  getConnectionState: () => "connected" | "connecting" | "disconnected" | "reconnecting";
+  getConnectionState: () => ConnectionState;
   disconnect: () => void;
   on: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   off: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
@@ -167,16 +168,38 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
+
+      const eventBuffer: Array<{ event: keyof Events; data: Events[keyof Events] }> = [];
+      let buffering = true;
+
+      const emitOrBuffer = <K extends keyof Events>(event: K, data: Events[K]) => {
+        if (buffering) {
+          eventBuffer.push({ event, data: data as Events[keyof Events] });
+        } else {
+          eventEmitter.emit(event, data);
+        }
+      };
+
+      const flushBufferedEvents = () => {
+        setTimeout(() => {
+          buffering = false;
+          for (const { event, data } of eventBuffer) {
+            (eventEmitter.emit as (type: keyof Events, data: Events[keyof Events]) => void)(event, data);
+          }
+          eventBuffer.length = 0;
+        }, 0);
+      };
+
       webrtcManager = new WebRTCManager({
         webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
         integration,
         onRemoteStream,
         onConnectionStateChange: (state) => {
-          eventEmitter.emit("connectionChange", state);
+          emitOrBuffer("connectionChange", state);
         },
         onError: (error) => {
           console.error("WebRTC error:", error);
-          eventEmitter.emit("error", createWebrtcError(error));
+          emitOrBuffer("error", createWebrtcError(error));
         },
         customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
         vp8MinBitrate: 300,
@@ -203,6 +226,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         isConnected: () => manager.isConnected(),
         getConnectionState: () => manager.getConnectionState(),
         disconnect: () => {
+          eventBuffer.length = 0;
           manager.cleanup();
           audioStreamManager?.cleanup();
         },
@@ -227,6 +251,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         client.playAudio = (audio: Blob | File | ArrayBuffer) => manager.playAudio(audio);
       }
 
+      flushBufferedEvents();
       return client;
     } catch (error) {
       webrtcManager?.cleanup();
