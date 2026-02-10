@@ -110,7 +110,7 @@ export type RealTimeClient = {
   disconnect: () => void;
   on: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   off: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
-  sessionId: string;
+  sessionId: string | null;
   subscribeToken: string | null;
   setImage: (
     image: Blob | File | string | null,
@@ -131,7 +131,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       throw parsedOptions.error;
     }
 
-    const sessionId = uuidv4();
     const isAvatarLive = options.model.name === "live_avatar";
 
     const { onRemoteStream, initialState, avatar } = parsedOptions.data;
@@ -197,9 +196,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       const manager = webrtcManager;
 
+      let sessionId: string | null = null;
       let subscribeToken: string | null = null;
       const sessionIdListener = (msg: SessionIdMessage) => {
         subscribeToken = encodeSubscribeToken(msg.session_id, msg.server_ip, msg.server_port);
+        sessionId = msg.session_id;
       };
       manager.getWebsocketMessageEmitter().on("sessionId", sessionIdListener);
 
@@ -225,7 +226,9 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         },
         on: eventEmitter.on,
         off: eventEmitter.off,
-        sessionId,
+        get sessionId() {
+          return sessionId;
+        },
         get subscribeToken() {
           return subscribeToken;
         },
