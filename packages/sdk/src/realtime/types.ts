@@ -64,6 +64,13 @@ export type GenerationStartedMessage = {
   type: "generation_started";
 };
 
+export type SessionIdMessage = {
+  type: "session_id";
+  session_id: string;
+  server_ip: string;
+  server_port: number;
+};
+
 export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
 
 // Incoming message types (from server)
@@ -76,7 +83,8 @@ export type IncomingWebRTCMessage =
   | PromptAckMessage
   | ErrorMessage
   | SetImageAckMessage
-  | GenerationStartedMessage;
+  | GenerationStartedMessage
+  | SessionIdMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =

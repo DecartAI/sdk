@@ -1,12 +1,19 @@
-import mitt from "mitt";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { modelDefinitionSchema } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { createWebrtcError, type DecartSDKError } from "../utils/errors";
 import { AudioStreamManager } from "./audio-stream-manager";
+import { createEventBuffer } from "./event-buffer";
 import { realtimeMethods, type SetInput } from "./methods";
-import type { ConnectionState } from "./types";
+import {
+  decodeSubscribeToken,
+  encodeSubscribeToken,
+  type RealTimeSubscribeClient,
+  type SubscribeEvents,
+  type SubscribeOptions,
+} from "./subscribe-client";
+import type { ConnectionState, SessionIdMessage } from "./types";
 import { WebRTCManager } from "./webrtc-manager";
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -104,11 +111,11 @@ export type RealTimeClient = {
   on: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   off: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   sessionId: string;
+  subscribeToken: string | null;
   setImage: (
     image: Blob | File | string | null,
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
   ) => Promise<void>;
-  // live_avatar audio method (only available when model is live_avatar and no stream is provided)
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
 };
 
@@ -119,8 +126,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     stream: MediaStream | null,
     options: RealTimeClientConnectOptions,
   ): Promise<RealTimeClient> => {
-    const eventEmitter = mitt<Events>();
-
     const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
     if (!parsedOptions.success) {
       throw parsedOptions.error;
@@ -169,26 +174,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       const url = `${baseUrl}${options.model.urlPath}`;
 
-      const eventBuffer: Array<{ event: keyof Events; data: Events[keyof Events] }> = [];
-      let buffering = true;
-
-      const emitOrBuffer = <K extends keyof Events>(event: K, data: Events[K]) => {
-        if (buffering) {
-          eventBuffer.push({ event, data: data as Events[keyof Events] });
-        } else {
-          eventEmitter.emit(event, data);
-        }
-      };
-
-      const flushBufferedEvents = () => {
-        setTimeout(() => {
-          buffering = false;
-          for (const { event, data } of eventBuffer) {
-            (eventEmitter.emit as (type: keyof Events, data: Events[keyof Events]) => void)(event, data);
-          }
-          eventBuffer.length = 0;
-        }, 0);
-      };
+      const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
 
       webrtcManager = new WebRTCManager({
         webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
@@ -210,6 +196,13 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       });
 
       const manager = webrtcManager;
+
+      let subscribeToken: string | null = null;
+      const sessionIdListener = (msg: SessionIdMessage) => {
+        subscribeToken = encodeSubscribeToken(msg.session_id, msg.server_ip, msg.server_port);
+      };
+      manager.getWebsocketMessageEmitter().on("sessionId", sessionIdListener);
+
       await manager.connect(inputStream);
 
       const methods = realtimeMethods(manager, imageToBase64);
@@ -226,14 +219,16 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         isConnected: () => manager.isConnected(),
         getConnectionState: () => manager.getConnectionState(),
         disconnect: () => {
-          buffering = false;
-          eventBuffer.length = 0;
+          stop();
           manager.cleanup();
           audioStreamManager?.cleanup();
         },
         on: eventEmitter.on,
         off: eventEmitter.off,
         sessionId,
+        get subscribeToken() {
+          return subscribeToken;
+        },
         setImage: async (
           image: Blob | File | string | null,
           options?: { prompt?: string; enhance?: boolean; timeout?: number },
@@ -252,7 +247,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         client.playAudio = (audio: Blob | File | ArrayBuffer) => manager.playAudio(audio);
       }
 
-      flushBufferedEvents();
+      flush();
       return client;
     } catch (error) {
       webrtcManager?.cleanup();
@@ -261,7 +256,52 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     }
   };
 
+  const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
+    const { sid, ip, port } = decodeSubscribeToken(options.token);
+    const subscribeUrl = `${baseUrl}/subscribe/${sid}?IP=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}&api_key=${encodeURIComponent(apiKey)}`;
+
+    const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
+
+    let webrtcManager: WebRTCManager | undefined;
+
+    try {
+      webrtcManager = new WebRTCManager({
+        webrtcUrl: subscribeUrl,
+        integration,
+        onRemoteStream: options.onRemoteStream,
+        onConnectionStateChange: (state) => {
+          emitOrBuffer("connectionChange", state);
+        },
+        onError: (error) => {
+          console.error("WebRTC subscribe error:", error);
+          emitOrBuffer("error", createWebrtcError(error));
+        },
+      });
+
+      const manager = webrtcManager;
+      await manager.connect(null);
+
+      const client: RealTimeSubscribeClient = {
+        isConnected: () => manager.isConnected(),
+        getConnectionState: () => manager.getConnectionState(),
+        disconnect: () => {
+          stop();
+          manager.cleanup();
+        },
+        on: eventEmitter.on,
+        off: eventEmitter.off,
+      };
+
+      flush();
+      return client;
+    } catch (error) {
+      webrtcManager?.cleanup();
+      throw error;
+    }
+  };
+
   return {
     connect,
+    subscribe,
   };
 };

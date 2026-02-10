@@ -5,6 +5,7 @@ import type {
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
+  SessionIdMessage,
   SetImageAckMessage,
   TurnConfig,
 } from "./types";
@@ -27,6 +28,7 @@ interface ConnectionCallbacks {
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
   setImageAck: SetImageAckMessage;
+  sessionId: SessionIdMessage;
 };
 
 export class WebRTCConnection {
@@ -38,7 +40,7 @@ export class WebRTCConnection {
   websocketMessagesEmitter = mitt<WsMessageEvents>();
   constructor(private callbacks: ConnectionCallbacks = {}) {}
 
-  async connect(url: string, localStream: MediaStream, timeout: number, integration?: string): Promise<void> {
+  async connect(url: string, localStream: MediaStream | null, timeout: number, integration?: string): Promise<void> {
     const deadline = Date.now() + timeout;
     this.localStream = localStream;
 
@@ -152,6 +154,11 @@ export class WebRTCConnection {
 
       if (msg.type === "generation_started") {
         this.setState("generating");
+        return;
+      }
+
+      if (msg.type === "session_id") {
+        this.websocketMessagesEmitter.emit("sessionId", msg);
         return;
       }
 
@@ -300,9 +307,6 @@ export class WebRTCConnection {
   }
 
   private async setupNewPeerConnection(turnConfig?: TurnConfig): Promise<void> {
-    if (!this.localStream) {
-      throw new Error("No local stream found");
-    }
     if (this.pc) {
       this.pc.getSenders().forEach((sender) => {
         if (sender.track && this.pc) {
@@ -322,16 +326,22 @@ export class WebRTCConnection {
     this.pc = new RTCPeerConnection({ iceServers });
     this.setState("connecting");
 
-    // For live_avatar: add receive-only video transceiver (sends audio only, receives audio+video)
-    if (this.callbacks.isAvatarLive) {
-      this.pc.addTransceiver("video", { direction: "recvonly" });
-    }
-
-    this.localStream.getTracks().forEach((track) => {
-      if (this.pc && this.localStream) {
-        this.pc.addTrack(track, this.localStream);
+    if (this.localStream) {
+      // For live_avatar: add receive-only video transceiver (sends audio only, receives audio+video)
+      if (this.callbacks.isAvatarLive) {
+        this.pc.addTransceiver("video", { direction: "recvonly" });
       }
-    });
+
+      this.localStream.getTracks().forEach((track) => {
+        if (this.pc && this.localStream) {
+          this.pc.addTrack(track, this.localStream);
+        }
+      });
+    } else {
+      // Subscribe mode: receive-only transceivers for video and audio
+      this.pc.addTransceiver("video", { direction: "recvonly" });
+      this.pc.addTransceiver("audio", { direction: "recvonly" });
+    }
 
     this.pc.ontrack = (e) => {
       if (e.streams?.[0]) this.callbacks.onRemoteStream?.(e.streams[0]);
