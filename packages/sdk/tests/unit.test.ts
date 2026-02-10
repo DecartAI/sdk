@@ -1351,7 +1351,7 @@ describe("set()", () => {
   });
 });
 
-describe("PR1 resilience", () => {
+describe("WebSockets Connection", () => {
   it("connect resolves when state becomes generating before poll observes connected", async () => {
     const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
 

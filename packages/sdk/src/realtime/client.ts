@@ -226,6 +226,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         isConnected: () => manager.isConnected(),
         getConnectionState: () => manager.getConnectionState(),
         disconnect: () => {
+          buffering = false;
           eventBuffer.length = 0;
           manager.cleanup();
           audioStreamManager?.cleanup();
