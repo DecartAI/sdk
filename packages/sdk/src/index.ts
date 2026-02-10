@@ -25,7 +25,7 @@ export type {
   RealTimeClientInitialState,
 } from "./realtime/client";
 export type { SetInput } from "./realtime/methods";
-export type { ConnectionState } from "./realtime/webrtc-connection";
+export type { ConnectionState } from "./realtime/types";
 export {
   type ImageModelDefinition,
   type ImageModels,

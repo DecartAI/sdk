@@ -1,6 +1,7 @@
 import mitt from "mitt";
 import { buildUserAgent } from "../utils/user-agent";
 import type {
+  ConnectionState,
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
@@ -22,8 +23,6 @@ interface ConnectionCallbacks {
   avatarImageBase64?: string;
   initialPrompt?: { text: string; enhance?: boolean };
 }
-
-export type ConnectionState = "connecting" | "connected" | "disconnected" | "reconnecting";
 
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
@@ -107,7 +106,7 @@ export class WebRTCConnection {
       await Promise.race([
         new Promise<void>((resolve, reject) => {
           const checkConnection = setInterval(() => {
-            if (this.state === "connected") {
+            if (this.state === "connected" || this.state === "generating") {
               clearInterval(checkConnection);
               resolve();
             } else if (this.state === "disconnected") {
@@ -148,6 +147,11 @@ export class WebRTCConnection {
 
       if (msg.type === "prompt_ack") {
         this.websocketMessagesEmitter.emit("promptAck", msg);
+        return;
+      }
+
+      if (msg.type === "generation_started") {
+        this.setState("generating");
         return;
       }
 
@@ -340,9 +344,11 @@ export class WebRTCConnection {
     this.pc.onconnectionstatechange = () => {
       if (!this.pc) return;
       const s = this.pc.connectionState;
-      this.setState(
-        s === "connected" ? "connected" : ["connecting", "new"].includes(s) ? "connecting" : "disconnected",
-      );
+      const nextState =
+        s === "connected" ? "connected" : ["connecting", "new"].includes(s) ? "connecting" : "disconnected";
+      // Keep "generating" sticky unless the connection is actually lost.
+      if (this.state === "generating" && nextState !== "disconnected") return;
+      this.setState(nextState);
     };
 
     this.pc.oniceconnectionstatechange = () => {

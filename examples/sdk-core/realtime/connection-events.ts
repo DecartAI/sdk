@@ -39,6 +39,12 @@ async function main() {
       case "connected":
         console.log("Connected! Streaming active.");
         break;
+      case "generating":
+        console.log("Generation started! Frames incoming.");
+        break;
+      case "reconnecting":
+        console.log("Connection lost, reconnecting...");
+        break;
       case "disconnected":
         console.log("Disconnected from server.");
         break;

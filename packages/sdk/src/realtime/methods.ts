@@ -28,7 +28,7 @@ export const realtimeMethods = (
 ) => {
   const assertConnected = () => {
     const state = webrtcManager.getConnectionState();
-    if (state !== "connected") {
+    if (state !== "connected" && state !== "generating") {
       throw new Error(`Cannot send message: connection is ${state}`);
     }
   };
