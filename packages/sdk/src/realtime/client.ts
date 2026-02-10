@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { modelDefinitionSchema } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
@@ -261,7 +260,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
   const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
     const { sid, ip, port } = decodeSubscribeToken(options.token);
-    const subscribeUrl = `${baseUrl}/subscribe/${sid}?IP=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}&api_key=${encodeURIComponent(apiKey)}`;
+    const subscribeUrl = `${baseUrl}/subscribe/${encodeURIComponent(sid)}?IP=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}&api_key=${encodeURIComponent(apiKey)}`;
 
     const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
 
