@@ -38,6 +38,7 @@ export class WebRTCManager {
   private connection: WebRTCConnection;
   private config: WebRTCConfig;
   private localStream: MediaStream | null = null;
+  private subscribeMode = false;
   private managerState: ConnectionState = "disconnected";
   private hasConnected = false;
   private isReconnecting = false;
@@ -93,7 +94,8 @@ export class WebRTCManager {
   }
 
   private async reconnect(): Promise<void> {
-    if (this.isReconnecting || this.intentionalDisconnect || !this.localStream) return;
+    if (this.isReconnecting || this.intentionalDisconnect) return;
+    if (!this.subscribeMode && !this.localStream) return;
 
     const reconnectGeneration = ++this.reconnectGeneration;
     this.isReconnecting = true;
@@ -106,13 +108,17 @@ export class WebRTCManager {
             throw new AbortError("Reconnect cancelled");
           }
 
-          const stream = this.localStream;
-          if (!stream) {
+          if (!this.subscribeMode && !this.localStream) {
             throw new AbortError("Reconnect cancelled: no local stream");
           }
 
           this.connection.cleanup();
-          await this.connection.connect(this.config.webrtcUrl, stream, CONNECTION_TIMEOUT, this.config.integration);
+          await this.connection.connect(
+            this.config.webrtcUrl,
+            this.localStream,
+            CONNECTION_TIMEOUT,
+            this.config.integration,
+          );
 
           if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
             this.connection.cleanup();
@@ -148,8 +154,9 @@ export class WebRTCManager {
     }
   }
 
-  async connect(localStream: MediaStream): Promise<boolean> {
+  async connect(localStream: MediaStream | null): Promise<boolean> {
     this.localStream = localStream;
+    this.subscribeMode = localStream === null;
     this.intentionalDisconnect = false;
     this.hasConnected = false;
     this.isReconnecting = false;

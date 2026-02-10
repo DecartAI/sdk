@@ -25,6 +25,11 @@ export type {
   RealTimeClientInitialState,
 } from "./realtime/client";
 export type { SetInput } from "./realtime/methods";
+export type {
+  RealTimeSubscribeClient,
+  SubscribeEvents,
+  SubscribeOptions,
+} from "./realtime/subscribe-client";
 export type { ConnectionState } from "./realtime/types";
 export {
   type ImageModelDefinition,
