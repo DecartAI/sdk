@@ -344,7 +344,8 @@ export class WebRTCConnection {
     }
 
     this.pc.ontrack = (e) => {
-      if (e.streams?.[0]) this.callbacks.onRemoteStream?.(e.streams[0]);
+      const stream = e.streams?.[0] ?? new MediaStream([e.track]);
+      this.callbacks.onRemoteStream?.(stream);
     };
 
     this.pc.onicecandidate = (e) => {
