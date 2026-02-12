@@ -1,6 +1,11 @@
 import type { FileInput, ReactNativeFile } from "../process/types";
-import { createInvalidInputError } from "../utils/errors";
+import { createFileTooLargeError, createInvalidInputError } from "../utils/errors";
 import { buildUserAgent } from "../utils/user-agent";
+
+/**
+ * Maximum file size allowed for uploads (20MB).
+ */
+export const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
 /**
  * Type guard to check if a value is a React Native file object.
@@ -19,22 +24,20 @@ function isReactNativeFile(value: unknown): value is ReactNativeFile {
  * Convert various file input types to a Blob or React Native file object.
  * React Native file objects are passed through as-is for proper FormData handling.
  */
-export async function fileInputToBlob(input: FileInput): Promise<Blob | ReactNativeFile> {
-  // React Native file object - pass through as-is
+export async function fileInputToBlob(input: FileInput, fieldName?: string): Promise<Blob | ReactNativeFile> {
+  // React Native file object - pass through as-is (cannot check size)
   if (isReactNativeFile(input)) {
     return input;
   }
 
+  let blob: Blob;
+
   if (input instanceof Blob || input instanceof File) {
-    return input;
-  }
-
-  if (input instanceof ReadableStream) {
+    blob = input;
+  } else if (input instanceof ReadableStream) {
     const response = new Response(input);
-    return response.blob();
-  }
-
-  if (typeof input === "string" || input instanceof URL) {
+    blob = await response.blob();
+  } else if (typeof input === "string" || input instanceof URL) {
     const url = typeof input === "string" ? input : input.toString();
 
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
@@ -45,10 +48,17 @@ export async function fileInputToBlob(input: FileInput): Promise<Blob | ReactNat
     if (!response.ok) {
       throw createInvalidInputError(`Failed to fetch file from URL: ${response.statusText}`);
     }
-    return response.blob();
+    blob = await response.blob();
+  } else {
+    throw createInvalidInputError("Invalid file input type");
   }
 
-  throw createInvalidInputError("Invalid file input type");
+  // Validate file size
+  if (blob.size > MAX_FILE_SIZE) {
+    throw createFileTooLargeError(blob.size, MAX_FILE_SIZE, fieldName);
+  }
+
+  return blob;
 }
 
 /**
