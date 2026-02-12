@@ -2,6 +2,7 @@ import mitt from "mitt";
 import { buildUserAgent } from "../utils/user-agent";
 import type {
   ConnectionState,
+  GenerationTickMessage,
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
@@ -29,6 +30,7 @@ type WsMessageEvents = {
   promptAck: PromptAckMessage;
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
+  generationTick: GenerationTickMessage;
 };
 
 export class WebRTCConnection {
@@ -154,6 +156,17 @@ export class WebRTCConnection {
 
       if (msg.type === "generation_started") {
         this.setState("generating");
+        return;
+      }
+
+      if (msg.type === "generation_tick") {
+        this.websocketMessagesEmitter.emit("generationTick", msg);
+        return;
+      }
+
+      if (msg.type === "generation_ended") {
+        // Handled internally — not surfaced as a public event.
+        // Devs use connectionChange for disconnect and error for insufficient credits.
         return;
       }
 

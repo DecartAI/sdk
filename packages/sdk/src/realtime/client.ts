@@ -12,7 +12,7 @@ import {
   type SubscribeEvents,
   type SubscribeOptions,
 } from "./subscribe-client";
-import type { ConnectionState, SessionIdMessage } from "./types";
+import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
 import { WebRTCManager } from "./webrtc-manager";
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -99,6 +99,7 @@ export type RealTimeClientConnectOptions = z.infer<typeof realTimeClientConnectO
 export type Events = {
   connectionChange: ConnectionState;
   error: DecartSDKError;
+  generationTick: { seconds: number };
 };
 
 export type RealTimeClient = {
@@ -202,6 +203,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         sessionId = msg.session_id;
       };
       manager.getWebsocketMessageEmitter().on("sessionId", sessionIdListener);
+
+      const tickListener = (msg: GenerationTickMessage) => {
+        emitOrBuffer("generationTick", { seconds: msg.seconds });
+      };
+      manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
 
       await manager.connect(inputStream);
 
