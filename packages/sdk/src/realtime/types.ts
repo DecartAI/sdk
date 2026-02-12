@@ -64,6 +64,17 @@ export type GenerationStartedMessage = {
   type: "generation_started";
 };
 
+export type GenerationTickMessage = {
+  type: "generation_tick";
+  seconds: number;
+};
+
+export type GenerationEndedMessage = {
+  type: "generation_ended";
+  seconds: number;
+  reason: string;
+};
+
 export type SessionIdMessage = {
   type: "session_id";
   session_id: string;
@@ -84,6 +95,8 @@ export type IncomingWebRTCMessage =
   | ErrorMessage
   | SetImageAckMessage
   | GenerationStartedMessage
+  | GenerationTickMessage
+  | GenerationEndedMessage
   | SessionIdMessage;
 
 // Outgoing message types (to server)
