@@ -672,6 +672,37 @@ describe("Queue API", () => {
         }),
       ).rejects.toThrow("exceeds the maximum allowed size of 20MB");
     });
+
+    it("accepts file over 20MB for lucy-restyle-v2v (100MB limit)", async () => {
+      server.use(
+        http.post("http://localhost/v1/jobs/lucy-restyle-v2v", async ({ request }) => {
+          lastFormData = await request.formData();
+          return HttpResponse.json({ job_id: "job_restyle_large", status: "pending" });
+        }),
+      );
+
+      const blob50MB = new Blob([new Uint8Array(50 * 1024 * 1024)], { type: "video/mp4" });
+
+      const result = await decart.queue.submit({
+        model: models.video("lucy-restyle-v2v"),
+        prompt: "Restyle this",
+        data: blob50MB,
+      });
+
+      expect(result.job_id).toBe("job_restyle_large");
+    });
+
+    it("rejects file exceeding 100MB for lucy-restyle-v2v", async () => {
+      const blob101MB = new Blob([new Uint8Array(101 * 1024 * 1024)], { type: "video/mp4" });
+
+      await expect(
+        decart.queue.submit({
+          model: models.video("lucy-restyle-v2v"),
+          prompt: "Restyle this",
+          data: blob101MB,
+        }),
+      ).rejects.toThrow("exceeds the maximum allowed size of 100MB");
+    });
   });
 
   describe("status", () => {

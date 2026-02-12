@@ -30,7 +30,7 @@ export const createProcessClient = (opts: ProcessClientOptions): ProcessClient =
     const processedInputs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(parsedInputs.data as Record<string, unknown>)) {
       if (key === "data" || key === "start" || key === "end") {
-        processedInputs[key] = await fileInputToBlob(value as FileInput, key);
+        processedInputs[key] = await fileInputToBlob(value as FileInput, key, model.maxFileSize);
       } else {
         processedInputs[key] = value;
       }

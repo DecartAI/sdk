@@ -24,7 +24,11 @@ function isReactNativeFile(value: unknown): value is ReactNativeFile {
  * Convert various file input types to a Blob or React Native file object.
  * React Native file objects are passed through as-is for proper FormData handling.
  */
-export async function fileInputToBlob(input: FileInput, fieldName?: string): Promise<Blob | ReactNativeFile> {
+export async function fileInputToBlob(
+  input: FileInput,
+  fieldName?: string,
+  maxFileSize?: number,
+): Promise<Blob | ReactNativeFile> {
   // React Native file object - pass through as-is (cannot check size)
   if (isReactNativeFile(input)) {
     return input;
@@ -54,8 +58,9 @@ export async function fileInputToBlob(input: FileInput, fieldName?: string): Pro
   }
 
   // Validate file size
-  if (blob.size > MAX_FILE_SIZE) {
-    throw createFileTooLargeError(blob.size, MAX_FILE_SIZE, fieldName);
+  const limit = maxFileSize ?? MAX_FILE_SIZE;
+  if (blob.size > limit) {
+    throw createFileTooLargeError(blob.size, limit, fieldName);
   }
 
   return blob;
