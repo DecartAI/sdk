@@ -56,7 +56,7 @@ describe.concurrent("Realtime E2E Tests", { timeout: 30_000, retry: 2 }, () => {
         expect(errors).toEqual([]);
       } finally {
         realtimeClient.disconnect();
-        stream.getTracks().forEach((t) => t.stop());
+        for (const track of stream.getTracks()) track.stop();
       }
 
       expect(realtimeClient.getConnectionState()).toBe("disconnected");
