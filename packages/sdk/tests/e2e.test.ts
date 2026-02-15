@@ -170,6 +170,21 @@ describe.concurrent("E2E Tests", { timeout: 120_000, retry: 2 }, () => {
       await expectResult(result, "lucy-restyle-v2v-reference_image", ".mp4");
     });
 
+    it.only("lucy-motion: motion-guided image-to-video", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-motion"),
+        data: imageBlob,
+        trajectory: [
+          { frame: 0, x: 0, y: 0 },
+          { frame: 1, x: 0.1, y: 0.2 },
+          { frame: 2, x: 0.2, y: 0.4 },
+        ],
+        seed: 555,
+      });
+
+      await expectResult(result, "lucy-motion", ".mp4");
+    });
+
     it.skip("lucy-pro-flf2v: first-last-frame-to-video", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-pro-flf2v"),
