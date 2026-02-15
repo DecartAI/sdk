@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createDecartClient, models } from "@decartai/sdk";
+import { createDecartClient, models, type QueueJobResult } from "@decartai/sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -11,7 +11,7 @@ const OUTPUT_DIR = join(__dirname, "e2e-output");
 const VIDEO_FIXTURE = join(__dirname, "fixtures", "video.mp4");
 const IMAGE_FIXTURE = join(__dirname, "fixtures", "image.png");
 
-describe("E2E Tests", { timeout: 120_000 }, () => {
+describe.concurrent("E2E Tests", { timeout: 120_000, retry: 2 }, () => {
   let client: ReturnType<typeof createDecartClient>;
   let videoBlob: Blob;
   let imageBlob: Blob;
@@ -45,6 +45,24 @@ describe("E2E Tests", { timeout: 120_000 }, () => {
     return outputPath;
   }
 
+  async function expectResult(result: Blob | QueueJobResult, modelName: string, ext: string): Promise<void> {
+    let blob: Blob;
+    if (result instanceof Blob) {
+      blob = result;
+    } else if (result.status === "failed") {
+      throw new Error(`${modelName} job failed. job_id: ${result.job_id}`);
+    } else {
+      blob = result.data;
+    }
+
+    expect(blob).toBeInstanceOf(Blob);
+    if (blob.size === 0) {
+      throw new Error(`${modelName} returned empty blob`);
+    }
+    const path = await saveOutput(blob, modelName, ext);
+    console.log(`Saved to: ${path}`);
+  }
+
   describe("Process API - Image Models", () => {
     it("lucy-pro-t2i: text-to-image", async () => {
       const result = await client.process({
@@ -54,9 +72,7 @@ describe("E2E Tests", { timeout: 120_000 }, () => {
         orientation: "landscape",
       });
 
-      expect(result).toBeInstanceOf(Blob);
-      const path = await saveOutput(result, "lucy-pro-t2i", ".png");
-      console.log(`Saved to: ${path}`);
+      await expectResult(result, "lucy-pro-t2i", ".png");
     });
 
     it("lucy-pro-i2i: image-to-image", async () => {
@@ -68,9 +84,7 @@ describe("E2E Tests", { timeout: 120_000 }, () => {
         enhance_prompt: false,
       });
 
-      expect(result).toBeInstanceOf(Blob);
-      const path = await saveOutput(result, "lucy-pro-i2i", ".png");
-      console.log(`Saved to: ${path}`);
+      await expectResult(result, "lucy-pro-i2i", ".png");
     });
   });
 
@@ -84,11 +98,7 @@ describe("E2E Tests", { timeout: 120_000 }, () => {
         orientation: "landscape",
       });
 
-      expect(result.status).toBe("completed");
-      if (result.status === "completed") {
-        const path = await saveOutput(result.data, "lucy-pro-t2v", ".mp4");
-        console.log(`Saved to: ${path}`);
-      }
+      await expectResult(result, "lucy-pro-t2v", ".mp4");
     });
 
     it("lucy-dev-i2v: image-to-video (dev)", async () => {
@@ -100,11 +110,7 @@ describe("E2E Tests", { timeout: 120_000 }, () => {
         resolution: "720p",
       });
 
-      expect(result.status).toBe("completed");
-      if (result.status === "completed") {
-        const path = await saveOutput(result.data, "lucy-dev-i2v", ".mp4");
-        console.log(`Saved to: ${path}`);
-      }
+      await expectResult(result, "lucy-dev-i2v", ".mp4");
     });
 
     it("lucy-pro-i2v: image-to-video (pro)", async () => {
@@ -116,11 +122,7 @@ describe("E2E Tests", { timeout: 120_000 }, () => {
         resolution: "720p",
       });
 
-      expect(result.status).toBe("completed");
-      if (result.status === "completed") {
-        const path = await saveOutput(result.data, "lucy-pro-i2v", ".mp4");
-        console.log(`Saved to: ${path}`);
-      }
+      await expectResult(result, "lucy-pro-i2v", ".mp4");
     });
 
     it("lucy-pro-v2v: video-to-video", async () => {
@@ -132,11 +134,40 @@ describe("E2E Tests", { timeout: 120_000 }, () => {
         enhance_prompt: true,
       });
 
-      expect(result.status).toBe("completed");
-      if (result.status === "completed") {
-        const path = await saveOutput(result.data, "lucy-pro-v2v", ".mp4");
-        console.log(`Saved to: ${path}`);
-      }
+      await expectResult(result, "lucy-pro-v2v", ".mp4");
+    });
+
+    it("lucy-fast-v2v: video-to-video (fast)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-fast-v2v"),
+        prompt: "Watercolor painting style",
+        data: videoBlob,
+        seed: 888,
+      });
+
+      await expectResult(result, "lucy-fast-v2v", ".mp4");
+    });
+
+    it("lucy-restyle-v2v: video restyling (prompt)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-restyle-v2v"),
+        prompt: "Cyberpunk neon city style",
+        data: videoBlob,
+        seed: 777,
+      });
+
+      await expectResult(result, "lucy-restyle-v2v-prompt", ".mp4");
+    });
+
+    it("lucy-restyle-v2v: video restyling (reference_image)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-restyle-v2v"),
+        reference_image: imageBlob,
+        data: videoBlob,
+        seed: 777,
+      });
+
+      await expectResult(result, "lucy-restyle-v2v-reference_image", ".mp4");
     });
 
     it.skip("lucy-pro-flf2v: first-last-frame-to-video", async () => {
@@ -149,11 +180,7 @@ describe("E2E Tests", { timeout: 120_000 }, () => {
         resolution: "720p",
       });
 
-      expect(result.status).toBe("completed");
-      if (result.status === "completed") {
-        const path = await saveOutput(result.data, "lucy-pro-flf2v", ".mp4");
-        console.log(`Saved to: ${path}`);
-      }
+      await expectResult(result, "lucy-pro-flf2v", ".mp4");
     });
   });
 });

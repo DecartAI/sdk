@@ -45,11 +45,11 @@ export async function pollUntilComplete({
 
     if (status.status === "completed") {
       const data = await getContent();
-      return { status: "completed", data };
+      return { status: "completed", job_id: status.job_id, data };
     }
 
     if (status.status === "failed") {
-      return { status: "failed", error: "Job failed" };
+      return { status: "failed", job_id: status.job_id, error: "Job failed" };
     }
 
     // Still pending or processing, wait and poll again

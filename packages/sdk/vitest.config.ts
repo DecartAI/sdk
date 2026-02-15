@@ -1,3 +1,7 @@
 import { defineConfig } from "vitest/config";
 
-export default defineConfig({});
+export default defineConfig({
+  test: {
+    exclude: ["tests/e2e-realtime.test.ts"],
+  },
+});

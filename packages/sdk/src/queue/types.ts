@@ -25,7 +25,9 @@ export type JobStatusResponse = {
 /**
  * Result from submitAndPoll - discriminated union for success/failure.
  */
-export type QueueJobResult = { status: "completed"; data: Blob } | { status: "failed"; error: string };
+export type QueueJobResult =
+  | { status: "completed"; job_id: string; data: Blob }
+  | { status: "failed"; job_id: string; error: string };
 
 /**
  * Queue-specific inputs extending ProcessInputs.

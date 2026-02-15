@@ -2,5 +2,5 @@ node_modules
 dist
 *.log
 .DS_Store
-tests/e2e-output
+packages/sdk/tests/e2e-output
 .env
