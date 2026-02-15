@@ -148,7 +148,7 @@ describe.concurrent("E2E Tests", { timeout: 120_000 }, () => {
       await expectResult(result, "lucy-fast-v2v", ".mp4");
     });
 
-    it("lucy-restyle-v2v: video restyling", async () => {
+    it("lucy-restyle-v2v: video restyling (prompt)", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-restyle-v2v"),
         prompt: "Cyberpunk neon city style",
@@ -156,7 +156,18 @@ describe.concurrent("E2E Tests", { timeout: 120_000 }, () => {
         seed: 777,
       });
 
-      await expectResult(result, "lucy-restyle-v2v", ".mp4");
+      await expectResult(result, "lucy-restyle-v2v-prompt", ".mp4");
+    });
+
+    it("lucy-restyle-v2v: video restyling (reference_image)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-restyle-v2v"),
+        reference_image: imageBlob,
+        data: videoBlob,
+        seed: 777,
+      });
+
+      await expectResult(result, "lucy-restyle-v2v-reference_image", ".mp4");
     });
 
     it.skip("lucy-pro-flf2v: first-last-frame-to-video", async () => {
