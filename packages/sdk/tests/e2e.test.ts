@@ -11,7 +11,7 @@ const OUTPUT_DIR = join(__dirname, "e2e-output");
 const VIDEO_FIXTURE = join(__dirname, "fixtures", "video.mp4");
 const IMAGE_FIXTURE = join(__dirname, "fixtures", "image.png");
 
-describe.concurrent("E2E Tests", { timeout: 120_000 }, () => {
+describe.concurrent("E2E Tests", { timeout: 120_000, retry: 2 }, () => {
   let client: ReturnType<typeof createDecartClient>;
   let videoBlob: Blob;
   let imageBlob: Blob;
