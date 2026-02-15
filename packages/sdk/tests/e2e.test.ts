@@ -170,7 +170,7 @@ describe.concurrent("E2E Tests", { timeout: 120_000, retry: 2 }, () => {
       await expectResult(result, "lucy-restyle-v2v-reference_image", ".mp4");
     });
 
-    it.only("lucy-motion: motion-guided image-to-video", async () => {
+    it("lucy-motion: motion-guided image-to-video", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-motion"),
         data: imageBlob,
