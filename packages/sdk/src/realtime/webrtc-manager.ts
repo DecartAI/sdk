@@ -1,6 +1,7 @@
 import pRetry, { AbortError } from "p-retry";
 import type { ConnectionState, OutgoingMessage } from "./types";
 import { WebRTCConnection } from "./webrtc-connection";
+import type { RealTimeModels } from "../shared/model";
 
 export interface WebRTCConfig {
   webrtcUrl: string;
@@ -11,7 +12,7 @@ export interface WebRTCConfig {
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
-  isAvatarLive?: boolean;
+  modelName?: RealTimeModels;
   avatarImageBase64?: string;
   initialPrompt?: { text: string; enhance?: boolean };
 }
@@ -54,7 +55,7 @@ export class WebRTCManager {
       customizeOffer: config.customizeOffer,
       vp8MinBitrate: config.vp8MinBitrate,
       vp8StartBitrate: config.vp8StartBitrate,
-      isAvatarLive: config.isAvatarLive,
+      modelName: config.modelName,
       avatarImageBase64: config.avatarImageBase64,
       initialPrompt: config.initialPrompt,
     });

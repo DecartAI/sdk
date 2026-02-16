@@ -10,6 +10,7 @@ import type {
   SetImageAckMessage,
   TurnConfig,
 } from "./types";
+import type { RealTimeModels } from "../shared/model";
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 const AVATAR_SETUP_TIMEOUT_MS = 30_000; // 30 seconds
@@ -21,7 +22,7 @@ interface ConnectionCallbacks {
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
-  isAvatarLive?: boolean;
+  modelName?: RealTimeModels;
   avatarImageBase64?: string;
   initialPrompt?: { text: string; enhance?: boolean };
 }
@@ -42,7 +43,12 @@ export class WebRTCConnection {
   websocketMessagesEmitter = mitt<WsMessageEvents>();
   constructor(private callbacks: ConnectionCallbacks = {}) {}
 
-  async connect(url: string, localStream: MediaStream | null, timeout: number, integration?: string): Promise<void> {
+  async connect(
+    url: string,
+    localStream: MediaStream | null,
+    timeout: number,
+    integration?: string,
+  ): Promise<void> {
     const deadline = Date.now() + timeout;
     this.localStream = localStream;
 
@@ -66,7 +72,10 @@ export class WebRTCConnection {
       // Phase 1: WebSocket setup
       await Promise.race([
         new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error("WebSocket timeout")), timeout);
+          const timer = setTimeout(
+            () => reject(new Error("WebSocket timeout")),
+            timeout,
+          );
           this.ws = new WebSocket(wsUrl);
 
           this.ws.onopen = () => {
@@ -89,7 +98,9 @@ export class WebRTCConnection {
           this.ws.onclose = () => {
             this.setState("disconnected");
             clearTimeout(timer);
-            reject(new Error("WebSocket closed before connection was established"));
+            reject(
+              new Error("WebSocket closed before connection was established"),
+            );
             rejectConnect(new Error("WebSocket closed"));
           };
         }),
@@ -99,10 +110,16 @@ export class WebRTCConnection {
       // Phase 2: Pre-handshake setup (avatar image + initial prompt)
       // connectionReject is already active, so ws.onclose or server errors abort these too
       if (this.callbacks.avatarImageBase64) {
-        await Promise.race([this.sendAvatarImage(this.callbacks.avatarImageBase64), connectAbort]);
+        await Promise.race([
+          this.sendAvatarImage(this.callbacks.avatarImageBase64),
+          connectAbort,
+        ]);
       }
       if (this.callbacks.initialPrompt) {
-        await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
+        await Promise.race([
+          this.sendInitialPrompt(this.callbacks.initialPrompt),
+          connectAbort,
+        ]);
       }
 
       // Phase 3: WebRTC handshake
@@ -131,7 +148,9 @@ export class WebRTCConnection {
     }
   }
 
-  private async handleSignalingMessage(msg: IncomingWebRTCMessage): Promise<void> {
+  private async handleSignalingMessage(
+    msg: IncomingWebRTCMessage,
+  ): Promise<void> {
     try {
       // Handle messages that don't require peer connection first
       if (msg.type === "error") {
@@ -260,7 +279,12 @@ export class WebRTCConnection {
 
       this.websocketMessagesEmitter.on("setImageAck", listener);
 
-      const message: { type: "set_image"; image_data: string | null; prompt?: string; enhance_prompt?: boolean } = {
+      const message: {
+        type: "set_image";
+        image_data: string | null;
+        prompt?: string;
+        enhance_prompt?: boolean;
+      } = {
         type: "set_image",
         image_data: imageBase64,
       };
@@ -283,7 +307,10 @@ export class WebRTCConnection {
   /**
    * Send the initial prompt to the server before WebRTC handshake.
    */
-  private async sendInitialPrompt(prompt: { text: string; enhance?: boolean }): Promise<void> {
+  private async sendInitialPrompt(prompt: {
+    text: string;
+    enhance?: boolean;
+  }): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.websocketMessagesEmitter.off("promptAck", listener);
@@ -304,7 +331,13 @@ export class WebRTCConnection {
 
       this.websocketMessagesEmitter.on("promptAck", listener);
 
-      if (!this.send({ type: "prompt", prompt: prompt.text, enhance_prompt: prompt.enhance ?? true })) {
+      if (
+        !this.send({
+          type: "prompt",
+          prompt: prompt.text,
+          enhance_prompt: prompt.enhance ?? true,
+        })
+      ) {
         clearTimeout(timeoutId);
         this.websocketMessagesEmitter.off("promptAck", listener);
         reject(new Error("WebSocket is not open"));
@@ -341,7 +374,7 @@ export class WebRTCConnection {
 
     if (this.localStream) {
       // For live_avatar: add receive-only video transceiver (sends audio only, receives audio+video)
-      if (this.callbacks.isAvatarLive) {
+      if (this.callbacks.modelName === "live_avatar") {
         this.pc.addTransceiver("video", { direction: "recvonly" });
       }
 
@@ -375,7 +408,11 @@ export class WebRTCConnection {
       if (!this.pc) return;
       const s = this.pc.connectionState;
       const nextState =
-        s === "connected" ? "connected" : ["connecting", "new"].includes(s) ? "connecting" : "disconnected";
+        s === "connected"
+          ? "connected"
+          : ["connecting", "new"].includes(s)
+            ? "connecting"
+            : "disconnected";
       // Keep "generating" sticky unless the connection is actually lost.
       if (this.state === "generating" && nextState !== "disconnected") return;
       this.setState(nextState);
@@ -406,16 +443,27 @@ export class WebRTCConnection {
 
   applyCodecPreference(preferredCodecName: "video/VP8" | "video/H264") {
     if (!this.pc) return;
-    if (typeof RTCRtpSender === "undefined" || typeof RTCRtpSender.getCapabilities !== "function") {
-      console.warn("RTCRtpSender capabilities are not available in this environment.");
+    if (
+      typeof RTCRtpSender === "undefined" ||
+      typeof RTCRtpSender.getCapabilities !== "function"
+    ) {
+      console.warn(
+        "RTCRtpSender capabilities are not available in this environment.",
+      );
       return;
     }
 
     const videoTransceiver = this.pc
       .getTransceivers()
-      .find((r) => r.sender.track?.kind === "video" || r.receiver.track?.kind === "video");
+      .find(
+        (r) =>
+          r.sender.track?.kind === "video" ||
+          r.receiver.track?.kind === "video",
+      );
     if (!videoTransceiver) {
-      console.error("Could not find video transceiver. Ensure track is added to peer connection.");
+      console.error(
+        "Could not find video transceiver. Ensure track is added to peer connection.",
+      );
       return;
     }
 
@@ -443,7 +491,9 @@ export class WebRTCConnection {
     try {
       videoTransceiver.setCodecPreferences(orderedCodecs);
     } catch {
-      console.warn("[WebRTC] setCodecPreferences not supported, skipping codec preference.");
+      console.warn(
+        "[WebRTC] setCodecPreferences not supported, skipping codec preference.",
+      );
     }
   }
 
@@ -477,7 +527,11 @@ export class WebRTCConnection {
           let fmtpIndex = -1;
           let insertAfterIndex = i; // Default: insert after rtpmap line
 
-          for (let j = i + 1; j < sdpLines.length && sdpLines[j].startsWith("a="); j++) {
+          for (
+            let j = i + 1;
+            j < sdpLines.length && sdpLines[j].startsWith("a=");
+            j++
+          ) {
             // Check if fmtp already exists
             if (sdpLines[j].startsWith(`a=fmtp:${payloadType}`)) {
               fmtpIndex = j;

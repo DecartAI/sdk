@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { modelDefinitionSchema } from "../shared/model";
+import { modelDefinitionSchema, type RealTimeModels } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { createWebrtcError, type DecartSDKError } from "../utils/errors";
 import { AudioStreamManager } from "./audio-stream-manager";
@@ -165,11 +165,13 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         }
       }
 
-      // For live_avatar: prepare initial prompt to send before WebRTC handshake
-      const initialPrompt =
-        isAvatarLive && initialState?.prompt
-          ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
-          : undefined;
+      // Prepare initial prompt to send via WebSocket before WebRTC handshake
+      const initialPrompt = initialState?.prompt
+        ? {
+            text: initialState.prompt.text,
+            enhance: initialState.prompt.enhance,
+          }
+        : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
 
@@ -189,7 +191,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
         vp8MinBitrate: 300,
         vp8StartBitrate: 600,
-        isAvatarLive,
+        modelName: options.model.name as RealTimeModels,
         avatarImageBase64,
         initialPrompt,
       });
@@ -212,12 +214,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       await manager.connect(inputStream);
 
       const methods = realtimeMethods(manager, imageToBase64);
-
-      // For non-live_avatar models: send initial prompt after connection is established
-      if (!isAvatarLive && initialState?.prompt) {
-        const { text, enhance } = initialState.prompt;
-        await methods.setPrompt(text, { enhance });
-      }
 
       const client: RealTimeClient = {
         set: methods.set,
