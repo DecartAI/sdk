@@ -1,7 +1,7 @@
 import pRetry, { AbortError } from "p-retry";
+import type { RealTimeModels } from "../shared/model";
 import type { ConnectionState, OutgoingMessage } from "./types";
 import { WebRTCConnection } from "./webrtc-connection";
-import type { RealTimeModels } from "../shared/model";
 
 export interface WebRTCConfig {
   webrtcUrl: string;
