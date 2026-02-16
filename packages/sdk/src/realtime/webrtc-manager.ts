@@ -13,7 +13,7 @@ export interface WebRTCConfig {
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
   modelName?: RealTimeModels;
-  avatarImageBase64?: string;
+  initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
 }
 
@@ -56,7 +56,7 @@ export class WebRTCManager {
       vp8MinBitrate: config.vp8MinBitrate,
       vp8StartBitrate: config.vp8StartBitrate,
       modelName: config.modelName,
-      avatarImageBase64: config.avatarImageBase64,
+      initialImage: config.initialImage,
       initialPrompt: config.initialPrompt,
     });
   }

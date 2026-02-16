@@ -1084,7 +1084,7 @@ describe("WebRTCConnection", () => {
 });
 
 describe("RealTimeClient cleanup", () => {
-  it("cleans up AudioStreamManager when avatar fetch fails before WebRTC connect", async () => {
+  it("cleans up AudioStreamManager when initial image fetch fails before WebRTC connect", async () => {
     class FakeAudioContext {
       createMediaStreamDestination() {
         return { stream: {} };
@@ -1121,7 +1121,7 @@ describe("RealTimeClient cleanup", () => {
         realtime.connect(null, {
           model: models.realtime("live_avatar"),
           onRemoteStream: vi.fn(),
-          avatar: { avatarImage: "https://example.com/avatar.png" },
+          initialState: { image: "https://example.com/avatar.png" },
         }),
       ).rejects.toThrow("Failed to fetch image: 404 Not Found");
 

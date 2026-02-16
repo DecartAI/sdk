@@ -22,10 +22,8 @@ async function withPlayAudio() {
       const video = document.getElementById("output") as HTMLVideoElement;
       video.srcObject = videoStream;
     },
-    avatar: {
-      avatarImage: "https://example.com/avatar.png", // or File/Blob
-    },
     initialState: {
+      image: "https://example.com/avatar.png", // or File/Blob
       prompt: { text: "A friendly assistant", enhance: true },
     },
   });
@@ -63,10 +61,8 @@ async function withMicInput() {
       const video = document.getElementById("output") as HTMLVideoElement;
       video.srcObject = videoStream;
     },
-    avatar: {
-      avatarImage: "https://example.com/avatar.png",
-    },
     initialState: {
+      image: "https://example.com/avatar.png",
       prompt: { text: "A friendly assistant", enhance: true },
     },
   });

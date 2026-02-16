@@ -80,11 +80,6 @@ export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialSta
 const createAsyncFunctionSchema = <T extends z.core.$ZodFunction>(schema: T) =>
   z.custom<Parameters<T["implementAsync"]>[0]>((fn) => schema.implementAsync(fn as Parameters<T["implementAsync"]>[0]));
 
-const avatarOptionsSchema = z.object({
-  avatarImage: z.union([z.instanceof(Blob), z.instanceof(File), z.string()]),
-});
-export type AvatarOptions = z.infer<typeof avatarOptionsSchema>;
-
 const realTimeClientConnectOptionsSchema = z.object({
   model: modelDefinitionSchema,
   onRemoteStream: z.custom<OnRemoteStreamFn>((val) => typeof val === "function", {
@@ -92,7 +87,6 @@ const realTimeClientConnectOptionsSchema = z.object({
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
-  avatar: avatarOptionsSchema.optional(),
 });
 export type RealTimeClientConnectOptions = z.infer<typeof realTimeClientConnectOptionsSchema>;
 
@@ -133,7 +127,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
     const isAvatarLive = options.model.name === "live_avatar";
 
-    const { onRemoteStream, initialState, avatar } = parsedOptions.data;
+    const { onRemoteStream, initialState } = parsedOptions.data;
 
     // For live_avatar without user-provided stream: create AudioStreamManager for continuous silent stream with audio injection
     // If user provides their own stream (e.g., mic input), use it directly
@@ -150,20 +144,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     let webrtcManager: WebRTCManager | undefined;
 
     try {
-      // For live_avatar: prepare avatar image base64 before connection
-      let avatarImageBase64: string | undefined;
-      if (isAvatarLive && avatar?.avatarImage) {
-        if (typeof avatar.avatarImage === "string") {
-          const response = await fetch(avatar.avatarImage);
-          if (!response.ok) {
-            throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
-          }
-          const imageBlob = await response.blob();
-          avatarImageBase64 = await blobToBase64(imageBlob);
-        } else {
-          avatarImageBase64 = await blobToBase64(avatar.avatarImage);
-        }
-      }
+      // Prepare initial image base64 before connection
+      const initialImage = initialState?.image ? await imageToBase64(initialState.image) : undefined;
 
       // Prepare initial prompt to send via WebSocket before WebRTC handshake
       const initialPrompt = initialState?.prompt
@@ -192,7 +174,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         vp8MinBitrate: 300,
         vp8StartBitrate: 600,
         modelName: options.model.name as RealTimeModels,
-        avatarImageBase64,
+        initialImage,
         initialPrompt,
       });
 

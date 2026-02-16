@@ -23,7 +23,7 @@ interface ConnectionCallbacks {
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
   modelName?: RealTimeModels;
-  avatarImageBase64?: string;
+  initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
 }
 
@@ -97,12 +97,17 @@ export class WebRTCConnection {
         connectAbort,
       ]);
 
-      // Phase 2: Pre-handshake setup (avatar image + initial prompt)
+      // Phase 2: Pre-handshake setup (initial image and/or prompt)
       // connectionReject is already active, so ws.onclose or server errors abort these too
-      if (this.callbacks.avatarImageBase64) {
-        await Promise.race([this.sendAvatarImage(this.callbacks.avatarImageBase64), connectAbort]);
-      }
-      if (this.callbacks.initialPrompt) {
+      if (this.callbacks.initialImage) {
+        await Promise.race([
+          this.setImageBase64(this.callbacks.initialImage, {
+            prompt: this.callbacks.initialPrompt?.text,
+            enhance: this.callbacks.initialPrompt?.enhance,
+          }),
+          connectAbort,
+        ]);
+      } else if (this.callbacks.initialPrompt) {
         await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
       }
 
@@ -229,16 +234,6 @@ export class WebRTCConnection {
     return false;
   }
 
-  private async sendAvatarImage(imageBase64: string): Promise<void> {
-    return this.setImageBase64(imageBase64);
-  }
-
-  /**
-   * Send an image to the server (e.g., as a reference for inference).
-   * Can be called after connection is established.
-   * Pass null to clear the reference image or use a placeholder.
-   * Optionally include a prompt to send with the image.
-   */
   async setImageBase64(
     imageBase64: string | null,
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
