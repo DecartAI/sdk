@@ -18,6 +18,7 @@ export const ERROR_CODES = {
   QUEUE_RESULT_ERROR: "QUEUE_RESULT_ERROR",
   JOB_NOT_COMPLETED: "JOB_NOT_COMPLETED",
   TOKEN_CREATE_ERROR: "TOKEN_CREATE_ERROR",
+  FILE_TOO_LARGE: "FILE_TOO_LARGE",
 } as const;
 
 export function createSDKError(
@@ -71,5 +72,16 @@ export function createJobNotCompletedError(jobId: string, currentStatus: string)
     ERROR_CODES.JOB_NOT_COMPLETED,
     `Cannot get content for job ${jobId} with status "${currentStatus}"`,
     { jobId, currentStatus },
+  );
+}
+
+export function createFileTooLargeError(fileSize: number, maxSize: number, fieldName?: string): DecartSDKError {
+  const fileSizeMB = (fileSize / (1024 * 1024)).toFixed(1);
+  const maxSizeMB = (maxSize / (1024 * 1024)).toFixed(0);
+  const field = fieldName ? ` for field '${fieldName}'` : "";
+  return createSDKError(
+    ERROR_CODES.FILE_TOO_LARGE,
+    `File size${field} (${fileSizeMB}MB) exceeds the maximum allowed size of ${maxSizeMB}MB. Please reduce the file size or resolution before uploading.`,
+    { fileSize, maxSize, fieldName },
   );
 }

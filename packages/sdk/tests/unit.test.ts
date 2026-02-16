@@ -233,6 +233,48 @@ describe("Decart SDK", () => {
       });
     });
 
+    describe("File Size Validation", () => {
+      it("rejects file exceeding 20MB limit for process API", async () => {
+        const largeBlob = new Blob([new Uint8Array(21 * 1024 * 1024)], { type: "image/png" });
+
+        await expect(
+          decart.process({
+            model: models.image("lucy-pro-i2i"),
+            prompt: "test",
+            data: largeBlob,
+          }),
+        ).rejects.toThrow("exceeds the maximum allowed size of 20MB");
+      });
+
+      it("accepts file at exactly 20MB limit", async () => {
+        server.use(createMockHandler("/v1/generate/lucy-pro-i2i"));
+
+        const exactBlob = new Blob([new Uint8Array(20 * 1024 * 1024)], { type: "image/png" });
+
+        const result = await decart.process({
+          model: models.image("lucy-pro-i2i"),
+          prompt: "test",
+          data: exactBlob,
+        });
+
+        expect(result).toBeInstanceOf(Blob);
+      });
+
+      it("accepts file under 20MB limit", async () => {
+        server.use(createMockHandler("/v1/generate/lucy-pro-i2i"));
+
+        const smallBlob = new Blob([new Uint8Array(1024)], { type: "image/png" });
+
+        const result = await decart.process({
+          model: models.image("lucy-pro-i2i"),
+          prompt: "test",
+          data: smallBlob,
+        });
+
+        expect(result).toBeInstanceOf(Blob);
+      });
+    });
+
     describe("Error Handling", () => {
       it("handles API errors", async () => {
         server.use(
@@ -617,6 +659,49 @@ describe("Queue API", () => {
           prompt: "test",
         }),
       ).rejects.toThrow("Failed to submit job");
+    });
+
+    it("rejects file exceeding 20MB limit for queue API", async () => {
+      const largeBlob = new Blob([new Uint8Array(21 * 1024 * 1024)], { type: "video/mp4" });
+
+      await expect(
+        decart.queue.submit({
+          model: models.video("lucy-pro-v2v"),
+          prompt: "test",
+          data: largeBlob,
+        }),
+      ).rejects.toThrow("exceeds the maximum allowed size of 20MB");
+    });
+
+    it("accepts file over 20MB for lucy-restyle-v2v (100MB limit)", async () => {
+      server.use(
+        http.post("http://localhost/v1/jobs/lucy-restyle-v2v", async ({ request }) => {
+          lastFormData = await request.formData();
+          return HttpResponse.json({ job_id: "job_restyle_large", status: "pending" });
+        }),
+      );
+
+      const blob50MB = new Blob([new Uint8Array(50 * 1024 * 1024)], { type: "video/mp4" });
+
+      const result = await decart.queue.submit({
+        model: models.video("lucy-restyle-v2v"),
+        prompt: "Restyle this",
+        data: blob50MB,
+      });
+
+      expect(result.job_id).toBe("job_restyle_large");
+    });
+
+    it("rejects file exceeding 100MB for lucy-restyle-v2v", async () => {
+      const blob101MB = new Blob([new Uint8Array(101 * 1024 * 1024)], { type: "video/mp4" });
+
+      await expect(
+        decart.queue.submit({
+          model: models.video("lucy-restyle-v2v"),
+          prompt: "Restyle this",
+          data: blob101MB,
+        }),
+      ).rejects.toThrow("exceeds the maximum allowed size of 100MB");
     });
   });
 

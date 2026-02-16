@@ -205,6 +205,11 @@ export type ModelDefinition<T extends Model = Model> = {
   fps: number;
   width: number;
   height: number;
+  /**
+   * Optional per-model file size limit in bytes.
+   * Falls back to the global MAX_FILE_SIZE (20MB) if not set.
+   */
+  maxFileSize?: number;
   inputSchema: T extends keyof ModelInputSchemas ? ModelInputSchemas[T] : z.ZodTypeAny;
 };
 
@@ -227,6 +232,7 @@ export const modelDefinitionSchema = z.object({
   fps: z.number().min(1),
   width: z.number().min(1),
   height: z.number().min(1),
+  maxFileSize: z.number().min(1).optional(),
   inputSchema: z.any(),
 });
 
@@ -364,6 +370,7 @@ const _models = {
       fps: 22,
       width: 1280,
       height: 704,
+      maxFileSize: 100 * 1024 * 1024,
       inputSchema: modelInputSchemas["lucy-restyle-v2v"],
     },
   },
