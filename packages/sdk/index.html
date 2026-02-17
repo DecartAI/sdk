@@ -498,6 +498,13 @@
                 
                 addLog('Connecting to Decart server...', 'info');
                 
+                // Load initial reference image for models that support it
+                let initialImage;
+                if (model.name === 'lucy_2_rt' || model.name === 'mirage_v2') {
+                    const initialImageResponse = await fetch('./tests/fixtures/image.png');
+                    initialImage = await initialImageResponse.blob();
+                }
+
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     onRemoteStream: (stream) => {
@@ -507,7 +514,8 @@
                     initialState: {
                         prompt: {
                             text: "Lego World",
-                        }
+                        },
+                        ...(initialImage && { image: initialImage }),
                     }
                 });
                 
