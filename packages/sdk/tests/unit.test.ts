@@ -1084,7 +1084,7 @@ describe("WebRTCConnection", () => {
 });
 
 describe("RealTimeClient cleanup", () => {
-  it("cleans up AudioStreamManager when avatar fetch fails before WebRTC connect", async () => {
+  it("cleans up AudioStreamManager when initial image fetch fails before WebRTC connect", async () => {
     class FakeAudioContext {
       createMediaStreamDestination() {
         return { stream: {} };
@@ -1121,7 +1121,7 @@ describe("RealTimeClient cleanup", () => {
         realtime.connect(null, {
           model: models.realtime("live_avatar"),
           onRemoteStream: vi.fn(),
-          avatar: { avatarImage: "https://example.com/avatar.png" },
+          initialState: { image: "https://example.com/avatar.png" },
         }),
       ).rejects.toThrow("Failed to fetch image: 404 Not Found");
 
@@ -1705,11 +1705,22 @@ describe("WebSockets Connection", () => {
 
     const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
       const manager = this as unknown as {
-        config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
+        config: {
+          onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void;
+          initialPrompt?: { text: string; enhance?: boolean };
+        };
         managerState: import("../src/realtime/types").ConnectionState;
       };
       manager.managerState = "connected";
       manager.config.onConnectionStateChange?.("connected");
+
+      // Simulate initial prompt sent via WebSocket during connection setup
+      if (manager.config.initialPrompt) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        manager.managerState = "generating";
+        manager.config.onConnectionStateChange?.("generating");
+      }
+
       return true;
     });
     const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockImplementation(function () {
