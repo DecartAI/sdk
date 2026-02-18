@@ -139,7 +139,7 @@ export class WebRTCStatsCollector {
       availableOutgoingBitrate: null,
     };
 
-    for (const report of rawStats.values()) {
+    rawStats.forEach((report) => {
       if (report.type === "inbound-rtp" && report.kind === "video") {
         const bytesReceived = ((report as Record<string, unknown>).bytesReceived as number) ?? 0;
         const bitrate = elapsed > 0 ? ((bytesReceived - this.prevBytesVideo) * 8) / elapsed : 0;
@@ -218,7 +218,7 @@ export class WebRTCStatsCollector {
           connection.availableOutgoingBitrate = (r.availableOutgoingBitrate as number) ?? null;
         }
       }
-    }
+    });
 
     this.prevTimestamp = now;
 

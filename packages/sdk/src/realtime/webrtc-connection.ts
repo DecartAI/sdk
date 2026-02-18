@@ -519,14 +519,17 @@ export class WebRTCConnection {
     if (!this.pc) return;
     try {
       const stats = await this.pc.getStats();
-      for (const report of stats.values()) {
+      let found = false;
+      stats.forEach((report) => {
+        if (found) return;
         if (report.type === "candidate-pair" && report.state === "succeeded") {
+          found = true;
           let localCandidate: Record<string, unknown> | undefined;
           let remoteCandidate: Record<string, unknown> | undefined;
-          for (const r of stats.values()) {
+          stats.forEach((r) => {
             if (r.id === report.localCandidateId) localCandidate = r as Record<string, unknown>;
             if (r.id === report.remoteCandidateId) remoteCandidate = r as Record<string, unknown>;
-          }
+          });
           if (localCandidate && remoteCandidate) {
             this.emitDiagnostic("selectedCandidatePair", {
               local: {
@@ -543,9 +546,8 @@ export class WebRTCConnection {
               },
             });
           }
-          break;
         }
-      }
+      });
     } catch {
       // getStats can fail if PC is already closed; silently ignore
     }
