@@ -1522,6 +1522,236 @@ describe("Subscribe Client", () => {
     }
   });
 
+  it("buffers pre-session telemetry diagnostics and flushes them after session_id", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const sessionIdListeners = new Set<(msg: import("../src/realtime/types").SessionIdMessage) => void>();
+    const websocketEmitter = {
+      on: (event: string, listener: (msg: import("../src/realtime/types").SessionIdMessage) => void) => {
+        if (event === "sessionId") sessionIdListeners.add(listener);
+      },
+      off: (event: string, listener: (msg: import("../src/realtime/types").SessionIdMessage) => void) => {
+        if (event === "sessionId") sessionIdListeners.delete(listener);
+      },
+    };
+
+    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+      const mgr = this as unknown as {
+        config: {
+          onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void;
+          onDiagnostic?: (name: string, data: unknown) => void;
+        };
+        managerState: import("../src/realtime/types").ConnectionState;
+      };
+
+      mgr.config.onDiagnostic?.("phaseTiming", {
+        phase: "websocket",
+        durationMs: 12,
+        success: true,
+      });
+
+      mgr.managerState = "connected";
+      mgr.config.onConnectionStateChange?.("connected");
+      return true;
+    });
+    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const emitterSpy = vi
+      .spyOn(WebRTCManager.prototype, "getWebsocketMessageEmitter")
+      .mockReturnValue(websocketEmitter as never);
+    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+
+    try {
+      const realtime = createRealTimeClient({
+        baseUrl: "wss://api3.decart.ai",
+        apiKey: "test-key",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        telemetryEnabled: true,
+      });
+      const client = await realtime.connect({} as MediaStream, {
+        model: models.realtime("mirage_v2"),
+        onRemoteStream: vi.fn(),
+      });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      for (const listener of sessionIdListeners) {
+        listener({
+          type: "session_id",
+          session_id: "sess-telemetry",
+          server_ip: "10.0.0.5",
+          server_port: 9090,
+        });
+      }
+
+      client.disconnect();
+
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      });
+
+      const [, options] = fetchMock.mock.calls[0];
+      const body = JSON.parse(options.body);
+      expect(body.diagnostics).toHaveLength(1);
+      expect(body.diagnostics[0].name).toBe("phaseTiming");
+      expect(body.diagnostics[0].data.phase).toBe("websocket");
+    } finally {
+      connectSpy.mockRestore();
+      stateSpy.mockRestore();
+      emitterSpy.mockRestore();
+      cleanupSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("stops previous telemetry reporter when session_id changes", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
+
+    const sessionIdListeners = new Set<(msg: import("../src/realtime/types").SessionIdMessage) => void>();
+    const websocketEmitter = {
+      on: (event: string, listener: (msg: import("../src/realtime/types").SessionIdMessage) => void) => {
+        if (event === "sessionId") sessionIdListeners.add(listener);
+      },
+      off: (event: string, listener: (msg: import("../src/realtime/types").SessionIdMessage) => void) => {
+        if (event === "sessionId") sessionIdListeners.delete(listener);
+      },
+    };
+
+    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+      const mgr = this as unknown as {
+        config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
+        managerState: import("../src/realtime/types").ConnectionState;
+      };
+      mgr.managerState = "connected";
+      mgr.config.onConnectionStateChange?.("connected");
+      return true;
+    });
+    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const emitterSpy = vi
+      .spyOn(WebRTCManager.prototype, "getWebsocketMessageEmitter")
+      .mockReturnValue(websocketEmitter as never);
+    const peerConnectionSpy = vi.spyOn(WebRTCManager.prototype, "getPeerConnection").mockReturnValue(null);
+    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+
+    try {
+      const realtime = createRealTimeClient({
+        baseUrl: "wss://api3.decart.ai",
+        apiKey: "test-key",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        telemetryEnabled: true,
+      });
+      const client = await realtime.connect({} as MediaStream, {
+        model: models.realtime("mirage_v2"),
+        onRemoteStream: vi.fn(),
+      });
+
+      for (const listener of sessionIdListeners) {
+        listener({
+          type: "session_id",
+          session_id: "sess-1",
+          server_ip: "10.0.0.5",
+          server_port: 9090,
+        });
+      }
+      for (const listener of sessionIdListeners) {
+        listener({
+          type: "session_id",
+          session_id: "sess-2",
+          server_ip: "10.0.0.6",
+          server_port: 9091,
+        });
+      }
+
+      client.disconnect();
+
+      expect(setIntervalSpy).toHaveBeenCalledTimes(2);
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      connectSpy.mockRestore();
+      stateSpy.mockRestore();
+      emitterSpy.mockRestore();
+      peerConnectionSpy.mockRestore();
+      cleanupSpy.mockRestore();
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("restarts stats collection when peer connection changes after reconnect", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+
+    const firstPeerConnection = {} as RTCPeerConnection;
+    const secondPeerConnection = {} as RTCPeerConnection;
+    let currentPeerConnection = firstPeerConnection;
+    let onConnectionStateChange: ((state: import("../src/realtime/types").ConnectionState) => void) | undefined;
+
+    const startSpy = vi.spyOn(WebRTCStatsCollector.prototype, "start").mockImplementation(() => {});
+    const stopSpy = vi.spyOn(WebRTCStatsCollector.prototype, "stop").mockImplementation(() => {});
+
+    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+      const mgr = this as unknown as {
+        config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
+        managerState: import("../src/realtime/types").ConnectionState;
+      };
+      onConnectionStateChange = mgr.config.onConnectionStateChange;
+      mgr.managerState = "connected";
+      mgr.config.onConnectionStateChange?.("connected");
+      return true;
+    });
+    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const peerConnectionSpy = vi
+      .spyOn(WebRTCManager.prototype, "getPeerConnection")
+      .mockImplementation(() => currentPeerConnection);
+    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+
+    try {
+      const realtime = createRealTimeClient({
+        baseUrl: "wss://api3.decart.ai",
+        apiKey: "test-key",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        telemetryEnabled: true,
+      });
+      const client = await realtime.connect({} as MediaStream, {
+        model: models.realtime("mirage_v2"),
+        onRemoteStream: vi.fn(),
+      });
+
+      expect(startSpy).toHaveBeenCalledTimes(1);
+      expect(startSpy.mock.calls[0][0]).toBe(firstPeerConnection);
+
+      currentPeerConnection = secondPeerConnection;
+      onConnectionStateChange?.("connected");
+
+      expect(startSpy).toHaveBeenCalledTimes(2);
+      expect(startSpy.mock.calls[1][0]).toBe(secondPeerConnection);
+
+      client.disconnect();
+      expect(stopSpy).toHaveBeenCalled();
+    } finally {
+      startSpy.mockRestore();
+      stopSpy.mockRestore();
+      connectSpy.mockRestore();
+      stateSpy.mockRestore();
+      peerConnectionSpy.mockRestore();
+      cleanupSpy.mockRestore();
+    }
+  });
+
   it("subscribe client buffers events until returned", async () => {
     const { encodeSubscribeToken } = await import("../src/realtime/subscribe-client.js");
     const { createRealTimeClient } = await import("../src/realtime/client.js");
@@ -1674,6 +1904,17 @@ describe("WebRTC Error Classification", () => {
     const { classifyWebrtcError, ERROR_CODES } = await import("../src/utils/errors.js");
     const result = classifyWebrtcError(new Error("Connection timed out"));
     expect(result.code).toBe(ERROR_CODES.WEBRTC_TIMEOUT_ERROR);
+    expect(result.message).toBe("connection timed out");
+    expect(result.data).toEqual({ phase: "connection" });
+  });
+
+  it("classifies server-originated errors", async () => {
+    const { classifyWebrtcError, ERROR_CODES } = await import("../src/utils/errors.js");
+    const error = new Error("Insufficient credits") as Error & { source?: string };
+    error.source = "server";
+    const result = classifyWebrtcError(error);
+    expect(result.code).toBe(ERROR_CODES.WEBRTC_SERVER_ERROR);
+    expect(result.message).toBe("Insufficient credits");
   });
 
   it("classifies unknown errors as signaling errors", async () => {
@@ -1939,7 +2180,6 @@ describe("TelemetryReporter", () => {
 
     try {
       const reporter = new TelemetryReporter({
-
         apiKey: "test-key",
         sessionId: "sess-1",
         logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -1995,7 +2235,6 @@ describe("TelemetryReporter", () => {
 
     try {
       const reporter = new TelemetryReporter({
-
         apiKey: "test-key",
         sessionId: "sess-1",
         logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -2024,7 +2263,6 @@ describe("TelemetryReporter", () => {
 
     try {
       const reporter = new TelemetryReporter({
-
         apiKey: "test-key",
         sessionId: "sess-2",
         logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -2057,7 +2295,6 @@ describe("TelemetryReporter", () => {
 
     try {
       const reporter = new TelemetryReporter({
-
         apiKey: "test-key",
         sessionId: "sess-3",
         logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -2086,7 +2323,6 @@ describe("TelemetryReporter", () => {
 
     try {
       const reporter = new TelemetryReporter({
-
         apiKey: "my-api-key",
         sessionId: "sess-4",
         integration: "test-integration",
@@ -2124,7 +2360,6 @@ describe("TelemetryReporter", () => {
 
     try {
       const reporter = new TelemetryReporter({
-
         apiKey: "test-key",
         sessionId: "sess-5",
         logger: { debug() {}, info() {}, warn() {}, error() {} },

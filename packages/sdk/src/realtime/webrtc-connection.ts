@@ -205,7 +205,8 @@ export class WebRTCConnection {
     try {
       // Handle messages that don't require peer connection first
       if (msg.type === "error") {
-        const error = new Error(msg.error);
+        const error = new Error(msg.error) as Error & { source?: string };
+        error.source = "server";
         this.callbacks.onError?.(error);
         if (this.connectionReject) {
           this.connectionReject(error);

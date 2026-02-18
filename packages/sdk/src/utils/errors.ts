@@ -53,14 +53,12 @@ export function createWebrtcIceError(error: Error): DecartSDKError {
   return createSDKError(ERROR_CODES.WEBRTC_ICE_ERROR, "ICE connection failed", undefined, error);
 }
 
-export function createWebrtcTimeoutError(phase: string, timeoutMs: number, cause?: Error): DecartSDKError {
+export function createWebrtcTimeoutError(phase: string, timeoutMs?: number, cause?: Error): DecartSDKError {
+  const hasTimeout = typeof timeoutMs === "number" && Number.isFinite(timeoutMs);
   return createSDKError(
     ERROR_CODES.WEBRTC_TIMEOUT_ERROR,
-    `${phase} timed out after ${timeoutMs}ms`,
-    {
-      phase,
-      timeoutMs,
-    },
+    hasTimeout ? `${phase} timed out after ${timeoutMs}ms` : `${phase} timed out`,
+    hasTimeout ? { phase, timeoutMs } : { phase },
     cause,
   );
 }
@@ -78,6 +76,12 @@ export function createWebrtcSignalingError(error: Error): DecartSDKError {
  */
 export function classifyWebrtcError(error: Error): DecartSDKError {
   const msg = error.message.toLowerCase();
+  const source = (error as Error & { source?: string }).source;
+
+  if (source === "server") {
+    return createWebrtcServerError(error.message);
+  }
+
   if (msg.includes("websocket")) {
     return createWebrtcWebsocketError(error);
   }
@@ -85,7 +89,9 @@ export function classifyWebrtcError(error: Error): DecartSDKError {
     return createWebrtcIceError(error);
   }
   if (msg.includes("timeout") || msg.includes("timed out")) {
-    return createWebrtcTimeoutError("connection", 0, error);
+    const timeoutMatch = msg.match(/(\d+)\s*ms/);
+    const timeoutMs = timeoutMatch ? Number.parseInt(timeoutMatch[1], 10) : undefined;
+    return createWebrtcTimeoutError("connection", timeoutMs, error);
   }
   // Default to signaling error for unclassified WebRTC errors
   return createWebrtcSignalingError(error);

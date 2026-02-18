@@ -148,7 +148,7 @@ export class WebRTCManager {
             this.logger.warn("Reconnect attempt failed", { error: error.message, attempt: error.attemptNumber });
             this.config.onDiagnostic?.("reconnect", {
               attempt: error.attemptNumber,
-              maxAttempts: RETRY_OPTIONS.retries,
+              maxAttempts: RETRY_OPTIONS.retries + 1,
               durationMs: performance.now() - reconnectStart,
               success: false,
               error: error.message,
@@ -166,7 +166,7 @@ export class WebRTCManager {
       );
       this.config.onDiagnostic?.("reconnect", {
         attempt: attemptCount,
-        maxAttempts: RETRY_OPTIONS.retries,
+        maxAttempts: RETRY_OPTIONS.retries + 1,
         durationMs: performance.now() - reconnectStart,
         success: true,
       });

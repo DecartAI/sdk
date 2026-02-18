@@ -152,6 +152,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     }
 
     let webrtcManager: WebRTCManager | undefined;
+    let telemetryReporter: ITelemetryReporter = new NullTelemetryReporter();
+    let handleConnectionStateChange: ((state: ConnectionState) => void) | null = null;
 
     try {
       // Prepare initial image base64 before connection
@@ -175,11 +177,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         logger,
         onDiagnostic: (name, data) => {
           emitOrBuffer("diagnostic", { name, data } as Events["diagnostic"]);
-          telemetryReporter.addDiagnostic({ name, data, timestamp: Date.now() });
+          addTelemetryDiagnostic(name, data);
         },
         onRemoteStream,
         onConnectionStateChange: (state) => {
           emitOrBuffer("connectionChange", state);
+          handleConnectionStateChange?.(state);
         },
         onError: (error) => {
           logger.error("WebRTC error", { error: error.message });
@@ -197,7 +200,29 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       let sessionId: string | null = null;
       let subscribeToken: string | null = null;
-      let telemetryReporter: ITelemetryReporter = new NullTelemetryReporter();
+      const pendingTelemetryDiagnostics: Array<{
+        name: DiagnosticEvent["name"];
+        data: DiagnosticEvent["data"];
+        timestamp: number;
+      }> = [];
+      let telemetryReporterReady = false;
+
+      const addTelemetryDiagnostic = (
+        name: DiagnosticEvent["name"],
+        data: DiagnosticEvent["data"],
+        timestamp: number = Date.now(),
+      ): void => {
+        if (!opts.telemetryEnabled) {
+          return;
+        }
+
+        if (!telemetryReporterReady) {
+          pendingTelemetryDiagnostics.push({ name, data, timestamp });
+          return;
+        }
+
+        telemetryReporter.addDiagnostic({ name, data, timestamp });
+      };
 
       const sessionIdListener = (msg: SessionIdMessage) => {
         subscribeToken = encodeSubscribeToken(msg.session_id, msg.server_ip, msg.server_port);
@@ -205,6 +230,10 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
         // Start telemetry reporter now that we have a session ID
         if (opts.telemetryEnabled) {
+          if (telemetryReporterReady) {
+            telemetryReporter.stop();
+          }
+
           const reporter = new TelemetryReporter({
             apiKey,
             sessionId: msg.session_id,
@@ -214,6 +243,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           });
           reporter.start();
           telemetryReporter = reporter;
+          telemetryReporterReady = true;
+
+          for (const diagnostic of pendingTelemetryDiagnostics) {
+            telemetryReporter.addDiagnostic(diagnostic);
+          }
+          pendingTelemetryDiagnostics.length = 0;
         }
       };
       manager.getWebsocketMessageEmitter().on("sessionId", sessionIdListener);
@@ -228,6 +263,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       const methods = realtimeMethods(manager, imageToBase64);
 
       let statsCollector: WebRTCStatsCollector | null = null;
+      let statsCollectorPeerConnection: RTCPeerConnection | null = null;
 
       // Video stall detection state (Twilio pattern: fps < 0.5 = stalled)
       const STALL_FPS_THRESHOLD = 0.5;
@@ -240,6 +276,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         stallStartMs = 0;
         statsCollector = new WebRTCStatsCollector(statsOptions);
         const pc = manager.getPeerConnection();
+        statsCollectorPeerConnection = pc;
         if (pc) {
           statsCollector.start(pc, (stats) => {
             emitOrBuffer("stats", stats);
@@ -251,27 +288,37 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
               videoStalled = true;
               stallStartMs = Date.now();
               emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: true, durationMs: 0 } });
-              telemetryReporter.addDiagnostic({
-                name: "videoStall",
-                data: { stalled: true, durationMs: 0 },
-                timestamp: stallStartMs,
-              });
+              addTelemetryDiagnostic("videoStall", { stalled: true, durationMs: 0 }, stallStartMs);
             } else if (videoStalled && fps >= STALL_FPS_THRESHOLD) {
               const durationMs = Date.now() - stallStartMs;
               videoStalled = false;
               emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: false, durationMs } });
-              telemetryReporter.addDiagnostic({
-                name: "videoStall",
-                data: { stalled: false, durationMs },
-                timestamp: Date.now(),
-              });
+              addTelemetryDiagnostic("videoStall", { stalled: false, durationMs });
             }
           });
         }
         return () => {
           statsCollector?.stop();
           statsCollector = null;
+          statsCollectorPeerConnection = null;
         };
+      };
+
+      handleConnectionStateChange = (state) => {
+        if (!opts.telemetryEnabled) {
+          return;
+        }
+
+        if (state !== "connected" && state !== "generating") {
+          return;
+        }
+
+        const peerConnection = manager.getPeerConnection();
+        if (!peerConnection || peerConnection === statsCollectorPeerConnection) {
+          return;
+        }
+
+        startStatsCollection();
       };
 
       // Auto-start stats when telemetry is enabled
@@ -321,6 +368,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       flush();
       return client;
     } catch (error) {
+      telemetryReporter.stop();
       webrtcManager?.cleanup();
       audioStreamManager?.cleanup();
       throw error;
