@@ -3,10 +3,8 @@ import { modelDefinitionSchema, type RealTimeModels } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import type { Logger } from "../utils/logger";
-import type { DiagnosticEvent } from "./diagnostics";
-import { WebRTCStatsCollector, type StatsOptions, type WebRTCStats } from "./webrtc-stats";
-import { TelemetryReporter, NullTelemetryReporter, type ITelemetryReporter } from "./telemetry-reporter";
 import { AudioStreamManager } from "./audio-stream-manager";
+import type { DiagnosticEvent } from "./diagnostics";
 import { createEventBuffer } from "./event-buffer";
 import { realtimeMethods, type SetInput } from "./methods";
 import {
@@ -16,8 +14,10 @@ import {
   type SubscribeEvents,
   type SubscribeOptions,
 } from "./subscribe-client";
+import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
 import { WebRTCManager } from "./webrtc-manager";
+import { type StatsOptions, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {

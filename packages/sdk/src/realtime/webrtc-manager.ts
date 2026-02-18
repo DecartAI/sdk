@@ -1,7 +1,7 @@
 import pRetry, { AbortError } from "p-retry";
-import type { DiagnosticEmitter } from "./diagnostics";
 import type { RealTimeModels } from "../shared/model";
 import type { Logger } from "../utils/logger";
+import type { DiagnosticEmitter } from "./diagnostics";
 import type { ConnectionState, OutgoingMessage } from "./types";
 import { WebRTCConnection } from "./webrtc-connection";
 

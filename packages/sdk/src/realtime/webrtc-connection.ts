@@ -1,8 +1,8 @@
 import mitt from "mitt";
-import type { DiagnosticEmitter, IceCandidateEvent } from "./diagnostics";
 import type { RealTimeModels } from "../shared/model";
 import type { Logger } from "../utils/logger";
 import { buildUserAgent } from "../utils/user-agent";
+import type { DiagnosticEmitter, IceCandidateEvent } from "./diagnostics";
 import type {
   ConnectionState,
   GenerationTickMessage,
