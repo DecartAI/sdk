@@ -5,6 +5,7 @@ import { createRealTimeClient } from "./realtime/client";
 import { createTokensClient } from "./tokens/client";
 import { readEnv } from "./utils/env";
 import { createInvalidApiKeyError, createInvalidBaseUrlError } from "./utils/errors";
+import { type Logger, noopLogger } from "./utils/logger";
 
 export type { ProcessClient } from "./process/client";
 export type { FileInput, ProcessOptions, ReactNativeFile } from "./process/types";
@@ -24,6 +25,20 @@ export type {
   RealTimeClientConnectOptions,
   RealTimeClientInitialState,
 } from "./realtime/client";
+export type {
+  ConnectionPhase,
+  DiagnosticEvent,
+  DiagnosticEventName,
+  DiagnosticEvents,
+  IceCandidateEvent,
+  IceStateEvent,
+  PeerConnectionStateEvent,
+  PhaseTimingEvent,
+  ReconnectEvent,
+  SelectedCandidatePairEvent,
+  SignalingStateEvent,
+  VideoStallEvent,
+} from "./realtime/diagnostics";
 export type { SetInput } from "./realtime/methods";
 export type {
   RealTimeSubscribeClient,
@@ -31,6 +46,7 @@ export type {
   SubscribeOptions,
 } from "./realtime/subscribe-client";
 export type { ConnectionState } from "./realtime/types";
+export type { StatsOptions, WebRTCStats } from "./realtime/webrtc-stats";
 export {
   type ImageModelDefinition,
   type ImageModels,
@@ -47,6 +63,7 @@ export {
 export type { ModelState } from "./shared/types";
 export type { CreateTokenResponse, TokensClient } from "./tokens/client";
 export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
+export { createConsoleLogger, type Logger, type LogLevel, noopLogger } from "./utils/logger";
 
 // Schema with validation to ensure proxy and apiKey are mutually exclusive
 // Proxy can be a full URL or a relative path (starts with /)
@@ -80,12 +97,16 @@ export type DecartClientOptions =
       apiKey?: never;
       baseUrl?: string;
       integration?: string;
+      logger?: Logger;
+      telemetry?: boolean;
     }
   | {
       proxy?: never;
       apiKey?: string;
       baseUrl?: string;
       integration?: string;
+      logger?: Logger;
+      telemetry?: boolean;
     };
 
 /**
@@ -154,15 +175,22 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     baseUrl = parsedOptions.data.baseUrl || "https://api.decart.ai";
   }
   const { integration } = parsedOptions.data;
+  const logger = "logger" in options && options.logger ? options.logger : noopLogger;
+  const telemetryEnabled = "telemetry" in options && options.telemetry === false ? false : true;
 
   // Realtime (WebRTC) always requires direct API access with API key
   // Proxy mode is only for HTTP endpoints (process, queue, tokens)
   // Note: Realtime will fail at connection time if no API key is provided
   const wsBaseUrl = "wss://api3.decart.ai";
+  const httpBaseUrl = parsedOptions.data.baseUrl || "https://api.decart.ai";
   const realtime = createRealTimeClient({
     baseUrl: wsBaseUrl,
+    telemetryUrl: "http://localhost:3003/api",
+    // telemetryUrl: httpBaseUrl,
     apiKey: apiKey || "",
     integration,
+    logger,
+    telemetryEnabled,
   });
 
   const process = createProcessClient({

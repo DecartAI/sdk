@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { modelDefinitionSchema } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
-import { createWebrtcError, type DecartSDKError } from "../utils/errors";
+import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
+import type { Logger } from "../utils/logger";
+import type { DiagnosticEvent } from "./diagnostics";
+import { WebRTCStatsCollector, type StatsOptions, type WebRTCStats } from "./webrtc-stats";
+import { TelemetryReporter, NullTelemetryReporter, type ITelemetryReporter } from "./telemetry-reporter";
 import { AudioStreamManager } from "./audio-stream-manager";
 import { createEventBuffer } from "./event-buffer";
 import { realtimeMethods, type SetInput } from "./methods";
@@ -67,8 +71,11 @@ async function imageToBase64(image: Blob | File | string): Promise<string> {
 
 export type RealTimeClientOptions = {
   baseUrl: string;
+  telemetryUrl: string;
   apiKey: string;
   integration?: string;
+  logger: Logger;
+  telemetryEnabled: boolean;
 };
 
 const realTimeClientInitialStateSchema = modelStateSchema;
@@ -100,6 +107,8 @@ export type Events = {
   connectionChange: ConnectionState;
   error: DecartSDKError;
   generationTick: { seconds: number };
+  diagnostic: DiagnosticEvent;
+  stats: WebRTCStats;
 };
 
 export type RealTimeClient = {
@@ -117,10 +126,12 @@ export type RealTimeClient = {
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
   ) => Promise<void>;
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
+  /** Start collecting WebRTC stats. Stats are emitted via the 'stats' event. Returns a stop function. */
+  startStats: (options?: StatsOptions) => () => void;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
-  const { baseUrl, apiKey, integration } = opts;
+  const { baseUrl, apiKey, integration, logger } = opts;
 
   const connect = async (
     stream: MediaStream | null,
@@ -178,13 +189,18 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       webrtcManager = new WebRTCManager({
         webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
         integration,
+        logger,
+        onDiagnostic: (name, data) => {
+          emitOrBuffer("diagnostic", { name, data } as Events["diagnostic"]);
+          telemetryReporter.addDiagnostic({ name, data, timestamp: Date.now() });
+        },
         onRemoteStream,
         onConnectionStateChange: (state) => {
           emitOrBuffer("connectionChange", state);
         },
         onError: (error) => {
-          console.error("WebRTC error:", error);
-          emitOrBuffer("error", createWebrtcError(error));
+          logger.error("WebRTC error", { error: error.message });
+          emitOrBuffer("error", classifyWebrtcError(error));
         },
         customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
         vp8MinBitrate: 300,
@@ -198,9 +214,24 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       let sessionId: string | null = null;
       let subscribeToken: string | null = null;
+      let telemetryReporter: ITelemetryReporter = new NullTelemetryReporter();
+
       const sessionIdListener = (msg: SessionIdMessage) => {
         subscribeToken = encodeSubscribeToken(msg.session_id, msg.server_ip, msg.server_port);
         sessionId = msg.session_id;
+
+        // Start telemetry reporter now that we have a session ID
+        if (opts.telemetryEnabled) {
+          const reporter = new TelemetryReporter({
+            telemetryUrl: opts.telemetryUrl,
+            apiKey,
+            sessionId: msg.session_id,
+            integration,
+            logger,
+          });
+          reporter.start();
+          telemetryReporter = reporter;
+        }
       };
       manager.getWebsocketMessageEmitter().on("sessionId", sessionIdListener);
 
@@ -219,12 +250,58 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         await methods.setPrompt(text, { enhance });
       }
 
+      let statsCollector: WebRTCStatsCollector | null = null;
+
+      // Video stall detection state (Twilio pattern: fps < 0.5 = stalled)
+      const STALL_FPS_THRESHOLD = 0.5;
+      let videoStalled = false;
+      let stallStartMs = 0;
+
+      const startStatsCollection = (statsOptions?: StatsOptions): (() => void) => {
+        statsCollector?.stop();
+        videoStalled = false;
+        stallStartMs = 0;
+        statsCollector = new WebRTCStatsCollector(statsOptions);
+        const pc = manager.getPeerConnection();
+        if (pc) {
+          statsCollector.start(pc, (stats) => {
+            emitOrBuffer("stats", stats);
+            telemetryReporter.addStats(stats);
+
+            // Stall detection: check if video fps dropped below threshold
+            const fps = stats.video?.framesPerSecond ?? 0;
+            if (!videoStalled && stats.video && fps < STALL_FPS_THRESHOLD) {
+              videoStalled = true;
+              stallStartMs = Date.now();
+              emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: true, durationMs: 0 } });
+              telemetryReporter.addDiagnostic({ name: "videoStall", data: { stalled: true, durationMs: 0 }, timestamp: stallStartMs });
+            } else if (videoStalled && fps >= STALL_FPS_THRESHOLD) {
+              const durationMs = Date.now() - stallStartMs;
+              videoStalled = false;
+              emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: false, durationMs } });
+              telemetryReporter.addDiagnostic({ name: "videoStall", data: { stalled: false, durationMs }, timestamp: Date.now() });
+            }
+          });
+        }
+        return () => {
+          statsCollector?.stop();
+          statsCollector = null;
+        };
+      };
+
+      // Auto-start stats when telemetry is enabled
+      if (opts.telemetryEnabled) {
+        startStatsCollection();
+      }
+
       const client: RealTimeClient = {
         set: methods.set,
         setPrompt: methods.setPrompt,
         isConnected: () => manager.isConnected(),
         getConnectionState: () => manager.getConnectionState(),
         disconnect: () => {
+          statsCollector?.stop();
+          telemetryReporter.stop();
           stop();
           manager.cleanup();
           audioStreamManager?.cleanup();
@@ -247,6 +324,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           const base64 = await imageToBase64(image);
           return manager.setImage(base64, options);
         },
+        startStats: startStatsCollection,
       };
 
       // Add live_avatar specific audio method (only when using internal AudioStreamManager)
@@ -276,13 +354,17 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       webrtcManager = new WebRTCManager({
         webrtcUrl: subscribeUrl,
         integration,
+        logger,
+        onDiagnostic: (name, data) => {
+          emitOrBuffer("diagnostic", { name, data } as SubscribeEvents["diagnostic"]);
+        },
         onRemoteStream: options.onRemoteStream,
         onConnectionStateChange: (state) => {
           emitOrBuffer("connectionChange", state);
         },
         onError: (error) => {
-          console.error("WebRTC subscribe error:", error);
-          emitOrBuffer("error", createWebrtcError(error));
+          logger.error("WebRTC subscribe error", { error: error.message });
+          emitOrBuffer("error", classifyWebrtcError(error));
         },
       });
 

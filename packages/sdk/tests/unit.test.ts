@@ -1562,6 +1562,596 @@ describe("Subscribe Client", () => {
   });
 });
 
+describe("Logger", () => {
+  it("noopLogger does nothing", async () => {
+    const { noopLogger } = await import("../src/utils/logger.js");
+    // Should not throw
+    noopLogger.debug("test");
+    noopLogger.info("test");
+    noopLogger.warn("test");
+    noopLogger.error("test");
+  });
+
+  it("createConsoleLogger filters by level", async () => {
+    const { createConsoleLogger } = await import("../src/utils/logger.js");
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const logger = createConsoleLogger("warn");
+      logger.debug("d");
+      logger.info("i");
+      logger.warn("w");
+      logger.error("e");
+
+      expect(debugSpy).not.toHaveBeenCalled();
+      expect(infoSpy).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      debugSpy.mockRestore();
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("createConsoleLogger at debug level logs everything", async () => {
+    const { createConsoleLogger } = await import("../src/utils/logger.js");
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const logger = createConsoleLogger("debug");
+      logger.debug("d");
+      logger.info("i");
+      logger.warn("w");
+      logger.error("e");
+
+      expect(debugSpy).toHaveBeenCalledTimes(1);
+      expect(infoSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      debugSpy.mockRestore();
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("createConsoleLogger includes data in log output", async () => {
+    const { createConsoleLogger } = await import("../src/utils/logger.js");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const logger = createConsoleLogger("warn");
+      logger.warn("test message", { key: "value" });
+
+      expect(warnSpy).toHaveBeenCalledWith("[DecartSDK]", "test message", { key: "value" });
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("createConsoleLogger defaults to warn level", async () => {
+    const { createConsoleLogger } = await import("../src/utils/logger.js");
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const logger = createConsoleLogger();
+      logger.info("should not appear");
+      logger.warn("should appear");
+
+      expect(infoSpy).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+});
+
+describe("WebRTC Error Classification", () => {
+  it("classifies websocket errors", async () => {
+    const { classifyWebrtcError, ERROR_CODES } = await import("../src/utils/errors.js");
+    const result = classifyWebrtcError(new Error("WebSocket connection closed"));
+    expect(result.code).toBe(ERROR_CODES.WEBRTC_WEBSOCKET_ERROR);
+  });
+
+  it("classifies ICE errors", async () => {
+    const { classifyWebrtcError, ERROR_CODES } = await import("../src/utils/errors.js");
+    const result = classifyWebrtcError(new Error("ICE connection failed"));
+    expect(result.code).toBe(ERROR_CODES.WEBRTC_ICE_ERROR);
+  });
+
+  it("classifies timeout errors", async () => {
+    const { classifyWebrtcError, ERROR_CODES } = await import("../src/utils/errors.js");
+    const result = classifyWebrtcError(new Error("Connection timed out"));
+    expect(result.code).toBe(ERROR_CODES.WEBRTC_TIMEOUT_ERROR);
+  });
+
+  it("classifies unknown errors as signaling errors", async () => {
+    const { classifyWebrtcError, ERROR_CODES } = await import("../src/utils/errors.js");
+    const result = classifyWebrtcError(new Error("SDP offer failed"));
+    expect(result.code).toBe(ERROR_CODES.WEBRTC_SIGNALING_ERROR);
+  });
+
+  it("createWebrtcTimeoutError includes phase and timeout data", async () => {
+    const { createWebrtcTimeoutError, ERROR_CODES } = await import("../src/utils/errors.js");
+    const result = createWebrtcTimeoutError("webrtc-handshake", 30000);
+    expect(result.code).toBe(ERROR_CODES.WEBRTC_TIMEOUT_ERROR);
+    expect(result.message).toBe("webrtc-handshake timed out after 30000ms");
+    expect(result.data).toEqual({ phase: "webrtc-handshake", timeoutMs: 30000 });
+  });
+
+  it("createWebrtcServerError preserves the message", async () => {
+    const { createWebrtcServerError, ERROR_CODES } = await import("../src/utils/errors.js");
+    const result = createWebrtcServerError("Server overloaded");
+    expect(result.code).toBe(ERROR_CODES.WEBRTC_SERVER_ERROR);
+    expect(result.message).toBe("Server overloaded");
+  });
+
+  it("factory functions preserve the cause error", async () => {
+    const { createWebrtcWebsocketError } = await import("../src/utils/errors.js");
+    const cause = new Error("original");
+    const result = createWebrtcWebsocketError(cause);
+    expect(result.cause).toBe(cause);
+  });
+});
+
+describe("WebRTCStatsCollector", () => {
+  it("starts and stops polling", async () => {
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const collector = new WebRTCStatsCollector();
+
+    const mockPC = {
+      getStats: vi.fn().mockResolvedValue(new Map()),
+    } as unknown as RTCPeerConnection;
+
+    const onStats = vi.fn();
+
+    collector.start(mockPC, onStats);
+    expect(collector.isRunning()).toBe(true);
+
+    collector.stop();
+    expect(collector.isRunning()).toBe(false);
+  });
+
+  it("parses inbound video stats", async () => {
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+
+    vi.useFakeTimers();
+    try {
+      const collector = new WebRTCStatsCollector({ intervalMs: 1000 });
+
+      const videoReport = {
+        type: "inbound-rtp",
+        kind: "video",
+        framesDecoded: 100,
+        framesDropped: 2,
+        framesPerSecond: 30,
+        frameWidth: 1280,
+        frameHeight: 720,
+        bytesReceived: 500000,
+        packetsReceived: 1000,
+        packetsLost: 5,
+        jitter: 0.01,
+        freezeCount: 0,
+        totalFreezesDuration: 0,
+      };
+
+      const statsReport = new Map([["video-1", videoReport]]);
+      const mockPC = {
+        getStats: vi.fn().mockResolvedValue(statsReport),
+      } as unknown as RTCPeerConnection;
+
+      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      collector.start(mockPC, (stats) => receivedStats.push(stats));
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(receivedStats.length).toBe(1);
+      const stats = receivedStats[0];
+      expect(stats.video).not.toBeNull();
+      expect(stats.video?.framesDecoded).toBe(100);
+      expect(stats.video?.framesDropped).toBe(2);
+      expect(stats.video?.framesPerSecond).toBe(30);
+      expect(stats.video?.frameWidth).toBe(1280);
+      expect(stats.video?.frameHeight).toBe(720);
+      expect(stats.video?.packetsLost).toBe(5);
+      expect(stats.audio).toBeNull();
+      expect(stats.connection.currentRoundTripTime).toBeNull();
+
+      collector.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("parses inbound audio and candidate-pair stats", async () => {
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+
+    vi.useFakeTimers();
+    try {
+      const collector = new WebRTCStatsCollector({ intervalMs: 1000 });
+
+      const audioReport = {
+        type: "inbound-rtp",
+        kind: "audio",
+        bytesReceived: 10000,
+        packetsReceived: 200,
+        packetsLost: 1,
+        jitter: 0.005,
+      };
+
+      const candidatePairReport = {
+        type: "candidate-pair",
+        state: "succeeded",
+        currentRoundTripTime: 0.05,
+        availableOutgoingBitrate: 2000000,
+      };
+
+      const statsReport = new Map([
+        ["audio-1", audioReport],
+        ["cp-1", candidatePairReport],
+      ]);
+      const mockPC = {
+        getStats: vi.fn().mockResolvedValue(statsReport),
+      } as unknown as RTCPeerConnection;
+
+      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      collector.start(mockPC, (stats) => receivedStats.push(stats));
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(receivedStats.length).toBe(1);
+      const stats = receivedStats[0];
+      expect(stats.audio).not.toBeNull();
+      expect(stats.audio?.packetsLost).toBe(1);
+      expect(stats.connection.currentRoundTripTime).toBe(0.05);
+      expect(stats.connection.availableOutgoingBitrate).toBe(2000000);
+
+      collector.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("computes video bitrate from bytesReceived delta", async () => {
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+
+    vi.useFakeTimers();
+    try {
+      const collector = new WebRTCStatsCollector({ intervalMs: 1000 });
+
+      let bytesReceived = 0;
+      const mockPC = {
+        getStats: vi.fn().mockImplementation(async () => {
+          bytesReceived += 125000; // 125KB per second = ~1Mbps
+          return new Map([
+            [
+              "video-1",
+              {
+                type: "inbound-rtp",
+                kind: "video",
+                bytesReceived,
+                framesDecoded: 0,
+                framesDropped: 0,
+                framesPerSecond: 0,
+                frameWidth: 0,
+                frameHeight: 0,
+                packetsReceived: 0,
+                packetsLost: 0,
+                jitter: 0,
+                freezeCount: 0,
+                totalFreezesDuration: 0,
+              },
+            ],
+          ]);
+        }),
+      } as unknown as RTCPeerConnection;
+
+      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      collector.start(mockPC, (stats) => receivedStats.push(stats));
+
+      // First tick: no previous data, bitrate = 0
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(receivedStats[0].video?.bitrate).toBe(0);
+
+      // Second tick: has delta, should compute bitrate
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(receivedStats[1].video?.bitrate).toBeGreaterThan(0);
+
+      collector.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("enforces minimum interval of 500ms", async () => {
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+
+    vi.useFakeTimers();
+    try {
+      const collector = new WebRTCStatsCollector({ intervalMs: 100 }); // Below minimum
+
+      const mockPC = {
+        getStats: vi.fn().mockResolvedValue(new Map()),
+      } as unknown as RTCPeerConnection;
+
+      const onStats = vi.fn();
+      collector.start(mockPC, onStats);
+
+      // At 100ms, nothing should fire (minimum is 500ms)
+      await vi.advanceTimersByTimeAsync(100);
+      expect(onStats).not.toHaveBeenCalled();
+
+      // At 500ms, it should fire
+      await vi.advanceTimersByTimeAsync(400);
+      expect(onStats).toHaveBeenCalledTimes(1);
+
+      collector.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops silently if getStats throws", async () => {
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+
+    vi.useFakeTimers();
+    try {
+      const collector = new WebRTCStatsCollector({ intervalMs: 1000 });
+
+      const mockPC = {
+        getStats: vi.fn().mockRejectedValue(new Error("PC closed")),
+      } as unknown as RTCPeerConnection;
+
+      const onStats = vi.fn();
+      collector.start(mockPC, onStats);
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(onStats).not.toHaveBeenCalled();
+      expect(collector.isRunning()).toBe(false);
+
+      collector.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("TelemetryReporter", () => {
+  it("buffers stats and diagnostics then flushes on interval", async () => {
+    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+
+    vi.useFakeTimers();
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const reporter = new TelemetryReporter({
+        telemetryUrl: "https://api.decart.ai",
+        apiKey: "test-key",
+        sessionId: "sess-1",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        reportIntervalMs: 5000,
+      });
+
+      reporter.start();
+
+      reporter.addStats({
+        timestamp: 1000,
+        video: null,
+        audio: null,
+        connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
+      });
+      reporter.addDiagnostic({ name: "phaseTiming", data: { phase: "total", durationMs: 500, success: true }, timestamp: 1000 });
+
+      // Before interval: no fetch
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // After interval: flush
+      await vi.advanceTimersByTimeAsync(5000);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, options] = fetchMock.mock.calls[0];
+      expect(url).toBe("https://api.decart.ai/v1/telemetry");
+      expect(options.method).toBe("POST");
+      expect(options.keepalive).toBe(false);
+
+      const body = JSON.parse(options.body);
+      expect(body.sessionId).toBe("sess-1");
+      expect(body.stats).toHaveLength(1);
+      expect(body.diagnostics).toHaveLength(1);
+      expect(body.diagnostics[0].name).toBe("phaseTiming");
+
+      reporter.stop();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not send empty reports", async () => {
+    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+
+    vi.useFakeTimers();
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const reporter = new TelemetryReporter({
+        telemetryUrl: "https://api.decart.ai",
+        apiKey: "test-key",
+        sessionId: "sess-1",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        reportIntervalMs: 5000,
+      });
+
+      reporter.start();
+
+      // No data added — interval fires
+      await vi.advanceTimersByTimeAsync(5000);
+
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      reporter.stop();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("stop sends final report with keepalive", async () => {
+    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const reporter = new TelemetryReporter({
+        telemetryUrl: "https://api.decart.ai",
+        apiKey: "test-key",
+        sessionId: "sess-2",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+      });
+
+      reporter.start();
+
+      reporter.addStats({
+        timestamp: 2000,
+        video: null,
+        audio: null,
+        connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
+      });
+
+      reporter.stop();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [, options] = fetchMock.mock.calls[0];
+      expect(options.keepalive).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("silently handles fetch failures", async () => {
+    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+
+    const fetchMock = vi.fn().mockRejectedValue(new Error("network error"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const reporter = new TelemetryReporter({
+        telemetryUrl: "https://api.decart.ai",
+        apiKey: "test-key",
+        sessionId: "sess-3",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+      });
+
+      reporter.addStats({
+        timestamp: 3000,
+        video: null,
+        audio: null,
+        connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
+      });
+
+      // Should not throw
+      reporter.flush();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("includes auth headers and sdk version in report", async () => {
+    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const reporter = new TelemetryReporter({
+        telemetryUrl: "https://api.decart.ai",
+        apiKey: "my-api-key",
+        sessionId: "sess-4",
+        integration: "test-integration",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+      });
+
+      reporter.addStats({
+        timestamp: 4000,
+        video: null,
+        audio: null,
+        connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
+      });
+
+      reporter.flush();
+
+      const [, options] = fetchMock.mock.calls[0];
+      expect(options.headers["X-API-KEY"]).toBe("my-api-key");
+      expect(options.headers["Content-Type"]).toBe("application/json");
+
+      const body = JSON.parse(options.body);
+      expect(body.sdkVersion).toBeDefined();
+      expect(typeof body.sdkVersion).toBe("string");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("clears buffers after sending", async () => {
+    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+
+    vi.useFakeTimers();
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const reporter = new TelemetryReporter({
+        telemetryUrl: "https://api.decart.ai",
+        apiKey: "test-key",
+        sessionId: "sess-5",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        reportIntervalMs: 5000,
+      });
+
+      reporter.start();
+
+      reporter.addStats({
+        timestamp: 1000,
+        video: null,
+        audio: null,
+        connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
+      });
+
+      // First flush
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // Second interval: no new data, should not send
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      reporter.stop();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe("WebSockets Connection", () => {
   it("connect resolves when state becomes generating before poll observes connected", async () => {
     const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
@@ -1766,5 +2356,341 @@ describe("WebSockets Connection", () => {
       sendSpy.mockRestore();
       cleanupSpy.mockRestore();
     }
+  });
+});
+
+describe("NullTelemetryReporter", () => {
+  it("all methods are no-ops", async () => {
+    const { NullTelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const reporter = new NullTelemetryReporter();
+
+    // None of these should throw
+    reporter.start();
+    reporter.addStats({
+      timestamp: 1000,
+      video: null,
+      audio: null,
+      outboundVideo: null,
+      connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
+    });
+    reporter.addDiagnostic({ name: "phaseTiming", data: {}, timestamp: 1000 });
+    reporter.flush();
+    reporter.stop();
+  });
+
+  it("implements ITelemetryReporter interface", async () => {
+    const { NullTelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const reporter = new NullTelemetryReporter();
+
+    expect(typeof reporter.start).toBe("function");
+    expect(typeof reporter.addStats).toBe("function");
+    expect(typeof reporter.addDiagnostic).toBe("function");
+    expect(typeof reporter.flush).toBe("function");
+    expect(typeof reporter.stop).toBe("function");
+  });
+});
+
+describe("Outbound Video Stats", () => {
+  it("parses outbound-rtp video with quality limitation tracking", async () => {
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+
+    vi.useFakeTimers();
+    try {
+      const collector = new WebRTCStatsCollector({ intervalMs: 1000 });
+
+      const outboundVideoReport = {
+        type: "outbound-rtp",
+        kind: "video",
+        bytesSent: 200000,
+        packetsSent: 500,
+        framesPerSecond: 30,
+        frameWidth: 1280,
+        frameHeight: 720,
+        qualityLimitationReason: "bandwidth",
+        qualityLimitationDurations: { none: 5.0, bandwidth: 2.5, cpu: 0, other: 0 },
+      };
+
+      const statsReport = new Map([["outbound-video-1", outboundVideoReport]]);
+      const mockPC = {
+        getStats: vi.fn().mockResolvedValue(statsReport),
+      } as unknown as RTCPeerConnection;
+
+      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      collector.start(mockPC, (stats) => receivedStats.push(stats));
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(receivedStats.length).toBe(1);
+      const stats = receivedStats[0];
+      expect(stats.outboundVideo).not.toBeNull();
+      expect(stats.outboundVideo?.qualityLimitationReason).toBe("bandwidth");
+      expect(stats.outboundVideo?.qualityLimitationDurations).toEqual({
+        none: 5.0,
+        bandwidth: 2.5,
+        cpu: 0,
+        other: 0,
+      });
+      expect(stats.outboundVideo?.framesPerSecond).toBe(30);
+      expect(stats.outboundVideo?.frameWidth).toBe(1280);
+
+      collector.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns null outboundVideo when no outbound-rtp report", async () => {
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+
+    vi.useFakeTimers();
+    try {
+      const collector = new WebRTCStatsCollector({ intervalMs: 1000 });
+
+      const mockPC = {
+        getStats: vi.fn().mockResolvedValue(new Map()),
+      } as unknown as RTCPeerConnection;
+
+      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      collector.start(mockPC, (stats) => receivedStats.push(stats));
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(receivedStats[0].outboundVideo).toBeNull();
+
+      collector.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("computes outbound video bitrate from bytesSent delta", async () => {
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+
+    vi.useFakeTimers();
+    try {
+      const collector = new WebRTCStatsCollector({ intervalMs: 1000 });
+
+      let bytesSent = 0;
+      const mockPC = {
+        getStats: vi.fn().mockImplementation(async () => {
+          bytesSent += 62500; // 62.5KB per second = ~500kbps
+          return new Map([
+            [
+              "outbound-video-1",
+              {
+                type: "outbound-rtp",
+                kind: "video",
+                bytesSent,
+                packetsSent: 0,
+                framesPerSecond: 30,
+                frameWidth: 640,
+                frameHeight: 480,
+                qualityLimitationReason: "none",
+                qualityLimitationDurations: {},
+              },
+            ],
+          ]);
+        }),
+      } as unknown as RTCPeerConnection;
+
+      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      collector.start(mockPC, (stats) => receivedStats.push(stats));
+
+      // First tick: no previous data, bitrate = 0
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(receivedStats[0].outboundVideo?.bitrate).toBe(0);
+
+      // Second tick: has delta
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(receivedStats[1].outboundVideo?.bitrate).toBeGreaterThan(0);
+
+      collector.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("Delta computation for cumulative counters", () => {
+  it("computes packetsLostDelta, framesDroppedDelta, freezeCountDelta, freezeDurationDelta", async () => {
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+
+    vi.useFakeTimers();
+    try {
+      const collector = new WebRTCStatsCollector({ intervalMs: 1000 });
+
+      let packetsLost = 0;
+      let framesDropped = 0;
+      let freezeCount = 0;
+      let totalFreezesDuration = 0;
+
+      const mockPC = {
+        getStats: vi.fn().mockImplementation(async () => {
+          packetsLost += 3;
+          framesDropped += 2;
+          freezeCount += 1;
+          totalFreezesDuration += 0.5;
+          return new Map([
+            [
+              "inbound-video-1",
+              {
+                type: "inbound-rtp",
+                kind: "video",
+                bytesReceived: 100000,
+                packetsReceived: 500,
+                packetsLost,
+                framesDecoded: 100,
+                framesDropped,
+                framesPerSecond: 30,
+                frameWidth: 1280,
+                frameHeight: 720,
+                jitter: 0.01,
+                freezeCount,
+                totalFreezesDuration,
+              },
+            ],
+          ]);
+        }),
+      } as unknown as RTCPeerConnection;
+
+      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      collector.start(mockPC, (stats) => receivedStats.push(stats));
+
+      // First tick: delta = cumulative (since prev was 0)
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(receivedStats[0].video?.packetsLostDelta).toBe(3);
+      expect(receivedStats[0].video?.framesDroppedDelta).toBe(2);
+      expect(receivedStats[0].video?.freezeCountDelta).toBe(1);
+      expect(receivedStats[0].video?.freezeDurationDelta).toBe(0.5);
+
+      // Second tick: delta = increment from previous
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(receivedStats[1].video?.packetsLostDelta).toBe(3);
+      expect(receivedStats[1].video?.framesDroppedDelta).toBe(2);
+      expect(receivedStats[1].video?.freezeCountDelta).toBe(1);
+      expect(receivedStats[1].video?.freezeDurationDelta).toBe(0.5);
+
+      collector.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("computes audio packetsLostDelta", async () => {
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+
+    vi.useFakeTimers();
+    try {
+      const collector = new WebRTCStatsCollector({ intervalMs: 1000 });
+
+      let audioPacketsLost = 0;
+      const mockPC = {
+        getStats: vi.fn().mockImplementation(async () => {
+          audioPacketsLost += 5;
+          return new Map([
+            [
+              "inbound-audio-1",
+              {
+                type: "inbound-rtp",
+                kind: "audio",
+                bytesReceived: 50000,
+                packetsReceived: 200,
+                packetsLost: audioPacketsLost,
+                jitter: 0.02,
+              },
+            ],
+          ]);
+        }),
+      } as unknown as RTCPeerConnection;
+
+      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      collector.start(mockPC, (stats) => receivedStats.push(stats));
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(receivedStats[0].audio?.packetsLostDelta).toBe(5);
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(receivedStats[1].audio?.packetsLostDelta).toBe(5);
+
+      collector.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clamps deltas to zero if cumulative counter resets", async () => {
+    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+
+    vi.useFakeTimers();
+    try {
+      const collector = new WebRTCStatsCollector({ intervalMs: 1000 });
+
+      let packetsLost = 10;
+      const mockPC = {
+        getStats: vi.fn().mockImplementation(async () => {
+          const current = packetsLost;
+          // Simulate counter reset on second call
+          if (mockPC.getStats.mock.calls.length === 2) {
+            packetsLost = 0;
+          }
+          return new Map([
+            [
+              "inbound-video-1",
+              {
+                type: "inbound-rtp",
+                kind: "video",
+                bytesReceived: 100000,
+                packetsReceived: 500,
+                packetsLost: current,
+                framesDecoded: 100,
+                framesDropped: 0,
+                framesPerSecond: 30,
+                frameWidth: 1280,
+                frameHeight: 720,
+                jitter: 0.01,
+                freezeCount: 0,
+                totalFreezesDuration: 0,
+              },
+            ],
+          ]);
+        }),
+      } as unknown as RTCPeerConnection;
+
+      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      collector.start(mockPC, (stats) => receivedStats.push(stats));
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(receivedStats[0].video?.packetsLostDelta).toBe(10);
+
+      // Counter reset: 0 - 10 = -10, clamped to 0
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(receivedStats[1].video?.packetsLostDelta).toBe(0);
+
+      collector.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("VideoStall Diagnostic", () => {
+  it("videoStall event type exists in DiagnosticEvents", async () => {
+    // Type-level check: videoStall is a valid DiagnosticEventName
+    const event: import("../src/realtime/diagnostics.js").DiagnosticEvent = {
+      name: "videoStall",
+      data: { stalled: true, durationMs: 0 },
+    };
+    expect(event.name).toBe("videoStall");
+    expect(event.data.stalled).toBe(true);
+    expect(event.data.durationMs).toBe(0);
+  });
+
+  it("videoStall recovery includes duration", () => {
+    const event: import("../src/realtime/diagnostics.js").DiagnosticEvent = {
+      name: "videoStall",
+      data: { stalled: false, durationMs: 1500 },
+    };
+    expect(event.data.stalled).toBe(false);
+    expect(event.data.durationMs).toBe(1500);
   });
 });
