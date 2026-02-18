@@ -1,11 +1,15 @@
 import pRetry, { AbortError } from "p-retry";
 import type { RealTimeModels } from "../shared/model";
+import type { Logger } from "../utils/logger";
+import type { DiagnosticEmitter } from "./diagnostics";
 import type { ConnectionState, OutgoingMessage } from "./types";
 import { WebRTCConnection } from "./webrtc-connection";
 
 export interface WebRTCConfig {
   webrtcUrl: string;
   integration?: string;
+  logger?: Logger;
+  onDiagnostic?: DiagnosticEmitter;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionStateChange?: (state: ConnectionState) => void;
   onError?: (error: Error) => void;
@@ -38,6 +42,7 @@ const RETRY_OPTIONS = {
 export class WebRTCManager {
   private connection: WebRTCConnection;
   private config: WebRTCConfig;
+  private logger: Logger;
   private localStream: MediaStream | null = null;
   private subscribeMode = false;
   private managerState: ConnectionState = "disconnected";
@@ -48,6 +53,7 @@ export class WebRTCManager {
 
   constructor(config: WebRTCConfig) {
     this.config = config;
+    this.logger = config.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
     this.connection = new WebRTCConnection({
       onRemoteStream: config.onRemoteStream,
       onStateChange: (state) => this.handleConnectionStateChange(state),
@@ -58,6 +64,8 @@ export class WebRTCManager {
       modelName: config.modelName,
       initialImage: config.initialImage,
       initialPrompt: config.initialPrompt,
+      logger: this.logger,
+      onDiagnostic: config.onDiagnostic,
     });
   }
 
@@ -101,10 +109,15 @@ export class WebRTCManager {
     const reconnectGeneration = ++this.reconnectGeneration;
     this.isReconnecting = true;
     this.emitState("reconnecting");
+    const reconnectStart = performance.now();
 
     try {
+      let attemptCount = 0;
+
       await pRetry(
         async () => {
+          attemptCount++;
+
           if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
             throw new AbortError("Reconnect cancelled");
           }
@@ -132,7 +145,14 @@ export class WebRTCManager {
             if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
               return;
             }
-            console.error(`[WebRTC] Reconnect attempt failed: ${error.message}`);
+            this.logger.warn("Reconnect attempt failed", { error: error.message, attempt: error.attemptNumber });
+            this.config.onDiagnostic?.("reconnect", {
+              attempt: error.attemptNumber,
+              maxAttempts: RETRY_OPTIONS.retries + 1,
+              durationMs: performance.now() - reconnectStart,
+              success: false,
+              error: error.message,
+            });
             this.connection.cleanup();
           },
           shouldRetry: (error) => {
@@ -144,6 +164,12 @@ export class WebRTCManager {
           },
         },
       );
+      this.config.onDiagnostic?.("reconnect", {
+        attempt: attemptCount,
+        maxAttempts: RETRY_OPTIONS.retries + 1,
+        durationMs: performance.now() - reconnectStart,
+        success: true,
+      });
       // "connected" state is emitted by handleConnectionStateChange
     } catch (error) {
       this.isReconnecting = false;
@@ -175,7 +201,7 @@ export class WebRTCManager {
       {
         ...RETRY_OPTIONS,
         onFailedAttempt: (error) => {
-          console.error(`[WebRTC] Failed to connect: ${error.message}`);
+          this.logger.warn("Connection attempt failed", { error: error.message, attempt: error.attemptNumber });
           this.connection.cleanup();
         },
         shouldRetry: (error) => {
@@ -208,6 +234,10 @@ export class WebRTCManager {
 
   getConnectionState(): ConnectionState {
     return this.managerState;
+  }
+
+  getPeerConnection(): RTCPeerConnection | null {
+    return this.connection.getPeerConnection();
   }
 
   getWebsocketMessageEmitter() {

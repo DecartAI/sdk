@@ -1,6 +1,8 @@
 import mitt from "mitt";
 import type { RealTimeModels } from "../shared/model";
+import type { Logger } from "../utils/logger";
 import { buildUserAgent } from "../utils/user-agent";
+import type { DiagnosticEmitter, IceCandidateEvent } from "./diagnostics";
 import type {
   ConnectionState,
   GenerationTickMessage,
@@ -25,6 +27,8 @@ interface ConnectionCallbacks {
   modelName?: RealTimeModels;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
+  logger?: Logger;
+  onDiagnostic?: DiagnosticEmitter;
 }
 
 type WsMessageEvents = {
@@ -34,14 +38,25 @@ type WsMessageEvents = {
   generationTick: GenerationTickMessage;
 };
 
+const noopDiagnostic: DiagnosticEmitter = () => {};
+
 export class WebRTCConnection {
   private pc: RTCPeerConnection | null = null;
   private ws: WebSocket | null = null;
   private localStream: MediaStream | null = null;
   private connectionReject: ((error: Error) => void) | null = null;
+  private logger: Logger;
+  private emitDiagnostic: DiagnosticEmitter;
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
-  constructor(private callbacks: ConnectionCallbacks = {}) {}
+  constructor(private callbacks: ConnectionCallbacks = {}) {
+    this.logger = callbacks.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
+    this.emitDiagnostic = callbacks.onDiagnostic ?? noopDiagnostic;
+  }
+
+  getPeerConnection(): RTCPeerConnection | null {
+    return this.pc;
+  }
 
   async connect(url: string, localStream: MediaStream | null, timeout: number, integration?: string): Promise<void> {
     const deadline = Date.now() + timeout;
@@ -63,8 +78,10 @@ export class WebRTCConnection {
     connectAbort.catch(() => {});
     this.connectionReject = (error) => rejectConnect(error);
 
+    const totalStart = performance.now();
     try {
       // Phase 1: WebSocket setup
+      const wsStart = performance.now();
       await Promise.race([
         new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => reject(new Error("WebSocket timeout")), timeout);
@@ -72,18 +89,29 @@ export class WebRTCConnection {
 
           this.ws.onopen = () => {
             clearTimeout(timer);
+            this.emitDiagnostic("phaseTiming", {
+              phase: "websocket",
+              durationMs: performance.now() - wsStart,
+              success: true,
+            });
             resolve();
           };
           this.ws.onmessage = (e) => {
             try {
               this.handleSignalingMessage(JSON.parse(e.data));
             } catch (err) {
-              console.error("[WebRTC] Parse error:", err);
+              this.logger.error("Signaling message parse error", { error: String(err) });
             }
           };
           this.ws.onerror = () => {
             clearTimeout(timer);
             const error = new Error("WebSocket error");
+            this.emitDiagnostic("phaseTiming", {
+              phase: "websocket",
+              durationMs: performance.now() - wsStart,
+              success: false,
+              error: error.message,
+            });
             reject(error);
             rejectConnect(error);
           };
@@ -100,6 +128,7 @@ export class WebRTCConnection {
       // Phase 2: Pre-handshake setup (initial image and/or prompt)
       // connectionReject is already active, so ws.onclose or server errors abort these too
       if (this.callbacks.initialImage) {
+        const imageStart = performance.now();
         await Promise.race([
           this.setImageBase64(this.callbacks.initialImage, {
             prompt: this.callbacks.initialPrompt?.text,
@@ -107,23 +136,52 @@ export class WebRTCConnection {
           }),
           connectAbort,
         ]);
+        this.emitDiagnostic("phaseTiming", {
+          phase: "avatar-image",
+          durationMs: performance.now() - imageStart,
+          success: true,
+        });
       } else if (this.callbacks.initialPrompt) {
+        const promptStart = performance.now();
         await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
+        this.emitDiagnostic("phaseTiming", {
+          phase: "initial-prompt",
+          durationMs: performance.now() - promptStart,
+          success: true,
+        });
       }
 
       // Phase 3: WebRTC handshake
+      const handshakeStart = performance.now();
       await this.setupNewPeerConnection();
       await Promise.race([
         new Promise<void>((resolve, reject) => {
           const checkConnection = setInterval(() => {
             if (this.state === "connected" || this.state === "generating") {
               clearInterval(checkConnection);
+              this.emitDiagnostic("phaseTiming", {
+                phase: "webrtc-handshake",
+                durationMs: performance.now() - handshakeStart,
+                success: true,
+              });
               resolve();
             } else if (this.state === "disconnected") {
               clearInterval(checkConnection);
+              this.emitDiagnostic("phaseTiming", {
+                phase: "webrtc-handshake",
+                durationMs: performance.now() - handshakeStart,
+                success: false,
+                error: "Connection lost during handshake",
+              });
               reject(new Error("Connection lost during WebRTC handshake"));
             } else if (Date.now() >= deadline) {
               clearInterval(checkConnection);
+              this.emitDiagnostic("phaseTiming", {
+                phase: "webrtc-handshake",
+                durationMs: performance.now() - handshakeStart,
+                success: false,
+                error: "Timeout",
+              });
               reject(new Error("Connection timeout"));
             }
           }, 100);
@@ -132,6 +190,12 @@ export class WebRTCConnection {
         }),
         connectAbort,
       ]);
+
+      this.emitDiagnostic("phaseTiming", {
+        phase: "total",
+        durationMs: performance.now() - totalStart,
+        success: true,
+      });
     } finally {
       this.connectionReject = null;
     }
@@ -141,7 +205,8 @@ export class WebRTCConnection {
     try {
       // Handle messages that don't require peer connection first
       if (msg.type === "error") {
-        const error = new Error(msg.error);
+        const error = new Error(msg.error) as Error & { source?: string };
+        error.source = "server";
         this.callbacks.onError?.(error);
         if (this.connectionReject) {
           this.connectionReject(error);
@@ -208,7 +273,17 @@ export class WebRTCConnection {
           });
           break;
         case "ice-candidate":
-          if (msg.candidate) await this.pc.addIceCandidate(msg.candidate);
+          if (msg.candidate) {
+            await this.pc.addIceCandidate(msg.candidate);
+            this.emitDiagnostic("iceCandidate", {
+              source: "remote",
+              candidateType:
+                (msg.candidate.candidate?.match(/typ (\w+)/)?.[1] as IceCandidateEvent["candidateType"]) ?? "unknown",
+              protocol:
+                (msg.candidate.candidate?.match(/udp|tcp/i)?.[0]?.toLowerCase() as IceCandidateEvent["protocol"]) ??
+                "unknown",
+            });
+          }
           break;
         case "ice-restart": {
           const turnConfig = msg.turn_config;
@@ -219,7 +294,7 @@ export class WebRTCConnection {
         }
       }
     } catch (error) {
-      console.error("[WebRTC] Error:", error);
+      this.logger.error("Signaling handler error", { error: String(error) });
       this.callbacks.onError?.(error as Error);
       this.connectionReject?.(error as Error);
     }
@@ -230,7 +305,7 @@ export class WebRTCConnection {
       this.ws.send(JSON.stringify(message));
       return true;
     }
-    console.warn("[WebRTC] Message dropped: WebSocket is not open");
+    this.logger.warn("Message dropped: WebSocket is not open");
     return false;
   }
 
@@ -376,11 +451,32 @@ export class WebRTCConnection {
 
     this.pc.onicecandidate = (e) => {
       this.send({ type: "ice-candidate", candidate: e.candidate });
+      if (e.candidate) {
+        this.emitDiagnostic("iceCandidate", {
+          source: "local",
+          candidateType: (e.candidate.type as IceCandidateEvent["candidateType"]) ?? "unknown",
+          protocol: (e.candidate.protocol as IceCandidateEvent["protocol"]) ?? "unknown",
+          address: e.candidate.address ?? undefined,
+          port: e.candidate.port ?? undefined,
+        });
+      }
     };
 
+    let prevPcState: string = "new";
     this.pc.onconnectionstatechange = () => {
       if (!this.pc) return;
       const s = this.pc.connectionState;
+      this.emitDiagnostic("peerConnectionStateChange", {
+        state: s,
+        previousState: prevPcState,
+        timestampMs: performance.now(),
+      });
+      prevPcState = s;
+
+      if (s === "connected") {
+        this.emitSelectedCandidatePair();
+      }
+
       const nextState =
         s === "connected" ? "connected" : ["connecting", "new"].includes(s) ? "connecting" : "disconnected";
       // Keep "generating" sticky unless the connection is actually lost.
@@ -388,14 +484,74 @@ export class WebRTCConnection {
       this.setState(nextState);
     };
 
+    let prevIceState: string = "new";
     this.pc.oniceconnectionstatechange = () => {
-      if (this.pc?.iceConnectionState === "failed") {
+      if (!this.pc) return;
+      const newIceState = this.pc.iceConnectionState;
+      this.emitDiagnostic("iceStateChange", {
+        state: newIceState,
+        previousState: prevIceState,
+        timestampMs: performance.now(),
+      });
+      prevIceState = newIceState;
+
+      if (newIceState === "failed") {
         this.setState("disconnected");
         this.callbacks.onError?.(new Error("ICE connection failed"));
       }
     };
 
+    let prevSignalingState: string = "stable";
+    this.pc.onsignalingstatechange = () => {
+      if (!this.pc) return;
+      const newState = this.pc.signalingState;
+      this.emitDiagnostic("signalingStateChange", {
+        state: newState,
+        previousState: prevSignalingState,
+        timestampMs: performance.now(),
+      });
+      prevSignalingState = newState;
+    };
+
     this.handleSignalingMessage({ type: "ready" });
+  }
+
+  private async emitSelectedCandidatePair(): Promise<void> {
+    if (!this.pc) return;
+    try {
+      const stats = await this.pc.getStats();
+      let found = false;
+      stats.forEach((report) => {
+        if (found) return;
+        if (report.type === "candidate-pair" && report.state === "succeeded") {
+          found = true;
+          let localCandidate: Record<string, unknown> | undefined;
+          let remoteCandidate: Record<string, unknown> | undefined;
+          stats.forEach((r) => {
+            if (r.id === report.localCandidateId) localCandidate = r as Record<string, unknown>;
+            if (r.id === report.remoteCandidateId) remoteCandidate = r as Record<string, unknown>;
+          });
+          if (localCandidate && remoteCandidate) {
+            this.emitDiagnostic("selectedCandidatePair", {
+              local: {
+                candidateType: String(localCandidate.candidateType ?? "unknown"),
+                protocol: String(localCandidate.protocol ?? "unknown"),
+                address: localCandidate.address as string | undefined,
+                port: localCandidate.port as number | undefined,
+              },
+              remote: {
+                candidateType: String(remoteCandidate.candidateType ?? "unknown"),
+                protocol: String(remoteCandidate.protocol ?? "unknown"),
+                address: remoteCandidate.address as string | undefined,
+                port: remoteCandidate.port as number | undefined,
+              },
+            });
+          }
+        }
+      });
+    } catch {
+      // getStats can fail if PC is already closed; silently ignore
+    }
   }
 
   cleanup(): void {
@@ -414,7 +570,7 @@ export class WebRTCConnection {
   applyCodecPreference(preferredCodecName: "video/VP8" | "video/H264") {
     if (!this.pc) return;
     if (typeof RTCRtpSender === "undefined" || typeof RTCRtpSender.getCapabilities !== "function") {
-      console.warn("RTCRtpSender capabilities are not available in this environment.");
+      this.logger.debug("RTCRtpSender capabilities not available in this environment");
       return;
     }
 
@@ -422,13 +578,13 @@ export class WebRTCConnection {
       .getTransceivers()
       .find((r) => r.sender.track?.kind === "video" || r.receiver.track?.kind === "video");
     if (!videoTransceiver) {
-      console.error("Could not find video transceiver. Ensure track is added to peer connection.");
+      this.logger.warn("Video transceiver not found for codec preference");
       return;
     }
 
     const capabilities = RTCRtpSender.getCapabilities("video");
     if (!capabilities) {
-      console.error("Could not get video sender capabilities.");
+      this.logger.warn("Video sender capabilities unavailable");
       return;
     }
 
@@ -444,13 +600,13 @@ export class WebRTCConnection {
 
     const orderedCodecs = [...preferredCodecs, ...otherCodecs];
     if (orderedCodecs.length === 0) {
-      console.warn("No video codecs found to set preferences for.");
+      this.logger.debug("No video codecs found for preference setting");
       return;
     }
     try {
       videoTransceiver.setCodecPreferences(orderedCodecs);
     } catch {
-      console.warn("[WebRTC] setCodecPreferences not supported, skipping codec preference.");
+      this.logger.debug("setCodecPreferences not supported, skipping");
     }
   }
 

@@ -1,4 +1,5 @@
 import type { DecartSDKError } from "../utils/errors";
+import type { DiagnosticEvent } from "./diagnostics";
 import type { ConnectionState } from "./types";
 
 type TokenPayload = {
@@ -26,6 +27,7 @@ export function decodeSubscribeToken(token: string): TokenPayload {
 export type SubscribeEvents = {
   connectionChange: ConnectionState;
   error: DecartSDKError;
+  diagnostic: DiagnosticEvent;
 };
 
 export type RealTimeSubscribeClient = {
