@@ -208,6 +208,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           const reporter = new TelemetryReporter({
             apiKey,
             sessionId: msg.session_id,
+            model: options.model.name,
             integration,
             logger,
           });

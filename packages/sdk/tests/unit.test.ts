@@ -1939,7 +1939,7 @@ describe("TelemetryReporter", () => {
 
     try {
       const reporter = new TelemetryReporter({
-        telemetryUrl: "https://api.decart.ai",
+
         apiKey: "test-key",
         sessionId: "sess-1",
         logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -1995,7 +1995,7 @@ describe("TelemetryReporter", () => {
 
     try {
       const reporter = new TelemetryReporter({
-        telemetryUrl: "https://api.decart.ai",
+
         apiKey: "test-key",
         sessionId: "sess-1",
         logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -2024,7 +2024,7 @@ describe("TelemetryReporter", () => {
 
     try {
       const reporter = new TelemetryReporter({
-        telemetryUrl: "https://api.decart.ai",
+
         apiKey: "test-key",
         sessionId: "sess-2",
         logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -2057,7 +2057,7 @@ describe("TelemetryReporter", () => {
 
     try {
       const reporter = new TelemetryReporter({
-        telemetryUrl: "https://api.decart.ai",
+
         apiKey: "test-key",
         sessionId: "sess-3",
         logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -2086,7 +2086,7 @@ describe("TelemetryReporter", () => {
 
     try {
       const reporter = new TelemetryReporter({
-        telemetryUrl: "https://api.decart.ai",
+
         apiKey: "my-api-key",
         sessionId: "sess-4",
         integration: "test-integration",
@@ -2124,7 +2124,7 @@ describe("TelemetryReporter", () => {
 
     try {
       const reporter = new TelemetryReporter({
-        telemetryUrl: "https://api.decart.ai",
+
         apiKey: "test-key",
         sessionId: "sess-5",
         logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -2151,6 +2151,142 @@ describe("TelemetryReporter", () => {
       reporter.stop();
     } finally {
       vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("chunks reports when buffers exceed 120 items", async () => {
+    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const reporter = new TelemetryReporter({
+        apiKey: "test-key",
+        sessionId: "sess-chunk",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+      });
+
+      // Add 150 stats (exceeds max of 120)
+      for (let i = 0; i < 150; i++) {
+        reporter.addStats({
+          timestamp: i,
+          video: null,
+          audio: null,
+          connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
+        });
+      }
+
+      reporter.flush();
+
+      // Should produce 2 requests: 120 + 30
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      const body1 = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body1.stats).toHaveLength(120);
+
+      const body2 = JSON.parse(fetchMock.mock.calls[1][1].body);
+      expect(body2.stats).toHaveLength(30);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("warns on non-2xx response status", async () => {
+    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500, statusText: "Internal Server Error" });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const warnMock = vi.fn();
+      const reporter = new TelemetryReporter({
+        apiKey: "test-key",
+        sessionId: "sess-warn",
+        logger: { debug() {}, info() {}, warn: warnMock, error() {} },
+      });
+
+      reporter.addStats({
+        timestamp: 1000,
+        video: null,
+        audio: null,
+        connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
+      });
+
+      reporter.flush();
+
+      // Wait for the .then() handler to execute
+      await vi.waitFor(() => {
+        expect(warnMock).toHaveBeenCalledTimes(1);
+      });
+
+      expect(warnMock).toHaveBeenCalledWith("Telemetry report rejected", {
+        status: 500,
+        statusText: "Internal Server Error",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("includes model in report body and tags when provided", async () => {
+    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const reporter = new TelemetryReporter({
+        apiKey: "test-key",
+        sessionId: "sess-model",
+        model: "gemini-3n",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+      });
+
+      reporter.addStats({
+        timestamp: 1000,
+        video: null,
+        audio: null,
+        connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
+      });
+
+      reporter.flush();
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.model).toBe("gemini-3n");
+      expect(body.tags.model).toBe("gemini-3n");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("omits model from report when not provided", async () => {
+    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const reporter = new TelemetryReporter({
+        apiKey: "test-key",
+        sessionId: "sess-no-model",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+      });
+
+      reporter.addStats({
+        timestamp: 1000,
+        video: null,
+        audio: null,
+        connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
+      });
+
+      reporter.flush();
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.model).toBeUndefined();
+      expect(body.tags.model).toBeUndefined();
+    } finally {
       vi.unstubAllGlobals();
     }
   });
