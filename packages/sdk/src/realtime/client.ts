@@ -250,12 +250,20 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
               videoStalled = true;
               stallStartMs = Date.now();
               emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: true, durationMs: 0 } });
-              telemetryReporter.addDiagnostic({ name: "videoStall", data: { stalled: true, durationMs: 0 }, timestamp: stallStartMs });
+              telemetryReporter.addDiagnostic({
+                name: "videoStall",
+                data: { stalled: true, durationMs: 0 },
+                timestamp: stallStartMs,
+              });
             } else if (videoStalled && fps >= STALL_FPS_THRESHOLD) {
               const durationMs = Date.now() - stallStartMs;
               videoStalled = false;
               emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: false, durationMs } });
-              telemetryReporter.addDiagnostic({ name: "videoStall", data: { stalled: false, durationMs }, timestamp: Date.now() });
+              telemetryReporter.addDiagnostic({
+                name: "videoStall",
+                data: { stalled: false, durationMs },
+                timestamp: Date.now(),
+              });
             }
           });
         }

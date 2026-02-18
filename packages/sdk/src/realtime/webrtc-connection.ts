@@ -276,8 +276,11 @@ export class WebRTCConnection {
             await this.pc.addIceCandidate(msg.candidate);
             this.emitDiagnostic("iceCandidate", {
               source: "remote",
-              candidateType: (msg.candidate.candidate?.match(/typ (\w+)/)?.[1] as IceCandidateEvent["candidateType"]) ?? "unknown",
-              protocol: (msg.candidate.candidate?.match(/udp|tcp/i)?.[0]?.toLowerCase() as IceCandidateEvent["protocol"]) ?? "unknown",
+              candidateType:
+                (msg.candidate.candidate?.match(/typ (\w+)/)?.[1] as IceCandidateEvent["candidateType"]) ?? "unknown",
+              protocol:
+                (msg.candidate.candidate?.match(/udp|tcp/i)?.[0]?.toLowerCase() as IceCandidateEvent["protocol"]) ??
+                "unknown",
             });
           }
           break;

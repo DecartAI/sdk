@@ -141,7 +141,7 @@ export class WebRTCStatsCollector {
 
     for (const report of rawStats.values()) {
       if (report.type === "inbound-rtp" && report.kind === "video") {
-        const bytesReceived = (report as Record<string, unknown>).bytesReceived as number ?? 0;
+        const bytesReceived = ((report as Record<string, unknown>).bytesReceived as number) ?? 0;
         const bitrate = elapsed > 0 ? ((bytesReceived - this.prevBytesVideo) * 8) / elapsed : 0;
         this.prevBytesVideo = bytesReceived;
 
@@ -194,7 +194,7 @@ export class WebRTCStatsCollector {
       }
 
       if (report.type === "inbound-rtp" && report.kind === "audio") {
-        const bytesReceived = (report as Record<string, unknown>).bytesReceived as number ?? 0;
+        const bytesReceived = ((report as Record<string, unknown>).bytesReceived as number) ?? 0;
         const bitrate = elapsed > 0 ? ((bytesReceived - this.prevBytesAudio) * 8) / elapsed : 0;
         this.prevBytesAudio = bytesReceived;
 

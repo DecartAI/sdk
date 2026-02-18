@@ -1954,7 +1954,11 @@ describe("TelemetryReporter", () => {
         audio: null,
         connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
       });
-      reporter.addDiagnostic({ name: "phaseTiming", data: { phase: "total", durationMs: 500, success: true }, timestamp: 1000 });
+      reporter.addDiagnostic({
+        name: "phaseTiming",
+        data: { phase: "total", durationMs: 500, success: true },
+        timestamp: 1000,
+      });
 
       // Before interval: no fetch
       expect(fetchMock).not.toHaveBeenCalled();

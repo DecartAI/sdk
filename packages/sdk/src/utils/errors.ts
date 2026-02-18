@@ -54,10 +54,15 @@ export function createWebrtcIceError(error: Error): DecartSDKError {
 }
 
 export function createWebrtcTimeoutError(phase: string, timeoutMs: number, cause?: Error): DecartSDKError {
-  return createSDKError(ERROR_CODES.WEBRTC_TIMEOUT_ERROR, `${phase} timed out after ${timeoutMs}ms`, {
-    phase,
-    timeoutMs,
-  }, cause);
+  return createSDKError(
+    ERROR_CODES.WEBRTC_TIMEOUT_ERROR,
+    `${phase} timed out after ${timeoutMs}ms`,
+    {
+      phase,
+      timeoutMs,
+    },
+    cause,
+  );
 }
 
 export function createWebrtcServerError(message: string): DecartSDKError {
