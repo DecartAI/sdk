@@ -60,6 +60,17 @@ export type SetImageAckMessage = {
   error: null | string;
 };
 
+export type StatusMessage = {
+  type: "status";
+  status: string;
+};
+
+export type QueuePositionMessage = {
+  type: "queue_position";
+  position: number;
+  queue_size: number;
+};
+
 export type GenerationStartedMessage = {
   type: "generation_started";
 };
@@ -97,7 +108,9 @@ export type IncomingWebRTCMessage =
   | GenerationStartedMessage
   | GenerationTickMessage
   | GenerationEndedMessage
-  | SessionIdMessage;
+  | SessionIdMessage
+  | StatusMessage
+  | QueuePositionMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =
