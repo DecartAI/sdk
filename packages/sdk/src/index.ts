@@ -45,7 +45,7 @@ export type {
   SubscribeOptions,
 } from "./realtime/subscribe-client";
 export type { ConnectionState } from "./realtime/types";
-export type { StatsOptions, WebRTCStats } from "./realtime/webrtc-stats";
+export type { WebRTCStats } from "./realtime/webrtc-stats";
 export {
   type ImageModelDefinition,
   type ImageModels,

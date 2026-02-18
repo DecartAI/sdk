@@ -17,7 +17,7 @@ import {
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
 import { WebRTCManager } from "./webrtc-manager";
-import { type StatsOptions, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
+import { type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -119,8 +119,6 @@ export type RealTimeClient = {
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
   ) => Promise<void>;
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
-  /** Start collecting WebRTC stats. Stats are emitted via the 'stats' event. Returns a stop function. */
-  startStats: (options?: StatsOptions) => () => void;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
@@ -270,11 +268,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       let videoStalled = false;
       let stallStartMs = 0;
 
-      const startStatsCollection = (statsOptions?: StatsOptions): (() => void) => {
+      const startStatsCollection = (): (() => void) => {
         statsCollector?.stop();
         videoStalled = false;
         stallStartMs = 0;
-        statsCollector = new WebRTCStatsCollector(statsOptions);
+        statsCollector = new WebRTCStatsCollector();
         const pc = manager.getPeerConnection();
         statsCollectorPeerConnection = pc;
         if (pc) {
@@ -356,7 +354,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           const base64 = await imageToBase64(image);
           return manager.setImage(base64, options);
         },
-        startStats: startStatsCollection,
       };
 
       // Add live_avatar specific audio method (only when using internal AudioStreamManager)
