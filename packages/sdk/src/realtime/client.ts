@@ -71,7 +71,6 @@ async function imageToBase64(image: Blob | File | string): Promise<string> {
 
 export type RealTimeClientOptions = {
   baseUrl: string;
-  telemetryUrl: string;
   apiKey: string;
   integration?: string;
   logger: Logger;
@@ -223,7 +222,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         // Start telemetry reporter now that we have a session ID
         if (opts.telemetryEnabled) {
           const reporter = new TelemetryReporter({
-            telemetryUrl: opts.telemetryUrl,
             apiKey,
             sessionId: msg.session_id,
             integration,

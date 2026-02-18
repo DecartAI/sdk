@@ -4,6 +4,7 @@ import { VERSION } from "../version";
 import type { WebRTCStats } from "./webrtc-stats";
 
 const DEFAULT_REPORT_INTERVAL_MS = 10_000; // 10 seconds
+const TELEMETRY_URL = "https://api.decart.ai/v1/telemetry";
 
 type TelemetryDiagnostic = {
   name: string;
@@ -22,7 +23,6 @@ type TelemetryReport = {
 };
 
 export interface TelemetryReporterOptions {
-  telemetryUrl: string;
   apiKey: string;
   sessionId: string;
   integration?: string;
@@ -49,7 +49,6 @@ export class NullTelemetryReporter implements ITelemetryReporter {
 }
 
 export class TelemetryReporter implements ITelemetryReporter {
-  private telemetryUrl: string;
   private apiKey: string;
   private sessionId: string;
   private integration?: string;
@@ -60,7 +59,6 @@ export class TelemetryReporter implements ITelemetryReporter {
   private diagnosticsBuffer: TelemetryDiagnostic[] = [];
 
   constructor(options: TelemetryReporterOptions) {
-    this.telemetryUrl = options.telemetryUrl;
     this.apiKey = options.apiKey;
     this.sessionId = options.sessionId;
     this.integration = options.integration;
@@ -119,7 +117,7 @@ export class TelemetryReporter implements ITelemetryReporter {
     try {
       const headers = buildAuthHeaders({ apiKey: this.apiKey, integration: this.integration });
 
-      fetch(`${this.telemetryUrl}/v1/telemetry`, {
+      fetch(TELEMETRY_URL, {
         method: "POST",
         headers: {
           ...headers,

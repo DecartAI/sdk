@@ -182,11 +182,8 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
   // Proxy mode is only for HTTP endpoints (process, queue, tokens)
   // Note: Realtime will fail at connection time if no API key is provided
   const wsBaseUrl = "wss://api3.decart.ai";
-  const httpBaseUrl = parsedOptions.data.baseUrl || "https://api.decart.ai";
   const realtime = createRealTimeClient({
     baseUrl: wsBaseUrl,
-    telemetryUrl: "http://localhost:3003/api",
-    // telemetryUrl: httpBaseUrl,
     apiKey: apiKey || "",
     integration,
     logger,
