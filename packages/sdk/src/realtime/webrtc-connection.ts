@@ -9,8 +9,10 @@ import type {
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
+  QueuePositionMessage,
   SessionIdMessage,
   SetImageAckMessage,
+  StatusMessage,
   TurnConfig,
 } from "./types";
 
@@ -36,6 +38,8 @@ type WsMessageEvents = {
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
+  status: StatusMessage;
+  queuePosition: QueuePositionMessage;
 };
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
@@ -243,6 +247,16 @@ export class WebRTCConnection {
 
       if (msg.type === "session_id") {
         this.websocketMessagesEmitter.emit("sessionId", msg);
+        return;
+      }
+
+      if (msg.type === "status") {
+        this.websocketMessagesEmitter.emit("status", msg);
+        return;
+      }
+
+      if (msg.type === "queue_position") {
+        this.websocketMessagesEmitter.emit("queuePosition", msg);
         return;
       }
 
