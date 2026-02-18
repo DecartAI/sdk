@@ -4,7 +4,7 @@ import { VERSION } from "../version";
 import type { WebRTCStats } from "./webrtc-stats";
 
 const DEFAULT_REPORT_INTERVAL_MS = 10_000; // 10 seconds
-const TELEMETRY_URL = "https://api.decart.ai/v1/telemetry";
+const TELEMETRY_URL = "https://platform.decart.ai/api/v1/telemetry";
 
 type TelemetryDiagnostic = {
   name: string;
