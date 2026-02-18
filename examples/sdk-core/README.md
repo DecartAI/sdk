@@ -114,8 +114,10 @@ realtimeClient.disconnect();
 const realtimeClient = await client.realtime.connect(null, {
   model: models.realtime("live_avatar"),
   onRemoteStream: (videoStream) => { ... },
-  avatar: { avatarImage: "https://example.com/avatar.png" },
-  initialState: { prompt: { text: "A friendly assistant", enhance: true } },
+  initialState: {
+    image: "https://example.com/avatar.png",
+    prompt: { text: "A friendly assistant", enhance: true },
+  },
 });
 await realtimeClient.playAudio(audioBlob);
 
@@ -124,7 +126,9 @@ const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video
 const realtimeClient = await client.realtime.connect(micStream, {
   model: models.realtime("live_avatar"),
   onRemoteStream: (videoStream) => { ... },
-  avatar: { avatarImage: avatarFile },
-  initialState: { prompt: { text: "A friendly assistant", enhance: true } },
+  initialState: {
+    image: avatarFile,
+    prompt: { text: "A friendly assistant", enhance: true },
+  },
 });
 ```

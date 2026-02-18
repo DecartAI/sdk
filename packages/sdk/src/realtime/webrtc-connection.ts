@@ -1,5 +1,6 @@
 import mitt from "mitt";
 import type { DiagnosticEmitter, IceCandidateEvent } from "./diagnostics";
+import type { RealTimeModels } from "../shared/model";
 import type { Logger } from "../utils/logger";
 import { buildUserAgent } from "../utils/user-agent";
 import type {
@@ -23,8 +24,8 @@ interface ConnectionCallbacks {
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
-  isAvatarLive?: boolean;
-  avatarImageBase64?: string;
+  modelName?: RealTimeModels;
+  initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
@@ -124,18 +125,23 @@ export class WebRTCConnection {
         connectAbort,
       ]);
 
-      // Phase 2: Pre-handshake setup (avatar image + initial prompt)
+      // Phase 2: Pre-handshake setup (initial image and/or prompt)
       // connectionReject is already active, so ws.onclose or server errors abort these too
-      if (this.callbacks.avatarImageBase64) {
-        const avatarStart = performance.now();
-        await Promise.race([this.sendAvatarImage(this.callbacks.avatarImageBase64), connectAbort]);
+      if (this.callbacks.initialImage) {
+        const imageStart = performance.now();
+        await Promise.race([
+          this.setImageBase64(this.callbacks.initialImage, {
+            prompt: this.callbacks.initialPrompt?.text,
+            enhance: this.callbacks.initialPrompt?.enhance,
+          }),
+          connectAbort,
+        ]);
         this.emitDiagnostic("phaseTiming", {
           phase: "avatar-image",
-          durationMs: performance.now() - avatarStart,
+          durationMs: performance.now() - imageStart,
           success: true,
         });
-      }
-      if (this.callbacks.initialPrompt) {
+      } else if (this.callbacks.initialPrompt) {
         const promptStart = performance.now();
         await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
         this.emitDiagnostic("phaseTiming", {
@@ -299,16 +305,6 @@ export class WebRTCConnection {
     return false;
   }
 
-  private async sendAvatarImage(imageBase64: string): Promise<void> {
-    return this.setImageBase64(imageBase64);
-  }
-
-  /**
-   * Send an image to the server (e.g., as a reference for inference).
-   * Can be called after connection is established.
-   * Pass null to clear the reference image or use a placeholder.
-   * Optionally include a prompt to send with the image.
-   */
   async setImageBase64(
     imageBase64: string | null,
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
@@ -331,7 +327,12 @@ export class WebRTCConnection {
 
       this.websocketMessagesEmitter.on("setImageAck", listener);
 
-      const message: { type: "set_image"; image_data: string | null; prompt?: string; enhance_prompt?: boolean } = {
+      const message: {
+        type: "set_image";
+        image_data: string | null;
+        prompt?: string;
+        enhance_prompt?: boolean;
+      } = {
         type: "set_image",
         image_data: imageBase64,
       };
@@ -375,7 +376,13 @@ export class WebRTCConnection {
 
       this.websocketMessagesEmitter.on("promptAck", listener);
 
-      if (!this.send({ type: "prompt", prompt: prompt.text, enhance_prompt: prompt.enhance ?? true })) {
+      if (
+        !this.send({
+          type: "prompt",
+          prompt: prompt.text,
+          enhance_prompt: prompt.enhance ?? true,
+        })
+      ) {
         clearTimeout(timeoutId);
         this.websocketMessagesEmitter.off("promptAck", listener);
         reject(new Error("WebSocket is not open"));
@@ -412,7 +419,7 @@ export class WebRTCConnection {
 
     if (this.localStream) {
       // For live_avatar: add receive-only video transceiver (sends audio only, receives audio+video)
-      if (this.callbacks.isAvatarLive) {
+      if (this.callbacks.modelName === "live_avatar") {
         this.pc.addTransceiver("video", { direction: "recvonly" });
       }
 

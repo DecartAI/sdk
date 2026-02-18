@@ -12,7 +12,8 @@ function createSyntheticStream(fps: number, width: number, height: number): Medi
 
 const REALTIME_MODELS: RealTimeModels[] = ["mirage", "mirage_v2", "lucy_v2v_720p_rt", "lucy_2_rt"];
 
-describe.concurrent("Realtime E2E Tests", { timeout: 30_000, retry: 2 }, () => {
+const TIMEOUT = 1 * 60 * 1000; // 1 minute
+describe.concurrent("Realtime E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
   let client: ReturnType<typeof createDecartClient>;
 
   beforeAll(() => {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { modelDefinitionSchema } from "../shared/model";
+import { modelDefinitionSchema, type RealTimeModels } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import type { Logger } from "../utils/logger";
@@ -86,11 +86,6 @@ export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialSta
 const createAsyncFunctionSchema = <T extends z.core.$ZodFunction>(schema: T) =>
   z.custom<Parameters<T["implementAsync"]>[0]>((fn) => schema.implementAsync(fn as Parameters<T["implementAsync"]>[0]));
 
-const avatarOptionsSchema = z.object({
-  avatarImage: z.union([z.instanceof(Blob), z.instanceof(File), z.string()]),
-});
-export type AvatarOptions = z.infer<typeof avatarOptionsSchema>;
-
 const realTimeClientConnectOptionsSchema = z.object({
   model: modelDefinitionSchema,
   onRemoteStream: z.custom<OnRemoteStreamFn>((val) => typeof val === "function", {
@@ -98,7 +93,6 @@ const realTimeClientConnectOptionsSchema = z.object({
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
-  avatar: avatarOptionsSchema.optional(),
 });
 export type RealTimeClientConnectOptions = z.infer<typeof realTimeClientConnectOptionsSchema>;
 
@@ -143,7 +137,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
     const isAvatarLive = options.model.name === "live_avatar";
 
-    const { onRemoteStream, initialState, avatar } = parsedOptions.data;
+    const { onRemoteStream, initialState } = parsedOptions.data;
 
     // For live_avatar without user-provided stream: create AudioStreamManager for continuous silent stream with audio injection
     // If user provides their own stream (e.g., mic input), use it directly
@@ -160,26 +154,16 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     let webrtcManager: WebRTCManager | undefined;
 
     try {
-      // For live_avatar: prepare avatar image base64 before connection
-      let avatarImageBase64: string | undefined;
-      if (isAvatarLive && avatar?.avatarImage) {
-        if (typeof avatar.avatarImage === "string") {
-          const response = await fetch(avatar.avatarImage);
-          if (!response.ok) {
-            throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
-          }
-          const imageBlob = await response.blob();
-          avatarImageBase64 = await blobToBase64(imageBlob);
-        } else {
-          avatarImageBase64 = await blobToBase64(avatar.avatarImage);
-        }
-      }
+      // Prepare initial image base64 before connection
+      const initialImage = initialState?.image ? await imageToBase64(initialState.image) : undefined;
 
-      // For live_avatar: prepare initial prompt to send before WebRTC handshake
-      const initialPrompt =
-        isAvatarLive && initialState?.prompt
-          ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
-          : undefined;
+      // Prepare initial prompt to send via WebSocket before WebRTC handshake
+      const initialPrompt = initialState?.prompt
+        ? {
+            text: initialState.prompt.text,
+            enhance: initialState.prompt.enhance,
+          }
+        : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
 
@@ -204,8 +188,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
         vp8MinBitrate: 300,
         vp8StartBitrate: 600,
-        isAvatarLive,
-        avatarImageBase64,
+        modelName: options.model.name as RealTimeModels,
+        initialImage,
         initialPrompt,
       });
 
@@ -241,12 +225,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       await manager.connect(inputStream);
 
       const methods = realtimeMethods(manager, imageToBase64);
-
-      // For non-live_avatar models: send initial prompt after connection is established
-      if (!isAvatarLive && initialState?.prompt) {
-        const { text, enhance } = initialState.prompt;
-        await methods.setPrompt(text, { enhance });
-      }
 
       let statsCollector: WebRTCStatsCollector | null = null;
 
