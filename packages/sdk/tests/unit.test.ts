@@ -909,6 +909,43 @@ describe("Tokens API", () => {
 
       await expect(decart.tokens.create()).rejects.toThrow("Failed to create token");
     });
+
+    it("sends metadata when provided", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", async ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({
+            apiKey: "ek_test123",
+            expiresAt: "2024-12-15T12:10:00Z",
+          });
+        }),
+      );
+
+      const result = await decart.tokens.create({ metadata: { role: "viewer" } });
+
+      expect(result.apiKey).toBe("ek_test123");
+      const body = await lastRequest?.json();
+      expect(body).toEqual({ metadata: { role: "viewer" } });
+      expect(lastRequest?.headers.get("content-type")).toBe("application/json");
+    });
+
+    it("sends JSON body without metadata when none provided", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", async ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({
+            apiKey: "ek_test123",
+            expiresAt: "2024-12-15T12:10:00Z",
+          });
+        }),
+      );
+
+      await decart.tokens.create();
+
+      expect(lastRequest?.headers.get("content-type")).toBe("application/json");
+      const body = await lastRequest?.text();
+      expect(JSON.parse(body!)).toEqual({});
+    });
   });
 });
 
