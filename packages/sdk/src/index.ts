@@ -60,7 +60,7 @@ export {
   type VideoModels,
 } from "./shared/model";
 export type { ModelState } from "./shared/types";
-export type { CreateTokenResponse, TokensClient } from "./tokens/client";
+export type { CreateTokenOptions, CreateTokenResponse, TokensClient } from "./tokens/client";
 export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
 export { createConsoleLogger, type Logger, type LogLevel, noopLogger } from "./utils/logger";
 
