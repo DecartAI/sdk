@@ -262,6 +262,28 @@ importers:
         specifier: ^5.1.4
         version: 5.1.4(typescript@5.9.3)(vite@7.3.1(@types/node@22.17.1)(jiti@2.5.1)(tsx@4.21.0)(yaml@2.8.1))
 
+  examples/ws-signaling-proxy:
+    dependencies:
+      ws:
+        specifier: ^8.18.0
+        version: 8.19.0
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.3.8
+        version: 2.3.8
+      '@types/node':
+        specifier: ^22
+        version: 22.17.1
+      '@types/ws':
+        specifier: ^8
+        version: 8.18.1
+      tsx:
+        specifier: ^4
+        version: 4.21.0
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
   packages/proxy:
     dependencies:
       express:
@@ -341,28 +363,6 @@ importers:
       vitest:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@22.17.1)(@vitest/browser-playwright@4.0.18)(jiti@2.5.1)(msw@2.11.3(@types/node@22.17.1)(typescript@5.9.2))(tsx@4.21.0)(yaml@2.8.1)
-
-  packages/ws-signaling-proxy:
-    dependencies:
-      ws:
-        specifier: ^8.18.0
-        version: 8.19.0
-    devDependencies:
-      '@biomejs/biome':
-        specifier: 2.3.8
-        version: 2.3.8
-      '@types/node':
-        specifier: ^22
-        version: 22.17.1
-      '@types/ws':
-        specifier: ^8
-        version: 8.18.1
-      tsx:
-        specifier: ^4
-        version: 4.21.0
-      typescript:
-        specifier: ^5
-        version: 5.9.3
 
 packages:
 
