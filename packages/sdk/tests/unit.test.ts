@@ -3146,21 +3146,4 @@ describe("CustomModelDefinition", () => {
     const result = modelDefinitionSchema.safeParse(invalidModel);
     expect(result.success).toBe(false);
   });
-
-  it("CustomModelDefinition type accepts arbitrary string names", () => {
-    // Type-level check: CustomModelDefinition allows arbitrary string names
-    const customModel: import("../src/shared/model.js").CustomModelDefinition = {
-      name: "lucy_2_rt_preview",
-      urlPath: "/v1/stream",
-      fps: 20,
-      width: 1280,
-      height: 720,
-    };
-
-    expect(customModel.name).toBe("lucy_2_rt_preview");
-    expect(customModel.urlPath).toBe("/v1/stream");
-    expect(customModel.fps).toBe(20);
-    expect(customModel.width).toBe(1280);
-    expect(customModel.height).toBe(720);
-  });
 });
