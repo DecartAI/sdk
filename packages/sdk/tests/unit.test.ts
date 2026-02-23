@@ -52,6 +52,18 @@ describe("Decart SDK", () => {
     it("throws an error if invalid base url is provided", () => {
       expect(() => createDecartClient({ apiKey: "test", baseUrl: "not-a-url" })).toThrow("Invalid base URL");
     });
+
+    it("throws an error if invalid realtimeBaseUrl is provided", () => {
+      expect(() => createDecartClient({ apiKey: "test", realtimeBaseUrl: "not-a-url" })).toThrow("Invalid base URL");
+    });
+
+    it("creates a client with custom realtimeBaseUrl", () => {
+      const decart = createDecartClient({
+        apiKey: "test",
+        realtimeBaseUrl: "wss://custom-ws.example.com",
+      });
+      expect(decart).toBeDefined();
+    });
   });
 
   describe("Process API", () => {

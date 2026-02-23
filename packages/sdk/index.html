@@ -229,6 +229,10 @@
             <input type="password" autocomplete="off" id="api-key" placeholder="Enter your Decart API key">
         </div>
         <div class="control-group">
+            <label for="realtime-base-url">Realtime Base URL (optional):</label>
+            <input type="text" id="realtime-base-url" placeholder="wss://api3.decart.ai">
+        </div>
+        <div class="control-group">
             <label for="model-select">Model:</label>
             <select id="model-select">
                 <option value="mirage">Mirage</option>
@@ -369,6 +373,7 @@
         const elements = {
             apiKey: document.getElementById('api-key'),
             modelSelect: document.getElementById('model-select'),
+            realtimeBaseUrl: document.getElementById('realtime-base-url'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
             disconnectBtn: document.getElementById('disconnect-btn'),
@@ -492,8 +497,10 @@
                 
                 addLog('Initializing Decart client...', 'info');
                 
+                const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
                 decartClient = createDecartClient({
                     apiKey,
+                    ...(realtimeBaseUrl && { realtimeBaseUrl }),
                 });
                 
                 addLog('Connecting to Decart server...', 'info');
@@ -780,8 +787,10 @@
                 
                 // Initialize client if not already done
                 if (!decartClient) {
+                    const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
                     decartClient = createDecartClient({
                         apiKey,
+                        ...(realtimeBaseUrl && { realtimeBaseUrl }),
                     });
                     addLog('Initialized Decart client for processing', 'info');
                 }

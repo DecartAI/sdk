@@ -58,6 +58,7 @@ See `examples/nextjs-realtime` or `examples/react-vite` for runnable demos.
 - `realtime/connection-events.ts` - Handling connection state and errors
 - `realtime/prompt-update.ts` - Updating prompt dynamically
 - `realtime/custom-model.ts` - Using a custom model definition (e.g., preview/experimental models)
+- `realtime/custom-base-url.ts` - Using a custom WebSocket base URL for realtime connections
 
 ## API Reference
 
