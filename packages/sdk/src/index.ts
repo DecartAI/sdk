@@ -75,6 +75,7 @@ const decartClientOptionsSchema = z
     baseUrl: z.url().optional(),
     proxy: proxySchema.optional(),
     integration: z.string().optional(),
+    realtimeBaseUrl: z.url().optional(),
   })
   .refine(
     (data) => {
@@ -96,6 +97,7 @@ export type DecartClientOptions =
       proxy: string;
       apiKey?: never;
       baseUrl?: string;
+      realtimeBaseUrl?: string;
       integration?: string;
       logger?: Logger;
       telemetry?: boolean;
@@ -104,6 +106,7 @@ export type DecartClientOptions =
       proxy?: never;
       apiKey?: string;
       baseUrl?: string;
+      realtimeBaseUrl?: string;
       integration?: string;
       logger?: Logger;
       telemetry?: boolean;
@@ -116,6 +119,7 @@ export type DecartClientOptions =
  * @param options.proxy - URL of the proxy server. When set, the client will use the proxy instead of direct API access and apiKey is not required.
  * @param options.apiKey - API key for authentication.
  * @param options.baseUrl - Override the default API base URL.
+ * @param options.realtimeBaseUrl - Override the default WebSocket base URL for realtime connections.
  * @param options.integration - Optional integration identifier.
  *
  * @example
@@ -141,10 +145,9 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
       throw createInvalidApiKeyError();
     }
 
-    if (issue.path.includes("baseUrl")) {
-      throw createInvalidBaseUrlError(
-        issue.path.includes("baseUrl") ? (options as { baseUrl?: string }).baseUrl : undefined,
-      );
+    if (issue.path.includes("baseUrl") || issue.path.includes("realtimeBaseUrl")) {
+      const urlField = issue.path.includes("realtimeBaseUrl") ? "realtimeBaseUrl" : "baseUrl";
+      throw createInvalidBaseUrlError((options as Record<string, string | undefined>)[urlField]);
     }
 
     if (issue.path.includes("proxy")) {
@@ -181,7 +184,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
   // Realtime (WebRTC) always requires direct API access with API key
   // Proxy mode is only for HTTP endpoints (process, queue, tokens)
   // Note: Realtime will fail at connection time if no API key is provided
-  const wsBaseUrl = "wss://api3.decart.ai";
+  const wsBaseUrl = parsedOptions.data.realtimeBaseUrl || "wss://api3.decart.ai";
   const realtime = createRealTimeClient({
     baseUrl: wsBaseUrl,
     apiKey: apiKey || "",
