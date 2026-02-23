@@ -209,6 +209,15 @@ export type ModelDefinition<T extends Model = Model> = {
 };
 
 /**
+ * A model definition with an arbitrary (non-registry) model name.
+ * Use this when providing your own model configuration.
+ */
+export type CustomModelDefinition = Omit<ModelDefinition, "name" | "inputSchema"> & {
+  name: string;
+  inputSchema?: z.ZodTypeAny;
+};
+
+/**
  * Type alias for model definitions that support synchronous processing.
  * Only image models support the sync/process API.
  */
@@ -221,7 +230,7 @@ export type ImageModelDefinition = ModelDefinition<ImageModels>;
 export type VideoModelDefinition = ModelDefinition<VideoModels>;
 
 export const modelDefinitionSchema = z.object({
-  name: modelSchema,
+  name: z.string(),
   urlPath: z.string(),
   queueUrlPath: z.string().optional(),
   fps: z.number().min(1),

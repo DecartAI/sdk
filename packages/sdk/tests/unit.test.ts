@@ -3117,3 +3117,33 @@ describe("VideoStall Diagnostic", () => {
     expect(event.data.durationMs).toBe(1500);
   });
 });
+
+describe("CustomModelDefinition", () => {
+  it("allows arbitrary model names in modelDefinitionSchema", async () => {
+    const { modelDefinitionSchema } = await import("../src/shared/model.js");
+
+    const customModel = {
+      name: "lucy_2_rt_preview",
+      urlPath: "/v1/stream",
+      fps: 20,
+      width: 1280,
+      height: 720,
+    };
+
+    const result = modelDefinitionSchema.safeParse(customModel);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid custom model definitions", async () => {
+    const { modelDefinitionSchema } = await import("../src/shared/model.js");
+
+    const invalidModel = {
+      name: "my_custom_model",
+      urlPath: "/v1/stream",
+      // missing fps, width, height
+    };
+
+    const result = modelDefinitionSchema.safeParse(invalidModel);
+    expect(result.success).toBe(false);
+  });
+});
