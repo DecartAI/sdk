@@ -1,5 +1,5 @@
 import mitt from "mitt";
-import type { RealTimeModels } from "../shared/model";
+
 import type { Logger } from "../utils/logger";
 import { buildUserAgent } from "../utils/user-agent";
 import type { DiagnosticEmitter, IceCandidateEvent } from "./diagnostics";
@@ -24,7 +24,7 @@ interface ConnectionCallbacks {
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
-  modelName?: RealTimeModels;
+  modelName?: string;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;

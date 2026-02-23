@@ -1,5 +1,5 @@
 import pRetry, { AbortError } from "p-retry";
-import type { RealTimeModels } from "../shared/model";
+
 import type { Logger } from "../utils/logger";
 import type { DiagnosticEmitter } from "./diagnostics";
 import type { ConnectionState, OutgoingMessage } from "./types";
@@ -16,7 +16,7 @@ export interface WebRTCConfig {
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
-  modelName?: RealTimeModels;
+  modelName?: string;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
 }

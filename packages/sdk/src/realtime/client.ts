@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { modelDefinitionSchema, type RealTimeModels } from "../shared/model";
+import { type CustomModelDefinition, type ModelDefinition, modelDefinitionSchema } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import type { Logger } from "../utils/logger";
@@ -94,7 +94,9 @@ const realTimeClientConnectOptionsSchema = z.object({
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
 });
-export type RealTimeClientConnectOptions = z.infer<typeof realTimeClientConnectOptionsSchema>;
+export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
+  model: ModelDefinition | CustomModelDefinition;
+};
 
 export type Events = {
   connectionChange: ConnectionState;
@@ -189,7 +191,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
         vp8MinBitrate: 300,
         vp8StartBitrate: 600,
-        modelName: options.model.name as RealTimeModels,
+        modelName: options.model.name,
         initialImage,
         initialPrompt,
       });

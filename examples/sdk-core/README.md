@@ -57,6 +57,7 @@ See `examples/nextjs-realtime` or `examples/react-vite` for runnable demos.
 - `realtime/live-avatar.ts` - Live avatar (audio-driven avatar with playAudio or mic input)
 - `realtime/connection-events.ts` - Handling connection state and errors
 - `realtime/prompt-update.ts` - Updating prompt dynamically
+- `realtime/custom-model.ts` - Using a custom model definition (e.g., preview/experimental models)
 
 ## API Reference
 
