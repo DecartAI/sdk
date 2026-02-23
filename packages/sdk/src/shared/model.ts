@@ -210,7 +210,7 @@ export type ModelDefinition<T extends Model = Model> = {
 
 /**
  * A model definition with an arbitrary (non-registry) model name.
- * Use this when providing your own model configuration to `realtime.connect()`.
+ * Use this when providing your own model configuration.
  */
 export type CustomModelDefinition = Omit<ModelDefinition, "name" | "inputSchema"> & {
   name: string;
