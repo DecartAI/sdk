@@ -56,6 +56,7 @@ export {
   type Model,
   type ModelDefinition,
   models,
+  type RealtimeModelOptions,
   type RealTimeModels,
   type VideoModelDefinition,
   type VideoModels,

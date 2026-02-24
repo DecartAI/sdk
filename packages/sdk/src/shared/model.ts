@@ -378,11 +378,40 @@ const _models = {
   },
 } as const;
 
+/**
+ * Options for configuring realtime model output.
+ */
+export type RealtimeModelOptions = {
+  /** The orientation of the output. When `"portrait"`, width and height are swapped. Defaults to `"landscape"`. */
+  orientation?: "landscape" | "portrait";
+};
+
 export const models = {
-  realtime: <T extends RealTimeModels>(model: T): ModelDefinition<T> => {
+  /**
+   * Get a realtime model definition.
+   *
+   * Available models:
+   *   - `"mirage"` - Mirage v1
+   *   - `"mirage_v2"` - Mirage v2
+   *   - `"lucy_v2v_720p_rt"` - Lucy v2v 720p realtime
+   *   - `"lucy_2_rt"` - Lucy 2 realtime
+   *   - `"live_avatar"` - Live avatar
+   *
+   * @param model - The realtime model to use.
+   * @param options - Optional configuration. Set `orientation` to `"portrait"` to swap width and height.
+   * @returns The model definition, with dimensions adjusted for the requested orientation.
+   */
+  realtime: <T extends RealTimeModels>(model: T, options?: RealtimeModelOptions): ModelDefinition<T> => {
     const modelDefinition = _models.realtime[model];
     if (!modelDefinition) {
       throw createModelNotFoundError(model);
+    }
+    if (options?.orientation === "portrait") {
+      return {
+        ...modelDefinition,
+        width: modelDefinition.height,
+        height: modelDefinition.width,
+      } as ModelDefinition<T>;
     }
     return modelDefinition as ModelDefinition<T>;
   },
