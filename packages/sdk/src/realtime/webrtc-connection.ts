@@ -149,6 +149,15 @@ export class WebRTCConnection {
           durationMs: performance.now() - promptStart,
           success: true,
         });
+      } else if (localStream) {
+        // No image and no prompt — send passthrough (skip for subscribe mode which has no local stream)
+        const nullStart = performance.now();
+        await Promise.race([this.setImageBase64(null, { prompt: null }), connectAbort]);
+        this.emitDiagnostic("phaseTiming", {
+          phase: "initial-prompt",
+          durationMs: performance.now() - nullStart,
+          success: true,
+        });
       }
 
       // Phase 3: WebRTC handshake
@@ -311,7 +320,7 @@ export class WebRTCConnection {
 
   async setImageBase64(
     imageBase64: string | null,
-    options?: { prompt?: string; enhance?: boolean; timeout?: number },
+    options?: { prompt?: string | null; enhance?: boolean; timeout?: number },
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
@@ -334,7 +343,7 @@ export class WebRTCConnection {
       const message: {
         type: "set_image";
         image_data: string | null;
-        prompt?: string;
+        prompt?: string | null;
         enhance_prompt?: boolean;
       } = {
         type: "set_image",
