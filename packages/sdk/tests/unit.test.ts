@@ -990,6 +990,45 @@ describe("Lucy 2 realtime", () => {
   });
 });
 
+describe("models.realtime", () => {
+  it("returns correct landscape dimensions by default", () => {
+    const model = models.realtime("lucy_2_rt");
+    expect(model.width).toBe(1280);
+    expect(model.height).toBe(720);
+    expect(model.fps).toBe(20);
+  });
+
+  it("returns correct landscape dimensions when explicitly set", () => {
+    const model = models.realtime("lucy_2_rt", { orientation: "landscape" });
+    expect(model.width).toBe(1280);
+    expect(model.height).toBe(720);
+    expect(model.fps).toBe(20);
+  });
+
+  it("returns swapped dimensions in portrait mode", () => {
+    const model = models.realtime("lucy_2_rt", { orientation: "portrait" });
+    expect(model.width).toBe(720);
+    expect(model.height).toBe(1280);
+    expect(model.fps).toBe(20);
+  });
+
+  it("portrait mode preserves model name and urlPath", () => {
+    const model = models.realtime("lucy_2_rt", { orientation: "portrait" });
+    expect(model.name).toBe("lucy_2_rt");
+    expect(model.urlPath).toBe("/v1/stream");
+  });
+
+  it("throws on unknown model", () => {
+    expect(() => models.realtime("nonexistent_model" as any)).toThrow();
+  });
+
+  it("swaps dimensions for mirage in portrait mode", () => {
+    const model = models.realtime("mirage", { orientation: "portrait" });
+    expect(model.width).toBe(704);
+    expect(model.height).toBe(1280);
+  });
+});
+
 describe("WebRTCConnection", () => {
   describe("setImageBase64", () => {
     it("rejects immediately when WebSocket is not open", async () => {

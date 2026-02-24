@@ -62,6 +62,16 @@ realtimeClient.setPrompt("Cyberpunk city");
 realtimeClient.disconnect();
 ```
 
+#### Portrait mode
+
+Pass `{ orientation: "portrait" }` to swap width and height for vertical streams:
+
+```typescript
+const model = models.realtime("lucy_2_rt", { orientation: "portrait" });
+// model.width  → 720
+// model.height → 1280
+```
+
 ### Async Processing (Queue API)
 
 For video generation jobs, use the queue API to submit jobs and poll for results:
