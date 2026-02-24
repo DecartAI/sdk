@@ -129,11 +129,14 @@ export class WebRTCConnection {
       // connectionReject is already active, so ws.onclose or server errors abort these too
       if (this.callbacks.initialImage) {
         const imageStart = performance.now();
+        const promptOpts =
+          this.callbacks.initialPrompt === null
+            ? { prompt: null }
+            : this.callbacks.initialPrompt
+              ? { prompt: this.callbacks.initialPrompt.text, enhance: this.callbacks.initialPrompt.enhance }
+              : {};
         await Promise.race([
-          this.setImageBase64(this.callbacks.initialImage, {
-            prompt: this.callbacks.initialPrompt?.text,
-            enhance: this.callbacks.initialPrompt?.enhance,
-          }),
+          this.setImageBase64(this.callbacks.initialImage, promptOpts),
           connectAbort,
         ]);
         this.emitDiagnostic("phaseTiming", {
