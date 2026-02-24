@@ -1064,6 +1064,22 @@ describe("WebRTCConnection", () => {
         sendSpy.mockRestore();
       });
     });
+
+    it("sends set_image with null image_data and null prompt for passthrough", async () => {
+      const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+      const connection = new WebRTCConnection();
+      const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
+
+      // Fire off setImageBase64 — it will wait for ack, but we just need to check what was sent
+      connection.setImageBase64(null, { prompt: null }).catch(() => {});
+
+      expect(sendSpy).toHaveBeenCalledWith({
+        type: "set_image",
+        image_data: null,
+        prompt: null,
+      });
+      sendSpy.mockRestore();
+    });
   });
 
   describe("setupNewPeerConnection", () => {
