@@ -50,7 +50,7 @@ export type ErrorMessage = {
 export type SetAvatarImageMessage = {
   type: "set_image";
   image_data: string | null; // Base64-encoded image data, or null to clear/use placeholder
-  prompt?: string; // Optional prompt to send with the image
+  prompt?: string | null; // Optional prompt to send with the image, null for passthrough
   enhance_prompt?: boolean; // Optional flag to enhance the prompt
 };
 
