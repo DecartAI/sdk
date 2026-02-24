@@ -26,7 +26,7 @@ interface ConnectionCallbacks {
   vp8StartBitrate?: number;
   modelName?: string;
   initialImage?: string;
-  initialPrompt?: { text: string; enhance?: boolean };
+  initialPrompt?: { text: string; enhance?: boolean } | null;
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
 }
@@ -139,6 +139,15 @@ export class WebRTCConnection {
         this.emitDiagnostic("phaseTiming", {
           phase: "avatar-image",
           durationMs: performance.now() - imageStart,
+          success: true,
+        });
+      } else if (this.callbacks.initialPrompt === null) {
+        // Explicit null prompt: send set_image with null data for passthrough
+        const nullStart = performance.now();
+        await Promise.race([this.setImageBase64(null), connectAbort]);
+        this.emitDiagnostic("phaseTiming", {
+          phase: "initial-prompt",
+          durationMs: performance.now() - nullStart,
           success: true,
         });
       } else if (this.callbacks.initialPrompt) {
