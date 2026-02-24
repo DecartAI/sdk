@@ -1066,19 +1066,27 @@ describe("WebRTCConnection", () => {
     });
 
     it("sends set_image with null image_data and null prompt for passthrough", async () => {
-      const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-      const connection = new WebRTCConnection();
-      const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
+      vi.useFakeTimers();
+      try {
+        const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+        const connection = new WebRTCConnection();
+        const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
-      // Fire off setImageBase64 — it will wait for ack, but we just need to check what was sent
-      connection.setImageBase64(null, { prompt: null }).catch(() => {});
+        const promise = connection.setImageBase64(null, { prompt: null }).catch(() => {});
 
-      expect(sendSpy).toHaveBeenCalledWith({
-        type: "set_image",
-        image_data: null,
-        prompt: null,
-      });
-      sendSpy.mockRestore();
+        expect(sendSpy).toHaveBeenCalledWith({
+          type: "set_image",
+          image_data: null,
+          prompt: null,
+        });
+
+        // Drain the ack timeout so no timers leak
+        await vi.advanceTimersByTimeAsync(30001);
+        await promise;
+        sendSpy.mockRestore();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
