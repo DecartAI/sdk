@@ -242,14 +242,8 @@
             </select>
         </div>
         <div class="control-group">
-            <label for="initial-prompt">Initial Prompt:</label>
-            <div class="inline-controls">
-                <input type="text" id="initial-prompt" placeholder="e.g. Lego World" style="flex:1">
-                <div class="checkbox-group">
-                    <input type="checkbox" id="initial-prompt-null">
-                    <label for="initial-prompt-null" style="margin: 0; font-weight: normal;">null</label>
-                </div>
-            </div>
+            <label for="initial-prompt">Initial Prompt (empty = passthrough):</label>
+            <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
         </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
@@ -385,7 +379,6 @@
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             initialPrompt: document.getElementById('initial-prompt'),
-            initialPromptNull: document.getElementById('initial-prompt-null'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
             disconnectBtn: document.getElementById('disconnect-btn'),
@@ -450,12 +443,6 @@
             elements.statusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
         }
         
-        // Null prompt toggle: disable + clear text input when checked
-        elements.initialPromptNull.addEventListener('change', () => {
-            elements.initialPrompt.disabled = elements.initialPromptNull.checked;
-            if (elements.initialPromptNull.checked) elements.initialPrompt.value = '';
-        });
-
         // Model selection handler
         elements.modelSelect.addEventListener('change', (e) => {
             const selectedModel = e.target.value;
