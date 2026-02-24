@@ -147,7 +147,7 @@ export class WebRTCConnection {
         await Promise.race([
           this.callbacks.initialPrompt
             ? this.sendInitialPrompt(this.callbacks.initialPrompt)
-            : this.setImageBase64(null),
+            : this.setImageBase64(null, { prompt: null }),
           connectAbort,
         ]);
         this.emitDiagnostic("phaseTiming", {
@@ -317,7 +317,7 @@ export class WebRTCConnection {
 
   async setImageBase64(
     imageBase64: string | null,
-    options?: { prompt?: string; enhance?: boolean; timeout?: number },
+    options?: { prompt?: string | null; enhance?: boolean; timeout?: number },
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
@@ -340,7 +340,7 @@ export class WebRTCConnection {
       const message: {
         type: "set_image";
         image_data: string | null;
-        prompt?: string;
+        prompt?: string | null;
         enhance_prompt?: boolean;
       } = {
         type: "set_image",
