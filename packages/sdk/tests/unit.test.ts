@@ -2653,6 +2653,65 @@ describe("WebSockets Connection", () => {
     }
   });
 
+  it("skips passthrough set_image in subscribe mode (null stream)", async () => {
+    const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+
+    const sentMessages: string[] = [];
+
+    class FakeWebSocket {
+      static OPEN = 1;
+      static CLOSED = 3;
+      readyState = FakeWebSocket.OPEN;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: { data: string }) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+
+      constructor(_url: string) {
+        setTimeout(() => this.onopen?.(), 0);
+      }
+
+      send(data: string): void {
+        sentMessages.push(data);
+        const msg = JSON.parse(data);
+        if (msg.type === "set_image") {
+          setTimeout(() => this.onmessage?.({ data: JSON.stringify({ type: "set_image_ack", success: true }) }), 0);
+        }
+      }
+
+      close(): void {
+        this.readyState = FakeWebSocket.CLOSED;
+        this.onclose?.();
+      }
+    }
+
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+
+    try {
+      const connection = new WebRTCConnection();
+      const internal = connection as unknown as {
+        setState: (state: import("../src/realtime/types").ConnectionState) => void;
+        setupNewPeerConnection: () => Promise<void>;
+      };
+
+      vi.spyOn(internal, "setupNewPeerConnection").mockImplementation(async () => {
+        internal.setState("connected");
+        setTimeout(() => internal.setState("generating"), 0);
+      });
+
+      // Connect with null stream (subscribe mode)
+      await connection.connect("wss://example.com", null, 750);
+
+      // No set_image message should have been sent
+      const setImageMessages = sentMessages
+        .map((m) => JSON.parse(m))
+        .filter((m) => m.type === "set_image");
+      expect(setImageMessages).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("transitions from generating to disconnected when peer connection disconnects", async () => {
     const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
 
