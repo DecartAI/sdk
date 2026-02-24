@@ -141,18 +141,15 @@ export class WebRTCConnection {
           durationMs: performance.now() - imageStart,
           success: true,
         });
-      } else if (this.callbacks.initialPrompt === null) {
-        // Explicit null prompt: send set_image with null data for passthrough
-        const nullStart = performance.now();
-        await Promise.race([this.setImageBase64(null), connectAbort]);
-        this.emitDiagnostic("phaseTiming", {
-          phase: "initial-prompt",
-          durationMs: performance.now() - nullStart,
-          success: true,
-        });
-      } else if (this.callbacks.initialPrompt) {
+      } else if (this.callbacks.initialPrompt !== undefined) {
+        // null = passthrough (send set_image with null), object = send prompt
         const promptStart = performance.now();
-        await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
+        await Promise.race([
+          this.callbacks.initialPrompt
+            ? this.sendInitialPrompt(this.callbacks.initialPrompt)
+            : this.setImageBase64(null),
+          connectAbort,
+        ]);
         this.emitDiagnostic("phaseTiming", {
           phase: "initial-prompt",
           durationMs: performance.now() - promptStart,

@@ -160,16 +160,13 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       const initialImage = initialState?.image ? await imageToBase64(initialState.image) : undefined;
 
       // Prepare initial prompt to send via WebSocket before WebRTC handshake
-      // null means explicit passthrough (send set_image with null), undefined means no initial prompt
+      // undefined = not provided (skip Phase 2), null = explicit passthrough (send set_image with null)
       const initialPrompt =
-        initialState?.prompt === null
-          ? null
-          : initialState?.prompt
-            ? {
-                text: initialState.prompt.text,
-                enhance: initialState.prompt.enhance,
-              }
-            : undefined;
+        initialState?.prompt !== undefined
+          ? initialState.prompt
+            ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
+            : null
+          : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
 
