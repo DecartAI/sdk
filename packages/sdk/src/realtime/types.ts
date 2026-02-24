@@ -23,17 +23,6 @@ export type PromptMessage = {
   enhance_prompt: boolean;
 };
 
-export type TurnConfig = {
-  username: string;
-  credential: string;
-  server_url: string;
-};
-
-export type IceRestartMessage = {
-  type: "ice-restart";
-  turn_config?: TurnConfig;
-};
-
 export type PromptAckMessage = {
   type: "prompt_ack";
   prompt: string;
@@ -90,7 +79,6 @@ export type IncomingWebRTCMessage =
   | OfferMessage
   | AnswerMessage
   | IceCandidateMessage
-  | IceRestartMessage
   | PromptAckMessage
   | ErrorMessage
   | SetImageAckMessage
