@@ -2703,9 +2703,7 @@ describe("WebSockets Connection", () => {
       await connection.connect("wss://example.com", null, 750);
 
       // No set_image message should have been sent
-      const setImageMessages = sentMessages
-        .map((m) => JSON.parse(m))
-        .filter((m) => m.type === "set_image");
+      const setImageMessages = sentMessages.map((m) => JSON.parse(m)).filter((m) => m.type === "set_image");
       expect(setImageMessages).toHaveLength(0);
     } finally {
       vi.unstubAllGlobals();
