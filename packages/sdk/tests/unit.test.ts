@@ -2609,7 +2609,13 @@ describe("WebSockets Connection", () => {
         setTimeout(() => this.onopen?.(), 0);
       }
 
-      send(): void {}
+      send(data: string): void {
+        // Auto-ack set_image messages so Phase 2 completes
+        const msg = JSON.parse(data);
+        if (msg.type === "set_image") {
+          setTimeout(() => this.onmessage?.({ data: JSON.stringify({ type: "set_image_ack", success: true }) }), 0);
+        }
+      }
 
       close(): void {
         this.readyState = FakeWebSocket.CLOSED;

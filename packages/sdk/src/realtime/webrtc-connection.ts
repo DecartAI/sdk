@@ -26,7 +26,7 @@ interface ConnectionCallbacks {
   vp8StartBitrate?: number;
   modelName?: string;
   initialImage?: string;
-  initialPrompt?: { text: string; enhance?: boolean } | null;
+  initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
 }
@@ -141,18 +141,21 @@ export class WebRTCConnection {
           durationMs: performance.now() - imageStart,
           success: true,
         });
-      } else if (this.callbacks.initialPrompt !== undefined) {
-        // null = passthrough (send set_image with null), object = send prompt
+      } else if (this.callbacks.initialPrompt) {
         const promptStart = performance.now();
-        await Promise.race([
-          this.callbacks.initialPrompt
-            ? this.sendInitialPrompt(this.callbacks.initialPrompt)
-            : this.setImageBase64(null, { prompt: null }),
-          connectAbort,
-        ]);
+        await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
         this.emitDiagnostic("phaseTiming", {
           phase: "initial-prompt",
           durationMs: performance.now() - promptStart,
+          success: true,
+        });
+      } else {
+        // No image and no prompt — send passthrough
+        const nullStart = performance.now();
+        await Promise.race([this.setImageBase64(null, { prompt: null }), connectAbort]);
+        this.emitDiagnostic("phaseTiming", {
+          phase: "initial-prompt",
+          durationMs: performance.now() - nullStart,
           success: true,
         });
       }

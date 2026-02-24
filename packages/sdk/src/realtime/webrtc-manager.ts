@@ -18,7 +18,7 @@ export interface WebRTCConfig {
   vp8StartBitrate?: number;
   modelName?: string;
   initialImage?: string;
-  initialPrompt?: { text: string; enhance?: boolean } | null;
+  initialPrompt?: { text: string; enhance?: boolean };
 }
 
 const PERMANENT_ERRORS = [
