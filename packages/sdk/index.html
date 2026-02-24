@@ -523,25 +523,21 @@
                 
                 addLog('Connecting to Decart server...', 'info');
                 
-                // Load initial reference image for models that support it (skip when null prompt / passthrough)
-                let initialImage;
-                if (!elements.initialPromptNull.checked && (model.name === 'lucy_2_rt' || model.name === 'mirage_v2')) {
-                    const initialImageResponse = await fetch('./tests/fixtures/image.png');
-                    initialImage = await initialImageResponse.blob();
-                }
-
-                // Build initial prompt: null checkbox = send null, text = send prompt, empty = omit
+                // Build initial prompt from text field (empty / null toggle = passthrough)
                 const initialPromptText = elements.initialPrompt.value.trim();
-                const isNullPrompt = elements.initialPromptNull.checked;
-                let promptValue = undefined;
-                if (isNullPrompt) {
-                    promptValue = null;
-                    addLog('Initial prompt: null (passthrough)', 'info');
-                } else if (initialPromptText) {
-                    promptValue = { text: initialPromptText };
+                const promptValue = initialPromptText ? { text: initialPromptText } : undefined;
+
+                if (promptValue) {
                     addLog(`Initial prompt: "${initialPromptText}"`, 'info');
                 } else {
-                    addLog('Initial prompt: none (omitted)', 'info');
+                    addLog('Initial prompt: passthrough (no prompt)', 'info');
+                }
+
+                // Load initial reference image only when there's an actual prompt
+                let initialImage;
+                if (promptValue && (model.name === 'lucy_2_rt' || model.name === 'mirage_v2')) {
+                    const initialImageResponse = await fetch('./tests/fixtures/image.png');
+                    initialImage = await initialImageResponse.blob();
                 }
 
                 decartRealtime = await decartClient.realtime.connect(localStream, {
@@ -551,7 +547,7 @@
                         elements.remoteVideo.srcObject = stream;
                     },
                     initialState: {
-                        ...(promptValue !== undefined && { prompt: promptValue }),
+                        ...(promptValue && { prompt: promptValue }),
                         ...(initialImage && { image: initialImage }),
                     }
                 });
