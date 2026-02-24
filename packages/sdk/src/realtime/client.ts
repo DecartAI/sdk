@@ -161,7 +161,10 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       // Prepare initial prompt to send via WebSocket before WebRTC handshake
       const initialPrompt = initialState?.prompt
-        ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
+        ? {
+            text: initialState.prompt.text,
+            enhance: initialState.prompt.enhance,
+          }
         : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
