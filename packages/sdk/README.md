@@ -58,6 +58,17 @@ const realtimeClient = await client.realtime.connect(stream, {
 // Change the style on the fly
 realtimeClient.setPrompt("Cyberpunk city");
 
+// Or connect with passthrough (no transformation)
+const passthroughClient = await client.realtime.connect(stream, {
+  model,
+  onRemoteStream: (transformedStream) => {
+    videoElement.srcObject = transformedStream;
+  },
+  initialState: {
+    prompt: null  // passthrough mode
+  }
+});
+
 // Disconnect when done
 realtimeClient.disconnect();
 ```
