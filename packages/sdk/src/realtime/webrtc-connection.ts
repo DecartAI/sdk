@@ -149,8 +149,8 @@ export class WebRTCConnection {
           durationMs: performance.now() - promptStart,
           success: true,
         });
-      } else {
-        // No image and no prompt — send passthrough
+      } else if (localStream) {
+        // No image and no prompt — send passthrough (skip for subscribe mode which has no local stream)
         const nullStart = performance.now();
         await Promise.race([this.setImageBase64(null, { prompt: null }), connectAbort]);
         this.emitDiagnostic("phaseTiming", {
