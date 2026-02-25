@@ -403,8 +403,7 @@ export class WebRTCConnection {
       });
       this.pc.close();
     }
-    const iceServers: RTCIceServer[] = [...ICE_SERVERS];
-    this.pc = new RTCPeerConnection({ iceServers });
+    this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     this.setState("connecting");
 
     if (this.localStream) {
