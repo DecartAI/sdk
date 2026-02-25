@@ -246,7 +246,7 @@ export class WebRTCManager {
 
   setImage(
     imageBase64: string | null,
-    options?: { prompt?: string; enhance?: boolean; timeout?: number },
+    options?: { prompt?: string | null; enhance?: boolean; timeout?: number },
   ): Promise<void> {
     return this.connection.setImageBase64(imageBase64, options);
   }

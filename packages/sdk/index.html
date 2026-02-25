@@ -273,6 +273,7 @@
         </div>
         <div class="inline-controls">
             <button id="send-prompt" disabled>Send Prompt</button>
+            <button id="reset-input" disabled>Reset Input</button>
             <div class="checkbox-group">
                 <input type="checkbox" id="enrich-toggle" checked>
                 <label for="enrich-toggle" style="margin: 0; font-weight: normal;">Enrich Prompt</label>
@@ -386,6 +387,7 @@
             remoteVideo: document.getElementById('remote-video'),
             promptInput: document.getElementById('prompt-input'),
             sendPrompt: document.getElementById('send-prompt'),
+            resetInput: document.getElementById('reset-input'),
             enrichToggle: document.getElementById('enrich-toggle'),
             // Promise-based prompt elements
             promisePromptInput: document.getElementById('promise-prompt-input'),
@@ -546,6 +548,7 @@
                     elements.disconnectBtn.disabled = false;
                     elements.promptInput.disabled = false;
                     elements.sendPrompt.disabled = false;
+                    elements.resetInput.disabled = false;
                     elements.promisePromptInput.disabled = false;
                     elements.sendPromisePrompt.disabled = false;
                     elements.referenceImage.disabled = false;
@@ -599,6 +602,7 @@
             elements.disconnectBtn.disabled = true;
             elements.promptInput.disabled = true;
             elements.sendPrompt.disabled = true;
+            elements.resetInput.disabled = true;
             elements.promptInput.value = '';
             elements.promisePromptInput.disabled = true;
             elements.sendPromisePrompt.disabled = true;
@@ -641,6 +645,25 @@
         // Send prompt on button click
         elements.sendPrompt.addEventListener('click', sendPrompt);
         
+        // Reset input (back to passthrough)
+        elements.resetInput.addEventListener('click', async () => {
+            if (!decartRealtime || !isConnected) {
+                addLog('Not connected to Decart', 'error');
+                return;
+            }
+            try {
+                elements.resetInput.disabled = true;
+                addLog('Resetting input to passthrough...', 'info');
+                await decartRealtime.resetInput();
+                addLog('Reset to passthrough mode', 'success');
+                elements.promptInput.value = '';
+            } catch (error) {
+                addLog(`Failed to reset input: ${error.message}`, 'error');
+            } finally {
+                elements.resetInput.disabled = false;
+            }
+        });
+
         // Send prompt on Enter key
         elements.promptInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !elements.sendPrompt.disabled) {

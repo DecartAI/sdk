@@ -1422,6 +1422,28 @@ describe("set()", () => {
       timeout: 30000,
     });
   });
+
+  it("set({ prompt: null }) resets to passthrough", async () => {
+    await methods.set({ prompt: null });
+    expect(mockManager.setImage).toHaveBeenCalledWith(null, {
+      prompt: null,
+      enhance: true,
+      timeout: 30000,
+    });
+  });
+
+  it("resetInput sends passthrough signal", async () => {
+    await methods.resetInput();
+    expect(mockManager.setImage).toHaveBeenCalledWith(null, {
+      prompt: null,
+      timeout: 30000,
+    });
+  });
+
+  it("resetInput rejects when not connected", async () => {
+    mockManager.getConnectionState.mockReturnValue("disconnected");
+    await expect(methods.resetInput()).rejects.toThrow("Cannot send message: connection is disconnected");
+  });
 });
 
 describe("Subscribe Token", () => {
