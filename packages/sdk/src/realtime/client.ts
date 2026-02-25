@@ -109,6 +109,7 @@ export type Events = {
 export type RealTimeClient = {
   set: (input: SetInput) => Promise<void>;
   setPrompt: (prompt: string, { enhance }?: { enhance?: boolean }) => Promise<void>;
+  resetInput: () => Promise<void>;
   isConnected: () => boolean;
   getConnectionState: () => ConnectionState;
   disconnect: () => void;
@@ -118,7 +119,7 @@ export type RealTimeClient = {
   subscribeToken: string | null;
   setImage: (
     image: Blob | File | string | null,
-    options?: { prompt?: string; enhance?: boolean; timeout?: number },
+    options?: { prompt?: string | null; enhance?: boolean; timeout?: number },
   ) => Promise<void>;
   playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
 };
@@ -329,6 +330,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       const client: RealTimeClient = {
         set: methods.set,
         setPrompt: methods.setPrompt,
+        resetInput: methods.resetInput,
         isConnected: () => manager.isConnected(),
         getConnectionState: () => manager.getConnectionState(),
         disconnect: () => {

@@ -7,7 +7,7 @@ const UPDATE_TIMEOUT_MS = 30 * 1000;
 
 const setInputSchema = z
   .object({
-    prompt: z.string().min(1).optional(),
+    prompt: z.union([z.string().min(1), z.null()]).optional(),
     enhance: z.boolean().optional().default(true),
     image: z.union([z.instanceof(Blob), z.instanceof(File), z.string(), z.null()]).optional(),
   })
@@ -109,8 +109,14 @@ export const realtimeMethods = (
     }
   };
 
+  const resetInput = async (): Promise<void> => {
+    assertConnected();
+    await webrtcManager.setImage(null, { prompt: null, timeout: UPDATE_TIMEOUT_MS });
+  };
+
   return {
     set,
     setPrompt,
+    resetInput,
   };
 };
