@@ -284,7 +284,6 @@ export class WebRTCConnection {
             });
           }
           break;
-
       }
     } catch (error) {
       this.logger.error("Signaling handler error", { error: String(error) });
