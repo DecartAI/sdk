@@ -11,7 +11,6 @@ import type {
   PromptAckMessage,
   SessionIdMessage,
   SetImageAckMessage,
-  TurnConfig,
 } from "./types";
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
@@ -294,13 +293,6 @@ export class WebRTCConnection {
             });
           }
           break;
-        case "ice-restart": {
-          const turnConfig = msg.turn_config;
-          if (turnConfig) {
-            await this.setupNewPeerConnection(turnConfig);
-          }
-          break;
-        }
       }
     } catch (error) {
       this.logger.error("Signaling handler error", { error: String(error) });
@@ -410,7 +402,7 @@ export class WebRTCConnection {
     }
   }
 
-  private async setupNewPeerConnection(turnConfig?: TurnConfig): Promise<void> {
+  private async setupNewPeerConnection(): Promise<void> {
     if (this.pc) {
       this.pc.getSenders().forEach((sender) => {
         if (sender.track && this.pc) {
@@ -419,15 +411,7 @@ export class WebRTCConnection {
       });
       this.pc.close();
     }
-    const iceServers: RTCIceServer[] = [...ICE_SERVERS];
-    if (turnConfig) {
-      iceServers.push({
-        urls: turnConfig.server_url,
-        credential: turnConfig.credential,
-        username: turnConfig.username,
-      });
-    }
-    this.pc = new RTCPeerConnection({ iceServers });
+    this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     this.setState("connecting");
 
     if (this.localStream) {
