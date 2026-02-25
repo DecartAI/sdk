@@ -1067,7 +1067,7 @@ describe("WebRTCConnection", () => {
   });
 
   describe("setupNewPeerConnection", () => {
-    it("does not persist TURN servers between peer connection recreations", async () => {
+    it("uses only STUN servers for peer connections", async () => {
       const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
       const iceServerCounts: number[] = [];
 
@@ -1107,24 +1107,16 @@ describe("WebRTCConnection", () => {
         const internalConnection = connection as unknown as {
           handleSignalingMessage: (msg: unknown) => Promise<void>;
           localStream: { getTracks: () => MediaStreamTrack[] };
-          setupNewPeerConnection: (turnConfig?: {
-            username: string;
-            credential: string;
-            server_url: string;
-          }) => Promise<void>;
+          setupNewPeerConnection: () => Promise<void>;
         };
 
         vi.spyOn(internalConnection, "handleSignalingMessage").mockResolvedValue(undefined);
         internalConnection.localStream = { getTracks: () => [] };
 
-        await internalConnection.setupNewPeerConnection({
-          username: "user",
-          credential: "secret",
-          server_url: "turn:turn.example.com",
-        });
+        await internalConnection.setupNewPeerConnection();
         await internalConnection.setupNewPeerConnection();
 
-        expect(iceServerCounts).toEqual([2, 1]);
+        expect(iceServerCounts).toEqual([1, 1]);
       } finally {
         vi.unstubAllGlobals();
       }
