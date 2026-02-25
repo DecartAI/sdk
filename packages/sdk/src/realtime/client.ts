@@ -350,7 +350,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         },
         setImage: async (
           image: Blob | File | string | null,
-          options?: { prompt?: string; enhance?: boolean; timeout?: number },
+          options?: { prompt?: string | null; enhance?: boolean; timeout?: number },
         ) => {
           if (image === null) {
             return manager.setImage(null, options);
