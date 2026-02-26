@@ -97,13 +97,14 @@ export class TelemetryReporter implements ITelemetryReporter {
     this.sendReport(false);
   }
 
-  /** Stop the reporter and send a final report with keepalive. */
+  /** Stop the reporter and discard any buffered data. */
   stop(): void {
     if (this.intervalId !== null) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    this.sendReport(true);
+    this.statsBuffer = [];
+    this.diagnosticsBuffer = [];
   }
 
   /**
