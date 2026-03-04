@@ -180,7 +180,21 @@ export class IVSConnection {
 
       this.setState("connecting");
 
-      // Phase 2: Pre-handshake (initial image/prompt — same as WebRTC)
+      // Phase 2: IVS Stage setup — must complete before sending any messages.
+      // The bouncer creates the stage, sends ivs_stage_ready, then waits for
+      // ivs_joined before starting its message pump. Any set_image/prompt sent
+      // before ivs_joined would be consumed by the bouncer's join-wait loop
+      // and rejected as unexpected.
+      const stageStart = performance.now();
+      await Promise.race([this.setupIVSStages(localStream, timeout), connectAbort]);
+      this.emitDiagnostic("phaseTiming", {
+        phase: "ivs-stage-setup",
+        durationMs: performance.now() - stageStart,
+        success: true,
+      });
+
+      // Phase 3: Post-handshake initial state (image/prompt)
+      // Now the bouncer's message pump is running and can handle these.
       if (this.callbacks.initialImage) {
         const imageStart = performance.now();
         await Promise.race([
@@ -212,15 +226,6 @@ export class IVSConnection {
           success: true,
         });
       }
-
-      // Phase 3: IVS Stage setup — wait for ivs_stage_ready, then join stages
-      const stageStart = performance.now();
-      await Promise.race([this.setupIVSStages(localStream, timeout), connectAbort]);
-      this.emitDiagnostic("phaseTiming", {
-        phase: "ivs-stage-setup",
-        durationMs: performance.now() - stageStart,
-        success: true,
-      });
 
       this.emitDiagnostic("phaseTiming", {
         phase: "total",
