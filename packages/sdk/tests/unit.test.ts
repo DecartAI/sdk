@@ -520,31 +520,47 @@ describe("Queue API", () => {
       expect(dataFile).toBeInstanceOf(File);
     });
 
-    it("submits lucy-2-v2v job without prompt (prompt is optional)", async () => {
+    it("submits lucy-2-v2v job with only reference_image (no prompt)", async () => {
       server.use(
         http.post("http://localhost/v1/jobs/lucy-2-v2v", async ({ request }) => {
           lastRequest = request;
           lastFormData = await request.formData();
           return HttpResponse.json({
-            job_id: "job_lucy2_v2v_noprompt",
+            job_id: "job_lucy2_v2v_refonly",
             status: "pending",
           });
         }),
       );
 
-      const testBlob = new Blob(["test-video"], { type: "video/mp4" });
+      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
+      const testImageBlob = new Blob(["test-image"], { type: "image/png" });
 
       const result = await decart.queue.submit({
         model: models.video("lucy-2-v2v"),
-        data: testBlob,
+        data: testVideoBlob,
+        reference_image: testImageBlob,
       });
 
-      expect(result.job_id).toBe("job_lucy2_v2v_noprompt");
+      expect(result.job_id).toBe("job_lucy2_v2v_refonly");
       expect(result.status).toBe("pending");
       expect(lastFormData?.get("prompt")).toBeNull();
 
       const dataFile = lastFormData?.get("data") as File;
       expect(dataFile).toBeInstanceOf(File);
+
+      const refImageFile = lastFormData?.get("reference_image") as File;
+      expect(refImageFile).toBeInstanceOf(File);
+    });
+
+    it("rejects lucy-2-v2v job when neither prompt nor reference_image is provided", async () => {
+      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
+
+      await expect(
+        decart.queue.submit({
+          model: models.video("lucy-2-v2v"),
+          data: testVideoBlob,
+        } as Parameters<typeof decart.queue.submit>[0]),
+      ).rejects.toThrow("Must provide at least one of 'prompt' or 'reference_image'");
     });
 
     it("submits lucy-2-v2v job with reference_image", async () => {

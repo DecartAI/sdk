@@ -195,16 +195,20 @@ export const modelInputSchemas = {
     .refine((data) => !(data.reference_image !== undefined && data.enhance_prompt !== undefined), {
       message: "'enhance_prompt' is only valid when using 'prompt', not 'reference_image'",
     }),
-  "lucy-2-v2v": z.object({
-    prompt: z.string().min(1).max(1000).optional().describe("Text prompt for the video editing"),
-    reference_image: fileInputSchema
-      .optional()
-      .describe("Optional reference image to guide the edit (File, Blob, ReadableStream, URL, or string URL)"),
-    data: fileInputSchema.describe("Video file to process (File, Blob, ReadableStream, URL, or string URL)"),
-    seed: z.number().optional().describe("The seed to use for the generation"),
-    resolution: proV2vResolutionSchema,
-    enhance_prompt: z.boolean().optional().describe("Whether to enhance the prompt"),
-  }),
+  "lucy-2-v2v": z
+    .object({
+      prompt: z.string().min(1).max(1000).optional().describe("Text prompt for the video editing"),
+      reference_image: fileInputSchema
+        .optional()
+        .describe("Optional reference image to guide the edit (File, Blob, ReadableStream, URL, or string URL)"),
+      data: fileInputSchema.describe("Video file to process (File, Blob, ReadableStream, URL, or string URL)"),
+      seed: z.number().optional().describe("The seed to use for the generation"),
+      resolution: proV2vResolutionSchema,
+      enhance_prompt: z.boolean().optional().describe("Whether to enhance the prompt"),
+    })
+    .refine((data) => data.prompt !== undefined || data.reference_image !== undefined, {
+      message: "Must provide at least one of 'prompt' or 'reference_image'",
+    }),
 } as const;
 
 export type ModelInputSchemas = typeof modelInputSchemas;
