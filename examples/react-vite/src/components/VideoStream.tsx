@@ -3,9 +3,10 @@ import { useEffect, useRef, useState } from "react";
 
 interface VideoStreamProps {
   prompt: string;
+  transport?: "webrtc" | "ivs";
 }
 
-export function VideoStream({ prompt }: VideoStreamProps) {
+export function VideoStream({ prompt, transport = "webrtc" }: VideoStreamProps) {
   const inputRef = useRef<HTMLVideoElement>(null);
   const outputRef = useRef<HTMLVideoElement>(null);
   const realtimeClientRef = useRef<RealTimeClient | null>(null);
@@ -33,8 +34,6 @@ export function VideoStream({ prompt }: VideoStreamProps) {
           inputRef.current.srcObject = stream;
         }
 
-        setStatus("connecting...");
-
         const apiKey = import.meta.env.VITE_DECART_API_KEY;
         if (!apiKey) {
           throw new Error("DECART_API_KEY is not set");
@@ -44,8 +43,11 @@ export function VideoStream({ prompt }: VideoStreamProps) {
           apiKey,
         });
 
+        setStatus(`connecting via ${transport}...`);
+
         const realtimeClient = await client.realtime.connect(stream, {
           model,
+          transport,
           onRemoteStream: (transformedStream: MediaStream) => {
             if (outputRef.current) {
               outputRef.current.srcObject = transformedStream;
