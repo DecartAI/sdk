@@ -135,7 +135,7 @@ export type ModelSpecificInputs<T extends ModelDefinition> = T["name"] extends "
   ? ImageEditingInputs
   : T["name"] extends "lucy-restyle-v2v"
     ? VideoRestyleInputs
-    : T["name"] extends "lucy-pro-v2v"
+    : T["name"] extends "lucy-pro-v2v" | "lucy-2-v2v"
       ? VideoEditInputs
       : T["name"] extends ImageModels
         ? ImageGenerationInputs
