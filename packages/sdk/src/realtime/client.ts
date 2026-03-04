@@ -4,8 +4,9 @@ import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import type { Logger } from "../utils/logger";
 import { AudioStreamManager } from "./audio-stream-manager";
-import type { DiagnosticEvent } from "./diagnostics";
+import type { DiagnosticEmitter, DiagnosticEvent } from "./diagnostics";
 import { createEventBuffer } from "./event-buffer";
+import { IVSManager } from "./ivs-manager";
 import { realtimeMethods, type SetInput } from "./methods";
 import {
   decodeSubscribeToken,
@@ -15,6 +16,7 @@ import {
   type SubscribeOptions,
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
+import type { RealtimeTransportManager } from "./transport-manager";
 import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
 import { WebRTCManager } from "./webrtc-manager";
 import { type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
@@ -93,6 +95,7 @@ const realTimeClientConnectOptionsSchema = z.object({
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
+  transport: z.enum(["webrtc", "ivs"]).optional().default("webrtc"),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -151,7 +154,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       inputStream = stream ?? new MediaStream();
     }
 
-    let webrtcManager: WebRTCManager | undefined;
+    const transport = parsedOptions.data.transport;
+    let transportManager: RealtimeTransportManager | undefined;
     let telemetryReporter: ITelemetryReporter = new NullTelemetryReporter();
     let handleConnectionStateChange: ((state: ConnectionState) => void) | null = null;
 
@@ -171,32 +175,44 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
 
-      webrtcManager = new WebRTCManager({
-        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+      const sharedCallbacks = {
         integration,
         logger,
-        onDiagnostic: (name, data) => {
+        onDiagnostic: ((name: DiagnosticEvent["name"], data: DiagnosticEvent["data"]) => {
           emitOrBuffer("diagnostic", { name, data } as Events["diagnostic"]);
           addTelemetryDiagnostic(name, data);
-        },
+        }) as DiagnosticEmitter,
         onRemoteStream,
-        onConnectionStateChange: (state) => {
+        onConnectionStateChange: (state: ConnectionState) => {
           emitOrBuffer("connectionChange", state);
           handleConnectionStateChange?.(state);
         },
-        onError: (error) => {
-          logger.error("WebRTC error", { error: error.message });
+        onError: (error: Error) => {
+          logger.error(`${transport} error`, { error: error.message });
           emitOrBuffer("error", classifyWebrtcError(error));
         },
-        customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
-        vp8MinBitrate: 300,
-        vp8StartBitrate: 600,
         modelName: options.model.name,
         initialImage,
         initialPrompt,
-      });
+      };
 
-      const manager = webrtcManager;
+      if (transport === "ivs") {
+        const ivsUrlPath = options.model.urlPath.replace(/\/?$/, "-ivs");
+        transportManager = new IVSManager({
+          ivsUrl: `${baseUrl}${ivsUrlPath}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+          ...sharedCallbacks,
+        });
+      } else {
+        transportManager = new WebRTCManager({
+          webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+          ...sharedCallbacks,
+          customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
+          vp8MinBitrate: 300,
+          vp8StartBitrate: 600,
+        });
+      }
+
+      const manager = transportManager;
 
       let sessionId: string | null = null;
       let subscribeToken: string | null = null;
@@ -262,68 +278,75 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       const methods = realtimeMethods(manager, imageToBase64);
 
+      // Stats collection is only available for WebRTC transport (IVS doesn't expose RTCPeerConnection)
       let statsCollector: WebRTCStatsCollector | null = null;
       let statsCollectorPeerConnection: RTCPeerConnection | null = null;
 
-      // Video stall detection state (Twilio pattern: fps < 0.5 = stalled)
-      const STALL_FPS_THRESHOLD = 0.5;
-      let videoStalled = false;
-      let stallStartMs = 0;
+      const isWebRTC = transport === "webrtc" && manager instanceof WebRTCManager;
 
-      const startStatsCollection = (): (() => void) => {
-        statsCollector?.stop();
-        videoStalled = false;
-        stallStartMs = 0;
-        statsCollector = new WebRTCStatsCollector();
-        const pc = manager.getPeerConnection();
-        statsCollectorPeerConnection = pc;
-        if (pc) {
-          statsCollector.start(pc, (stats) => {
-            emitOrBuffer("stats", stats);
-            telemetryReporter.addStats(stats);
+      if (isWebRTC) {
+        const webrtcManager = manager;
 
-            // Stall detection: check if video fps dropped below threshold
-            const fps = stats.video?.framesPerSecond ?? 0;
-            if (!videoStalled && stats.video && fps < STALL_FPS_THRESHOLD) {
-              videoStalled = true;
-              stallStartMs = Date.now();
-              emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: true, durationMs: 0 } });
-              addTelemetryDiagnostic("videoStall", { stalled: true, durationMs: 0 }, stallStartMs);
-            } else if (videoStalled && fps >= STALL_FPS_THRESHOLD) {
-              const durationMs = Date.now() - stallStartMs;
-              videoStalled = false;
-              emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: false, durationMs } });
-              addTelemetryDiagnostic("videoStall", { stalled: false, durationMs });
-            }
-          });
-        }
-        return () => {
+        // Video stall detection state (Twilio pattern: fps < 0.5 = stalled)
+        const STALL_FPS_THRESHOLD = 0.5;
+        let videoStalled = false;
+        let stallStartMs = 0;
+
+        const startStatsCollection = (): (() => void) => {
           statsCollector?.stop();
-          statsCollector = null;
-          statsCollectorPeerConnection = null;
+          videoStalled = false;
+          stallStartMs = 0;
+          statsCollector = new WebRTCStatsCollector();
+          const pc = webrtcManager.getPeerConnection();
+          statsCollectorPeerConnection = pc;
+          if (pc) {
+            statsCollector.start(pc, (stats) => {
+              emitOrBuffer("stats", stats);
+              telemetryReporter.addStats(stats);
+
+              // Stall detection: check if video fps dropped below threshold
+              const fps = stats.video?.framesPerSecond ?? 0;
+              if (!videoStalled && stats.video && fps < STALL_FPS_THRESHOLD) {
+                videoStalled = true;
+                stallStartMs = Date.now();
+                emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: true, durationMs: 0 } });
+                addTelemetryDiagnostic("videoStall", { stalled: true, durationMs: 0 }, stallStartMs);
+              } else if (videoStalled && fps >= STALL_FPS_THRESHOLD) {
+                const durationMs = Date.now() - stallStartMs;
+                videoStalled = false;
+                emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: false, durationMs } });
+                addTelemetryDiagnostic("videoStall", { stalled: false, durationMs });
+              }
+            });
+          }
+          return () => {
+            statsCollector?.stop();
+            statsCollector = null;
+            statsCollectorPeerConnection = null;
+          };
         };
-      };
 
-      handleConnectionStateChange = (state) => {
-        if (!opts.telemetryEnabled) {
-          return;
+        handleConnectionStateChange = (state) => {
+          if (!opts.telemetryEnabled) {
+            return;
+          }
+
+          if (state !== "connected" && state !== "generating") {
+            return;
+          }
+
+          const peerConnection = webrtcManager.getPeerConnection();
+          if (!peerConnection || peerConnection === statsCollectorPeerConnection) {
+            return;
+          }
+
+          startStatsCollection();
+        };
+
+        // Auto-start stats when telemetry is enabled
+        if (opts.telemetryEnabled) {
+          startStatsCollection();
         }
-
-        if (state !== "connected" && state !== "generating") {
-          return;
-        }
-
-        const peerConnection = manager.getPeerConnection();
-        if (!peerConnection || peerConnection === statsCollectorPeerConnection) {
-          return;
-        }
-
-        startStatsCollection();
-      };
-
-      // Auto-start stats when telemetry is enabled
-      if (opts.telemetryEnabled) {
-        startStatsCollection();
       }
 
       const client: RealTimeClient = {
@@ -368,7 +391,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       return client;
     } catch (error) {
       telemetryReporter.stop();
-      webrtcManager?.cleanup();
+      transportManager?.cleanup();
       audioStreamManager?.cleanup();
       throw error;
     }

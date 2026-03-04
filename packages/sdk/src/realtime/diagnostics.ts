@@ -1,5 +1,5 @@
 /** Connection phase names for timing events. */
-export type ConnectionPhase = "websocket" | "avatar-image" | "initial-prompt" | "webrtc-handshake" | "total";
+export type ConnectionPhase = "websocket" | "avatar-image" | "initial-prompt" | "webrtc-handshake" | "ivs-stage-setup" | "total";
 
 export type PhaseTimingEvent = {
   phase: ConnectionPhase;
