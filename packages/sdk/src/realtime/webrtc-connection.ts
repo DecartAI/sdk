@@ -5,12 +5,11 @@ import { buildUserAgent } from "../utils/user-agent";
 import type { DiagnosticEmitter, IceCandidateEvent } from "./diagnostics";
 import type {
   ConnectionState,
-  GenerationTickMessage,
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
-  SessionIdMessage,
   SetImageAckMessage,
+  WsMessageEvents,
 } from "./types";
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
@@ -29,13 +28,6 @@ interface ConnectionCallbacks {
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
 }
-
-type WsMessageEvents = {
-  promptAck: PromptAckMessage;
-  setImageAck: SetImageAckMessage;
-  sessionId: SessionIdMessage;
-  generationTick: GenerationTickMessage;
-};
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
 

@@ -96,3 +96,37 @@ export type OutgoingWebRTCMessage =
   | SetAvatarImageMessage;
 
 export type OutgoingMessage = PromptMessage | SetAvatarImageMessage;
+
+// IVS message types
+export type IvsStageReadyMessage = {
+  type: "ivs_stage_ready";
+  stage_arn: string;
+  client_publish_token: string;
+  client_subscribe_token: string;
+};
+
+export type IvsJoinedMessage = {
+  type: "ivs_joined";
+};
+
+// IVS incoming messages (from bouncer)
+export type IncomingIVSMessage =
+  | IvsStageReadyMessage
+  | PromptAckMessage
+  | ErrorMessage
+  | SetImageAckMessage
+  | GenerationStartedMessage
+  | GenerationTickMessage
+  | GenerationEndedMessage
+  | SessionIdMessage;
+
+// IVS outgoing messages (to bouncer)
+export type OutgoingIVSMessage = IvsJoinedMessage | PromptMessage | SetAvatarImageMessage;
+
+// Shared WebSocket message events (used by both WebRTC and IVS transports)
+export type WsMessageEvents = {
+  promptAck: PromptAckMessage;
+  setImageAck: SetImageAckMessage;
+  sessionId: SessionIdMessage;
+  generationTick: GenerationTickMessage;
+};
