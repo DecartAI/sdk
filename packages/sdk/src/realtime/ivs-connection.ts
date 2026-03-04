@@ -275,8 +275,7 @@ export class IVSConnection {
       const subscribeStrategy: IVSStageStrategy = {
         stageStreamsToPublish: () => [],
         shouldPublishParticipant: () => false,
-        shouldSubscribeToParticipant: (participant) =>
-          participant.isLocal ? ivs.SubscribeType.NONE : ivs.SubscribeType.AUDIO_VIDEO,
+        shouldSubscribeToParticipant: () => ivs.SubscribeType.AUDIO_VIDEO,
       };
 
       this.subscribeStage = new ivs.Stage(stageReady.client_subscribe_token, subscribeStrategy);
@@ -320,7 +319,7 @@ export class IVSConnection {
 
       const publishStrategy: IVSStageStrategy = {
         stageStreamsToPublish: () => localStageStreams,
-        shouldPublishParticipant: (participant) => participant.isLocal,
+        shouldPublishParticipant: () => true,
         shouldSubscribeToParticipant: () => ivs.SubscribeType.NONE,
       };
 
