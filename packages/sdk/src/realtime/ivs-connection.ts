@@ -17,9 +17,9 @@ import type {
 // even when the package is not installed.
 
 interface IVSStageStrategy {
-  stageStreamsToPublish(stage: IVSStage): IVSLocalStageStream[];
-  shouldPublishParticipant(stage: IVSStage, participant: IVSStageParticipant): boolean;
-  shouldSubscribeToParticipant(stage: IVSStage, participant: IVSStageParticipant): IVSSubscribeType;
+  stageStreamsToPublish(): IVSLocalStageStream[];
+  shouldPublishParticipant(participant: IVSStageParticipant): boolean;
+  shouldSubscribeToParticipant(participant: IVSStageParticipant): IVSSubscribeType;
 }
 
 interface IVSStage {
@@ -275,7 +275,7 @@ export class IVSConnection {
       const subscribeStrategy: IVSStageStrategy = {
         stageStreamsToPublish: () => [],
         shouldPublishParticipant: () => false,
-        shouldSubscribeToParticipant: (_stage, participant) =>
+        shouldSubscribeToParticipant: (participant) =>
           participant.isLocal ? ivs.SubscribeType.NONE : ivs.SubscribeType.AUDIO_VIDEO,
       };
 
@@ -320,7 +320,7 @@ export class IVSConnection {
 
       const publishStrategy: IVSStageStrategy = {
         stageStreamsToPublish: () => localStageStreams,
-        shouldPublishParticipant: (_stage, participant) => participant.isLocal,
+        shouldPublishParticipant: (participant) => participant.isLocal,
         shouldSubscribeToParticipant: () => ivs.SubscribeType.NONE,
       };
 
