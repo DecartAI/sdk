@@ -241,7 +241,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       };
 
       const sessionIdListener = (msg: SessionIdMessage) => {
-        subscribeToken = encodeSubscribeToken(msg.session_id, msg.server_ip, msg.server_port);
+        subscribeToken = encodeSubscribeToken(msg.session_id, msg.server_ip, msg.server_port, transport);
         sessionId = msg.session_id;
 
         // Start telemetry reporter now that we have a session ID
@@ -397,8 +397,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     }
   };
 
-  const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
-    const { sid, ip, port } = decodeSubscribeToken(options.token);
+  const subscribeWebRTC = async (
+    options: SubscribeOptions,
+    sid: string,
+    ip: string,
+    port: number,
+  ): Promise<RealTimeSubscribeClient> => {
     const subscribeUrl = `${baseUrl}/subscribe/${encodeURIComponent(sid)}?IP=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}&api_key=${encodeURIComponent(apiKey)}`;
 
     const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
@@ -443,6 +447,99 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       webrtcManager?.cleanup();
       throw error;
     }
+  };
+
+  const subscribeIVS = async (options: SubscribeOptions, sid: string): Promise<RealTimeSubscribeClient> => {
+    const { getIVSBroadcastClient } = await import("./ivs-connection");
+    const ivs = await getIVSBroadcastClient();
+
+    const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
+
+    // Fetch viewer token from bouncer
+    const resp = await fetch(`${baseUrl}/v1/subscribe-ivs/${encodeURIComponent(sid)}`, {
+      headers: { "x-api-key": apiKey },
+    });
+    if (!resp.ok) {
+      throw new Error(`Failed to get IVS viewer token: ${resp.status}`);
+    }
+    const { subscribe_token } = (await resp.json()) as {
+      subscribe_token: string;
+      server_publish_participant_id: string;
+    };
+
+    let connected = false;
+    let connectionState: ConnectionState = "connecting";
+    emitOrBuffer("connectionChange", connectionState);
+
+    // Create subscribe-only IVS stage
+    const subscribeStrategy = {
+      stageStreamsToPublish: () => [] as never[],
+      shouldPublishParticipant: () => false,
+      shouldSubscribeToParticipant: () => ivs.SubscribeType.AUDIO_VIDEO,
+    };
+
+    const stage = new ivs.Stage(subscribe_token, subscribeStrategy);
+
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("IVS viewer subscribe timeout")), 30_000);
+
+      stage.on(ivs.StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (...args: unknown[]) => {
+        const participant = args[0] as { isLocal: boolean };
+        const streams = args[1] as { mediaStreamTrack: MediaStreamTrack }[];
+        if (participant.isLocal) return;
+
+        clearTimeout(timer);
+        const remoteStream = new MediaStream();
+        for (const s of streams) {
+          remoteStream.addTrack(s.mediaStreamTrack);
+        }
+        options.onRemoteStream(remoteStream);
+        connected = true;
+        connectionState = "connected";
+        emitOrBuffer("connectionChange", connectionState);
+        resolve();
+      });
+
+      stage.on(ivs.StageEvents.STAGE_CONNECTION_STATE_CHANGED, (...args: unknown[]) => {
+        const state = args[0] as string;
+        if (state === ivs.ConnectionState.DISCONNECTED.toString()) {
+          clearTimeout(timer);
+          connected = false;
+          connectionState = "disconnected";
+          emitOrBuffer("connectionChange", connectionState);
+        }
+      });
+
+      stage.join().catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+
+    const client: RealTimeSubscribeClient = {
+      isConnected: () => connected,
+      getConnectionState: () => connectionState,
+      disconnect: () => {
+        stop();
+        stage.leave();
+        connected = false;
+        connectionState = "disconnected";
+      },
+      on: eventEmitter.on,
+      off: eventEmitter.off,
+    };
+
+    flush();
+    return client;
+  };
+
+  const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
+    const { sid, ip, port, transport } = decodeSubscribeToken(options.token);
+
+    if (transport === "ivs") {
+      return subscribeIVS(options, sid);
+    }
+    return subscribeWebRTC(options, sid, ip, port);
   };
 
   return {
