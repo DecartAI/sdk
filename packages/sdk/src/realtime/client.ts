@@ -455,8 +455,9 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
     const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
 
-    // Fetch viewer token from bouncer
-    const resp = await fetch(`${baseUrl}/v1/subscribe-ivs/${encodeURIComponent(sid)}`, {
+    // Fetch viewer token from bouncer (convert wss:// → https:// for HTTP call)
+    const httpBaseUrl = baseUrl.replace(/^wss:\/\//, "https://").replace(/^ws:\/\//, "http://");
+    const resp = await fetch(`${httpBaseUrl}/v1/subscribe-ivs/${encodeURIComponent(sid)}`, {
       headers: { "x-api-key": apiKey },
     });
     if (!resp.ok) {
