@@ -59,7 +59,7 @@ declare enum IVSConnectionState {
   DISCONNECTED = "DISCONNECTED",
 }
 
-interface IVSBroadcastModule {
+export interface IVSBroadcastModule {
   Stage: new (token: string, strategy: IVSStageStrategy) => IVSStage;
   LocalStageStream: new (track: MediaStreamTrack) => IVSLocalStageStream;
   SubscribeType: typeof IVSSubscribeType;
@@ -70,11 +70,11 @@ interface IVSBroadcastModule {
 
 // ── Dynamic loader ────────────────────────────────────────────────────
 
-async function getIVSBroadcastClient(): Promise<IVSBroadcastModule> {
+export async function getIVSBroadcastClient(): Promise<IVSBroadcastModule> {
   try {
     const moduleName = "@aws/ivs-web-broadcast";
     // biome-ignore lint/suspicious/noExplicitAny: dynamic import of optional dependency
-    const mod = (await (Function(`return import("${moduleName}")`)() as Promise<any>));
+    const mod = await (Function(`return import("${moduleName}")`)() as Promise<any>);
     return mod.default ?? mod;
   } catch {
     if (typeof globalThis !== "undefined" && "IVSBroadcastClient" in globalThis) {
