@@ -229,6 +229,14 @@ export class IVSManager implements RealtimeTransportManager {
     return this.connection.websocketMessagesEmitter;
   }
 
+  getRemoteStreams() {
+    return this.connection.getRemoteStreams();
+  }
+
+  getLocalStreams() {
+    return this.connection.getLocalStreams();
+  }
+
   setImage(
     imageBase64: string | null,
     options?: { prompt?: string; enhance?: boolean; timeout?: number },

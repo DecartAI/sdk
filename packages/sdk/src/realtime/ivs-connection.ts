@@ -35,10 +35,12 @@ interface IVSStageParticipant {
 
 interface IVSStageStream {
   mediaStreamTrack: MediaStreamTrack;
+  requestRTCStats?(): Promise<RTCStatsReport | undefined>;
 }
 
-// biome-ignore lint/suspicious/noEmptyInterface: marker type for IVS SDK local stage stream
-interface IVSLocalStageStream {}
+interface IVSLocalStageStream {
+  requestRTCStats?(): Promise<RTCStatsReport | undefined>;
+}
 
 declare enum IVSSubscribeType {
   NONE = "NONE",
@@ -110,6 +112,8 @@ export class IVSConnection {
   private publishStage: IVSStage | null = null;
   private subscribeStage: IVSStage | null = null;
   private connectionReject: ((error: Error) => void) | null = null;
+  private remoteStageStreams: IVSStageStream[] = [];
+  private localStageStreams: IVSLocalStageStream[] = [];
   private logger: Logger;
   private emitDiagnostic: DiagnosticEmitter;
   state: ConnectionState = "disconnected";
@@ -297,6 +301,7 @@ export class IVSConnection {
         if (clientPubId && participant.id === clientPubId) return;
 
         clearTimeout(timer);
+        this.remoteStageStreams = streams;
         const remoteStream = new MediaStream();
         for (const s of streams) {
           remoteStream.addTrack(s.mediaStreamTrack);
@@ -327,6 +332,7 @@ export class IVSConnection {
       if (videoTrack) {
         localStageStreams.push(new ivs.LocalStageStream(videoTrack));
       }
+      this.localStageStreams = localStageStreams;
 
       const publishStrategy: IVSStageStrategy = {
         stageStreamsToPublish: () => localStageStreams,
@@ -502,6 +508,14 @@ export class IVSConnection {
     }
   }
 
+  getRemoteStreams(): IVSStageStream[] {
+    return this.remoteStageStreams;
+  }
+
+  getLocalStreams(): IVSLocalStageStream[] {
+    return this.localStageStreams;
+  }
+
   cleanup(): void {
     this.publishStage?.leave();
     this.publishStage = null;
@@ -509,6 +523,8 @@ export class IVSConnection {
     this.subscribeStage = null;
     this.ws?.close();
     this.ws = null;
+    this.remoteStageStreams = [];
+    this.localStageStreams = [];
     this.setState("disconnected");
   }
 }
