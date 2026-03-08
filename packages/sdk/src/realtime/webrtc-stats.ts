@@ -63,9 +63,7 @@ export type StatsOptions = {
 const DEFAULT_INTERVAL_MS = 1000;
 const MIN_INTERVAL_MS = 500;
 
-export class WebRTCStatsCollector {
-  private pc: RTCPeerConnection | null = null;
-  private intervalId: ReturnType<typeof setInterval> | null = null;
+export class StatsParser {
   private prevBytesVideo = 0;
   private prevBytesAudio = 0;
   private prevBytesSentVideo = 0;
@@ -76,18 +74,9 @@ export class WebRTCStatsCollector {
   private prevFreezeCount = 0;
   private prevFreezeDuration = 0;
   private prevPacketsLostAudio = 0;
-  private onStats: ((stats: WebRTCStats) => void) | null = null;
-  private intervalMs: number;
 
-  constructor(options: StatsOptions = {}) {
-    this.intervalMs = Math.max(options.intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS);
-  }
-
-  /** Attach to a peer connection and start polling. */
-  start(pc: RTCPeerConnection, onStats: (stats: WebRTCStats) => void): void {
-    this.stop();
-    this.pc = pc;
-    this.onStats = onStats;
+  /** Reset all delta-tracking state to zero. */
+  reset(): void {
     this.prevBytesVideo = 0;
     this.prevBytesAudio = 0;
     this.prevBytesSentVideo = 0;
@@ -97,37 +86,9 @@ export class WebRTCStatsCollector {
     this.prevFreezeCount = 0;
     this.prevFreezeDuration = 0;
     this.prevPacketsLostAudio = 0;
-    this.intervalId = setInterval(() => this.collect(), this.intervalMs);
   }
 
-  /** Stop polling and release resources. */
-  stop(): void {
-    if (this.intervalId !== null) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
-    this.pc = null;
-    this.onStats = null;
-  }
-
-  isRunning(): boolean {
-    return this.intervalId !== null;
-  }
-
-  private async collect(): Promise<void> {
-    if (!this.pc || !this.onStats) return;
-
-    try {
-      const rawStats = await this.pc.getStats();
-      const stats = this.parse(rawStats);
-      this.onStats(stats);
-    } catch {
-      // PC might be closed; stop silently
-      this.stop();
-    }
-  }
-
-  private parse(rawStats: RTCStatsReport): WebRTCStats {
+  parse(rawStats: RTCStatsReport): WebRTCStats {
     const now = performance.now();
     const elapsed = this.prevTimestamp > 0 ? (now - this.prevTimestamp) / 1000 : 0;
 
@@ -229,5 +190,53 @@ export class WebRTCStatsCollector {
       outboundVideo,
       connection,
     };
+  }
+}
+
+export class WebRTCStatsCollector {
+  private pc: RTCPeerConnection | null = null;
+  private intervalId: ReturnType<typeof setInterval> | null = null;
+  private parser = new StatsParser();
+  private onStats: ((stats: WebRTCStats) => void) | null = null;
+  private intervalMs: number;
+
+  constructor(options: StatsOptions = {}) {
+    this.intervalMs = Math.max(options.intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS);
+  }
+
+  /** Attach to a peer connection and start polling. */
+  start(pc: RTCPeerConnection, onStats: (stats: WebRTCStats) => void): void {
+    this.stop();
+    this.pc = pc;
+    this.onStats = onStats;
+    this.parser.reset();
+    this.intervalId = setInterval(() => this.collect(), this.intervalMs);
+  }
+
+  /** Stop polling and release resources. */
+  stop(): void {
+    if (this.intervalId !== null) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    this.pc = null;
+    this.onStats = null;
+  }
+
+  isRunning(): boolean {
+    return this.intervalId !== null;
+  }
+
+  private async collect(): Promise<void> {
+    if (!this.pc || !this.onStats) return;
+
+    try {
+      const rawStats = await this.pc.getStats();
+      const stats = this.parser.parse(rawStats);
+      this.onStats(stats);
+    } catch {
+      // PC might be closed; stop silently
+      this.stop();
+    }
   }
 }
