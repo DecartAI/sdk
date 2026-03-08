@@ -29,6 +29,7 @@ interface IVSStage {
 }
 
 interface IVSStageParticipant {
+  id: string;
   isLocal: boolean;
 }
 
@@ -244,6 +245,7 @@ export class IVSConnection {
     const stageReady = await new Promise<{
       client_publish_token: string;
       client_subscribe_token: string;
+      client_publish_participant_id: string;
     }>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("IVS stage ready timeout")), timeout);
 
@@ -258,6 +260,7 @@ export class IVSConnection {
             resolve({
               client_publish_token: msg.client_publish_token,
               client_subscribe_token: msg.client_subscribe_token,
+              client_publish_participant_id: msg.client_publish_participant_id ?? "",
             });
           }
         } catch {
@@ -272,10 +275,17 @@ export class IVSConnection {
     const remoteStreamPromise = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("IVS subscribe stream timeout")), timeout);
 
+      const clientPubId = stageReady.client_publish_participant_id;
       const subscribeStrategy: IVSStageStrategy = {
         stageStreamsToPublish: () => [],
         shouldPublishParticipant: () => false,
-        shouldSubscribeToParticipant: () => ivs.SubscribeType.AUDIO_VIDEO,
+        shouldSubscribeToParticipant: (participant: IVSStageParticipant) => {
+          // Skip our own camera feed — only subscribe to server's processed output
+          if (clientPubId && participant.id === clientPubId) {
+            return ivs.SubscribeType.NONE;
+          }
+          return ivs.SubscribeType.AUDIO_VIDEO;
+        },
       };
 
       this.subscribeStage = new ivs.Stage(stageReady.client_subscribe_token, subscribeStrategy);
@@ -284,6 +294,7 @@ export class IVSConnection {
         const participant = args[0] as IVSStageParticipant;
         const streams = args[1] as IVSStageStream[];
         if (participant.isLocal) return;
+        if (clientPubId && participant.id === clientPubId) return;
 
         clearTimeout(timer);
         const remoteStream = new MediaStream();
