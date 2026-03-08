@@ -71,6 +71,18 @@ export type SessionIdMessage = {
   server_port: number;
 };
 
+export type LatencyReportMessage = {
+  type: "latency_report";
+  server_proxy_rtt_ms: number;
+  pipeline_latency_ms: number;
+};
+
+export type LatencyProbeMessage = {
+  type: "latency_probe";
+  seq: number;
+  client_time: number;
+};
+
 export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
 
 // Incoming message types (from server)
@@ -85,7 +97,8 @@ export type IncomingWebRTCMessage =
   | GenerationStartedMessage
   | GenerationTickMessage
   | GenerationEndedMessage
-  | SessionIdMessage;
+  | SessionIdMessage
+  | LatencyReportMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =
@@ -93,9 +106,10 @@ export type OutgoingWebRTCMessage =
   | AnswerMessage
   | IceCandidateMessage
   | PromptMessage
-  | SetAvatarImageMessage;
+  | SetAvatarImageMessage
+  | LatencyProbeMessage;
 
-export type OutgoingMessage = PromptMessage | SetAvatarImageMessage;
+export type OutgoingMessage = PromptMessage | SetAvatarImageMessage | LatencyProbeMessage;
 
 // IVS message types
 export type IvsStageReadyMessage = {
@@ -118,10 +132,11 @@ export type IncomingIVSMessage =
   | GenerationStartedMessage
   | GenerationTickMessage
   | GenerationEndedMessage
-  | SessionIdMessage;
+  | SessionIdMessage
+  | LatencyReportMessage;
 
 // IVS outgoing messages (to bouncer)
-export type OutgoingIVSMessage = IvsJoinedMessage | PromptMessage | SetAvatarImageMessage;
+export type OutgoingIVSMessage = IvsJoinedMessage | PromptMessage | SetAvatarImageMessage | LatencyProbeMessage;
 
 // Shared WebSocket message events (used by both WebRTC and IVS transports)
 export type WsMessageEvents = {
@@ -129,4 +144,5 @@ export type WsMessageEvents = {
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
+  latencyReport: LatencyReportMessage;
 };

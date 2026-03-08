@@ -402,6 +402,11 @@ export class IVSConnection {
         return;
       }
 
+      if (msg.type === "latency_report") {
+        this.websocketMessagesEmitter.emit("latencyReport", msg);
+        return;
+      }
+
       // ivs_stage_ready is handled separately in setupIVSStages via addEventListener
     } catch (error) {
       this.logger.error("Message handler error", { error: String(error) });
