@@ -19,6 +19,7 @@ import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } fro
 import type { RealtimeTransportManager } from "./transport-manager";
 import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
 import { WebRTCManager } from "./webrtc-manager";
+import { IVSStatsCollector } from "./ivs-stats-collector";
 import { type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -255,6 +256,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
             sessionId: msg.session_id,
             model: options.model.name,
             integration,
+            transport,
             logger,
           });
           reporter.start();
@@ -278,49 +280,49 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       const methods = realtimeMethods(manager, imageToBase64);
 
-      // Stats collection is only available for WebRTC transport (IVS doesn't expose RTCPeerConnection)
-      let statsCollector: WebRTCStatsCollector | null = null;
+      // Video stall detection state (Twilio pattern: fps < 0.5 = stalled)
+      const STALL_FPS_THRESHOLD = 0.5;
+      let videoStalled = false;
+      let stallStartMs = 0;
+
+      const handleStats = (stats: WebRTCStats): void => {
+        emitOrBuffer("stats", stats);
+        telemetryReporter.addStats(stats);
+
+        // Stall detection: check if video fps dropped below threshold
+        const fps = stats.video?.framesPerSecond ?? 0;
+        if (!videoStalled && stats.video && fps < STALL_FPS_THRESHOLD) {
+          videoStalled = true;
+          stallStartMs = Date.now();
+          emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: true, durationMs: 0 } });
+          addTelemetryDiagnostic("videoStall", { stalled: true, durationMs: 0 }, stallStartMs);
+        } else if (videoStalled && fps >= STALL_FPS_THRESHOLD) {
+          const durationMs = Date.now() - stallStartMs;
+          videoStalled = false;
+          emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: false, durationMs } });
+          addTelemetryDiagnostic("videoStall", { stalled: false, durationMs });
+        }
+      };
+
+      let statsCollector: WebRTCStatsCollector | IVSStatsCollector | null = null;
       let statsCollectorPeerConnection: RTCPeerConnection | null = null;
 
-      const isWebRTC = transport === "webrtc" && manager instanceof WebRTCManager;
-
-      if (isWebRTC) {
+      if (transport === "webrtc" && manager instanceof WebRTCManager) {
         const webrtcManager = manager;
-
-        // Video stall detection state (Twilio pattern: fps < 0.5 = stalled)
-        const STALL_FPS_THRESHOLD = 0.5;
-        let videoStalled = false;
-        let stallStartMs = 0;
 
         const startStatsCollection = (): (() => void) => {
           statsCollector?.stop();
           videoStalled = false;
           stallStartMs = 0;
-          statsCollector = new WebRTCStatsCollector();
+          const collector = new WebRTCStatsCollector();
+          statsCollector = collector;
           const pc = webrtcManager.getPeerConnection();
           statsCollectorPeerConnection = pc;
           if (pc) {
-            statsCollector.start(pc, (stats) => {
-              emitOrBuffer("stats", stats);
-              telemetryReporter.addStats(stats);
-
-              // Stall detection: check if video fps dropped below threshold
-              const fps = stats.video?.framesPerSecond ?? 0;
-              if (!videoStalled && stats.video && fps < STALL_FPS_THRESHOLD) {
-                videoStalled = true;
-                stallStartMs = Date.now();
-                emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: true, durationMs: 0 } });
-                addTelemetryDiagnostic("videoStall", { stalled: true, durationMs: 0 }, stallStartMs);
-              } else if (videoStalled && fps >= STALL_FPS_THRESHOLD) {
-                const durationMs = Date.now() - stallStartMs;
-                videoStalled = false;
-                emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: false, durationMs } });
-                addTelemetryDiagnostic("videoStall", { stalled: false, durationMs });
-              }
-            });
+            collector.start(pc, handleStats);
           }
           return () => {
-            statsCollector?.stop();
+            collector.stop();
             statsCollector = null;
             statsCollectorPeerConnection = null;
           };
@@ -346,6 +348,37 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         // Auto-start stats when telemetry is enabled
         if (opts.telemetryEnabled) {
           startStatsCollection();
+        }
+      } else if (transport === "ivs" && manager instanceof IVSManager) {
+        const ivsManager = manager;
+
+        const startIVSStatsCollection = (): void => {
+          statsCollector?.stop();
+          videoStalled = false;
+          stallStartMs = 0;
+          const collector = new IVSStatsCollector();
+          statsCollector = collector;
+          collector.start(ivsManager, handleStats);
+        };
+
+        handleConnectionStateChange = (state) => {
+          if (!opts.telemetryEnabled) {
+            return;
+          }
+
+          if (state !== "connected" && state !== "generating") {
+            return;
+          }
+
+          // Only start once — IVS doesn't have PC reconnection like WebRTC
+          if (!statsCollector?.isRunning()) {
+            startIVSStatsCollection();
+          }
+        };
+
+        // Auto-start stats when telemetry is enabled
+        if (opts.telemetryEnabled) {
+          startIVSStatsCollection();
         }
       }
 
