@@ -33,12 +33,12 @@ interface IVSStageParticipant {
   isLocal: boolean;
 }
 
-interface IVSStageStream {
+export interface IVSStageStream {
   mediaStreamTrack: MediaStreamTrack;
   requestRTCStats?(): Promise<RTCStatsReport | undefined>;
 }
 
-interface IVSLocalStageStream {
+export interface IVSLocalStageStream {
   requestRTCStats?(): Promise<RTCStatsReport | undefined>;
 }
 
