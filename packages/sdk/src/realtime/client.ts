@@ -463,7 +463,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     if (!resp.ok) {
       throw new Error(`Failed to get IVS viewer token: ${resp.status}`);
     }
-    const { subscribe_token } = (await resp.json()) as {
+    const { subscribe_token, server_publish_participant_id } = (await resp.json()) as {
       subscribe_token: string;
       server_publish_participant_id: string;
     };
@@ -472,11 +472,16 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     let connectionState: ConnectionState = "connecting";
     emitOrBuffer("connectionChange", connectionState);
 
-    // Create subscribe-only IVS stage
+    // Create subscribe-only IVS stage — filter to server's output stream only
     const subscribeStrategy = {
       stageStreamsToPublish: () => [] as never[],
       shouldPublishParticipant: () => false,
-      shouldSubscribeToParticipant: () => ivs.SubscribeType.AUDIO_VIDEO,
+      shouldSubscribeToParticipant: (participant: { id: string }) => {
+        if (server_publish_participant_id && participant.id !== server_publish_participant_id) {
+          return ivs.SubscribeType.NONE;
+        }
+        return ivs.SubscribeType.AUDIO_VIDEO;
+      },
     };
 
     const stage = new ivs.Stage(subscribe_token, subscribeStrategy);
