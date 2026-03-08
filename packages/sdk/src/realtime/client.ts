@@ -17,7 +17,10 @@ import {
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import type { RealtimeTransportManager } from "./transport-manager";
-import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
+import type { CompositeLatencyEstimate } from "./composite-latency";
+import { CompositeLatencyTracker } from "./composite-latency";
+import { PixelLatencyProbe, type PixelLatencyMeasurement } from "./pixel-latency";
+import type { ConnectionState, GenerationTickMessage, LatencyReportMessage, SessionIdMessage } from "./types";
 import { WebRTCManager } from "./webrtc-manager";
 import { IVSStatsCollector } from "./ivs-stats-collector";
 import { type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
@@ -97,6 +100,13 @@ const realTimeClientConnectOptionsSchema = z.object({
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
   transport: z.enum(["webrtc", "ivs"]).optional().default("webrtc"),
+  latencyTracking: z
+    .object({
+      composite: z.boolean().optional(),
+      pixelMarker: z.boolean().optional(),
+      videoElement: z.custom<HTMLVideoElement>().optional(),
+    })
+    .optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -108,6 +118,8 @@ export type Events = {
   generationTick: { seconds: number };
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
+  compositeLatency: CompositeLatencyEstimate;
+  pixelLatency: PixelLatencyMeasurement;
 };
 
 export type RealTimeClient = {
@@ -382,12 +394,48 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         }
       }
 
+      // Composite latency tracking
+      if (parsedOptions.data.latencyTracking?.composite) {
+        const tracker = new CompositeLatencyTracker();
+        let latestClientRtt: number | null = null;
+
+        manager.getWebsocketMessageEmitter().on("latencyReport", (msg: LatencyReportMessage) => {
+          tracker.onServerReport(msg);
+          const estimate = tracker.getEstimate(latestClientRtt);
+          if (estimate) {
+            emitOrBuffer("compositeLatency", estimate);
+          }
+        });
+
+        // Update client RTT from stats (WebRTC only)
+        eventEmitter.on("stats", (stats: WebRTCStats) => {
+          latestClientRtt = stats.connection?.currentRoundTripTime ?? null;
+        });
+      }
+
+      // Pixel latency tracking
+      let pixelLatencyProbe: PixelLatencyProbe | null = null;
+      if (parsedOptions.data.latencyTracking?.pixelMarker && parsedOptions.data.latencyTracking?.videoElement) {
+        const videoEl = parsedOptions.data.latencyTracking.videoElement;
+        pixelLatencyProbe = new PixelLatencyProbe(
+          (msg) => manager.sendMessage(msg),
+          (measurement) => emitOrBuffer("pixelLatency", measurement),
+        );
+        // Start after a short delay to ensure video is playing
+        setTimeout(() => {
+          if (pixelLatencyProbe) {
+            pixelLatencyProbe.start(videoEl);
+          }
+        }, 1000);
+      }
+
       const client: RealTimeClient = {
         set: methods.set,
         setPrompt: methods.setPrompt,
         isConnected: () => manager.isConnected(),
         getConnectionState: () => manager.getConnectionState(),
         disconnect: () => {
+          pixelLatencyProbe?.stop();
           statsCollector?.stop();
           telemetryReporter.stop();
           stop();

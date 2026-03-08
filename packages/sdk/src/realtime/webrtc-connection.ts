@@ -246,6 +246,11 @@ export class WebRTCConnection {
         return;
       }
 
+      if (msg.type === "latency_report") {
+        this.websocketMessagesEmitter.emit("latencyReport", msg);
+        return;
+      }
+
       // All other messages require peer connection
       if (!this.pc) return;
 

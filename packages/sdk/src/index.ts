@@ -24,6 +24,7 @@ export type {
   RealTimeClientConnectOptions,
   RealTimeClientInitialState,
 } from "./realtime/client";
+export type { CompositeLatencyEstimate } from "./realtime/composite-latency";
 export type {
   ConnectionPhase,
   DiagnosticEvent,
