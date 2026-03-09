@@ -395,6 +395,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       }
 
       // Latency diagnostics (composite + pixel marker)
+      let latencyStartTimer: ReturnType<typeof setTimeout> | undefined;
       let latencyDiag: LatencyDiagnostics | null = null;
       if (parsedOptions.data.latencyTracking) {
         latencyDiag = new LatencyDiagnostics({
@@ -405,7 +406,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         });
         manager.getWebsocketMessageEmitter().on("latencyReport", (msg) => latencyDiag!.onServerReport(msg));
         eventEmitter.on("stats", (stats) => latencyDiag!.onStats(stats));
-        setTimeout(() => latencyDiag?.start(), 1000);
+        latencyStartTimer = setTimeout(() => latencyDiag?.start(), 1000);
       }
 
       const client: RealTimeClient = {
@@ -414,6 +415,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         isConnected: () => manager.isConnected(),
         getConnectionState: () => manager.getConnectionState(),
         disconnect: () => {
+          clearTimeout(latencyStartTimer);
           latencyDiag?.stop();
           statsCollector?.stop();
           telemetryReporter.stop();
