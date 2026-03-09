@@ -185,6 +185,7 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
     it("lucy-2-v2v: video editing (reference_image)", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-2-v2v"),
+        prompt: "",
         reference_image: imageBlob,
         data: videoBlob,
         seed: 42,

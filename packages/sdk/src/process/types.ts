@@ -95,16 +95,15 @@ export interface VideoEditInputs {
 
 /**
  * Model-specific input documentation for lucy-2-v2v.
- * Requires at least one of prompt or reference_image. Both can be provided together.
+ * Requires prompt (can be empty string). Optional reference_image can also be provided.
  */
 export interface VideoEdit2Inputs {
   /**
-   * Text description to use for the video editing.
-   * At least one of prompt or reference_image must be provided.
+   * Text prompt for the video editing. Send an empty string if you want no text prompt.
    *
    * See our [Prompt Engineering](https://docs.platform.decart.ai/models/video/video-generation#prompt-engineering) guide for how to write prompt for Decart video models effectively.
    */
-  prompt?: string;
+  prompt: string;
   /**
    * Video file to process.
    * Can be a File, Blob, ReadableStream, URL, or string URL.
@@ -112,7 +111,6 @@ export interface VideoEdit2Inputs {
   data: FileInput;
   /**
    * Optional reference image to guide what to add to the video.
-   * At least one of prompt or reference_image must be provided.
    * Can be a File, Blob, ReadableStream, URL, or string URL.
    */
   reference_image?: FileInput;
