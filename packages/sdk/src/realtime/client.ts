@@ -18,9 +18,9 @@ import {
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import type { RealtimeTransportManager } from "./transport-manager";
 import type { CompositeLatencyEstimate } from "./composite-latency";
-import { CompositeLatencyTracker } from "./composite-latency";
-import { PixelLatencyProbe, type PixelLatencyMeasurement } from "./pixel-latency";
-import type { ConnectionState, GenerationTickMessage, LatencyReportMessage, SessionIdMessage } from "./types";
+import type { PixelLatencyMeasurement } from "./pixel-latency";
+import { LatencyDiagnostics } from "./latency-diagnostics";
+import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
 import { WebRTCManager } from "./webrtc-manager";
 import { IVSStatsCollector } from "./ivs-stats-collector";
 import { type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
@@ -394,39 +394,18 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         }
       }
 
-      // Composite latency tracking
-      if (parsedOptions.data.latencyTracking?.composite) {
-        const tracker = new CompositeLatencyTracker();
-        let latestClientRtt: number | null = null;
-
-        manager.getWebsocketMessageEmitter().on("latencyReport", (msg: LatencyReportMessage) => {
-          tracker.onServerReport(msg);
-          const estimate = tracker.getEstimate(latestClientRtt);
-          if (estimate) {
-            emitOrBuffer("compositeLatency", estimate);
-          }
+      // Latency diagnostics (composite + pixel marker)
+      let latencyDiag: LatencyDiagnostics | null = null;
+      if (parsedOptions.data.latencyTracking) {
+        latencyDiag = new LatencyDiagnostics({
+          ...parsedOptions.data.latencyTracking,
+          sendMessage: (msg) => manager.sendMessage(msg),
+          onCompositeLatency: (est) => emitOrBuffer("compositeLatency", est),
+          onPixelLatency: (m) => emitOrBuffer("pixelLatency", m),
         });
-
-        // Update client RTT from stats (WebRTC only)
-        eventEmitter.on("stats", (stats: WebRTCStats) => {
-          latestClientRtt = stats.connection?.currentRoundTripTime ?? null;
-        });
-      }
-
-      // Pixel latency tracking
-      let pixelLatencyProbe: PixelLatencyProbe | null = null;
-      if (parsedOptions.data.latencyTracking?.pixelMarker && parsedOptions.data.latencyTracking?.videoElement) {
-        const videoEl = parsedOptions.data.latencyTracking.videoElement;
-        pixelLatencyProbe = new PixelLatencyProbe(
-          (msg) => manager.sendMessage(msg),
-          (measurement) => emitOrBuffer("pixelLatency", measurement),
-        );
-        // Start after a short delay to ensure video is playing
-        setTimeout(() => {
-          if (pixelLatencyProbe) {
-            pixelLatencyProbe.start(videoEl);
-          }
-        }, 1000);
+        manager.getWebsocketMessageEmitter().on("latencyReport", (msg) => latencyDiag!.onServerReport(msg));
+        eventEmitter.on("stats", (stats) => latencyDiag!.onStats(stats));
+        setTimeout(() => latencyDiag?.start(), 1000);
       }
 
       const client: RealTimeClient = {
@@ -435,7 +414,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         isConnected: () => manager.isConnected(),
         getConnectionState: () => manager.getConnectionState(),
         disconnect: () => {
-          pixelLatencyProbe?.stop();
+          latencyDiag?.stop();
           statsCollector?.stop();
           telemetryReporter.stop();
           stop();
