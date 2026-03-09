@@ -26,10 +26,11 @@ run(async () => {
     },
   });
 
-  // Option 2: Use a reference image to guide the edit
+  // Option 2: Use a reference image to guide the edit (with empty prompt)
   // const referenceImage = fs.readFileSync("reference.png");
   // const result = await client.queue.submitAndPoll({
   //   model: models.video("lucy-2-v2v"),
+  //   prompt: "",
   //   reference_image: new Blob([referenceImage]),
   //   data: new Blob([inputVideo]),
   //   onStatusChange: (job) => {

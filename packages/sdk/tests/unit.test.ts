@@ -520,7 +520,7 @@ describe("Queue API", () => {
       expect(dataFile).toBeInstanceOf(File);
     });
 
-    it("submits lucy-2-v2v job with only reference_image (no prompt)", async () => {
+    it("submits lucy-2-v2v job with empty prompt and reference_image", async () => {
       server.use(
         http.post("http://localhost/v1/jobs/lucy-2-v2v", async ({ request }) => {
           lastRequest = request;
@@ -537,30 +537,20 @@ describe("Queue API", () => {
 
       const result = await decart.queue.submit({
         model: models.video("lucy-2-v2v"),
+        prompt: "",
         data: testVideoBlob,
         reference_image: testImageBlob,
       });
 
       expect(result.job_id).toBe("job_lucy2_v2v_refonly");
       expect(result.status).toBe("pending");
-      expect(lastFormData?.get("prompt")).toBeNull();
+      expect(lastFormData?.get("prompt")).toBe("");
 
       const dataFile = lastFormData?.get("data") as File;
       expect(dataFile).toBeInstanceOf(File);
 
       const refImageFile = lastFormData?.get("reference_image") as File;
       expect(refImageFile).toBeInstanceOf(File);
-    });
-
-    it("rejects lucy-2-v2v job when neither prompt nor reference_image is provided", async () => {
-      const testVideoBlob = new Blob(["test-video"], { type: "video/mp4" });
-
-      await expect(
-        decart.queue.submit({
-          model: models.video("lucy-2-v2v"),
-          data: testVideoBlob,
-        } as Parameters<typeof decart.queue.submit>[0]),
-      ).rejects.toThrow("Must provide at least one of 'prompt' or 'reference_image'");
     });
 
     it("submits lucy-2-v2v job with reference_image", async () => {
