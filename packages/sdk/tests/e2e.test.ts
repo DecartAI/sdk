@@ -171,6 +171,40 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       await expectResult(result, "lucy-restyle-v2v-reference_image", ".mp4");
     });
 
+    it("lucy-2-v2v: video editing (prompt)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-2-v2v"),
+        prompt: "Watercolor painting style with soft brushstrokes",
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-2-v2v-prompt", ".mp4");
+    });
+
+    it("lucy-2-v2v: video editing (reference_image)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-2-v2v"),
+        reference_image: imageBlob,
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-2-v2v-reference_image", ".mp4");
+    });
+
+    it("lucy-2-v2v: video editing (prompt + reference_image)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-2-v2v"),
+        prompt: "Watercolor painting style",
+        reference_image: imageBlob,
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-2-v2v-both", ".mp4");
+    });
+
     it("lucy-motion: motion-guided image-to-video", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-motion"),
