@@ -17,6 +17,7 @@ export const videoModels = z.union([
   z.literal("lucy-pro-flf2v"),
   z.literal("lucy-motion"),
   z.literal("lucy-restyle-v2v"),
+  z.literal("lucy-2-v2v"),
 ]);
 export const imageModels = z.union([z.literal("lucy-pro-t2i"), z.literal("lucy-pro-i2i")]);
 
@@ -193,6 +194,20 @@ export const modelInputSchemas = {
     })
     .refine((data) => !(data.reference_image !== undefined && data.enhance_prompt !== undefined), {
       message: "'enhance_prompt' is only valid when using 'prompt', not 'reference_image'",
+    }),
+  "lucy-2-v2v": z
+    .object({
+      prompt: z.string().min(1).max(1000).optional().describe("Text prompt for the video editing"),
+      reference_image: fileInputSchema
+        .optional()
+        .describe("Optional reference image to guide the edit (File, Blob, ReadableStream, URL, or string URL)"),
+      data: fileInputSchema.describe("Video file to process (File, Blob, ReadableStream, URL, or string URL)"),
+      seed: z.number().optional().describe("The seed to use for the generation"),
+      resolution: proV2vResolutionSchema,
+      enhance_prompt: z.boolean().optional().describe("Whether to enhance the prompt"),
+    })
+    .refine((data) => data.prompt !== undefined || data.reference_image !== undefined, {
+      message: "Must provide at least one of 'prompt' or 'reference_image'",
     }),
 } as const;
 
@@ -375,6 +390,15 @@ const _models = {
       height: 704,
       inputSchema: modelInputSchemas["lucy-restyle-v2v"],
     },
+    "lucy-2-v2v": {
+      urlPath: "/v1/generate/lucy-2-v2v",
+      queueUrlPath: "/v1/jobs/lucy-2-v2v",
+      name: "lucy-2-v2v" as const,
+      fps: 20,
+      width: 1280,
+      height: 720,
+      inputSchema: modelInputSchemas["lucy-2-v2v"],
+    },
   },
 } as const;
 
@@ -397,6 +421,7 @@ export const models = {
    * 	 - `"lucy-dev-i2v"` - Image-to-video (Dev quality)
    *   - `"lucy-fast-v2v"` - Video-to-video (Fast quality)
    *   - `"lucy-restyle-v2v"` - Video-to-video (Restyling)
+   *   - `"lucy-2-v2v"` - Video-to-video (Long-form editing, 720p)
    */
   video: <T extends VideoModels>(model: T): ModelDefinition<T> => {
     const modelDefinition = _models.video[model];

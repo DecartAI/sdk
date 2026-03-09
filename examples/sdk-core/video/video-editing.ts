@@ -1,0 +1,59 @@
+import fs from "node:fs";
+import { createDecartClient, models } from "@decartai/sdk";
+import { run } from "../lib/run";
+
+run(async () => {
+  const apiKey = process.env.DECART_API_KEY;
+  if (!apiKey) {
+    throw new Error("DECART_API_KEY environment variable is required");
+  }
+
+  const client = createDecartClient({
+    apiKey,
+  });
+
+  console.log("Editing video with lucy-2-v2v...");
+
+  const inputVideo = fs.readFileSync("input.mp4");
+
+  // Option 1: Use a text prompt
+  const result = await client.queue.submitAndPoll({
+    model: models.video("lucy-2-v2v"),
+    prompt: "Transform to watercolor painting style with soft brushstrokes",
+    data: new Blob([inputVideo]),
+    onStatusChange: (job) => {
+      console.log(`Job ${job.job_id}: ${job.status}`);
+    },
+  });
+
+  // Option 2: Use a reference image to guide the edit
+  // const referenceImage = fs.readFileSync("reference.png");
+  // const result = await client.queue.submitAndPoll({
+  //   model: models.video("lucy-2-v2v"),
+  //   reference_image: new Blob([referenceImage]),
+  //   data: new Blob([inputVideo]),
+  //   onStatusChange: (job) => {
+  //     console.log(`Job ${job.job_id}: ${job.status}`);
+  //   },
+  // });
+
+  // Option 3: Use both a prompt and a reference image together
+  // const referenceImage = fs.readFileSync("reference.png");
+  // const result = await client.queue.submitAndPoll({
+  //   model: models.video("lucy-2-v2v"),
+  //   prompt: "Apply the style from the reference image",
+  //   reference_image: new Blob([referenceImage]),
+  //   data: new Blob([inputVideo]),
+  //   onStatusChange: (job) => {
+  //     console.log(`Job ${job.job_id}: ${job.status}`);
+  //   },
+  // });
+
+  if (result.status === "completed") {
+    const output = Buffer.from(await result.data.arrayBuffer());
+    fs.writeFileSync("output.mp4", output);
+    console.log("Video saved to output.mp4");
+  } else {
+    console.log("Job failed:", result.error);
+  }
+});
