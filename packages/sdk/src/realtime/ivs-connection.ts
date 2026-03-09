@@ -324,13 +324,17 @@ export class IVSConnection {
       });
     });
 
-    // Publish stage — send local camera track
+    // Publish stage — send local camera + audio tracks
     if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0];
       const localStageStreams: IVSLocalStageStream[] = [];
 
+      const videoTrack = localStream.getVideoTracks()[0];
       if (videoTrack) {
         localStageStreams.push(new ivs.LocalStageStream(videoTrack));
+      }
+      const audioTrack = localStream.getAudioTracks()[0];
+      if (audioTrack) {
+        localStageStreams.push(new ivs.LocalStageStream(audioTrack));
       }
       this.localStageStreams = localStageStreams;
 
