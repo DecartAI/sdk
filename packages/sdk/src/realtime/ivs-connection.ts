@@ -314,6 +314,7 @@ export class IVSConnection {
         const state = args[0] as string;
         if (state === ivs.ConnectionState.DISCONNECTED.toString()) {
           clearTimeout(timer);
+          reject(new Error("IVS subscribe stage disconnected during setup"));
           this.setState("disconnected");
         }
       });
