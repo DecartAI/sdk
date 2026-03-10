@@ -12,7 +12,7 @@ export class PixelLatencyProbe {
   private static readonly CHECKSUM_BITS = 4;
   private static readonly TOTAL_PIXELS = 24;
   private static readonly PROBE_INTERVAL_MS = 2000;
-  private static readonly PROBE_TTL_MS = 10000;
+  private static readonly PROBE_TTL_MS = 60000;
 
   private seq = 0;
   private pendingProbes = new Map<number, number>(); // seq -> clientTime
