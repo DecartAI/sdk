@@ -4,10 +4,14 @@ import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import type { Logger } from "../utils/logger";
 import { AudioStreamManager } from "./audio-stream-manager";
+import type { CompositeLatencyEstimate } from "./composite-latency";
 import type { DiagnosticEmitter, DiagnosticEvent } from "./diagnostics";
 import { createEventBuffer } from "./event-buffer";
 import { IVSManager } from "./ivs-manager";
+import { IVSStatsCollector } from "./ivs-stats-collector";
+import { LatencyDiagnostics } from "./latency-diagnostics";
 import { realtimeMethods, type SetInput } from "./methods";
+import type { PixelLatencyMeasurement } from "./pixel-latency";
 import {
   decodeSubscribeToken,
   encodeSubscribeToken,
@@ -17,12 +21,8 @@ import {
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import type { RealtimeTransportManager } from "./transport-manager";
-import type { CompositeLatencyEstimate } from "./composite-latency";
-import type { PixelLatencyMeasurement } from "./pixel-latency";
-import { LatencyDiagnostics } from "./latency-diagnostics";
 import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
 import { WebRTCManager } from "./webrtc-manager";
-import { IVSStatsCollector } from "./ivs-stats-collector";
 import { type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -288,6 +288,24 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       };
       manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
 
+      // Latency diagnostics (composite + pixel marker) — create before connect
+      // so the stamper can wrap inputStream before it's published.
+      let latencyStartTimer: ReturnType<typeof setTimeout> | undefined;
+      let latencyDiag: LatencyDiagnostics | null = null;
+      if (parsedOptions.data.latencyTracking) {
+        latencyDiag = new LatencyDiagnostics({
+          ...parsedOptions.data.latencyTracking,
+          sendMessage: (msg) => manager.sendMessage(msg),
+          onCompositeLatency: (est) => emitOrBuffer("compositeLatency", est),
+          onPixelLatency: (m) => emitOrBuffer("pixelLatency", m),
+        });
+
+        // Wrap camera stream with canvas stamper for E2E pixel latency
+        if (parsedOptions.data.latencyTracking.pixelMarker && inputStream) {
+          inputStream = latencyDiag.createStamper(inputStream);
+        }
+      }
+
       await manager.connect(inputStream);
 
       const methods = realtimeMethods(manager, imageToBase64);
@@ -394,16 +412,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         }
       }
 
-      // Latency diagnostics (composite + pixel marker)
-      let latencyStartTimer: ReturnType<typeof setTimeout> | undefined;
-      let latencyDiag: LatencyDiagnostics | null = null;
-      if (parsedOptions.data.latencyTracking) {
-        latencyDiag = new LatencyDiagnostics({
-          ...parsedOptions.data.latencyTracking,
-          sendMessage: (msg) => manager.sendMessage(msg),
-          onCompositeLatency: (est) => emitOrBuffer("compositeLatency", est),
-          onPixelLatency: (m) => emitOrBuffer("pixelLatency", m),
-        });
+      // Wire latency diagnostics events and start delayed
+      if (latencyDiag) {
         manager.getWebsocketMessageEmitter().on("latencyReport", (msg) => latencyDiag!.onServerReport(msg));
         eventEmitter.on("stats", (stats) => latencyDiag!.onStats(stats));
         latencyStartTimer = setTimeout(() => latencyDiag?.start(), 1000);

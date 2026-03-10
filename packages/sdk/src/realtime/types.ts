@@ -83,6 +83,15 @@ export type LatencyProbeMessage = {
   client_time: number;
 };
 
+export type E2ELatencyReportMessage = {
+  type: "e2e_latency_report";
+  avg_latency_ms: number | null;
+  delivery_rate: number;
+  lost: number;
+  corrupted: number;
+  out_of_order: number;
+};
+
 export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
 
 // Incoming message types (from server)
@@ -107,9 +116,10 @@ export type OutgoingWebRTCMessage =
   | IceCandidateMessage
   | PromptMessage
   | SetAvatarImageMessage
-  | LatencyProbeMessage;
+  | LatencyProbeMessage
+  | E2ELatencyReportMessage;
 
-export type OutgoingMessage = PromptMessage | SetAvatarImageMessage | LatencyProbeMessage;
+export type OutgoingMessage = PromptMessage | SetAvatarImageMessage | LatencyProbeMessage | E2ELatencyReportMessage;
 
 // IVS message types
 export type IvsStageReadyMessage = {
@@ -136,7 +146,7 @@ export type IncomingIVSMessage =
   | LatencyReportMessage;
 
 // IVS outgoing messages (to bouncer)
-export type OutgoingIVSMessage = IvsJoinedMessage | PromptMessage | SetAvatarImageMessage | LatencyProbeMessage;
+export type OutgoingIVSMessage = IvsJoinedMessage | PromptMessage | SetAvatarImageMessage | LatencyProbeMessage | E2ELatencyReportMessage;
 
 // Shared WebSocket message events (used by both WebRTC and IVS transports)
 export type WsMessageEvents = {
