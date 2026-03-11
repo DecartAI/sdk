@@ -211,15 +211,17 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialPrompt,
       };
 
+      const latencyQs = parsedOptions.data.latencyTracking ? "&latency_diagnostics=true" : "";
+
       if (transport === "ivs") {
         const ivsUrlPath = options.model.urlPath.replace(/\/?$/, "-ivs");
         transportManager = new IVSManager({
-          ivsUrl: `${baseUrl}${ivsUrlPath}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+          ivsUrl: `${baseUrl}${ivsUrlPath}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${latencyQs}`,
           ...sharedCallbacks,
         });
       } else {
         transportManager = new WebRTCManager({
-          webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+          webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${latencyQs}`,
           ...sharedCallbacks,
           customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
           vp8MinBitrate: 300,
