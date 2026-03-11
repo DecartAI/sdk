@@ -363,7 +363,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         };
 
         handleConnectionStateChange = (state) => {
-          if (!opts.telemetryEnabled) {
+          if (!opts.telemetryEnabled && !parsedOptions.data.latencyTracking) {
             return;
           }
 
@@ -379,8 +379,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           startStatsCollection();
         };
 
-        // Auto-start stats when telemetry is enabled
-        if (opts.telemetryEnabled) {
+        // Auto-start stats when telemetry or latency tracking is enabled
+        if (opts.telemetryEnabled || parsedOptions.data.latencyTracking) {
           startStatsCollection();
         }
       } else if (transport === "ivs" && manager instanceof IVSManager) {
@@ -396,7 +396,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         };
 
         handleConnectionStateChange = (state) => {
-          if (!opts.telemetryEnabled) {
+          if (!opts.telemetryEnabled && !parsedOptions.data.latencyTracking) {
             return;
           }
 
@@ -410,8 +410,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           }
         };
 
-        // Auto-start stats when telemetry is enabled
-        if (opts.telemetryEnabled) {
+        // Auto-start stats when telemetry or latency tracking is enabled
+        if (opts.telemetryEnabled || parsedOptions.data.latencyTracking) {
           startIVSStatsCollection();
         }
       }

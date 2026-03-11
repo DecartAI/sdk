@@ -69,6 +69,8 @@ export class PixelLatencyProbe {
   private lastReceivedSeq = 0;
   private recentLatencies: number[] = [];
   private stats = { sent: 0, received: 0, lost: 0, corrupted: 0, outOfOrder: 0 };
+  // Previous snapshot for computing deltas sent to server
+  private prevReportStats = { lost: 0, corrupted: 0, outOfOrder: 0 };
 
   private sendMessage: ((msg: LatencyProbeMessage | E2ELatencyReportMessage) => void) | null;
   private onMeasurement: (m: PixelLatencyMeasurement) => void;
@@ -138,7 +140,8 @@ export class PixelLatencyProbe {
 
   private stampInputFrame(): void {
     if (!this.stamper) return;
-    const seq = ++this.seq;
+    this.seq = (this.seq + 1) & 0xffff;
+    const seq = this.seq;
     this.pendingProbes.set(seq, performance.now());
     this.stats.sent++;
     this.stamper.queueStamp(seq);
@@ -154,14 +157,22 @@ export class PixelLatencyProbe {
         ? this.recentLatencies.reduce((a, b) => a + b, 0) / this.recentLatencies.length
         : null;
     const sent = this.stats.sent;
+    const deltaLost = this.stats.lost - this.prevReportStats.lost;
+    const deltaCorrupted = this.stats.corrupted - this.prevReportStats.corrupted;
+    const deltaOutOfOrder = this.stats.outOfOrder - this.prevReportStats.outOfOrder;
     this.sendMessage({
       type: "e2e_latency_report",
       avg_latency_ms: avgMs !== null ? Math.round(avgMs * 100) / 100 : null,
       delivery_rate: sent > 0 ? this.stats.received / sent : 0,
+      lost: deltaLost,
+      corrupted: deltaCorrupted,
+      out_of_order: deltaOutOfOrder,
+    });
+    this.prevReportStats = {
       lost: this.stats.lost,
       corrupted: this.stats.corrupted,
-      out_of_order: this.stats.outOfOrder,
-    });
+      outOfOrder: this.stats.outOfOrder,
+    };
     this.recentLatencies = [];
   }
 
@@ -169,7 +180,8 @@ export class PixelLatencyProbe {
 
   private sendProbe(): void {
     if (!this.sendMessage) return;
-    const seq = ++this.seq;
+    this.seq = (this.seq + 1) & 0xffff;
+    const seq = this.seq;
     const clientTime = performance.now();
     this.pendingProbes.set(seq, clientTime);
     this.stats.sent++;
