@@ -6,7 +6,12 @@
  */
 
 import { type CompositeLatencyEstimate, CompositeLatencyTracker } from "./composite-latency";
-import { type PixelLatencyMeasurement, PixelLatencyProbe, type PixelLatencyStats } from "./pixel-latency";
+import {
+  type PixelLatencyEvent,
+  type PixelLatencyMeasurement,
+  PixelLatencyProbe,
+  type PixelLatencyReport,
+} from "./pixel-latency";
 import { PixelLatencyStamper } from "./pixel-latency-stamper";
 import type { LatencyReportMessage, OutgoingMessage } from "./types";
 import type { WebRTCStats } from "./webrtc-stats";
@@ -18,6 +23,8 @@ export type LatencyDiagnosticsOptions = {
   sendMessage: (msg: OutgoingMessage) => void;
   onCompositeLatency: (estimate: CompositeLatencyEstimate) => void;
   onPixelLatency: (measurement: PixelLatencyMeasurement) => void;
+  onPixelLatencyEvent: (event: PixelLatencyEvent) => void;
+  onPixelLatencyReport: (report: PixelLatencyReport) => void;
 };
 
 export class LatencyDiagnostics {
@@ -81,20 +88,17 @@ export class LatencyDiagnostics {
     this.latestClientRtt = stats.connection?.currentRoundTripTime ?? null;
   }
 
-  /** Get E2E pixel latency stats. */
-  getPixelStats(): PixelLatencyStats | null {
-    return this.pixelProbe?.getStats() ?? null;
-  }
-
   /** Start pixel probing (stamper already started in createStamper). */
   async start(): Promise<void> {
     // Create and start pixel probe (deferred so stamper is available)
     if (this.options.pixelMarker && this.options.videoElement) {
-      this.pixelProbe = new PixelLatencyProbe(
-        this.options.sendMessage,
-        this.options.onPixelLatency,
-        this.stamper ?? undefined,
-      );
+      this.pixelProbe = new PixelLatencyProbe({
+        sendMessage: this.options.sendMessage,
+        onMeasurement: this.options.onPixelLatency,
+        onEvent: this.options.onPixelLatencyEvent,
+        onReport: this.options.onPixelLatencyReport,
+        stamper: this.stamper ?? undefined,
+      });
       this.pixelProbe.start(this.options.videoElement);
     }
   }

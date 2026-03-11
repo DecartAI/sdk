@@ -40,7 +40,13 @@ export type {
   VideoStallEvent,
 } from "./realtime/diagnostics";
 export type { SetInput } from "./realtime/methods";
-export type { PixelLatencyMeasurement, PixelLatencyStats } from "./realtime/pixel-latency";
+export type {
+  PixelLatencyEvent,
+  PixelLatencyMeasurement,
+  PixelLatencyReport,
+  PixelLatencyStats,
+  PixelLatencyStatus,
+} from "./realtime/pixel-latency";
 export type {
   RealTimeSubscribeClient,
   SubscribeEvents,

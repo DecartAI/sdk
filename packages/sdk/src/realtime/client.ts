@@ -11,7 +11,7 @@ import { IVSManager } from "./ivs-manager";
 import { IVSStatsCollector } from "./ivs-stats-collector";
 import { LatencyDiagnostics } from "./latency-diagnostics";
 import { realtimeMethods, type SetInput } from "./methods";
-import type { PixelLatencyMeasurement } from "./pixel-latency";
+import type { PixelLatencyEvent, PixelLatencyMeasurement, PixelLatencyReport } from "./pixel-latency";
 import {
   decodeSubscribeToken,
   encodeSubscribeToken,
@@ -120,6 +120,8 @@ export type Events = {
   stats: WebRTCStats;
   compositeLatency: CompositeLatencyEstimate;
   pixelLatency: PixelLatencyMeasurement;
+  pixelLatencyEvent: PixelLatencyEvent;
+  pixelLatencyReport: PixelLatencyReport;
 };
 
 export type RealTimeClient = {
@@ -298,6 +300,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           sendMessage: (msg) => manager.sendMessage(msg),
           onCompositeLatency: (est) => emitOrBuffer("compositeLatency", est),
           onPixelLatency: (m) => emitOrBuffer("pixelLatency", m),
+          onPixelLatencyEvent: (e) => emitOrBuffer("pixelLatencyEvent", e),
+          onPixelLatencyReport: (r) => emitOrBuffer("pixelLatencyReport", r),
         });
 
         // Wrap camera stream with canvas stamper for E2E pixel latency

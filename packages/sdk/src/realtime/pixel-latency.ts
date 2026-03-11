@@ -15,6 +15,19 @@ export type PixelLatencyStats = {
   deliveryRate: number;
 };
 
+export type PixelLatencyStatus = "ok" | "ok_reordered" | "corrupted" | "lost";
+
+export type PixelLatencyEvent =
+  | { status: "ok"; seq: number; e2eLatencyMs: number; timestamp: number }
+  | { status: "ok_reordered"; seq: number; e2eLatencyMs: number; timestamp: number }
+  | { status: "corrupted"; seq: null; e2eLatencyMs: null; timestamp: number }
+  | { status: "lost"; seq: number; e2eLatencyMs: null; timestamp: number; timeoutMs: number };
+
+export type PixelLatencyReport = PixelLatencyStats & {
+  timestamp: number;
+  pending: number;
+};
+
 /** Message sent to server for legacy WS-probe mode. */
 type LatencyProbeMessage = {
   type: "latency_probe";
@@ -57,16 +70,27 @@ export class PixelLatencyProbe {
   private recentLatencies: number[] = [];
   private stats = { sent: 0, received: 0, lost: 0, corrupted: 0, outOfOrder: 0 };
 
-  constructor(
-    private sendMessage: ((msg: LatencyProbeMessage | E2ELatencyReportMessage) => void) | null,
-    private onMeasurement: (m: PixelLatencyMeasurement) => void,
-    stamper?: PixelLatencyStamper,
-  ) {
+  private sendMessage: ((msg: LatencyProbeMessage | E2ELatencyReportMessage) => void) | null;
+  private onMeasurement: (m: PixelLatencyMeasurement) => void;
+  private onEvent: (e: PixelLatencyEvent) => void;
+  private onReport: (r: PixelLatencyReport) => void;
+
+  constructor(options: {
+    sendMessage: ((msg: LatencyProbeMessage | E2ELatencyReportMessage) => void) | null;
+    onMeasurement: (m: PixelLatencyMeasurement) => void;
+    onEvent: (e: PixelLatencyEvent) => void;
+    onReport: (r: PixelLatencyReport) => void;
+    stamper?: PixelLatencyStamper;
+  }) {
+    this.sendMessage = options.sendMessage;
+    this.onMeasurement = options.onMeasurement;
+    this.onEvent = options.onEvent;
+    this.onReport = options.onReport;
+    this.stamper = options.stamper ?? null;
     this.canvas = new OffscreenCanvas(PixelLatencyProbe.TOTAL_PIXELS, 1);
     const ctx = this.canvas.getContext("2d");
     if (!ctx) throw new Error("Failed to create OffscreenCanvas 2d context");
     this.ctx = ctx;
-    this.stamper = stamper ?? null;
   }
 
   start(videoElement: HTMLVideoElement): void {
@@ -122,6 +146,8 @@ export class PixelLatencyProbe {
   }
 
   private sendE2EReport(): void {
+    this.cleanUpOldProbes();
+    this.onReport({ ...this.getStats(), timestamp: Date.now(), pending: this.pendingProbes.size });
     if (!this.sendMessage) return;
     const avgMs =
       this.recentLatencies.length > 0
@@ -195,6 +221,7 @@ export class PixelLatencyProbe {
       if (result === "no_marker") return;
       if (result === "corrupted") {
         this.stats.corrupted++;
+        this.onEvent({ status: "corrupted", seq: null, e2eLatencyMs: null, timestamp: Date.now() });
         return;
       }
 
@@ -205,23 +232,27 @@ export class PixelLatencyProbe {
       this.pendingProbes.delete(seq);
       this.stats.received++;
 
+      const e2eLatencyMs = performance.now() - clientTime;
+      this.recentLatencies.push(e2eLatencyMs);
+      const timestamp = Date.now();
+
       // Reorder detection
+      let reordered = false;
       if (seq < this.lastReceivedSeq) {
-        // Handle wrapping: only count as out-of-order if distance is small
         const distance = this.lastReceivedSeq - seq;
         if (distance < 0x8000) {
           this.stats.outOfOrder++;
+          reordered = true;
         }
       }
       this.lastReceivedSeq = seq;
 
-      const e2eLatencyMs = performance.now() - clientTime;
-      this.recentLatencies.push(e2eLatencyMs);
-
-      this.onMeasurement({
+      this.onMeasurement({ seq, e2eLatencyMs, timestamp });
+      this.onEvent({
+        status: reordered ? "ok_reordered" : "ok",
         seq,
         e2eLatencyMs,
-        timestamp: Date.now(),
+        timestamp,
       });
     } catch {
       // Ignore read errors (cross-origin, etc.)
@@ -278,6 +309,13 @@ export class PixelLatencyProbe {
       if (now - t > PixelLatencyProbe.PROBE_TTL_MS) {
         this.pendingProbes.delete(s);
         this.stats.lost++;
+        this.onEvent({
+          status: "lost",
+          seq: s,
+          e2eLatencyMs: null,
+          timestamp: Date.now(),
+          timeoutMs: PixelLatencyProbe.PROBE_TTL_MS,
+        });
       }
     }
   }
