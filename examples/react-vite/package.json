@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@aws/ivs-web-broadcast": "^1.0.0",
+    "amazon-ivs-web-broadcast": "^1.14.0",
     "@decartai/sdk": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

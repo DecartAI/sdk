@@ -13,7 +13,7 @@ import type {
 } from "./types";
 
 // ── IVS SDK type declarations ─────────────────────────────────────────
-// Minimal type surface for @aws/ivs-web-broadcast so the SDK compiles
+// Minimal type surface for amazon-ivs-web-broadcast so the SDK compiles
 // even when the package is not installed.
 
 interface IVSStageStrategy {
@@ -75,7 +75,7 @@ export interface IVSBroadcastModule {
 
 export async function getIVSBroadcastClient(): Promise<IVSBroadcastModule> {
   try {
-    const moduleName = "@aws/ivs-web-broadcast";
+    const moduleName = "amazon-ivs-web-broadcast";
     // biome-ignore lint/suspicious/noExplicitAny: dynamic import of optional dependency
     const mod = await (Function(`return import("${moduleName}")`)() as Promise<any>);
     return mod.default ?? mod;
@@ -84,7 +84,7 @@ export async function getIVSBroadcastClient(): Promise<IVSBroadcastModule> {
       // biome-ignore lint/suspicious/noExplicitAny: global fallback
       return (globalThis as any).IVSBroadcastClient as IVSBroadcastModule;
     }
-    throw new Error("@aws/ivs-web-broadcast not found. Install via npm or load via script tag.");
+    throw new Error("amazon-ivs-web-broadcast not found. Install via npm or load via script tag.");
   }
 }
 

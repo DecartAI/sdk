@@ -61,10 +61,10 @@
     "zod": "^4.0.17"
   },
   "peerDependencies": {
-    "@aws/ivs-web-broadcast": ">=1.14.0"
+    "amazon-ivs-web-broadcast": ">=1.14.0"
   },
   "peerDependenciesMeta": {
-    "@aws/ivs-web-broadcast": {
+    "amazon-ivs-web-broadcast": {
       "optional": true
     }
   }
