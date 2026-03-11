@@ -22,6 +22,10 @@ export type WebRTCStats = {
     freezeCountDelta: number;
     /** Delta: freeze duration (seconds) since previous sample. */
     freezeDurationDelta: number;
+    /** Cumulative NACK (retransmission request) count from inbound-rtp. */
+    nackCount: number;
+    /** Delta: NACKs since previous sample (≈ NACK rate per polling interval). */
+    nackCountDelta: number;
   } | null;
   audio: {
     bytesReceived: number;
@@ -73,6 +77,7 @@ export class StatsParser {
   private prevFramesDropped = 0;
   private prevFreezeCount = 0;
   private prevFreezeDuration = 0;
+  private prevNackCount = 0;
   private prevPacketsLostAudio = 0;
 
   /** Reset all delta-tracking state to zero. */
@@ -85,6 +90,7 @@ export class StatsParser {
     this.prevFramesDropped = 0;
     this.prevFreezeCount = 0;
     this.prevFreezeDuration = 0;
+    this.prevNackCount = 0;
     this.prevPacketsLostAudio = 0;
   }
 
@@ -111,6 +117,7 @@ export class StatsParser {
         const framesDropped = (r.framesDropped as number) ?? 0;
         const freezeCount = (r.freezeCount as number) ?? 0;
         const freezeDuration = (r.totalFreezesDuration as number) ?? 0;
+        const nackCount = (r.nackCount as number) ?? 0;
 
         video = {
           framesDecoded: (r.framesDecoded as number) ?? 0,
@@ -129,11 +136,14 @@ export class StatsParser {
           framesDroppedDelta: Math.max(0, framesDropped - this.prevFramesDropped),
           freezeCountDelta: Math.max(0, freezeCount - this.prevFreezeCount),
           freezeDurationDelta: Math.max(0, freezeDuration - this.prevFreezeDuration),
+          nackCount,
+          nackCountDelta: Math.max(0, nackCount - this.prevNackCount),
         };
         this.prevPacketsLostVideo = packetsLost;
         this.prevFramesDropped = framesDropped;
         this.prevFreezeCount = freezeCount;
         this.prevFreezeDuration = freezeDuration;
+        this.prevNackCount = nackCount;
       }
 
       if (report.type === "outbound-rtp" && report.kind === "video") {
