@@ -102,10 +102,8 @@ export class PixelLatencyProbe {
     if (this.stamper) {
       // E2E mode: stamp input frames every ~2s
       this.probeIntervalId = setInterval(() => this.stampInputFrame(), PixelLatencyProbe.PROBE_INTERVAL_MS);
-      // Periodic report to server
-      if (this.sendMessage) {
-        this.reportIntervalId = setInterval(() => this.sendE2EReport(), PixelLatencyProbe.REPORT_INTERVAL_MS);
-      }
+      // Periodic report (to server and/or local callback)
+      this.reportIntervalId = setInterval(() => this.sendE2EReport(), PixelLatencyProbe.REPORT_INTERVAL_MS);
     } else if (this.sendMessage) {
       // Legacy WS-probe mode
       this.probeIntervalId = setInterval(() => this.sendProbe(), PixelLatencyProbe.PROBE_INTERVAL_MS);

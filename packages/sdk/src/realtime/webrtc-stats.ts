@@ -56,6 +56,11 @@ export type WebRTCStats = {
     currentRoundTripTime: number | null;
     /** Available outgoing bitrate estimate in bits/sec, or null if unavailable. */
     availableOutgoingBitrate: number | null;
+    /** Selected candidate pairs from succeeded ICE negotiations (one per PeerConnection). */
+    selectedCandidatePairs: Array<{
+      local: { address: string; port: number; protocol: string; candidateType: string };
+      remote: { address: string; port: number; protocol: string; candidateType: string };
+    }>;
   };
 };
 
@@ -101,9 +106,28 @@ export class StatsParser {
     let video: WebRTCStats["video"] = null;
     let audio: WebRTCStats["audio"] = null;
     let outboundVideo: WebRTCStats["outboundVideo"] = null;
+    // Pre-collect candidate entries so candidate-pair can reference them
+    type CandidateInfo = { address: string; port: number; protocol: string; candidateType: string };
+    const candidateMap = new Map<string, CandidateInfo>();
+    rawStats.forEach((report) => {
+      if (report.type === "remote-candidate" || report.type === "local-candidate") {
+        const r = report as Record<string, unknown>;
+        const addr = r.address as string | undefined;
+        if (addr) {
+          candidateMap.set(r.id as string, {
+            address: addr,
+            port: (r.port as number) ?? 0,
+            protocol: (r.protocol as string) ?? "udp",
+            candidateType: (r.candidateType as string) ?? "unknown",
+          });
+        }
+      }
+    });
+
     const connection: WebRTCStats["connection"] = {
       currentRoundTripTime: null,
       availableOutgoingBitrate: null,
+      selectedCandidatePairs: [],
     };
 
     rawStats.forEach((report) => {
@@ -187,6 +211,14 @@ export class StatsParser {
         if (r.state === "succeeded") {
           connection.currentRoundTripTime = (r.currentRoundTripTime as number) ?? null;
           connection.availableOutgoingBitrate = (r.availableOutgoingBitrate as number) ?? null;
+          // Resolve selected candidate pair
+          const localCandId = r.localCandidateId as string | undefined;
+          const remoteCandId = r.remoteCandidateId as string | undefined;
+          const local = localCandId ? candidateMap.get(localCandId) : undefined;
+          const remote = remoteCandId ? candidateMap.get(remoteCandId) : undefined;
+          if (local && remote) {
+            connection.selectedCandidatePairs.push({ local, remote });
+          }
         }
       }
     });
