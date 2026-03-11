@@ -30,6 +30,12 @@ export class PixelLatencyStamper {
     this.sourceVideo.playsInline = true;
 
     this.canvas = document.createElement("canvas");
+
+    // Initialize canvas dimensions from track settings so it's not 300x150
+    const settings = sourceVideoTrack.getSettings();
+    if (settings.width) this.canvas.width = settings.width;
+    if (settings.height) this.canvas.height = settings.height;
+
     const ctx = this.canvas.getContext("2d");
     if (!ctx) throw new Error("Failed to create canvas 2d context for pixel stamper");
     this.ctx = ctx;

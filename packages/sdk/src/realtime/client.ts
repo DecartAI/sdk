@@ -302,7 +302,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
         // Wrap camera stream with canvas stamper for E2E pixel latency
         if (parsedOptions.data.latencyTracking.pixelMarker && inputStream) {
-          inputStream = latencyDiag.createStamper(inputStream);
+          inputStream = await latencyDiag.createStamper(inputStream);
         }
       }
 

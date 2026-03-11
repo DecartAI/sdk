@@ -41,14 +41,18 @@ export class LatencyDiagnostics {
    * Create a stamper wrapping the camera video track.
    * Returns the processed MediaStream to use instead of the raw camera stream.
    * Call this before manager.connect() to substitute the published stream.
+   * Starts the draw loop immediately so IVS gets frames from the start.
    */
-  createStamper(localStream: MediaStream): MediaStream {
+  async createStamper(localStream: MediaStream): Promise<MediaStream> {
     if (!this.options.pixelMarker) return localStream;
 
     const videoTrack = localStream.getVideoTracks()[0];
     if (!videoTrack) return localStream;
 
     this.stamper = new PixelLatencyStamper(videoTrack);
+
+    // Start the draw loop now so the canvas track produces frames immediately
+    await this.stamper.start();
 
     // Build a new stream: processed video + original audio
     const processedStream = new MediaStream();
@@ -82,13 +86,8 @@ export class LatencyDiagnostics {
     return this.pixelProbe?.getStats() ?? null;
   }
 
-  /** Start pixel probing and stamper (call after video is playing). */
+  /** Start pixel probing (stamper already started in createStamper). */
   async start(): Promise<void> {
-    // Start the canvas draw loop for the stamper
-    if (this.stamper) {
-      await this.stamper.start();
-    }
-
     // Create and start pixel probe (deferred so stamper is available)
     if (this.options.pixelMarker && this.options.videoElement) {
       this.pixelProbe = new PixelLatencyProbe(
