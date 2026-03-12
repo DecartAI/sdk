@@ -1,9 +1,14 @@
 /**
- * Canvas-based input frame stamper for E2E pixel latency.
+ * Input frame stamper for E2E pixel latency.
  *
- * Wraps a camera MediaStreamTrack with a canvas-processed track.
- * Uses requestAnimationFrame loop: draw camera → optionally stamp marker → captureStream().
- * The PixelLatencyProbe queues a seq to stamp every ~2s.
+ * Wraps a camera MediaStreamTrack to optionally stamp a pixel marker (~every 2s).
+ *
+ * Primary path: Insertable Streams (MediaStreamTrackProcessor/Generator, Chrome 94+).
+ *   - 1-in-1-out: output FPS naturally matches source (no rAF inflation).
+ *   - 99% of frames pass through unchanged (zero copy, zero quality loss).
+ *   - Only stamped frames go through OffscreenCanvas.
+ *
+ * Fallback: Canvas + rAF + captureStream (for environments without Insertable Streams).
  */
 
 const SYNC = [200, 50, 200, 50];
@@ -12,18 +17,73 @@ const CHECKSUM_BITS = 4;
 const TOTAL_PIXELS = 24; // 4 sync + 16 data + 4 checksum
 
 export class PixelLatencyStamper {
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
-  private sourceVideo: HTMLVideoElement;
-  private processedStream: MediaStream;
   private originalTrack: MediaStreamTrack;
+  private processedStream: MediaStream;
   private running = false;
-  private pendingStamp: number | null = null; // seq to stamp on next frame
+  private pendingStamp: number | null = null;
+
+  // Insertable Streams path
+  private abortController: AbortController | null = null;
+
+  // Canvas fallback path
+  private canvas: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
+  private sourceVideo: HTMLVideoElement | null = null;
 
   constructor(sourceVideoTrack: MediaStreamTrack) {
     this.originalTrack = sourceVideoTrack;
 
-    // Hidden video element to render the source track
+    if (typeof MediaStreamTrackProcessor !== "undefined") {
+      this.processedStream = this.initInsertableStreams(sourceVideoTrack);
+    } else {
+      this.processedStream = this.initCanvasFallback(sourceVideoTrack);
+    }
+  }
+
+  // ── Insertable Streams (primary) ─────────────────────────────────────
+
+  private initInsertableStreams(track: MediaStreamTrack): MediaStream {
+    const processor = new MediaStreamTrackProcessor({ track });
+    const generator = new MediaStreamTrackGenerator({ kind: "video" });
+
+    const stamper = this;
+    const transformer = new TransformStream<VideoFrame, VideoFrame>({
+      transform(frame, controller) {
+        if (stamper.pendingStamp !== null) {
+          const seq = stamper.pendingStamp;
+          stamper.pendingStamp = null;
+
+          const w = frame.displayWidth;
+          const h = frame.displayHeight;
+          const canvas = new OffscreenCanvas(w, h);
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(frame, 0, 0);
+          stamper.stampMarker(ctx, h, seq);
+
+          const stamped = new VideoFrame(canvas, { timestamp: frame.timestamp });
+          frame.close();
+          controller.enqueue(stamped);
+        } else {
+          // Pass through unchanged — zero copy, zero quality loss
+          controller.enqueue(frame);
+        }
+      },
+    });
+
+    this.abortController = new AbortController();
+    processor.readable
+      .pipeThrough(transformer, { signal: this.abortController.signal })
+      .pipeTo(generator.writable, { signal: this.abortController.signal })
+      .catch(() => {
+        // Expected on abort during stop()
+      });
+
+    return new MediaStream([generator]);
+  }
+
+  // ── Canvas fallback ──────────────────────────────────────────────────
+
+  private initCanvasFallback(sourceVideoTrack: MediaStreamTrack): MediaStream {
     this.sourceVideo = document.createElement("video");
     this.sourceVideo.srcObject = new MediaStream([sourceVideoTrack]);
     this.sourceVideo.muted = true;
@@ -31,7 +91,6 @@ export class PixelLatencyStamper {
 
     this.canvas = document.createElement("canvas");
 
-    // Initialize canvas dimensions from track settings so it's not 300x150
     const settings = sourceVideoTrack.getSettings();
     if (settings.width) this.canvas.width = settings.width;
     if (settings.height) this.canvas.height = settings.height;
@@ -40,11 +99,12 @@ export class PixelLatencyStamper {
     if (!ctx) throw new Error("Failed to create canvas 2d context for pixel stamper");
     this.ctx = ctx;
 
-    // captureStream() with no args = frame rate matches requestAnimationFrame
-    this.processedStream = this.canvas.captureStream();
+    return this.canvas.captureStream();
   }
 
-  /** Get the processed MediaStream (canvas video track). */
+  // ── Public API ───────────────────────────────────────────────────────
+
+  /** Get the processed MediaStream. */
   getProcessedStream(): MediaStream {
     return this.processedStream;
   }
@@ -57,31 +117,51 @@ export class PixelLatencyStamper {
   async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
-    await this.sourceVideo.play();
-    this.drawLoop();
+
+    // Canvas fallback needs explicit play + draw loop
+    if (this.sourceVideo) {
+      await this.sourceVideo.play();
+      this.drawLoop();
+    }
+    // Insertable Streams path is already piping from the constructor
   }
 
   stop(): void {
     this.running = false;
-    this.sourceVideo.pause();
-    this.sourceVideo.srcObject = null;
-    // Stop canvas tracks
+
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
+
+    if (this.sourceVideo) {
+      this.sourceVideo.pause();
+      this.sourceVideo.srcObject = null;
+    }
+
     for (const track of this.processedStream.getTracks()) {
       track.stop();
     }
   }
 
-  /** Queue a marker seq to be stamped on the next drawn frame. */
+  /** Queue a marker seq to be stamped on the next frame. */
   queueStamp(seq: number): void {
     this.pendingStamp = seq;
   }
+
+  // ── Canvas fallback draw loop ────────────────────────────────────────
 
   private drawLoop(): void {
     if (!this.running) return;
 
     requestAnimationFrame(() => {
-      if (this.sourceVideo.videoWidth > 0 && this.sourceVideo.videoHeight > 0) {
-        // Resize canvas to match source if needed
+      if (
+        this.sourceVideo &&
+        this.ctx &&
+        this.canvas &&
+        this.sourceVideo.videoWidth > 0 &&
+        this.sourceVideo.videoHeight > 0
+      ) {
         if (this.canvas.width !== this.sourceVideo.videoWidth) {
           this.canvas.width = this.sourceVideo.videoWidth;
         }
@@ -89,14 +169,12 @@ export class PixelLatencyStamper {
           this.canvas.height = this.sourceVideo.videoHeight;
         }
 
-        // Draw camera frame
         this.ctx.drawImage(this.sourceVideo, 0, 0);
 
-        // Stamp marker if queued
         const seq = this.pendingStamp;
         if (seq !== null) {
           this.pendingStamp = null;
-          this.stampMarker(seq);
+          this.stampMarker(this.ctx, this.canvas.height, seq);
         }
       }
 
@@ -104,19 +182,25 @@ export class PixelLatencyStamper {
     });
   }
 
-  private stampMarker(seq: number): void {
+  // ── Shared stamp logic ───────────────────────────────────────────────
+
+  private stampMarker(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    canvasHeight: number,
+    seq: number,
+  ): void {
     const seqMasked = seq & 0xffff;
-    const imageData = this.ctx.createImageData(TOTAL_PIXELS, 1);
+    const imageData = ctx.createImageData(TOTAL_PIXELS, 1);
     const data = imageData.data;
 
     // Sync pattern: R=G=B=200 or R=G=B=50 (maps to Y=200/Y=50 in YUV)
     for (let i = 0; i < 4; i++) {
       const val = SYNC[i];
       const offset = i * 4;
-      data[offset] = val; // R
-      data[offset + 1] = val; // G
-      data[offset + 2] = val; // B
-      data[offset + 3] = 255; // A
+      data[offset] = val;
+      data[offset + 1] = val;
+      data[offset + 2] = val;
+      data[offset + 3] = 255;
     }
 
     // 16-bit seq (MSB first)
@@ -145,6 +229,6 @@ export class PixelLatencyStamper {
       data[offset + 3] = 255;
     }
 
-    this.ctx.putImageData(imageData, 0, this.canvas.height - 1);
+    ctx.putImageData(imageData, 0, canvasHeight - 1);
   }
 }
