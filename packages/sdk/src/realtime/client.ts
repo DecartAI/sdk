@@ -107,7 +107,7 @@ const realTimeClientConnectOptionsSchema = z.object({
       videoElement: z.custom<HTMLVideoElement>().optional(),
     })
     .optional(),
-  extraQueryParams: z.record(z.string()).optional(),
+  extraQueryParams: z.record(z.string(), z.string()).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
