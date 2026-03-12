@@ -107,6 +107,7 @@ const realTimeClientConnectOptionsSchema = z.object({
       videoElement: z.custom<HTMLVideoElement>().optional(),
     })
     .optional(),
+  extraQueryParams: z.record(z.string()).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -212,16 +213,19 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       };
 
       const latencyQs = parsedOptions.data.latencyTracking ? "&latency_diagnostics=true" : "";
+      const extraQs = parsedOptions.data.extraQueryParams
+        ? "&" + new URLSearchParams(parsedOptions.data.extraQueryParams).toString()
+        : "";
 
       if (transport === "ivs") {
         const ivsUrlPath = options.model.urlPath.replace(/\/?$/, "-ivs");
         transportManager = new IVSManager({
-          ivsUrl: `${baseUrl}${ivsUrlPath}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${latencyQs}`,
+          ivsUrl: `${baseUrl}${ivsUrlPath}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${latencyQs}${extraQs}`,
           ...sharedCallbacks,
         });
       } else {
         transportManager = new WebRTCManager({
-          webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${latencyQs}`,
+          webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${latencyQs}${extraQs}`,
           ...sharedCallbacks,
           customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
           vp8MinBitrate: 300,
