@@ -15,6 +15,19 @@ export type PixelLatencyStats = {
   deliveryRate: number;
 };
 
+export type PixelLatencyStatus = "ok" | "ok_reordered" | "corrupted" | "lost";
+
+export type PixelLatencyEvent =
+  | { status: "ok"; seq: number; e2eLatencyMs: number; timestamp: number }
+  | { status: "ok_reordered"; seq: number; e2eLatencyMs: number; timestamp: number }
+  | { status: "corrupted"; seq: null; e2eLatencyMs: null; timestamp: number }
+  | { status: "lost"; seq: number; e2eLatencyMs: null; timestamp: number; timeoutMs: number };
+
+export type PixelLatencyReport = PixelLatencyStats & {
+  timestamp: number;
+  pending: number;
+};
+
 /** Message sent to server for legacy WS-probe mode. */
 type LatencyProbeMessage = {
   type: "latency_probe";
@@ -57,17 +70,30 @@ export class PixelLatencyProbe {
   private lastReceivedSeq = 0;
   private recentLatencies: number[] = [];
   private stats = { sent: 0, received: 0, lost: 0, corrupted: 0, outOfOrder: 0 };
+  // Previous snapshot for computing deltas sent to server
+  private prevReportStats = { lost: 0, corrupted: 0, outOfOrder: 0 };
 
-  constructor(
-    private sendMessage: ((msg: LatencyProbeMessage | E2ELatencyReportMessage) => void) | null,
-    private onMeasurement: (m: PixelLatencyMeasurement) => void,
-    stamper?: PixelLatencyStamper,
-  ) {
+  private sendMessage: ((msg: LatencyProbeMessage | E2ELatencyReportMessage) => void) | null;
+  private onMeasurement: (m: PixelLatencyMeasurement) => void;
+  private onEvent: (e: PixelLatencyEvent) => void;
+  private onReport: (r: PixelLatencyReport) => void;
+
+  constructor(options: {
+    sendMessage: ((msg: LatencyProbeMessage | E2ELatencyReportMessage) => void) | null;
+    onMeasurement: (m: PixelLatencyMeasurement) => void;
+    onEvent: (e: PixelLatencyEvent) => void;
+    onReport: (r: PixelLatencyReport) => void;
+    stamper?: PixelLatencyStamper;
+  }) {
+    this.sendMessage = options.sendMessage;
+    this.onMeasurement = options.onMeasurement;
+    this.onEvent = options.onEvent;
+    this.onReport = options.onReport;
+    this.stamper = options.stamper ?? null;
     this.canvas = new OffscreenCanvas(PixelLatencyProbe.TOTAL_PIXELS, PixelLatencyProbe.MARKER_ROWS);
     const ctx = this.canvas.getContext("2d");
     if (!ctx) throw new Error("Failed to create OffscreenCanvas 2d context");
     this.ctx = ctx;
-    this.stamper = stamper ?? null;
   }
 
   start(videoElement: HTMLVideoElement): void {
@@ -113,7 +139,8 @@ export class PixelLatencyProbe {
 
   private stampInputFrame(): void {
     if (!this.stamper) return;
-    const seq = ++this.seq;
+    this.seq = (this.seq + 1) & 0xffff;
+    const seq = this.seq;
     this.pendingProbes.set(seq, performance.now());
     this.stats.sent++;
     this.stamper.queueStamp(seq);
@@ -121,20 +148,30 @@ export class PixelLatencyProbe {
   }
 
   private sendE2EReport(): void {
+    this.cleanUpOldProbes();
+    this.onReport({ ...this.getStats(), timestamp: Date.now(), pending: this.pendingProbes.size });
     if (!this.sendMessage) return;
     const avgMs =
       this.recentLatencies.length > 0
         ? this.recentLatencies.reduce((a, b) => a + b, 0) / this.recentLatencies.length
         : null;
     const sent = this.stats.sent;
+    const deltaLost = this.stats.lost - this.prevReportStats.lost;
+    const deltaCorrupted = this.stats.corrupted - this.prevReportStats.corrupted;
+    const deltaOutOfOrder = this.stats.outOfOrder - this.prevReportStats.outOfOrder;
     this.sendMessage({
       type: "e2e_latency_report",
       avg_latency_ms: avgMs !== null ? Math.round(avgMs * 100) / 100 : null,
       delivery_rate: sent > 0 ? this.stats.received / sent : 0,
+      lost: deltaLost,
+      corrupted: deltaCorrupted,
+      out_of_order: deltaOutOfOrder,
+    });
+    this.prevReportStats = {
       lost: this.stats.lost,
       corrupted: this.stats.corrupted,
-      out_of_order: this.stats.outOfOrder,
-    });
+      outOfOrder: this.stats.outOfOrder,
+    };
     this.recentLatencies = [];
   }
 
@@ -142,7 +179,8 @@ export class PixelLatencyProbe {
 
   private sendProbe(): void {
     if (!this.sendMessage) return;
-    const seq = ++this.seq;
+    this.seq = (this.seq + 1) & 0xffff;
+    const seq = this.seq;
     const clientTime = performance.now();
     this.pendingProbes.set(seq, clientTime);
     this.stats.sent++;
@@ -174,7 +212,7 @@ export class PixelLatencyProbe {
     if (video.videoWidth === 0 || video.videoHeight === 0) return;
 
     try {
-      // Draw the bottom MARKER_ROWS rows (24 x MARKER_ROWS region)
+      // Draw only the bottom-left 24x1 region
       this.ctx.drawImage(
         video,
         0,
@@ -199,6 +237,7 @@ export class PixelLatencyProbe {
       if (result === "no_marker") return;
       if (result === "corrupted") {
         this.stats.corrupted++;
+        this.onEvent({ status: "corrupted", seq: null, e2eLatencyMs: null, timestamp: Date.now() });
         return;
       }
 
@@ -209,23 +248,27 @@ export class PixelLatencyProbe {
       this.pendingProbes.delete(seq);
       this.stats.received++;
 
+      const e2eLatencyMs = performance.now() - clientTime;
+      this.recentLatencies.push(e2eLatencyMs);
+      const timestamp = Date.now();
+
       // Reorder detection
+      let reordered = false;
       if (seq < this.lastReceivedSeq) {
-        // Handle wrapping: only count as out-of-order if distance is small
         const distance = this.lastReceivedSeq - seq;
         if (distance < 0x8000) {
           this.stats.outOfOrder++;
+          reordered = true;
         }
       }
       this.lastReceivedSeq = seq;
 
-      const e2eLatencyMs = performance.now() - clientTime;
-      this.recentLatencies.push(e2eLatencyMs);
-
-      this.onMeasurement({
+      this.onMeasurement({ seq, e2eLatencyMs, timestamp });
+      this.onEvent({
+        status: reordered ? "ok_reordered" : "ok",
         seq,
         e2eLatencyMs,
-        timestamp: Date.now(),
+        timestamp,
       });
     } catch {
       // Ignore read errors (cross-origin, etc.)
@@ -233,8 +276,8 @@ export class PixelLatencyProbe {
   }
 
   /**
-   * Extract seq from pixel data using per-bit majority voting across rows.
-   * Returns: number (valid seq), "no_marker" (no rows pass sync), "corrupted" (sync ok, checksum bad)
+   * Extract seq from pixel data.
+   * Returns: number (valid seq), "no_marker" (sync doesn't match), "corrupted" (sync ok, checksum bad)
    */
   private extractSeq(pixels: Uint8ClampedArray): number | "no_marker" | "corrupted" {
     const tp = PixelLatencyProbe.TOTAL_PIXELS;
@@ -305,6 +348,13 @@ export class PixelLatencyProbe {
       if (now - t > PixelLatencyProbe.PROBE_TTL_MS) {
         this.pendingProbes.delete(s);
         this.stats.lost++;
+        this.onEvent({
+          status: "lost",
+          seq: s,
+          e2eLatencyMs: null,
+          timestamp: Date.now(),
+          timeoutMs: PixelLatencyProbe.PROBE_TTL_MS,
+        });
       }
     }
   }
