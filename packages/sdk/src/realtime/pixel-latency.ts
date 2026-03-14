@@ -15,19 +15,6 @@ export type PixelLatencyStats = {
   deliveryRate: number;
 };
 
-export type PixelLatencyStatus = "ok" | "ok_reordered" | "corrupted" | "lost";
-
-export type PixelLatencyEvent =
-  | { status: "ok"; seq: number; e2eLatencyMs: number; timestamp: number }
-  | { status: "ok_reordered"; seq: number; e2eLatencyMs: number; timestamp: number }
-  | { status: "corrupted"; seq: null; e2eLatencyMs: null; timestamp: number }
-  | { status: "lost"; seq: number; e2eLatencyMs: null; timestamp: number; timeoutMs: number };
-
-export type PixelLatencyReport = PixelLatencyStats & {
-  timestamp: number;
-  pending: number;
-};
-
 /** Message sent to server for legacy WS-probe mode. */
 type LatencyProbeMessage = {
   type: "latency_probe";
@@ -50,6 +37,7 @@ export class PixelLatencyProbe {
   private static readonly DATA_BITS = 16;
   private static readonly CHECKSUM_BITS = 4;
   private static readonly TOTAL_PIXELS = 24;
+  private static readonly MARKER_ROWS = 4;
   private static readonly PROBE_INTERVAL_MS = 2000;
   private static readonly PROBE_TTL_MS = 60000;
   private static readonly REPORT_INTERVAL_MS = 5000;
@@ -69,30 +57,17 @@ export class PixelLatencyProbe {
   private lastReceivedSeq = 0;
   private recentLatencies: number[] = [];
   private stats = { sent: 0, received: 0, lost: 0, corrupted: 0, outOfOrder: 0 };
-  // Previous snapshot for computing deltas sent to server
-  private prevReportStats = { lost: 0, corrupted: 0, outOfOrder: 0 };
 
-  private sendMessage: ((msg: LatencyProbeMessage | E2ELatencyReportMessage) => void) | null;
-  private onMeasurement: (m: PixelLatencyMeasurement) => void;
-  private onEvent: (e: PixelLatencyEvent) => void;
-  private onReport: (r: PixelLatencyReport) => void;
-
-  constructor(options: {
-    sendMessage: ((msg: LatencyProbeMessage | E2ELatencyReportMessage) => void) | null;
-    onMeasurement: (m: PixelLatencyMeasurement) => void;
-    onEvent: (e: PixelLatencyEvent) => void;
-    onReport: (r: PixelLatencyReport) => void;
-    stamper?: PixelLatencyStamper;
-  }) {
-    this.sendMessage = options.sendMessage;
-    this.onMeasurement = options.onMeasurement;
-    this.onEvent = options.onEvent;
-    this.onReport = options.onReport;
-    this.stamper = options.stamper ?? null;
-    this.canvas = new OffscreenCanvas(PixelLatencyProbe.TOTAL_PIXELS, 1);
+  constructor(
+    private sendMessage: ((msg: LatencyProbeMessage | E2ELatencyReportMessage) => void) | null,
+    private onMeasurement: (m: PixelLatencyMeasurement) => void,
+    stamper?: PixelLatencyStamper,
+  ) {
+    this.canvas = new OffscreenCanvas(PixelLatencyProbe.TOTAL_PIXELS, PixelLatencyProbe.MARKER_ROWS);
     const ctx = this.canvas.getContext("2d");
     if (!ctx) throw new Error("Failed to create OffscreenCanvas 2d context");
     this.ctx = ctx;
+    this.stamper = stamper ?? null;
   }
 
   start(videoElement: HTMLVideoElement): void {
@@ -138,8 +113,7 @@ export class PixelLatencyProbe {
 
   private stampInputFrame(): void {
     if (!this.stamper) return;
-    this.seq = (this.seq + 1) & 0xffff;
-    const seq = this.seq;
+    const seq = ++this.seq;
     this.pendingProbes.set(seq, performance.now());
     this.stats.sent++;
     this.stamper.queueStamp(seq);
@@ -147,30 +121,20 @@ export class PixelLatencyProbe {
   }
 
   private sendE2EReport(): void {
-    this.cleanUpOldProbes();
-    this.onReport({ ...this.getStats(), timestamp: Date.now(), pending: this.pendingProbes.size });
     if (!this.sendMessage) return;
     const avgMs =
       this.recentLatencies.length > 0
         ? this.recentLatencies.reduce((a, b) => a + b, 0) / this.recentLatencies.length
         : null;
     const sent = this.stats.sent;
-    const deltaLost = this.stats.lost - this.prevReportStats.lost;
-    const deltaCorrupted = this.stats.corrupted - this.prevReportStats.corrupted;
-    const deltaOutOfOrder = this.stats.outOfOrder - this.prevReportStats.outOfOrder;
     this.sendMessage({
       type: "e2e_latency_report",
       avg_latency_ms: avgMs !== null ? Math.round(avgMs * 100) / 100 : null,
       delivery_rate: sent > 0 ? this.stats.received / sent : 0,
-      lost: deltaLost,
-      corrupted: deltaCorrupted,
-      out_of_order: deltaOutOfOrder,
-    });
-    this.prevReportStats = {
       lost: this.stats.lost,
       corrupted: this.stats.corrupted,
-      outOfOrder: this.stats.outOfOrder,
-    };
+      out_of_order: this.stats.outOfOrder,
+    });
     this.recentLatencies = [];
   }
 
@@ -178,8 +142,7 @@ export class PixelLatencyProbe {
 
   private sendProbe(): void {
     if (!this.sendMessage) return;
-    this.seq = (this.seq + 1) & 0xffff;
-    const seq = this.seq;
+    const seq = ++this.seq;
     const clientTime = performance.now();
     this.pendingProbes.set(seq, clientTime);
     this.stats.sent++;
@@ -211,27 +174,31 @@ export class PixelLatencyProbe {
     if (video.videoWidth === 0 || video.videoHeight === 0) return;
 
     try {
-      // Draw only the bottom-left 24x1 region
+      // Draw the bottom MARKER_ROWS rows (24 x MARKER_ROWS region)
       this.ctx.drawImage(
         video,
         0,
-        video.videoHeight - 1, // source x, y (bottom-left)
+        video.videoHeight - PixelLatencyProbe.MARKER_ROWS, // source x, y
         PixelLatencyProbe.TOTAL_PIXELS,
-        1, // source width, height
+        PixelLatencyProbe.MARKER_ROWS, // source width, height
         0,
         0, // dest x, y
         PixelLatencyProbe.TOTAL_PIXELS,
-        1, // dest width, height
+        PixelLatencyProbe.MARKER_ROWS, // dest width, height
       );
 
-      const imageData = this.ctx.getImageData(0, 0, PixelLatencyProbe.TOTAL_PIXELS, 1);
+      const imageData = this.ctx.getImageData(
+        0,
+        0,
+        PixelLatencyProbe.TOTAL_PIXELS,
+        PixelLatencyProbe.MARKER_ROWS,
+      );
       const pixels = imageData.data; // RGBA, 4 bytes per pixel
 
       const result = this.extractSeq(pixels);
       if (result === "no_marker") return;
       if (result === "corrupted") {
         this.stats.corrupted++;
-        this.onEvent({ status: "corrupted", seq: null, e2eLatencyMs: null, timestamp: Date.now() });
         return;
       }
 
@@ -242,27 +209,23 @@ export class PixelLatencyProbe {
       this.pendingProbes.delete(seq);
       this.stats.received++;
 
-      const e2eLatencyMs = performance.now() - clientTime;
-      this.recentLatencies.push(e2eLatencyMs);
-      const timestamp = Date.now();
-
       // Reorder detection
-      let reordered = false;
       if (seq < this.lastReceivedSeq) {
+        // Handle wrapping: only count as out-of-order if distance is small
         const distance = this.lastReceivedSeq - seq;
         if (distance < 0x8000) {
           this.stats.outOfOrder++;
-          reordered = true;
         }
       }
       this.lastReceivedSeq = seq;
 
-      this.onMeasurement({ seq, e2eLatencyMs, timestamp });
-      this.onEvent({
-        status: reordered ? "ok_reordered" : "ok",
+      const e2eLatencyMs = performance.now() - clientTime;
+      this.recentLatencies.push(e2eLatencyMs);
+
+      this.onMeasurement({
         seq,
         e2eLatencyMs,
-        timestamp,
+        timestamp: Date.now(),
       });
     } catch {
       // Ignore read errors (cross-origin, etc.)
@@ -270,38 +233,61 @@ export class PixelLatencyProbe {
   }
 
   /**
-   * Extract seq from pixel data.
-   * Returns: number (valid seq), "no_marker" (sync doesn't match), "corrupted" (sync ok, checksum bad)
+   * Extract seq from pixel data using per-bit majority voting across rows.
+   * Returns: number (valid seq), "no_marker" (no rows pass sync), "corrupted" (sync ok, checksum bad)
    */
   private extractSeq(pixels: Uint8ClampedArray): number | "no_marker" | "corrupted" {
-    // Check sync pattern (R channel of RGBA)
-    for (let i = 0; i < PixelLatencyProbe.SYNC.length; i++) {
-      const r = pixels[i * 4]; // R channel
-      const expected = PixelLatencyProbe.SYNC[i];
-      const isHigh = r >= 128;
-      const shouldBeHigh = expected >= 128;
-      if (isHigh !== shouldBeHigh) return "no_marker";
+    const tp = PixelLatencyProbe.TOTAL_PIXELS;
+    const mr = PixelLatencyProbe.MARKER_ROWS;
+    const rowStride = tp * 4; // bytes per row in RGBA
+
+    // Collect row indices that pass sync check
+    const validRowOffsets: number[] = [];
+    for (let row = 0; row < mr; row++) {
+      const rowOffset = row * rowStride;
+      let syncOk = true;
+      for (let i = 0; i < PixelLatencyProbe.SYNC.length; i++) {
+        const r = pixels[rowOffset + i * 4]; // R channel
+        const expected = PixelLatencyProbe.SYNC[i];
+        if ((r >= 128) !== (expected >= 128)) {
+          syncOk = false;
+          break;
+        }
+      }
+      if (syncOk) validRowOffsets.push(rowOffset);
     }
 
-    // Extract 16-bit seq
+    if (validRowOffsets.length === 0) return "no_marker";
+
+    const n = validRowOffsets.length;
+    const threshold = n / 2; // strict majority
+
+    // Per-bit majority vote for 16-bit seq
     let seq = 0;
     for (let i = 0; i < PixelLatencyProbe.DATA_BITS; i++) {
-      const r = pixels[(4 + i) * 4];
-      if (r >= 128) {
+      let votes = 0;
+      for (const rowOffset of validRowOffsets) {
+        if (pixels[rowOffset + (4 + i) * 4] >= 128) votes++;
+      }
+      if (votes > threshold) {
         seq |= 1 << (PixelLatencyProbe.DATA_BITS - 1 - i);
       }
     }
 
-    // Verify 4-bit XOR checksum
+    // Compute expected checksum
     let expectedChecksum = 0;
     for (let i = 0; i < PixelLatencyProbe.DATA_BITS; i += 4) {
       expectedChecksum ^= (seq >> i) & 0xf;
     }
 
+    // Per-bit majority vote for 4-bit checksum
     let actualChecksum = 0;
     for (let i = 0; i < PixelLatencyProbe.CHECKSUM_BITS; i++) {
-      const r = pixels[(20 + i) * 4];
-      if (r >= 128) {
+      let votes = 0;
+      for (const rowOffset of validRowOffsets) {
+        if (pixels[rowOffset + (20 + i) * 4] >= 128) votes++;
+      }
+      if (votes > threshold) {
         actualChecksum |= 1 << (PixelLatencyProbe.CHECKSUM_BITS - 1 - i);
       }
     }
@@ -319,13 +305,6 @@ export class PixelLatencyProbe {
       if (now - t > PixelLatencyProbe.PROBE_TTL_MS) {
         this.pendingProbes.delete(s);
         this.stats.lost++;
-        this.onEvent({
-          status: "lost",
-          seq: s,
-          e2eLatencyMs: null,
-          timestamp: Date.now(),
-          timeoutMs: PixelLatencyProbe.PROBE_TTL_MS,
-        });
       }
     }
   }
