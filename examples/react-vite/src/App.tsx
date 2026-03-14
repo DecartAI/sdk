@@ -3,6 +3,7 @@ import { VideoStream } from "./components/VideoStream";
 
 function App() {
   const [prompt, setPrompt] = useState("anime style, vibrant colors");
+  const [transport, setTransport] = useState<"webrtc" | "ivs">("webrtc");
 
   return (
     <div style={{ padding: "2rem", fontFamily: "system-ui" }}>
@@ -20,7 +21,21 @@ function App() {
         </label>
       </div>
 
-      <VideoStream prompt={prompt} />
+      <div style={{ marginBottom: "1rem" }}>
+        <label>
+          Transport:
+          <select
+            value={transport}
+            onChange={(e) => setTransport(e.target.value as "webrtc" | "ivs")}
+            style={{ marginLeft: "0.5rem", padding: "0.5rem" }}
+          >
+            <option value="webrtc">WebRTC</option>
+            <option value="ivs">IVS</option>
+          </select>
+        </label>
+      </div>
+
+      <VideoStream key={transport} prompt={prompt} transport={transport} />
     </div>
   );
 }

@@ -71,6 +71,27 @@ export type SessionIdMessage = {
   server_port: number;
 };
 
+export type LatencyReportMessage = {
+  type: "latency_report";
+  server_proxy_rtt_ms: number;
+  pipeline_latency_ms: number;
+};
+
+export type LatencyProbeMessage = {
+  type: "latency_probe";
+  seq: number;
+  client_time: number;
+};
+
+export type E2ELatencyReportMessage = {
+  type: "e2e_latency_report";
+  avg_latency_ms: number | null;
+  delivery_rate: number;
+  lost: number;
+  corrupted: number;
+  out_of_order: number;
+};
+
 export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
 
 // Incoming message types (from server)
@@ -85,7 +106,8 @@ export type IncomingWebRTCMessage =
   | GenerationStartedMessage
   | GenerationTickMessage
   | GenerationEndedMessage
-  | SessionIdMessage;
+  | SessionIdMessage
+  | LatencyReportMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =
@@ -93,6 +115,44 @@ export type OutgoingWebRTCMessage =
   | AnswerMessage
   | IceCandidateMessage
   | PromptMessage
-  | SetAvatarImageMessage;
+  | SetAvatarImageMessage
+  | LatencyProbeMessage
+  | E2ELatencyReportMessage;
 
-export type OutgoingMessage = PromptMessage | SetAvatarImageMessage;
+export type OutgoingMessage = PromptMessage | SetAvatarImageMessage | LatencyProbeMessage | E2ELatencyReportMessage;
+
+// IVS message types
+export type IvsStageReadyMessage = {
+  type: "ivs_stage_ready";
+  stage_arn: string;
+  client_publish_token: string;
+  client_subscribe_token: string;
+};
+
+export type IvsJoinedMessage = {
+  type: "ivs_joined";
+};
+
+// IVS incoming messages (from bouncer)
+export type IncomingIVSMessage =
+  | IvsStageReadyMessage
+  | PromptAckMessage
+  | ErrorMessage
+  | SetImageAckMessage
+  | GenerationStartedMessage
+  | GenerationTickMessage
+  | GenerationEndedMessage
+  | SessionIdMessage
+  | LatencyReportMessage;
+
+// IVS outgoing messages (to bouncer)
+export type OutgoingIVSMessage = IvsJoinedMessage | PromptMessage | SetAvatarImageMessage | LatencyProbeMessage | E2ELatencyReportMessage;
+
+// Shared WebSocket message events (used by both WebRTC and IVS transports)
+export type WsMessageEvents = {
+  promptAck: PromptAckMessage;
+  setImageAck: SetImageAckMessage;
+  sessionId: SessionIdMessage;
+  generationTick: GenerationTickMessage;
+  latencyReport: LatencyReportMessage;
+};

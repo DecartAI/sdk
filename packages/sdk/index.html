@@ -242,6 +242,13 @@
             </select>
         </div>
         <div class="control-group">
+            <label for="transport-select">Transport:</label>
+            <select id="transport-select">
+                <option value="webrtc" selected>WebRTC</option>
+                <option value="ivs">IVS (Interactive Video Service)</option>
+            </select>
+        </div>
+        <div class="control-group">
             <label for="initial-prompt">Initial Prompt (empty = passthrough):</label>
             <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
         </div>
@@ -377,6 +384,7 @@
         const elements = {
             apiKey: document.getElementById('api-key'),
             modelSelect: document.getElementById('model-select'),
+            transportSelect: document.getElementById('transport-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             initialPrompt: document.getElementById('initial-prompt'),
             startCamera: document.getElementById('start-camera'),
@@ -443,6 +451,27 @@
             elements.statusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
         }
         
+        // Transport selection handler — load IVS SDK from CDN when IVS is selected
+        let ivsScriptLoaded = false;
+        elements.transportSelect.addEventListener('change', (e) => {
+            const transport = e.target.value;
+            addLog(`Selected transport: ${transport}`, 'info');
+
+            if (transport === 'ivs' && !ivsScriptLoaded) {
+                addLog('Loading IVS Web Broadcast SDK from CDN...', 'info');
+                const script = document.createElement('script');
+                script.src = 'https://web-broadcast.live-video.net/1.14.0/amazon-ivs-web-broadcast.js';
+                script.onload = () => {
+                    ivsScriptLoaded = true;
+                    addLog('IVS Web Broadcast SDK loaded', 'success');
+                };
+                script.onerror = () => {
+                    addLog('Failed to load IVS SDK — IVS transport will not work', 'error');
+                };
+                document.head.appendChild(script);
+            }
+        });
+
         // Model selection handler
         elements.modelSelect.addEventListener('change', (e) => {
             const selectedModel = e.target.value;
@@ -527,8 +556,12 @@
                     initialImage = await initialImageResponse.blob();
                 }
 
+                const selectedTransport = elements.transportSelect.value;
+                addLog(`Connecting with transport: ${selectedTransport}`, 'info');
+
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
+                    transport: selectedTransport,
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;

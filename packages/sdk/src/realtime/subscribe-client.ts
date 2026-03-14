@@ -6,10 +6,16 @@ type TokenPayload = {
   sid: string;
   ip: string;
   port: number;
+  transport?: "webrtc" | "ivs";
 };
 
-export function encodeSubscribeToken(sessionId: string, serverIp: string, serverPort: number): string {
-  return btoa(JSON.stringify({ sid: sessionId, ip: serverIp, port: serverPort }));
+export function encodeSubscribeToken(
+  sessionId: string,
+  serverIp: string,
+  serverPort: number,
+  transport?: "webrtc" | "ivs",
+): string {
+  return btoa(JSON.stringify({ sid: sessionId, ip: serverIp, port: serverPort, transport }));
 }
 
 export function decodeSubscribeToken(token: string): TokenPayload {

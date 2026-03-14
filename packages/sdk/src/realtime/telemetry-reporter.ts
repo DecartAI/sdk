@@ -34,6 +34,7 @@ export interface TelemetryReporterOptions {
   sessionId: string;
   model?: string;
   integration?: string;
+  transport?: "webrtc" | "ivs";
   logger: Logger;
   reportIntervalMs?: number;
 }
@@ -61,6 +62,7 @@ export class TelemetryReporter implements ITelemetryReporter {
   private sessionId: string;
   private model?: string;
   private integration?: string;
+  private transport?: "webrtc" | "ivs";
   private logger: Logger;
   private reportIntervalMs: number;
   private intervalId: ReturnType<typeof setInterval> | null = null;
@@ -72,6 +74,7 @@ export class TelemetryReporter implements ITelemetryReporter {
     this.sessionId = options.sessionId;
     this.model = options.model;
     this.integration = options.integration;
+    this.transport = options.transport;
     this.logger = options.logger;
     this.reportIntervalMs = options.reportIntervalMs ?? DEFAULT_REPORT_INTERVAL_MS;
   }
@@ -120,6 +123,7 @@ export class TelemetryReporter implements ITelemetryReporter {
       sdk_version: VERSION,
       ...(this.model ? { model: this.model } : {}),
       ...(this.integration ? { integration: this.integration } : {}),
+      ...(this.transport ? { transport: this.transport } : {}),
     };
 
     return {

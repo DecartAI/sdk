@@ -22,6 +22,10 @@ export type WebRTCStats = {
     freezeCountDelta: number;
     /** Delta: freeze duration (seconds) since previous sample. */
     freezeDurationDelta: number;
+    /** Cumulative NACK (retransmission request) count from inbound-rtp. */
+    nackCount: number;
+    /** Delta: NACKs since previous sample (≈ NACK rate per polling interval). */
+    nackCountDelta: number;
   } | null;
   audio: {
     bytesReceived: number;
@@ -52,6 +56,11 @@ export type WebRTCStats = {
     currentRoundTripTime: number | null;
     /** Available outgoing bitrate estimate in bits/sec, or null if unavailable. */
     availableOutgoingBitrate: number | null;
+    /** Selected candidate pairs from succeeded ICE negotiations (one per PeerConnection). */
+    selectedCandidatePairs: Array<{
+      local: { address: string; port: number; protocol: string; candidateType: string };
+      remote: { address: string; port: number; protocol: string; candidateType: string };
+    }>;
   };
 };
 
@@ -63,9 +72,7 @@ export type StatsOptions = {
 const DEFAULT_INTERVAL_MS = 1000;
 const MIN_INTERVAL_MS = 500;
 
-export class WebRTCStatsCollector {
-  private pc: RTCPeerConnection | null = null;
-  private intervalId: ReturnType<typeof setInterval> | null = null;
+export class StatsParser {
   private prevBytesVideo = 0;
   private prevBytesAudio = 0;
   private prevBytesSentVideo = 0;
@@ -75,19 +82,11 @@ export class WebRTCStatsCollector {
   private prevFramesDropped = 0;
   private prevFreezeCount = 0;
   private prevFreezeDuration = 0;
+  private prevNackCount = 0;
   private prevPacketsLostAudio = 0;
-  private onStats: ((stats: WebRTCStats) => void) | null = null;
-  private intervalMs: number;
 
-  constructor(options: StatsOptions = {}) {
-    this.intervalMs = Math.max(options.intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS);
-  }
-
-  /** Attach to a peer connection and start polling. */
-  start(pc: RTCPeerConnection, onStats: (stats: WebRTCStats) => void): void {
-    this.stop();
-    this.pc = pc;
-    this.onStats = onStats;
+  /** Reset all delta-tracking state to zero. */
+  reset(): void {
     this.prevBytesVideo = 0;
     this.prevBytesAudio = 0;
     this.prevBytesSentVideo = 0;
@@ -96,47 +95,39 @@ export class WebRTCStatsCollector {
     this.prevFramesDropped = 0;
     this.prevFreezeCount = 0;
     this.prevFreezeDuration = 0;
+    this.prevNackCount = 0;
     this.prevPacketsLostAudio = 0;
-    this.intervalId = setInterval(() => this.collect(), this.intervalMs);
   }
 
-  /** Stop polling and release resources. */
-  stop(): void {
-    if (this.intervalId !== null) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
-    this.pc = null;
-    this.onStats = null;
-  }
-
-  isRunning(): boolean {
-    return this.intervalId !== null;
-  }
-
-  private async collect(): Promise<void> {
-    if (!this.pc || !this.onStats) return;
-
-    try {
-      const rawStats = await this.pc.getStats();
-      const stats = this.parse(rawStats);
-      this.onStats(stats);
-    } catch {
-      // PC might be closed; stop silently
-      this.stop();
-    }
-  }
-
-  private parse(rawStats: RTCStatsReport): WebRTCStats {
+  parse(rawStats: RTCStatsReport): WebRTCStats {
     const now = performance.now();
     const elapsed = this.prevTimestamp > 0 ? (now - this.prevTimestamp) / 1000 : 0;
 
     let video: WebRTCStats["video"] = null;
     let audio: WebRTCStats["audio"] = null;
     let outboundVideo: WebRTCStats["outboundVideo"] = null;
+    // Pre-collect candidate entries so candidate-pair can reference them
+    type CandidateInfo = { address: string; port: number; protocol: string; candidateType: string };
+    const candidateMap = new Map<string, CandidateInfo>();
+    rawStats.forEach((report) => {
+      if (report.type === "remote-candidate" || report.type === "local-candidate") {
+        const r = report as Record<string, unknown>;
+        const addr = r.address as string | undefined;
+        if (addr) {
+          candidateMap.set(r.id as string, {
+            address: addr,
+            port: (r.port as number) ?? 0,
+            protocol: (r.protocol as string) ?? "udp",
+            candidateType: (r.candidateType as string) ?? "unknown",
+          });
+        }
+      }
+    });
+
     const connection: WebRTCStats["connection"] = {
       currentRoundTripTime: null,
       availableOutgoingBitrate: null,
+      selectedCandidatePairs: [],
     };
 
     rawStats.forEach((report) => {
@@ -150,6 +141,7 @@ export class WebRTCStatsCollector {
         const framesDropped = (r.framesDropped as number) ?? 0;
         const freezeCount = (r.freezeCount as number) ?? 0;
         const freezeDuration = (r.totalFreezesDuration as number) ?? 0;
+        const nackCount = (r.nackCount as number) ?? 0;
 
         video = {
           framesDecoded: (r.framesDecoded as number) ?? 0,
@@ -168,11 +160,14 @@ export class WebRTCStatsCollector {
           framesDroppedDelta: Math.max(0, framesDropped - this.prevFramesDropped),
           freezeCountDelta: Math.max(0, freezeCount - this.prevFreezeCount),
           freezeDurationDelta: Math.max(0, freezeDuration - this.prevFreezeDuration),
+          nackCount,
+          nackCountDelta: Math.max(0, nackCount - this.prevNackCount),
         };
         this.prevPacketsLostVideo = packetsLost;
         this.prevFramesDropped = framesDropped;
         this.prevFreezeCount = freezeCount;
         this.prevFreezeDuration = freezeDuration;
+        this.prevNackCount = nackCount;
       }
 
       if (report.type === "outbound-rtp" && report.kind === "video") {
@@ -216,6 +211,14 @@ export class WebRTCStatsCollector {
         if (r.state === "succeeded") {
           connection.currentRoundTripTime = (r.currentRoundTripTime as number) ?? null;
           connection.availableOutgoingBitrate = (r.availableOutgoingBitrate as number) ?? null;
+          // Resolve selected candidate pair
+          const localCandId = r.localCandidateId as string | undefined;
+          const remoteCandId = r.remoteCandidateId as string | undefined;
+          const local = localCandId ? candidateMap.get(localCandId) : undefined;
+          const remote = remoteCandId ? candidateMap.get(remoteCandId) : undefined;
+          if (local && remote) {
+            connection.selectedCandidatePairs.push({ local, remote });
+          }
         }
       }
     });
@@ -229,5 +232,53 @@ export class WebRTCStatsCollector {
       outboundVideo,
       connection,
     };
+  }
+}
+
+export class WebRTCStatsCollector {
+  private pc: RTCPeerConnection | null = null;
+  private intervalId: ReturnType<typeof setInterval> | null = null;
+  private parser = new StatsParser();
+  private onStats: ((stats: WebRTCStats) => void) | null = null;
+  private intervalMs: number;
+
+  constructor(options: StatsOptions = {}) {
+    this.intervalMs = Math.max(options.intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS);
+  }
+
+  /** Attach to a peer connection and start polling. */
+  start(pc: RTCPeerConnection, onStats: (stats: WebRTCStats) => void): void {
+    this.stop();
+    this.pc = pc;
+    this.onStats = onStats;
+    this.parser.reset();
+    this.intervalId = setInterval(() => this.collect(), this.intervalMs);
+  }
+
+  /** Stop polling and release resources. */
+  stop(): void {
+    if (this.intervalId !== null) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    this.pc = null;
+    this.onStats = null;
+  }
+
+  isRunning(): boolean {
+    return this.intervalId !== null;
+  }
+
+  private async collect(): Promise<void> {
+    if (!this.pc || !this.onStats) return;
+
+    try {
+      const rawStats = await this.pc.getStats();
+      const stats = this.parser.parse(rawStats);
+      this.onStats(stats);
+    } catch {
+      // PC might be closed; stop silently
+      this.stop();
+    }
   }
 }
