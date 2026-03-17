@@ -220,6 +220,5 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
 
       await expectResult(result, "lucy-motion", ".mp4");
     });
-
   });
 });
