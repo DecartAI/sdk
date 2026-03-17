@@ -626,40 +626,6 @@ describe("Queue API", () => {
       expect(dataFile).toBeInstanceOf(File);
     });
 
-    it("submits first-last-frame-to-video job", async () => {
-      server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-flf2v", async ({ request }) => {
-          lastRequest = request;
-          lastFormData = await request.formData();
-          return HttpResponse.json({
-            job_id: "job_flf2v",
-            status: "pending",
-          });
-        }),
-      );
-
-      const startBlob = new Blob(["start-frame"], { type: "image/png" });
-      const endBlob = new Blob(["end-frame"], { type: "image/png" });
-
-      const result = await decart.queue.submit({
-        model: models.video("lucy-pro-flf2v"),
-        prompt: "Smooth transition",
-        start: startBlob,
-        end: endBlob,
-        seed: 123,
-      });
-
-      expect(result.job_id).toBe("job_flf2v");
-      expect(result.status).toBe("pending");
-      expect(lastFormData?.get("prompt")).toBe("Smooth transition");
-      expect(lastFormData?.get("seed")).toBe("123");
-
-      const startFile = lastFormData?.get("start") as File;
-      const endFile = lastFormData?.get("end") as File;
-      expect(startFile).toBeInstanceOf(File);
-      expect(endFile).toBeInstanceOf(File);
-    });
-
     it("submits motion video job", async () => {
       server.use(
         http.post("http://localhost/v1/jobs/lucy-motion", async ({ request }) => {

@@ -14,7 +14,6 @@ export const videoModels = z.union([
   z.literal("lucy-pro-t2v"),
   z.literal("lucy-pro-i2v"),
   z.literal("lucy-pro-v2v"),
-  z.literal("lucy-pro-flf2v"),
   z.literal("lucy-motion"),
   z.literal("lucy-restyle-v2v"),
   z.literal("lucy-2-v2v"),
@@ -140,13 +139,6 @@ export const modelInputSchemas = {
     seed: z.number().optional().describe("The seed to use for the generation"),
     resolution: proV2vResolutionSchema,
     enhance_prompt: z.boolean().optional().describe("Whether to enhance the prompt"),
-  }),
-  "lucy-pro-flf2v": z.object({
-    prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),
-    start: fileInputSchema.describe("The start frame image (File, Blob, ReadableStream, URL, or string URL)"),
-    end: fileInputSchema.describe("The end frame image (File, Blob, ReadableStream, URL, or string URL)"),
-    seed: z.number().optional().describe("The seed to use for the generation"),
-    resolution: proResolutionSchema(),
   }),
   "lucy-pro-i2i": z.object({
     prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),
@@ -362,15 +354,6 @@ const _models = {
       height: 704,
       inputSchema: modelInputSchemas["lucy-pro-v2v"],
     },
-    "lucy-pro-flf2v": {
-      urlPath: "/v1/generate/lucy-pro-flf2v",
-      queueUrlPath: "/v1/jobs/lucy-pro-flf2v",
-      name: "lucy-pro-flf2v" as const,
-      fps: 25,
-      width: 1280,
-      height: 704,
-      inputSchema: modelInputSchemas["lucy-pro-flf2v"],
-    },
     "lucy-motion": {
       urlPath: "/v1/generate/lucy-motion",
       queueUrlPath: "/v1/jobs/lucy-motion",
@@ -416,7 +399,6 @@ export const models = {
    *   - `"lucy-pro-t2v"` - Text-to-video
    *   - `"lucy-pro-i2v"` - Image-to-video
    *   - `"lucy-pro-v2v"` - Video-to-video
-   *   - `"lucy-pro-flf2v"` - First-last-frame-to-video
    * 	 - `"lucy-dev-i2v"` - Image-to-video (Dev quality)
    *   - `"lucy-fast-v2v"` - Video-to-video (Fast quality)
    *   - `"lucy-restyle-v2v"` - Video-to-video (Restyling)

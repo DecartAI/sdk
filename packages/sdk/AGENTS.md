@@ -74,7 +74,6 @@
 - `lucy-pro-t2v` - text-to-video (Pro quality)
 - `lucy-pro-i2v` - image-to-video (Pro quality)
 - `lucy-pro-v2v` - video-to-video (Pro quality)
-- `lucy-pro-flf2v` - first-last-frame-to-video (Pro quality)
 - `lucy-motion` - motion-based image-to-video (trajectory-guided animation)
 - `lucy-restyle-v2v` - video restyling (video-to-video)
 - `lucy-2-v2v` - video-to-video editing (long-form, 720p)
