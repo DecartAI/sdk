@@ -43,7 +43,6 @@ Video models use the asynchronous Queue API - jobs are submitted and polled for 
 - `video/video-to-video.ts` - Transform existing video
 - `video/video-editing.ts` - Edit video with prompt, reference image, or both (`lucy-2-v2v`)
 - `video/long-form-video-restyle.ts` - Transform existing video with `lucy-restyle-v2v`
-- `video/first-last-frame.ts` - Generate video from first/last frames
 - `video/manual-polling.ts` - Manual job status polling
 
 ### Realtime (Browser-only)

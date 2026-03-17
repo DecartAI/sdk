@@ -221,17 +221,5 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       await expectResult(result, "lucy-motion", ".mp4");
     });
 
-    it.skip("lucy-pro-flf2v: first-last-frame-to-video", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-pro-flf2v"),
-        prompt: "Smooth cinematic transition between frames",
-        start: imageBlob,
-        end: imageBlob,
-        seed: 111,
-        resolution: "720p",
-      });
-
-      await expectResult(result, "lucy-pro-flf2v", ".mp4");
-    });
   });
 });
