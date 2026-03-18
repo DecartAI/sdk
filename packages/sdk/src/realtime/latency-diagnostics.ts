@@ -19,6 +19,7 @@ import type { WebRTCStats } from "./webrtc-stats";
 export type LatencyDiagnosticsOptions = {
   composite?: boolean;
   pixelMarker?: boolean;
+  probeIntervalMs?: number;
   videoElement?: HTMLVideoElement;
   sendMessage: (msg: OutgoingMessage) => void;
   onCompositeLatency: (estimate: CompositeLatencyEstimate) => void;
@@ -98,6 +99,7 @@ export class LatencyDiagnostics {
         onEvent: this.options.onPixelLatencyEvent,
         onReport: this.options.onPixelLatencyReport,
         stamper: this.stamper ?? undefined,
+        probeIntervalMs: this.options.probeIntervalMs,
       });
       this.pixelProbe.start(this.options.videoElement);
     }
