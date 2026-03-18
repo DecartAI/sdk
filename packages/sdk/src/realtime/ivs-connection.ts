@@ -20,6 +20,9 @@ interface IVSStageStrategy {
   stageStreamsToPublish(): IVSLocalStageStream[];
   shouldPublishParticipant(participant: IVSStageParticipant): boolean;
   shouldSubscribeToParticipant(participant: IVSStageParticipant): IVSSubscribeType;
+  subscribeConfiguration?(participant: IVSStageParticipant): {
+    jitterBuffer?: { minDelay?: number };
+  };
 }
 
 interface IVSStage {
@@ -64,7 +67,10 @@ declare enum IVSConnectionState {
 
 export interface IVSBroadcastModule {
   Stage: new (token: string, strategy: IVSStageStrategy) => IVSStage;
-  LocalStageStream: new (track: MediaStreamTrack) => IVSLocalStageStream;
+  LocalStageStream: new (
+    track: MediaStreamTrack,
+    options?: { simulcast?: { enabled: boolean } },
+  ) => IVSLocalStageStream;
   SubscribeType: typeof IVSSubscribeType;
   StreamType: typeof IVSStreamType;
   StageEvents: typeof IVSStageEvents;
@@ -110,7 +116,6 @@ const noopDiagnostic: DiagnosticEmitter = () => {};
 export class IVSConnection {
   private ws: WebSocket | null = null;
   private publishStage: IVSStage | null = null;
-  private subscribeStage: IVSStage | null = null;
   private connectionReject: ((error: Error) => void) | null = null;
   private remoteStageStreams: IVSStageStream[] = [];
   private localStageStreams: IVSLocalStageStream[] = [];
@@ -245,12 +250,8 @@ export class IVSConnection {
   private async setupIVSStages(localStream: MediaStream | null, timeout: number): Promise<void> {
     const ivs = await getIVSBroadcastClient();
 
-    // Wait for bouncer to send ivs_stage_ready
-    const stageReady = await new Promise<{
-      client_publish_token: string;
-      client_subscribe_token: string;
-      client_publish_participant_id: string;
-    }>((resolve, reject) => {
+    // Wait for bouncer to send ivs_stage_ready (single dual-capability token)
+    const stageReady = await new Promise<{ client_token: string }>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("IVS stage ready timeout")), timeout);
 
       const handler = (e: MessageEvent) => {
@@ -261,11 +262,7 @@ export class IVSConnection {
             if (this.ws) {
               this.ws.removeEventListener("message", handler);
             }
-            resolve({
-              client_publish_token: msg.client_publish_token,
-              client_subscribe_token: msg.client_subscribe_token,
-              client_publish_participant_id: msg.client_publish_participant_id ?? "",
-            });
+            resolve({ client_token: msg.client_token });
           }
         } catch {
           // ignore parse errors, handled by main onmessage
@@ -275,30 +272,43 @@ export class IVSConnection {
       this.ws?.addEventListener("message", handler);
     });
 
-    // Subscribe stage — receive remote video/audio
-    const remoteStreamPromise = new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("IVS subscribe stream timeout")), timeout);
+    // Build local stage streams with simulcast disabled
+    const localStageStreams: IVSLocalStageStream[] = [];
+    if (localStream) {
+      const videoTrack = localStream.getVideoTracks()[0];
+      if (videoTrack) {
+        localStageStreams.push(new ivs.LocalStageStream(videoTrack, { simulcast: { enabled: false } }));
+      }
+      const audioTrack = localStream.getAudioTracks()[0];
+      if (audioTrack) {
+        localStageStreams.push(new ivs.LocalStageStream(audioTrack));
+      }
+    }
+    this.localStageStreams = localStageStreams;
 
-      const clientPubId = stageReady.client_publish_participant_id;
-      const subscribeStrategy: IVSStageStrategy = {
-        stageStreamsToPublish: () => [],
-        shouldPublishParticipant: () => false,
-        shouldSubscribeToParticipant: (participant: IVSStageParticipant) => {
-          // Skip our own camera feed — only subscribe to server's processed output
-          if (clientPubId && participant.id === clientPubId) {
-            return ivs.SubscribeType.NONE;
-          }
-          return ivs.SubscribeType.AUDIO_VIDEO;
-        },
-      };
+    // Single merged pub+sub strategy
+    const strategy: IVSStageStrategy = {
+      stageStreamsToPublish: () => localStageStreams,
+      shouldPublishParticipant: () => localStream !== null,
+      shouldSubscribeToParticipant: (participant) => {
+        if (participant.isLocal) return ivs.SubscribeType.NONE;
+        return ivs.SubscribeType.AUDIO_VIDEO;
+      },
+      subscribeConfiguration: () => ({
+        jitterBuffer: { minDelay: 0 },
+      }),
+    };
 
-      this.subscribeStage = new ivs.Stage(stageReady.client_subscribe_token, subscribeStrategy);
+    const stage = new ivs.Stage(stageReady.client_token, strategy);
+    this.publishStage = stage; // store for cleanup
 
-      this.subscribeStage.on(ivs.StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (...args: unknown[]) => {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("IVS stage setup timeout")), timeout);
+
+      stage.on(ivs.StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (...args: unknown[]) => {
         const participant = args[0] as IVSStageParticipant;
         const streams = args[1] as IVSStageStream[];
         if (participant.isLocal) return;
-        if (clientPubId && participant.id === clientPubId) return;
 
         clearTimeout(timer);
         this.remoteStageStreams = streams;
@@ -310,59 +320,23 @@ export class IVSConnection {
         resolve();
       });
 
-      this.subscribeStage.on(ivs.StageEvents.STAGE_CONNECTION_STATE_CHANGED, (...args: unknown[]) => {
+      stage.on(ivs.StageEvents.STAGE_CONNECTION_STATE_CHANGED, (...args: unknown[]) => {
         const state = args[0] as string;
-        if (state === ivs.ConnectionState.DISCONNECTED.toString()) {
+        if (state === ivs.ConnectionState.CONNECTED.toString()) {
+          this.send({ type: "ivs_joined" });
+          this.setState("connected");
+        } else if (state === ivs.ConnectionState.DISCONNECTED.toString()) {
           clearTimeout(timer);
-          reject(new Error("IVS subscribe stage disconnected during setup"));
+          reject(new Error("IVS stage disconnected during setup"));
           this.setState("disconnected");
         }
       });
 
-      this.subscribeStage.join().catch((err) => {
+      stage.join().catch((err) => {
         clearTimeout(timer);
         reject(err);
       });
     });
-
-    // Publish stage — send local camera + audio tracks
-    if (localStream) {
-      const localStageStreams: IVSLocalStageStream[] = [];
-
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (videoTrack) {
-        localStageStreams.push(new ivs.LocalStageStream(videoTrack));
-      }
-      const audioTrack = localStream.getAudioTracks()[0];
-      if (audioTrack) {
-        localStageStreams.push(new ivs.LocalStageStream(audioTrack));
-      }
-      this.localStageStreams = localStageStreams;
-
-      const publishStrategy: IVSStageStrategy = {
-        stageStreamsToPublish: () => localStageStreams,
-        shouldPublishParticipant: () => true,
-        shouldSubscribeToParticipant: () => ivs.SubscribeType.NONE,
-      };
-
-      this.publishStage = new ivs.Stage(stageReady.client_publish_token, publishStrategy);
-
-      this.publishStage.on(ivs.StageEvents.STAGE_CONNECTION_STATE_CHANGED, (...args: unknown[]) => {
-        const state = args[0] as string;
-        if (state === ivs.ConnectionState.CONNECTED.toString()) {
-          // Notify bouncer that we've joined the publish stage
-          this.send({ type: "ivs_joined" });
-          this.setState("connected");
-        } else if (state === ivs.ConnectionState.DISCONNECTED.toString()) {
-          this.setState("disconnected");
-        }
-      });
-
-      await this.publishStage.join();
-    }
-
-    // Wait for remote stream from subscribe stage
-    await remoteStreamPromise;
   }
 
   private handleMessage(msg: IncomingIVSMessage): void {
@@ -529,8 +503,6 @@ export class IVSConnection {
   cleanup(): void {
     this.publishStage?.leave();
     this.publishStage = null;
-    this.subscribeStage?.leave();
-    this.subscribeStage = null;
     this.ws?.close();
     this.ws = null;
     this.remoteStageStreams = [];

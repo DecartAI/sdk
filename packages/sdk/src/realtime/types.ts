@@ -125,8 +125,7 @@ export type OutgoingMessage = PromptMessage | SetAvatarImageMessage | LatencyPro
 export type IvsStageReadyMessage = {
   type: "ivs_stage_ready";
   stage_arn: string;
-  client_publish_token: string;
-  client_subscribe_token: string;
+  client_token: string;
 };
 
 export type IvsJoinedMessage = {

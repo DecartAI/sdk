@@ -564,6 +564,9 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         }
         return ivs.SubscribeType.AUDIO_VIDEO;
       },
+      subscribeConfiguration: () => ({
+        jitterBuffer: { minDelay: 0 },
+      }),
     };
 
     const stage = new ivs.Stage(subscribe_token, subscribeStrategy);
