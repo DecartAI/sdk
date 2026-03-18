@@ -252,7 +252,10 @@ export class IVSConnection {
 
     // Wait for bouncer to send ivs_stage_ready (single dual-capability token)
     const stageReady = await new Promise<{ client_token: string }>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("IVS stage ready timeout")), timeout);
+      const timer = setTimeout(() => {
+        this.ws?.removeEventListener("message", handler);
+        reject(new Error("IVS stage ready timeout"));
+      }, timeout);
 
       const handler = (e: MessageEvent) => {
         try {
@@ -303,7 +306,12 @@ export class IVSConnection {
     this.publishStage = stage; // store for cleanup
 
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("IVS stage setup timeout")), timeout);
+      const rejectAndLeave = (error: Error) => {
+        stage.leave();
+        reject(error);
+      };
+
+      const timer = setTimeout(() => rejectAndLeave(new Error("IVS stage setup timeout")), timeout);
 
       stage.on(ivs.StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (...args: unknown[]) => {
         const participant = args[0] as IVSStageParticipant;
@@ -327,14 +335,14 @@ export class IVSConnection {
           this.setState("connected");
         } else if (state === ivs.ConnectionState.DISCONNECTED.toString()) {
           clearTimeout(timer);
-          reject(new Error("IVS stage disconnected during setup"));
+          rejectAndLeave(new Error("IVS stage disconnected during setup"));
           this.setState("disconnected");
         }
       });
 
       stage.join().catch((err) => {
         clearTimeout(timer);
-        reject(err);
+        rejectAndLeave(err);
       });
     });
   }
