@@ -51,9 +51,10 @@ export class PixelLatencyProbe {
   private static readonly CHECKSUM_BITS = 4;
   private static readonly TOTAL_PIXELS = 24;
   private static readonly MARKER_ROWS = 4;
-  private static readonly PROBE_INTERVAL_MS = 2000;
+  private static readonly DEFAULT_PROBE_INTERVAL_MS = 2000;
   private static readonly PROBE_TTL_MS = 60000;
   private static readonly REPORT_INTERVAL_MS = 5000;
+  private static readonly CLEANUP_INTERVAL_MS = 5000;
 
   private seq = 0;
   private pendingProbes = new Map<number, number>(); // seq -> clientTime
@@ -61,7 +62,9 @@ export class PixelLatencyProbe {
   private ctx: OffscreenCanvasRenderingContext2D;
   private probeIntervalId: ReturnType<typeof setInterval> | null = null;
   private reportIntervalId: ReturnType<typeof setInterval> | null = null;
+  private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
   private running = false;
+  private readonly probeIntervalMs: number;
 
   // E2E stamper (null = legacy WS-probe mode)
   private stamper: PixelLatencyStamper | null;
@@ -84,7 +87,9 @@ export class PixelLatencyProbe {
     onEvent: (e: PixelLatencyEvent) => void;
     onReport: (r: PixelLatencyReport) => void;
     stamper?: PixelLatencyStamper;
+    probeIntervalMs?: number;
   }) {
+    this.probeIntervalMs = options.probeIntervalMs ?? PixelLatencyProbe.DEFAULT_PROBE_INTERVAL_MS;
     this.sendMessage = options.sendMessage;
     this.onMeasurement = options.onMeasurement;
     this.onEvent = options.onEvent;
@@ -101,14 +106,28 @@ export class PixelLatencyProbe {
     this.running = true;
 
     if (this.stamper) {
-      // E2E mode: stamp input frames every ~2s
-      this.probeIntervalId = setInterval(() => this.stampInputFrame(), PixelLatencyProbe.PROBE_INTERVAL_MS);
+      if (this.probeIntervalMs === 0) {
+        // Every-frame mode: stamper calls us on each frame
+        this.stamper.enableAutoStamp(() => {
+          this.seq = (this.seq + 1) & 0xffff;
+          this.pendingProbes.set(this.seq, performance.now());
+          this.stats.sent++;
+          return this.seq;
+        });
+      } else {
+        // Interval mode: stamp input frames at configured interval
+        this.probeIntervalId = setInterval(() => this.stampInputFrame(), this.probeIntervalMs);
+      }
       // Periodic report (to server and/or local callback)
       this.reportIntervalId = setInterval(() => this.sendE2EReport(), PixelLatencyProbe.REPORT_INTERVAL_MS);
     } else if (this.sendMessage) {
       // Legacy WS-probe mode
-      this.probeIntervalId = setInterval(() => this.sendProbe(), PixelLatencyProbe.PROBE_INTERVAL_MS);
+      const interval = this.probeIntervalMs || PixelLatencyProbe.DEFAULT_PROBE_INTERVAL_MS;
+      this.probeIntervalId = setInterval(() => this.sendProbe(), interval);
     }
+
+    // Separate cleanup timer (decoupled from stamping)
+    this.cleanupIntervalId = setInterval(() => this.cleanUpOldProbes(), PixelLatencyProbe.CLEANUP_INTERVAL_MS);
 
     // Read output frames
     this.readFrameLoop(videoElement);
@@ -124,6 +143,11 @@ export class PixelLatencyProbe {
       clearInterval(this.reportIntervalId);
       this.reportIntervalId = null;
     }
+    if (this.cleanupIntervalId != null) {
+      clearInterval(this.cleanupIntervalId);
+      this.cleanupIntervalId = null;
+    }
+    this.stamper?.disableAutoStamp();
     this.pendingProbes.clear();
   }
 
@@ -144,7 +168,6 @@ export class PixelLatencyProbe {
     this.pendingProbes.set(seq, performance.now());
     this.stats.sent++;
     this.stamper.queueStamp(seq);
-    this.cleanUpOldProbes();
   }
 
   private sendE2EReport(): void {
@@ -185,7 +208,6 @@ export class PixelLatencyProbe {
     this.pendingProbes.set(seq, clientTime);
     this.stats.sent++;
     this.sendMessage({ type: "latency_probe", seq, client_time: clientTime });
-    this.cleanUpOldProbes();
   }
 
   // ── Output frame reader (shared by both modes) ─────────────────────

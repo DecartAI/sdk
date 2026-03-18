@@ -104,6 +104,7 @@ const realTimeClientConnectOptionsSchema = z.object({
     .object({
       composite: z.boolean().optional(),
       pixelMarker: z.boolean().optional(),
+      probeIntervalMs: z.number().min(0).optional(),
       videoElement: z.custom<HTMLVideoElement>().optional(),
     })
     .optional(),

@@ -25,6 +25,9 @@ export class PixelLatencyStamper {
   private running = false;
   private pendingStamp: number | null = null;
 
+  // Auto-stamp callback: when set, every frame is stamped (every-frame mode)
+  private autoStampFn: (() => number) | null = null;
+
   // Insertable Streams path
   private abortController: AbortController | null = null;
 
@@ -52,7 +55,20 @@ export class PixelLatencyStamper {
     const stamper = this;
     const transformer = new TransformStream<VideoFrame, VideoFrame>({
       transform(frame, controller) {
-        if (stamper.pendingStamp !== null) {
+        if (stamper.autoStampFn) {
+          // Every-frame mode: stamp every frame via canvas
+          const seq = stamper.autoStampFn();
+          const w = frame.displayWidth;
+          const h = frame.displayHeight;
+          const canvas = new OffscreenCanvas(w, h);
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(frame, 0, 0);
+          stamper.stampMarker(ctx, h, seq);
+          const stamped = new VideoFrame(canvas, { timestamp: frame.timestamp });
+          frame.close();
+          controller.enqueue(stamped);
+        } else if (stamper.pendingStamp !== null) {
+          // Interval mode: stamp only queued frames
           const seq = stamper.pendingStamp;
           stamper.pendingStamp = null;
 
@@ -131,6 +147,7 @@ export class PixelLatencyStamper {
 
   stop(): void {
     this.running = false;
+    this.autoStampFn = null;
 
     if (this.abortController) {
       this.abortController.abort();
@@ -150,6 +167,16 @@ export class PixelLatencyStamper {
   /** Queue a marker seq to be stamped on the next frame. */
   queueStamp(seq: number): void {
     this.pendingStamp = seq;
+  }
+
+  /** Enable every-frame auto-stamping. fn() is called per frame and must return the seq. */
+  enableAutoStamp(fn: () => number): void {
+    this.autoStampFn = fn;
+  }
+
+  /** Disable every-frame auto-stamping (revert to interval mode). */
+  disableAutoStamp(): void {
+    this.autoStampFn = null;
   }
 
   // ── Canvas fallback draw loop ────────────────────────────────────────
@@ -174,8 +201,12 @@ export class PixelLatencyStamper {
 
         this.ctx.drawImage(this.sourceVideo, 0, 0);
 
-        const seq = this.pendingStamp;
-        if (seq !== null) {
+        if (this.autoStampFn) {
+          // Every-frame mode
+          this.stampMarker(this.ctx, this.canvas.height, this.autoStampFn());
+        } else if (this.pendingStamp !== null) {
+          // Interval mode
+          const seq = this.pendingStamp;
           this.pendingStamp = null;
           this.stampMarker(this.ctx, this.canvas.height, seq);
         }
