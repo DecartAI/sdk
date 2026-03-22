@@ -14,6 +14,7 @@ export interface IVSConfig {
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionStateChange?: (state: ConnectionState) => void;
   onError?: (error: Error) => void;
+  jitterBufferMinDelay?: number | string;
   modelName?: string;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
@@ -60,6 +61,7 @@ export class IVSManager implements RealtimeTransportManager {
       initialPrompt: config.initialPrompt,
       logger: this.logger,
       onDiagnostic: config.onDiagnostic,
+      jitterBufferMinDelay: config.jitterBufferMinDelay,
     });
   }
 
