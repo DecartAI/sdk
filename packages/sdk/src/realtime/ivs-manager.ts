@@ -2,21 +2,19 @@ import pRetry, { AbortError } from "p-retry";
 
 import type { Logger } from "../utils/logger";
 import type { DiagnosticEmitter } from "./diagnostics";
+import { IVSConnection } from "./ivs-connection";
 import type { RealtimeTransportManager } from "./transport-manager";
 import type { ConnectionState, OutgoingMessage } from "./types";
-import { WebRTCConnection } from "./webrtc-connection";
 
-export interface WebRTCConfig {
-  webrtcUrl: string;
+export interface IVSConfig {
+  ivsUrl: string;
   integration?: string;
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionStateChange?: (state: ConnectionState) => void;
   onError?: (error: Error) => void;
-  customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
-  vp8MinBitrate?: number;
-  vp8StartBitrate?: number;
+  jitterBufferMinDelay?: number | string;
   modelName?: string;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
@@ -40,33 +38,30 @@ const RETRY_OPTIONS = {
   maxTimeout: 10000,
 } as const;
 
-export class WebRTCManager implements RealtimeTransportManager {
-  private connection: WebRTCConnection;
-  private config: WebRTCConfig;
+export class IVSManager implements RealtimeTransportManager {
+  private connection: IVSConnection;
+  private config: IVSConfig;
   private logger: Logger;
   private localStream: MediaStream | null = null;
-  private subscribeMode = false;
   private managerState: ConnectionState = "disconnected";
   private hasConnected = false;
   private isReconnecting = false;
   private intentionalDisconnect = false;
   private reconnectGeneration = 0;
 
-  constructor(config: WebRTCConfig) {
+  constructor(config: IVSConfig) {
     this.config = config;
     this.logger = config.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
-    this.connection = new WebRTCConnection({
+    this.connection = new IVSConnection({
       onRemoteStream: config.onRemoteStream,
       onStateChange: (state) => this.handleConnectionStateChange(state),
       onError: config.onError,
-      customizeOffer: config.customizeOffer,
-      vp8MinBitrate: config.vp8MinBitrate,
-      vp8StartBitrate: config.vp8StartBitrate,
       modelName: config.modelName,
       initialImage: config.initialImage,
       initialPrompt: config.initialPrompt,
       logger: this.logger,
       onDiagnostic: config.onDiagnostic,
+      jitterBufferMinDelay: config.jitterBufferMinDelay,
     });
   }
 
@@ -84,7 +79,6 @@ export class WebRTCManager implements RealtimeTransportManager {
       return;
     }
 
-    // During reconnection, intercept state changes from the connection layer
     if (this.isReconnecting) {
       if (state === "connected" || state === "generating") {
         this.isReconnecting = false;
@@ -93,8 +87,6 @@ export class WebRTCManager implements RealtimeTransportManager {
       return;
     }
 
-    // Unexpected disconnect after having been connected → trigger auto-reconnect
-    // hasConnected guards against triggering during initial connect (which has its own retry loop)
     if (state === "disconnected" && !this.intentionalDisconnect && this.hasConnected) {
       this.reconnect();
       return;
@@ -105,7 +97,7 @@ export class WebRTCManager implements RealtimeTransportManager {
 
   private async reconnect(): Promise<void> {
     if (this.isReconnecting || this.intentionalDisconnect) return;
-    if (!this.subscribeMode && !this.localStream) return;
+    if (!this.localStream) return;
 
     const reconnectGeneration = ++this.reconnectGeneration;
     this.isReconnecting = true;
@@ -123,13 +115,13 @@ export class WebRTCManager implements RealtimeTransportManager {
             throw new AbortError("Reconnect cancelled");
           }
 
-          if (!this.subscribeMode && !this.localStream) {
+          if (!this.localStream) {
             throw new AbortError("Reconnect cancelled: no local stream");
           }
 
           this.connection.cleanup();
           await this.connection.connect(
-            this.config.webrtcUrl,
+            this.config.ivsUrl,
             this.localStream,
             CONNECTION_TIMEOUT,
             this.config.integration,
@@ -146,7 +138,7 @@ export class WebRTCManager implements RealtimeTransportManager {
             if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
               return;
             }
-            this.logger.warn("Reconnect attempt failed", { error: error.message, attempt: error.attemptNumber });
+            this.logger.warn("IVS reconnect attempt failed", { error: error.message, attempt: error.attemptNumber });
             this.config.onDiagnostic?.("reconnect", {
               attempt: error.attemptNumber,
               maxAttempts: RETRY_OPTIONS.retries + 1,
@@ -171,7 +163,6 @@ export class WebRTCManager implements RealtimeTransportManager {
         durationMs: performance.now() - reconnectStart,
         success: true,
       });
-      // "connected" state is emitted by handleConnectionStateChange
     } catch (error) {
       this.isReconnecting = false;
       if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
@@ -184,7 +175,6 @@ export class WebRTCManager implements RealtimeTransportManager {
 
   async connect(localStream: MediaStream | null): Promise<boolean> {
     this.localStream = localStream;
-    this.subscribeMode = localStream === null;
     this.intentionalDisconnect = false;
     this.hasConnected = false;
     this.isReconnecting = false;
@@ -196,13 +186,13 @@ export class WebRTCManager implements RealtimeTransportManager {
         if (this.intentionalDisconnect) {
           throw new AbortError("Connect cancelled");
         }
-        await this.connection.connect(this.config.webrtcUrl, localStream, CONNECTION_TIMEOUT, this.config.integration);
+        await this.connection.connect(this.config.ivsUrl, localStream, CONNECTION_TIMEOUT, this.config.integration);
         return true;
       },
       {
         ...RETRY_OPTIONS,
         onFailedAttempt: (error) => {
-          this.logger.warn("Connection attempt failed", { error: error.message, attempt: error.attemptNumber });
+          this.logger.warn("IVS connection attempt failed", { error: error.message, attempt: error.attemptNumber });
           this.connection.cleanup();
         },
         shouldRetry: (error) => {
@@ -237,12 +227,16 @@ export class WebRTCManager implements RealtimeTransportManager {
     return this.managerState;
   }
 
-  getPeerConnection(): RTCPeerConnection | null {
-    return this.connection.getPeerConnection();
-  }
-
   getWebsocketMessageEmitter() {
     return this.connection.websocketMessagesEmitter;
+  }
+
+  getRemoteStreams() {
+    return this.connection.getRemoteStreams();
+  }
+
+  getLocalStreams() {
+    return this.connection.getLocalStreams();
   }
 
   setImage(

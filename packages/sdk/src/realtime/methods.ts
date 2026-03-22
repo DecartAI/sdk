@@ -1,6 +1,6 @@
 import { z } from "zod";
+import type { RealtimeTransportManager } from "./transport-manager";
 import type { PromptAckMessage } from "./types";
-import type { WebRTCManager } from "./webrtc-manager";
 
 const PROMPT_TIMEOUT_MS = 15 * 1000; // 15 seconds
 const UPDATE_TIMEOUT_MS = 30 * 1000;
@@ -23,11 +23,11 @@ const setPromptInputSchema = z.object({
 export type SetInput = z.input<typeof setInputSchema>;
 
 export const realtimeMethods = (
-  webrtcManager: WebRTCManager,
+  manager: RealtimeTransportManager,
   imageToBase64: (image: Blob | File | string) => Promise<string>,
 ) => {
   const assertConnected = () => {
-    const state = webrtcManager.getConnectionState();
+    const state = manager.getConnectionState();
     if (state !== "connected" && state !== "generating") {
       throw new Error(`Cannot send message: connection is ${state}`);
     }
@@ -48,7 +48,7 @@ export const realtimeMethods = (
       imageBase64 = await imageToBase64(image);
     }
 
-    await webrtcManager.setImage(imageBase64, { prompt, enhance, timeout: UPDATE_TIMEOUT_MS });
+    await manager.setImage(imageBase64, { prompt, enhance, timeout: UPDATE_TIMEOUT_MS });
   };
 
   const setPrompt = async (prompt: string, { enhance }: { enhance?: boolean } = {}): Promise<void> => {
@@ -63,7 +63,7 @@ export const realtimeMethods = (
       throw parsedInput.error;
     }
 
-    const emitter = webrtcManager.getWebsocketMessageEmitter();
+    const emitter = manager.getWebsocketMessageEmitter();
     let promptAckListener: ((msg: PromptAckMessage) => void) | undefined;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -83,7 +83,7 @@ export const realtimeMethods = (
       });
 
       // Send the message first
-      const sent = webrtcManager.sendMessage({
+      const sent = manager.sendMessage({
         type: "prompt",
         prompt: parsedInput.data.prompt,
         enhance_prompt: parsedInput.data.enhance,
