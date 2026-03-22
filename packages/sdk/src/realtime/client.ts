@@ -21,7 +21,7 @@ import {
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import type { RealtimeTransportManager } from "./transport-manager";
-import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
+import type { ConnectionState, GenerationTickMessage, MetricsReportMessage, SessionIdMessage } from "./types";
 import { WebRTCManager } from "./webrtc-manager";
 import { type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
@@ -125,6 +125,7 @@ export type Events = {
   pixelLatency: PixelLatencyMeasurement;
   pixelLatencyEvent: PixelLatencyEvent;
   pixelLatencyReport: PixelLatencyReport;
+  serverMetrics: MetricsReportMessage;
 };
 
 export type RealTimeClient = {
@@ -298,6 +299,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         emitOrBuffer("generationTick", { seconds: msg.seconds });
       };
       manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
+
+      const metricsListener = (msg: MetricsReportMessage) => {
+        emitOrBuffer("serverMetrics", msg);
+      };
+      manager.getWebsocketMessageEmitter().on("metricsReport", metricsListener);
 
       // Latency diagnostics (composite + pixel marker) — create before connect
       // so the stamper can wrap inputStream before it's published.
