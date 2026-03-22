@@ -26,6 +26,26 @@ export type WebRTCStats = {
     nackCount: number;
     /** Delta: NACKs since previous sample (≈ NACK rate per polling interval). */
     nackCountDelta: number;
+    /** Cumulative FIR (Full Intra Request) count sent by the receiver. */
+    firCount: number;
+    /** Cumulative PLI (Picture Loss Indication) count sent by the receiver. */
+    pliCount: number;
+    /** Total frames received (before decode). */
+    framesReceived: number;
+    /** Average inter-frame delay in ms (computed by the browser). */
+    avgInterFrameDelayMs: number;
+    /** Variance of inter-frame delay in ms. */
+    interFrameDelayVarianceMs: number;
+    /** Jitter buffer target delay in ms. */
+    jitterBufferTargetDelayMs: number;
+    /** Jitter buffer minimum delay in ms (set via minDelay). */
+    jitterBufferMinimumDelayMs: number;
+    /** Average decode time per frame in ms (totalDecodeTime / framesDecoded). */
+    avgDecodeTimeMs: number;
+    /** Average jitter buffer delay in ms (jitterBufferDelay / jitterBufferEmittedCount). */
+    avgJitterBufferMs: number;
+    /** Average processing delay in ms (totalProcessingDelay / framesDecoded). */
+    avgProcessingDelayMs: number;
   } | null;
   audio: {
     bytesReceived: number;
@@ -50,6 +70,22 @@ export type WebRTCStats = {
     frameHeight: number;
     /** Estimated outbound bitrate in bits/sec, computed from bytesSent delta. */
     bitrate: number;
+    /** Cumulative NACK count received from the remote end (server asking us to retransmit). */
+    nackCount: number;
+    /** Cumulative FIR count received from the remote end. */
+    firCount: number;
+    /** Cumulative PLI count received from the remote end. */
+    pliCount: number;
+    /** Cumulative retransmitted bytes sent. */
+    retransmittedBytesSent: number;
+    /** Cumulative retransmitted packets sent. */
+    retransmittedPacketsSent: number;
+    /** Encoder target bitrate in kbps, or null if unavailable. */
+    targetBitrateKbps: number | null;
+    /** Average packet send delay in ms (capture to wire). */
+    avgPacketSendDelayMs: number;
+    /** Average encode time per frame in ms (totalEncodeTime / framesEncoded). */
+    avgEncodeTimeMs: number;
   } | null;
   connection: {
     /** Current round-trip time in seconds, or null if unavailable. */
@@ -143,6 +179,14 @@ export class StatsParser {
         const freezeDuration = (r.totalFreezesDuration as number) ?? 0;
         const nackCount = (r.nackCount as number) ?? 0;
 
+        // Jitter buffer delay: compute from cumulative emitted count + delay
+        const jbEmitted = (r.jitterBufferEmittedCount as number) ?? 0;
+        const jbDelay = (r.jitterBufferDelay as number) ?? 0;
+        const jbTargetDelay = (r.jitterBufferTargetDelay as number) ?? 0;
+        const jbMinDelay = (r.jitterBufferMinimumDelay as number) ?? 0;
+        const jbTargetMs = jbEmitted > 0 ? (jbTargetDelay / jbEmitted) * 1000 : 0;
+        const jbMinMs = jbEmitted > 0 ? (jbMinDelay / jbEmitted) * 1000 : 0;
+
         video = {
           framesDecoded: (r.framesDecoded as number) ?? 0,
           framesDropped,
@@ -162,6 +206,24 @@ export class StatsParser {
           freezeDurationDelta: Math.max(0, freezeDuration - this.prevFreezeDuration),
           nackCount,
           nackCountDelta: Math.max(0, nackCount - this.prevNackCount),
+          firCount: (r.firCount as number) ?? 0,
+          pliCount: (r.pliCount as number) ?? 0,
+          framesReceived: (r.framesReceived as number) ?? 0,
+          avgInterFrameDelayMs: ((r.totalInterFrameDelay as number) ?? 0) > 0 && (r.framesDecoded as number) > 0
+            ? ((r.totalInterFrameDelay as number) / (r.framesDecoded as number)) * 1000
+            : 0,
+          interFrameDelayVarianceMs: ((r.totalSquaredInterFrameDelay as number) ?? 0) > 0 && (r.framesDecoded as number) > 0
+            ? Math.sqrt((r.totalSquaredInterFrameDelay as number) / (r.framesDecoded as number)) * 1000
+            : 0,
+          jitterBufferTargetDelayMs: jbTargetMs,
+          jitterBufferMinimumDelayMs: jbMinMs,
+          avgDecodeTimeMs: (r.framesDecoded as number) > 0
+            ? ((r.totalDecodeTime as number) ?? 0) / (r.framesDecoded as number) * 1000
+            : 0,
+          avgJitterBufferMs: jbEmitted > 0 ? (jbDelay / jbEmitted) * 1000 : 0,
+          avgProcessingDelayMs: (r.framesDecoded as number) > 0
+            ? ((r.totalProcessingDelay as number) ?? 0) / (r.framesDecoded as number) * 1000
+            : 0,
         };
         this.prevPacketsLostVideo = packetsLost;
         this.prevFramesDropped = framesDropped;
@@ -176,15 +238,30 @@ export class StatsParser {
         const outBitrate = elapsed > 0 ? ((bytesSent - this.prevBytesSentVideo) * 8) / elapsed : 0;
         this.prevBytesSentVideo = bytesSent;
 
+        // Average packet send delay: totalPacketSendDelay / packetsSent (seconds → ms)
+        const pktsSent = (r.packetsSent as number) ?? 0;
+        const totalPktSendDelay = (r.totalPacketSendDelay as number) ?? 0;
+        const avgPktSendDelayMs = pktsSent > 0 ? (totalPktSendDelay / pktsSent) * 1000 : 0;
+
         outboundVideo = {
           qualityLimitationReason: (r.qualityLimitationReason as string) ?? "none",
           qualityLimitationDurations: (r.qualityLimitationDurations as Record<string, number>) ?? {},
           bytesSent,
-          packetsSent: (r.packetsSent as number) ?? 0,
+          packetsSent: pktsSent,
           framesPerSecond: (r.framesPerSecond as number) ?? 0,
           frameWidth: (r.frameWidth as number) ?? 0,
           frameHeight: (r.frameHeight as number) ?? 0,
           bitrate: Math.round(outBitrate),
+          nackCount: (r.nackCount as number) ?? 0,
+          firCount: (r.firCount as number) ?? 0,
+          pliCount: (r.pliCount as number) ?? 0,
+          retransmittedBytesSent: (r.retransmittedBytesSent as number) ?? 0,
+          retransmittedPacketsSent: (r.retransmittedPacketsSent as number) ?? 0,
+          targetBitrateKbps: (r.targetBitrate as number) != null ? (r.targetBitrate as number) / 1000 : null,
+          avgPacketSendDelayMs: avgPktSendDelayMs,
+          avgEncodeTimeMs: (r.framesEncoded as number) > 0
+            ? ((r.totalEncodeTime as number) ?? 0) / (r.framesEncoded as number) * 1000
+            : 0,
         };
       }
 
