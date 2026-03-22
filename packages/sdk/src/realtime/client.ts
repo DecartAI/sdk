@@ -109,6 +109,7 @@ const realTimeClientConnectOptionsSchema = z.object({
     })
     .optional(),
   extraQueryParams: z.record(z.string(), z.string()).optional(),
+  jitterBufferMinDelay: z.union([z.number(), z.string()]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -223,6 +224,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         transportManager = new IVSManager({
           ivsUrl: `${baseUrl}${ivsUrlPath}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${latencyQs}${extraQs}`,
           ...sharedCallbacks,
+          jitterBufferMinDelay: parsedOptions.data.jitterBufferMinDelay,
         });
       } else {
         transportManager = new WebRTCManager({

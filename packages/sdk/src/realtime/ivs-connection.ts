@@ -21,7 +21,7 @@ interface IVSStageStrategy {
   shouldPublishParticipant(participant: IVSStageParticipant): boolean;
   shouldSubscribeToParticipant(participant: IVSStageParticipant): IVSSubscribeType;
   subscribeConfiguration?(participant: IVSStageParticipant): {
-    jitterBuffer?: { minDelay?: number };
+    jitterBuffer?: { minDelay?: number | string };
   };
 }
 
@@ -107,6 +107,7 @@ interface IVSConnectionCallbacks {
   initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
+  jitterBufferMinDelay?: number | string;
 }
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
@@ -298,7 +299,7 @@ export class IVSConnection {
         return ivs.SubscribeType.AUDIO_VIDEO;
       },
       subscribeConfiguration: () => ({
-        jitterBuffer: { minDelay: 0 },
+        jitterBuffer: { minDelay: this.callbacks.jitterBufferMinDelay ?? 0 },
       }),
     };
 
