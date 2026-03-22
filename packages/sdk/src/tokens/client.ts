@@ -1,3 +1,4 @@
+import { type Model } from "../shared/model";
 import { buildAuthHeaders } from "../shared/request";
 import { createSDKError } from "../utils/errors";
 
@@ -10,11 +11,21 @@ export type TokensClientOptions = {
 export type CreateTokenOptions = {
   /** Custom key-value pairs to attach to the client token. */
   metadata?: Record<string, unknown>;
+  /** Seconds until the token expires (1-3600, default 60). */
+  expiresIn?: number;
+  /** Restrict which models this token can access (max 20 items). */
+  allowedModels?: (Model | (string & {}))[];
+  /** Operational limits for the token. */
+  constraints?: { realtime?: { maxSessionDuration?: number } };
 };
 
 export type CreateTokenResponse = {
   apiKey: string;
   expiresAt: string;
+  /** Present when `allowedModels` was set on the request. */
+  permissions?: { models: (Model | (string & {}))[] } | null;
+  /** Present when `constraints` was set on the request. */
+  constraints?: { realtime?: { maxSessionDuration?: number } } | null;
 };
 
 export type TokensClient = {
@@ -31,6 +42,13 @@ export type TokensClient = {
    *
    * // With metadata:
    * const token = await client.tokens.create({ metadata: { role: "viewer" } });
+   *
+   * // With expiry, model restrictions, and constraints:
+   * const token = await client.tokens.create({
+   *   expiresIn: 300,
+   *   allowedModels: ["lucy-pro-t2v", "lucy-pro-i2v"],
+   *   constraints: { realtime: { maxSessionDuration: 120 } },
+   * });
    * ```
    */
   create: (options?: CreateTokenOptions) => Promise<CreateTokenResponse>;
@@ -48,7 +66,7 @@ export const createTokensClient = (opts: TokensClientOptions): TokensClient => {
     const response = await fetch(`${baseUrl}/v1/client/tokens`, {
       method: "POST",
       headers,
-      body: JSON.stringify(options?.metadata ? { metadata: options.metadata } : {}),
+      body: JSON.stringify(options ?? {}),
     });
 
     if (!response.ok) {

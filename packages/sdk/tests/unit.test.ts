@@ -1034,6 +1034,107 @@ describe("Tokens API", () => {
       const body = await lastRequest?.text();
       expect(JSON.parse(body!)).toEqual({});
     });
+
+    it("sends expiresIn in request body", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", async ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({
+            apiKey: "ek_test123",
+            expiresAt: "2024-12-15T12:15:00Z",
+          });
+        }),
+      );
+
+      await decart.tokens.create({ expiresIn: 300 });
+
+      const body = await lastRequest?.json();
+      expect(body).toEqual({ expiresIn: 300 });
+    });
+
+    it("sends allowedModels in request body", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", async ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({
+            apiKey: "ek_test123",
+            expiresAt: "2024-12-15T12:10:00Z",
+          });
+        }),
+      );
+
+      await decart.tokens.create({ allowedModels: ["lucy-pro-t2v", "lucy-pro-i2v"] });
+
+      const body = await lastRequest?.json();
+      expect(body).toEqual({ allowedModels: ["lucy-pro-t2v", "lucy-pro-i2v"] });
+    });
+
+    it("sends constraints in request body", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", async ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({
+            apiKey: "ek_test123",
+            expiresAt: "2024-12-15T12:10:00Z",
+          });
+        }),
+      );
+
+      await decart.tokens.create({ constraints: { realtime: { maxSessionDuration: 120 } } });
+
+      const body = await lastRequest?.json();
+      expect(body).toEqual({ constraints: { realtime: { maxSessionDuration: 120 } } });
+    });
+
+    it("sends all options together", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", async ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({
+            apiKey: "ek_test123",
+            expiresAt: "2024-12-15T12:15:00Z",
+          });
+        }),
+      );
+
+      await decart.tokens.create({
+        metadata: { role: "viewer" },
+        expiresIn: 300,
+        allowedModels: ["lucy-pro-t2v"],
+        constraints: { realtime: { maxSessionDuration: 60 } },
+      });
+
+      const body = await lastRequest?.json();
+      expect(body).toEqual({
+        metadata: { role: "viewer" },
+        expiresIn: 300,
+        allowedModels: ["lucy-pro-t2v"],
+        constraints: { realtime: { maxSessionDuration: 60 } },
+      });
+    });
+
+    it("returns permissions and constraints from response", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", async ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({
+            apiKey: "ek_test123",
+            expiresAt: "2024-12-15T12:15:00Z",
+            permissions: { models: ["lucy-pro-t2v", "lucy-pro-i2v"] },
+            constraints: { realtime: { maxSessionDuration: 120 } },
+          });
+        }),
+      );
+
+      const result = await decart.tokens.create({
+        allowedModels: ["lucy-pro-t2v", "lucy-pro-i2v"],
+        constraints: { realtime: { maxSessionDuration: 120 } },
+      });
+
+      expect(result.apiKey).toBe("ek_test123");
+      expect(result.permissions).toEqual({ models: ["lucy-pro-t2v", "lucy-pro-i2v"] });
+      expect(result.constraints).toEqual({ realtime: { maxSessionDuration: 120 } });
+    });
   });
 });
 
