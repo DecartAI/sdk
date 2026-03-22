@@ -308,6 +308,7 @@ export class IVSConnection {
     await new Promise<void>((resolve, reject) => {
       const rejectAndLeave = (error: Error) => {
         stage.leave();
+        this.ws?.close();
         reject(error);
       };
 
