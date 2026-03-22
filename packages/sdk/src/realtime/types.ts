@@ -73,6 +73,7 @@ export type SessionIdMessage = {
 
 export type MetricsReportMessage = {
   type: "metrics_report";
+  frame_recv_ms: number | null;
   pipeline_latency_ms: number | null;
   input_fps: number;
   output_fps: number;
