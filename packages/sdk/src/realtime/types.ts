@@ -71,10 +71,21 @@ export type SessionIdMessage = {
   server_port: number;
 };
 
-export type LatencyReportMessage = {
-  type: "latency_report";
-  server_proxy_rtt_ms: number;
-  pipeline_latency_ms: number;
+export type MetricsReportMessage = {
+  type: "metrics_report";
+  pipeline_latency_ms: number | null;
+  input_fps: number;
+  output_fps: number;
+  video_in_depth: number;
+  video_out_depth: number;
+  skipped_in_frames: number;
+  skipped_out_frames: number;
+  event_loop_latency_ms: number;
+  rtt_ms: number | null;
+  jitter_ms: number | null;
+  inbound_loss_rate: number | null;
+  bitrate_kbps: number | null;
+  encoder_target_bitrate_kbps: number | null;
 };
 
 export type LatencyProbeMessage = {
@@ -107,7 +118,7 @@ export type IncomingWebRTCMessage =
   | GenerationTickMessage
   | GenerationEndedMessage
   | SessionIdMessage
-  | LatencyReportMessage;
+  | MetricsReportMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =
@@ -142,7 +153,7 @@ export type IncomingIVSMessage =
   | GenerationTickMessage
   | GenerationEndedMessage
   | SessionIdMessage
-  | LatencyReportMessage;
+  | MetricsReportMessage;
 
 // IVS outgoing messages (to bouncer)
 export type OutgoingIVSMessage = IvsJoinedMessage | PromptMessage | SetAvatarImageMessage | LatencyProbeMessage | E2ELatencyReportMessage;
@@ -153,5 +164,5 @@ export type WsMessageEvents = {
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
-  latencyReport: LatencyReportMessage;
+  metricsReport: MetricsReportMessage;
 };

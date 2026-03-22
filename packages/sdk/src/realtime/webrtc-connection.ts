@@ -246,8 +246,8 @@ export class WebRTCConnection {
         return;
       }
 
-      if (msg.type === "latency_report") {
-        this.websocketMessagesEmitter.emit("latencyReport", msg);
+      if (msg.type === "metrics_report") {
+        this.websocketMessagesEmitter.emit("metricsReport", msg);
         return;
       }
 

@@ -1,4 +1,4 @@
-import type { LatencyReportMessage } from "./types";
+import type { MetricsReportMessage } from "./types";
 
 export type CompositeLatencyEstimate = {
   clientProxyRttMs: number;
@@ -13,10 +13,10 @@ export class CompositeLatencyTracker {
     pipelineLatencyMs: number;
   } | null = null;
 
-  onServerReport(msg: LatencyReportMessage): void {
+  onServerReport(msg: MetricsReportMessage): void {
     this.latestServerReport = {
-      serverProxyRttMs: msg.server_proxy_rtt_ms,
-      pipelineLatencyMs: msg.pipeline_latency_ms,
+      serverProxyRttMs: msg.rtt_ms ?? 0,
+      pipelineLatencyMs: msg.pipeline_latency_ms ?? 0,
     };
   }
 

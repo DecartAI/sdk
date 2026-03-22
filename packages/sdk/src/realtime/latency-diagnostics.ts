@@ -13,7 +13,7 @@ import {
   type PixelLatencyReport,
 } from "./pixel-latency";
 import { PixelLatencyStamper } from "./pixel-latency-stamper";
-import type { LatencyReportMessage, OutgoingMessage } from "./types";
+import type { MetricsReportMessage, OutgoingMessage } from "./types";
 import type { WebRTCStats } from "./webrtc-stats";
 
 export type LatencyDiagnosticsOptions = {
@@ -74,8 +74,8 @@ export class LatencyDiagnostics {
     return processedStream;
   }
 
-  /** Handle incoming latency_report from server. */
-  onServerReport(msg: LatencyReportMessage): void {
+  /** Handle incoming metrics_report from server. */
+  onServerReport(msg: MetricsReportMessage): void {
     if (!this.compositeTracker) return;
     this.compositeTracker.onServerReport(msg);
     const estimate = this.compositeTracker.getEstimate(this.latestClientRtt);

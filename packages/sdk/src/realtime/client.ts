@@ -427,7 +427,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       // Wire latency diagnostics events and start delayed
       if (latencyDiag) {
-        manager.getWebsocketMessageEmitter().on("latencyReport", (msg) => latencyDiag!.onServerReport(msg));
+        manager.getWebsocketMessageEmitter().on("metricsReport", (msg) => latencyDiag!.onServerReport(msg));
         eventEmitter.on("stats", (stats) => latencyDiag!.onStats(stats));
         latencyStartTimer = setTimeout(() => latencyDiag?.start(), 1000);
       }
