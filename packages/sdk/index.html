@@ -418,6 +418,11 @@
             processedVideo: document.getElementById('processed-video')
         };
         
+        // Pre-populate API key from environment variable if available
+        if (import.meta.env.VITE_DECART_API_KEY) {
+            elements.apiKey.value = import.meta.env.VITE_DECART_API_KEY;
+        }
+
         // Logging system
         function addLog(message, type = 'info') {
             const timestamp = new Date().toLocaleTimeString();
@@ -574,10 +579,10 @@
         
         // Disconnect
         elements.disconnectBtn.addEventListener('click', () => {
-            if (decartClient) {
+            if (decartRealtime) {
                 addLog('Disconnecting from Decart...', 'info');
-                // Note: The SDK doesn't seem to have a disconnect method, 
-                // so we'll just reset our state
+                decartRealtime.disconnect();
+                decartRealtime = null;
                 decartClient = null;
             }
             
