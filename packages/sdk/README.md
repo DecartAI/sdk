@@ -76,7 +76,7 @@ const client = createDecartClient({
 // Submit and poll automatically
 const result = await client.queue.submitAndPoll({
   model: models.video("lucy-pro-v2v"),
-  prompt: "A cat playing piano",
+  prompt: "Make it look like a watercolor painting",
   data: videoFile,
   onStatusChange: (job) => {
     console.log(`Status: ${job.status}`);
@@ -96,7 +96,7 @@ Or manage the polling manually:
 // Submit the job
 const job = await client.queue.submit({
   model: models.video("lucy-pro-v2v"),
-  prompt: "A cat playing piano",
+  prompt: "Make it look like a watercolor painting",
   data: videoFile
 });
 console.log(`Job ID: ${job.job_id}`);

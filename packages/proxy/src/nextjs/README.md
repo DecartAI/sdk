@@ -36,7 +36,8 @@ const client = createDecartClient({ proxy: PROXY_ROUTE });
 // Use the client as normal
 const result = await client.process({
   model: models.image("lucy-pro-i2i"),
-  prompt: "A beautiful sunset",
+  prompt: "Make it look like a watercolor painting",
+  data: imageBlob,
 });
 ```
 

@@ -79,7 +79,7 @@ const blob = await client.process({
 // Automatic polling (video-to-video)
 const result = await client.queue.submitAndPoll({
   model: models.video("lucy-pro-v2v"),
-  prompt: "A cat playing piano",
+  prompt: "Make it look like a watercolor painting",
   data: videoBlob,
   onStatusChange: (job) => console.log(job.status),
 });
