@@ -3,7 +3,7 @@ import express from "express";
 import { createDecartClient, models } from "@decartai/sdk";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
 
 const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY!,
