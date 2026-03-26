@@ -1,6 +1,6 @@
 # Hono Edge Example
 
-A Cloudflare Workers API using Hono demonstrating text-to-image and text-to-video generation.
+A Cloudflare Workers API using Hono demonstrating image and video editing.
 
 ## Setup
 
@@ -39,29 +39,28 @@ pnpm deploy
 
 ## Endpoints
 
-### Text-to-Image
+These editing endpoints expect `imageDataUrl` / `videoDataUrl` fields containing base64 `data:` URLs.
+
+### Image Editing
 
 ```bash
 curl -X POST http://localhost:8787/api/image/generate \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "A beautiful sunset over mountains"}' \
+  -d '{"prompt": "A beautiful sunset over mountains", "imageDataUrl": "data:image/png;base64,<base64-image>"}' \
   --output image.png
 ```
 
-### Text-to-Video
+### Video Editing
 
 ```bash
-# Submit video job
 curl -X POST http://localhost:8787/api/video/generate \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "A cat playing piano"}'
+  -d '{"prompt": "A cat playing piano", "videoDataUrl": "data:video/mp4;base64,<base64-video>"}'
 # Returns: {"jobId": "abc123", "status": "pending"}
 
-# Check status
 curl http://localhost:8787/api/video/status/abc123
 # Returns: {"job_id": "abc123", "status": "processing"}
 
-# Get result (when completed)
 curl http://localhost:8787/api/video/result/abc123 --output video.mp4
 ```
 
@@ -69,7 +68,7 @@ curl http://localhost:8787/api/video/result/abc123 --output video.mp4
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/image/generate` | POST | Generate image from text |
-| `/api/video/generate` | POST | Submit video generation job |
+| `/api/image/generate` | POST | Edit image from base64 data URL + prompt |
+| `/api/video/generate` | POST | Submit video editing job |
 | `/api/video/status/:id` | GET | Check video job status |
 | `/api/video/result/:id` | GET | Get completed video |

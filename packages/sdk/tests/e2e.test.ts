@@ -65,17 +65,6 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
   }
 
   describe("Process API - Image Models", () => {
-    it("lucy-pro-t2i: text-to-image", async () => {
-      const result = await client.process({
-        model: models.image("lucy-pro-t2i"),
-        prompt: "A serene Japanese garden with cherry blossoms and a wooden bridge",
-        seed: 222,
-        orientation: "landscape",
-      });
-
-      await expectResult(result, "lucy-pro-t2i", ".png");
-    });
-
     it("lucy-pro-i2i: image-to-image", async () => {
       const result = await client.process({
         model: models.image("lucy-pro-i2i"),
@@ -90,42 +79,6 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
   });
 
   describe("Queue API - Video Models", () => {
-    it("lucy-pro-t2v: text-to-video", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-pro-t2v"),
-        prompt: "A majestic eagle soaring through mountain peaks at sunset",
-        seed: 42,
-        resolution: "720p",
-        orientation: "landscape",
-      });
-
-      await expectResult(result, "lucy-pro-t2v", ".mp4");
-    });
-
-    it("lucy-dev-i2v: image-to-video (dev)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-dev-i2v"),
-        prompt: "The image comes to life with gentle movements",
-        data: imageBlob,
-        seed: 123,
-        resolution: "720p",
-      });
-
-      await expectResult(result, "lucy-dev-i2v", ".mp4");
-    });
-
-    it("lucy-pro-i2v: image-to-video (pro)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-pro-i2v"),
-        prompt: "Transform the image into a dynamic video scene",
-        data: imageBlob,
-        seed: 456,
-        resolution: "720p",
-      });
-
-      await expectResult(result, "lucy-pro-i2v", ".mp4");
-    });
-
     it("lucy-pro-v2v: video-to-video", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-pro-v2v"),
@@ -136,17 +89,6 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       });
 
       await expectResult(result, "lucy-pro-v2v", ".mp4");
-    });
-
-    it("lucy-fast-v2v: video-to-video (fast)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-fast-v2v"),
-        prompt: "Watercolor painting style",
-        data: videoBlob,
-        seed: 888,
-      });
-
-      await expectResult(result, "lucy-fast-v2v", ".mp4");
     });
 
     it("lucy-restyle-v2v: video restyling (prompt)", async () => {

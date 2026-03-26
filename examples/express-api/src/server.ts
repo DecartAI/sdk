@@ -9,33 +9,37 @@ const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY!,
 });
 
-// Generate image from text (sync - returns immediately)
-app.post("/api/image/generate", async (req, res) => {
-  try {
-    const { prompt } = req.body;
-
-    const blob = await client.process({
-      model: models.image("lucy-pro-t2i"),
-      prompt,
-    });
-
-    const buffer = Buffer.from(await blob.arrayBuffer());
-    res.setHeader("Content-Type", "image/png");
-    res.send(buffer);
-  } catch (error) {
-    res.status(500).json({ error: String(error) });
+function parseBase64DataUrl(dataUrl: unknown, mediaType: "image" | "video"): Blob {
+  if (typeof dataUrl !== "string") {
+    throw new Error(`${mediaType}DataUrl must be a base64 data URL string`);
   }
-});
 
-// Transform image (sync - returns immediately)
-app.post("/api/image/transform", async (req, res) => {
+  const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
+  if (!match) {
+    throw new Error(`${mediaType}DataUrl must be a valid base64 data URL`);
+  }
+
+  const [, mimeType, base64] = match;
+  if (!mimeType.startsWith(`${mediaType}/`)) {
+    throw new Error(`${mediaType}DataUrl must contain a ${mediaType} MIME type`);
+  }
+
+  return new Blob([Buffer.from(base64, "base64")], { type: mimeType });
+}
+
+// Edit image (sync - returns immediately)
+app.post("/api/image/edit", async (req, res) => {
   try {
-    const { prompt, imageUrl } = req.body;
+    const { prompt, imageDataUrl } = req.body;
+
+    if (!prompt || !imageDataUrl) {
+      return res.status(400).json({ error: "prompt and imageDataUrl are required" });
+    }
 
     const blob = await client.process({
       model: models.image("lucy-pro-i2i"),
       prompt,
-      data: imageUrl,
+      data: parseBase64DataUrl(imageDataUrl, "image"),
     });
 
     const buffer = Buffer.from(await blob.arrayBuffer());
@@ -46,14 +50,19 @@ app.post("/api/image/transform", async (req, res) => {
   }
 });
 
-// Submit video generation job (async - returns job ID)
+// Submit video editing job (async - returns job ID)
 app.post("/api/video/generate", async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const { prompt, videoDataUrl } = req.body;
+
+    if (!prompt || !videoDataUrl) {
+      return res.status(400).json({ error: "prompt and videoDataUrl are required" });
+    }
 
     const job = await client.queue.submit({
-      model: models.video("lucy-pro-t2v"),
+      model: models.video("lucy-pro-v2v"),
       prompt,
+      data: parseBase64DataUrl(videoDataUrl, "video"),
     });
 
     res.json({ jobId: job.job_id, status: job.status });
@@ -87,12 +96,16 @@ app.get("/api/video/result/:jobId", async (req, res) => {
 // Generate video with automatic polling (convenience endpoint)
 app.post("/api/video/generate-sync", async (req, res) => {
   try {
-    const { prompt, videoUrl } = req.body;
+    const { prompt, videoDataUrl } = req.body;
+
+    if (!prompt || !videoDataUrl) {
+      return res.status(400).json({ error: "prompt and videoDataUrl are required" });
+    }
 
     const result = await client.queue.submitAndPoll({
-      model: videoUrl ? models.video("lucy-pro-v2v") : models.video("lucy-pro-t2v"),
+      model: models.video("lucy-pro-v2v"),
       prompt,
-      ...(videoUrl && { data: videoUrl }),
+      data: parseBase64DataUrl(videoDataUrl, "video"),
     });
 
     if (result.status === "completed") {
@@ -112,10 +125,9 @@ app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
   console.log("");
   console.log("Available endpoints:");
-  console.log("  POST /api/image/generate      - Generate image from text");
-  console.log("  POST /api/image/transform     - Transform image");
-  console.log("  POST /api/video/generate      - Submit video job");
+  console.log("  POST /api/image/edit           - Edit image from base64 data URL + prompt");
+  console.log("  POST /api/video/generate      - Submit video edit job from base64 data URL + prompt");
   console.log("  GET  /api/video/status/:id    - Check job status");
   console.log("  GET  /api/video/result/:id    - Get video result");
-  console.log("  POST /api/video/generate-sync - Generate video (wait for result)");
+  console.log("  POST /api/video/generate-sync - Edit video (wait for result)");
 });

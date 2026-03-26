@@ -221,8 +221,9 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
      * ```ts
      * const client = createDecartClient({ apiKey: "your-api-key" });
      * const result = await client.process({
-     *   model: models.image("lucy-pro-t2i"),
-     *   prompt: "A beautiful sunset over the ocean"
+     *   model: models.image("lucy-pro-i2i"),
+     *   prompt: "Transform into anime style",
+     *   data: imageBlob
      * });
      * ```
      */
@@ -238,15 +239,17 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
      *
      * // Option 1: Submit and poll automatically
      * const result = await client.queue.submitAndPoll({
-     *   model: models.video("lucy-pro-t2v"),
-     *   prompt: "A beautiful sunset over the ocean",
+     *   model: models.video("lucy-pro-v2v"),
+     *   prompt: "Transform into anime style",
+     *   data: videoBlob,
      *   onStatusChange: (job) => console.log(`Job ${job.job_id}: ${job.status}`)
      * });
      *
      * // Option 2: Submit and poll manually
      * const job = await client.queue.submit({
-     *   model: models.video("lucy-pro-t2v"),
-     *   prompt: "A beautiful sunset over the ocean"
+     *   model: models.video("lucy-pro-v2v"),
+     *   prompt: "Transform into anime style",
+     *   data: videoBlob
      * });
      *
      * // Poll until completion

@@ -7,11 +7,14 @@ run(async () => {
     apiKey: process.env.DECART_API_KEY!,
   });
 
-  console.log("Generating image from text...");
+  console.log("Editing image...");
+
+  const inputImage = fs.readFileSync("input.png");
 
   const blob = await client.process({
-    model: models.image("lucy-pro-t2i"),
+    model: models.image("lucy-pro-i2i"),
     prompt: "A cyberpunk cityscape at night with neon lights",
+    data: new Blob([inputImage]),
   });
 
   // Save to file
