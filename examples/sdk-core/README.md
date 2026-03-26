@@ -31,15 +31,15 @@ pnpm tsx image/text-to-image.ts
 
 Image models use the synchronous Process API - they return immediately with a Blob.
 
-- `image/text-to-image.ts` - Generate image from text prompt
+- `image/text-to-image.ts` - Edit image with a prompt (`lucy-pro-i2i`)
 - `image/image-to-image.ts` - Transform existing image
 
 ### Video Generation
 
 Video models use the asynchronous Queue API - jobs are submitted and polled for completion.
 
-- `video/text-to-video.ts` - Generate video from text prompt
-- `video/image-to-video.ts` - Generate video from image
+- `video/text-to-video.ts` - Edit video with a prompt (`lucy-pro-v2v`)
+- `video/image-to-video.ts` - Edit video with a prompt (`lucy-pro-v2v`)
 - `video/video-to-video.ts` - Transform existing video
 - `video/video-editing.ts` - Edit video with prompt, reference image, or both (`lucy-2-v2v`)
 - `video/long-form-video-restyle.ts` - Transform existing video with `lucy-restyle-v2v`
@@ -65,13 +65,7 @@ See `examples/nextjs-realtime` or `examples/react-vite` for runnable demos.
 ### Image Models (Process API)
 
 ```typescript
-// Text-to-image
-const blob = await client.process({
-  model: models.image("lucy-pro-t2i"),
-  prompt: "A beautiful sunset",
-});
-
-// Image-to-image
+// Image-to-image (edit image with prompt)
 const blob = await client.process({
   model: models.image("lucy-pro-i2i"),
   prompt: "Transform to watercolor style",
@@ -82,10 +76,11 @@ const blob = await client.process({
 ### Video Models (Queue API)
 
 ```typescript
-// Automatic polling
+// Automatic polling (video-to-video)
 const result = await client.queue.submitAndPoll({
-  model: models.video("lucy-pro-t2v"),
+  model: models.video("lucy-pro-v2v"),
   prompt: "A cat playing piano",
+  data: videoBlob,
   onStatusChange: (job) => console.log(job.status),
 });
 

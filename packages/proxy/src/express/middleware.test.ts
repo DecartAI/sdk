@@ -75,7 +75,7 @@ describe("Decart Proxy Middleware", () => {
       const testApp = createTestApp({});
       const { port, close } = await startTestServer(testApp);
 
-      const response = await fetch(getProxyUrl(port, "/v1/generate/lucy-pro-t2i"), {
+      const response = await fetch(getProxyUrl(port, "/v1/generate/lucy-pro-i2i"), {
         method: "POST",
       });
 
@@ -91,18 +91,18 @@ describe("Decart Proxy Middleware", () => {
       const { port, close } = await startTestServer(testApp);
 
       mswServer.use(
-        http.post(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`, async ({ request }) => {
+        http.post(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-i2i`, async ({ request }) => {
           lastRequest = request;
           return HttpResponse.json({});
         }),
       );
 
-      await fetch(getProxyUrl(port, "/v1/generate/lucy-pro-t2i"), {
+      await fetch(getProxyUrl(port, "/v1/generate/lucy-pro-i2i"), {
         method: "POST",
       });
 
       expect(lastRequest).not.toBeNull();
-      expect(lastRequest?.url).toContain(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`);
+      expect(lastRequest?.url).toContain(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-i2i`);
 
       await close();
     });
@@ -114,14 +114,14 @@ describe("Decart Proxy Middleware", () => {
       const { port, close } = await startTestServer(app);
 
       mswServer.use(
-        http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, async ({ request }) => {
+        http.post(`${BASE_URL}/v1/generate/lucy-pro-i2i`, async ({ request }) => {
           lastRequest = request;
           return HttpResponse.json({});
         }),
       );
 
       const testBody = JSON.stringify({ prompt: "A beautiful sunset over the ocean", resolution: "720p" });
-      const response = await fetch(getProxyUrl(port, "/v1/generate/lucy-pro-t2i"), {
+      const response = await fetch(getProxyUrl(port, "/v1/generate/lucy-pro-i2i"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: testBody,
@@ -130,7 +130,7 @@ describe("Decart Proxy Middleware", () => {
       expect(response.status).toBe(200);
       expect(lastRequest).not.toBeNull();
       expect(lastRequest?.method).toBe("POST");
-      expect(lastRequest?.url).toContain("/v1/generate/lucy-pro-t2i");
+      expect(lastRequest?.url).toContain("/v1/generate/lucy-pro-i2i");
       // The middleware converts body to ArrayBuffer
       if (lastRequest) {
         const body = await lastRequest.arrayBuffer();
@@ -168,13 +168,13 @@ describe("Decart Proxy Middleware", () => {
       const { port, close } = await startTestServer(app);
 
       mswServer.use(
-        http.post(`${BASE_URL}/v1/jobs/lucy-pro-t2v`, async ({ request }) => {
+        http.post(`${BASE_URL}/v1/jobs/lucy-pro-v2v`, async ({ request }) => {
           lastRequest = request;
           return HttpResponse.json({});
         }),
       );
 
-      await fetch(getProxyUrl(port, "/v1/jobs/lucy-pro-t2v"), {
+      await fetch(getProxyUrl(port, "/v1/jobs/lucy-pro-v2v"), {
         method: "POST",
         headers: {
           "User-Agent": "Custom-Agent/1.0",
@@ -198,7 +198,7 @@ describe("Decart Proxy Middleware", () => {
       const mockResponse = { job_id: "job_abc123", status: "pending" };
 
       mswServer.use(
-        http.post(`${BASE_URL}/v1/jobs/lucy-pro-t2v`, () => {
+        http.post(`${BASE_URL}/v1/jobs/lucy-pro-v2v`, () => {
           return HttpResponse.json(mockResponse, {
             status: 201,
             headers: { "Content-Type": "application/json" },
@@ -206,7 +206,7 @@ describe("Decart Proxy Middleware", () => {
         }),
       );
 
-      const response = await fetch(getProxyUrl(port, "/v1/jobs/lucy-pro-t2v"), {
+      const response = await fetch(getProxyUrl(port, "/v1/jobs/lucy-pro-v2v"), {
         method: "POST",
       });
 
@@ -254,7 +254,7 @@ describe("Decart Proxy Middleware", () => {
       const { port, close } = await startTestServer(app);
 
       mswServer.use(
-        http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, () => {
+        http.post(`${BASE_URL}/v1/generate/lucy-pro-i2i`, () => {
           return HttpResponse.json(
             { error: "Internal Server Error" },
             {
@@ -265,7 +265,7 @@ describe("Decart Proxy Middleware", () => {
         }),
       );
 
-      const response = await fetch(getProxyUrl(port, "/v1/generate/lucy-pro-t2i"), {
+      const response = await fetch(getProxyUrl(port, "/v1/generate/lucy-pro-i2i"), {
         method: "POST",
       });
 
@@ -292,12 +292,12 @@ describe("Decart Proxy Middleware", () => {
 
       // Trigger a fetch failure
       mswServer.use(
-        http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, () => {
+        http.post(`${BASE_URL}/v1/generate/lucy-pro-i2i`, () => {
           return HttpResponse.error();
         }),
       );
 
-      const response = await fetch(getProxyUrl(port, "/v1/generate/lucy-pro-t2i"), {
+      const response = await fetch(getProxyUrl(port, "/v1/generate/lucy-pro-i2i"), {
         method: "POST",
       });
 

@@ -45,19 +45,19 @@ All requests to `/api/decart/*` are automatically proxied to `api.decart.ai` wit
 
 ### Client Side (`app/page.tsx`)
 
-The frontend uses the SDK pointing to the proxy endpoint:
+The frontend uses the SDK pointing to the proxy endpoint and uploads a source image directly from the browser:
 
 ```typescript
 import { PROXY_ROUTE } from "@decartai/proxy/nextjs";
 import { createDecartClient, models } from "@decartai/sdk";
 
 const client = createDecartClient({
-  proxy: PROXY_ROUTE, // "/api/decart"
+  proxy: PROXY_ROUTE,
 });
 
 const blob = await client.process({
-  model: models.image("lucy-pro-t2i"),
-  prompt: "A beautiful sunset",
+  model: models.image("lucy-pro-i2i"),
+  prompt: "Turn this into a watercolor painting",
+  data: sourceFile,
 });
 ```
-

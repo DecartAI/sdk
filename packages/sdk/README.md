@@ -75,8 +75,9 @@ const client = createDecartClient({
 
 // Submit and poll automatically
 const result = await client.queue.submitAndPoll({
-  model: models.video("lucy-pro-t2v"),
+  model: models.video("lucy-pro-v2v"),
   prompt: "A cat playing piano",
+  data: videoFile,
   onStatusChange: (job) => {
     console.log(`Status: ${job.status}`);
   }
@@ -94,8 +95,9 @@ Or manage the polling manually:
 ```typescript
 // Submit the job
 const job = await client.queue.submit({
-  model: models.video("lucy-pro-t2v"),
-  prompt: "A cat playing piano"
+  model: models.video("lucy-pro-v2v"),
+  prompt: "A cat playing piano",
+  data: videoFile
 });
 console.log(`Job ID: ${job.job_id}`);
 

@@ -7,14 +7,14 @@ run(async () => {
     apiKey: process.env.DECART_API_KEY!,
   });
 
-  console.log("Generating video from image...");
+  console.log("Editing video...");
 
-  const inputImage = fs.readFileSync("input.png");
+  const inputVideo = fs.readFileSync("input.mp4");
 
   const result = await client.queue.submitAndPoll({
-    model: models.video("lucy-pro-i2v"),
-    prompt: "The scene comes to life with gentle motion",
-    data: new Blob([inputImage]),
+    model: models.video("lucy-pro-v2v"),
+    prompt: "The scene transforms with a vibrant new style",
+    data: new Blob([inputVideo]),
     onStatusChange: (job) => {
       console.log(`Job ${job.job_id}: ${job.status}`);
     },

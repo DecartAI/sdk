@@ -24,8 +24,9 @@ export type QueueClient = {
    * @example
    * ```ts
    * const job = await client.queue.submit({
-   *   model: models.video("lucy-pro-t2v"),
-   *   prompt: "A cat playing piano"
+   *   model: models.video("lucy-pro-v2v"),
+   *   prompt: "A cat playing piano",
+   *   data: videoBlob
    * });
    * console.log(job.job_id); // "job_abc123"
    * ```
@@ -62,8 +63,9 @@ export type QueueClient = {
    * @example
    * ```ts
    * const result = await client.queue.submitAndPoll({
-   *   model: models.video("lucy-pro-t2v"),
+   *   model: models.video("lucy-pro-v2v"),
    *   prompt: "A beautiful sunset",
+   *   data: videoBlob,
    *   onStatusChange: (job) => {
    *     console.log(`Job ${job.job_id}: ${job.status}`);
    *   }

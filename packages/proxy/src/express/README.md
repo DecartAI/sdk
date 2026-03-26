@@ -25,7 +25,7 @@ const client = createDecartClient({ proxy: "/api/decart" });
 
 // Use the client as normal
 const result = await client.process({
-  model: models.image("lucy-pro-t2i"),
+  model: models.image("lucy-pro-i2i"),
   prompt: "A beautiful sunset",
 });
 ```
