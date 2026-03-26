@@ -3,7 +3,7 @@ import { createDecartClient, models } from "@decartai/sdk";
 
 const [command, prompt, inputPath] = process.argv.slice(2);
 
-if ((command !== "image-edit" && command !== "text-to-image") || !prompt || !inputPath) {
+if (command !== "image-edit" || !prompt || !inputPath) {
   console.error("Usage: decart image-edit <prompt> <input-image-path>");
   process.exit(1);
 }
