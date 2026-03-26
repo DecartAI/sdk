@@ -28,30 +28,7 @@ function parseBase64DataUrl(dataUrl: unknown, mediaType: "image" | "video"): Blo
 }
 
 // Edit image (sync - returns immediately)
-app.post("/api/image/generate", async (req, res) => {
-  try {
-    const { prompt, imageDataUrl } = req.body;
-
-    if (!prompt || !imageDataUrl) {
-      return res.status(400).json({ error: "prompt and imageDataUrl are required" });
-    }
-
-    const blob = await client.process({
-      model: models.image("lucy-pro-i2i"),
-      prompt,
-      data: parseBase64DataUrl(imageDataUrl, "image"),
-    });
-
-    const buffer = Buffer.from(await blob.arrayBuffer());
-    res.setHeader("Content-Type", "image/png");
-    res.send(buffer);
-  } catch (error) {
-    res.status(500).json({ error: String(error) });
-  }
-});
-
-// Transform image (sync - returns immediately)
-app.post("/api/image/transform", async (req, res) => {
+app.post("/api/image/edit", async (req, res) => {
   try {
     const { prompt, imageDataUrl } = req.body;
 
@@ -148,8 +125,7 @@ app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
   console.log("");
   console.log("Available endpoints:");
-  console.log("  POST /api/image/generate      - Edit image from base64 data URL + prompt");
-  console.log("  POST /api/image/transform     - Transform image");
+  console.log("  POST /api/image/edit           - Edit image from base64 data URL + prompt");
   console.log("  POST /api/video/generate      - Submit video edit job from base64 data URL + prompt");
   console.log("  GET  /api/video/status/:id    - Check job status");
   console.log("  GET  /api/video/result/:id    - Get video result");
