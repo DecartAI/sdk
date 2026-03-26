@@ -21,8 +21,8 @@ pnpm build
 
 ```sh
 cd examples/sdk-core
-pnpm tsx video/text-to-video.ts
-pnpm tsx image/text-to-image.ts
+pnpm tsx video/video-to-video.ts
+pnpm tsx image/image-to-image.ts
 ```
 
 ## Examples
@@ -31,16 +31,13 @@ pnpm tsx image/text-to-image.ts
 
 Image models use the synchronous Process API - they return immediately with a Blob.
 
-- `image/text-to-image.ts` - Edit image with a prompt (`lucy-pro-i2i`)
-- `image/image-to-image.ts` - Transform existing image
+- `image/image-to-image.ts` - Transform existing image with a prompt (`lucy-pro-i2i`)
 
 ### Video Generation
 
 Video models use the asynchronous Queue API - jobs are submitted and polled for completion.
 
-- `video/text-to-video.ts` - Edit video with a prompt (`lucy-pro-v2v`)
-- `video/image-to-video.ts` - Edit video with a prompt (`lucy-pro-v2v`)
-- `video/video-to-video.ts` - Transform existing video
+- `video/video-to-video.ts` - Transform existing video with a prompt (`lucy-pro-v2v`)
 - `video/video-editing.ts` - Edit video with prompt, reference image, or both (`lucy-2-v2v`)
 - `video/long-form-video-restyle.ts` - Transform existing video with `lucy-restyle-v2v`
 - `video/manual-polling.ts` - Manual job status polling
