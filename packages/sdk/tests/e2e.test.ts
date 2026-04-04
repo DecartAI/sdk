@@ -148,9 +148,7 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       await expectResult(result, "lucy-2-v2v-both", ".mp4");
     });
 
-    // Temporarily disabled in prod-usw2: lucy-motion-server is configured with enabled: false / replicas: 0.
-    // Re-enable this E2E once the public lucy-motion queue has an active consumer again.
-    it.skip("lucy-motion: motion-guided image-to-video", async () => {
+    it("lucy-motion: motion-guided image-to-video", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-motion"),
         data: imageBlob,
