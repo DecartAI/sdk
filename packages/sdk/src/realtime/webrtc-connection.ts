@@ -13,7 +13,10 @@ import type {
   SetImageAckMessage,
 } from "./types";
 
-const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "turn:127.0.0.1:3478?transport=tcp", username: "turn", credential: "turn" },
+];
 const AVATAR_SETUP_TIMEOUT_MS = 30_000; // 30 seconds
 
 interface ConnectionCallbacks {
