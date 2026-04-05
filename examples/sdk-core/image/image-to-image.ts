@@ -12,10 +12,14 @@ run(async () => {
   // Read input image
   const inputImage = fs.readFileSync("input.png");
 
+  // Optional: provide a reference image to guide the edit
+  // const referenceImage = fs.readFileSync("reference.png");
+
   const blob = await client.process({
     model: models.image("lucy-pro-i2i"),
     prompt: "Transform to watercolor painting style",
     data: new Blob([inputImage]),
+    // reference_image: new Blob([referenceImage]),
   });
 
   // Save to file

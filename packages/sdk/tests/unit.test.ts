@@ -200,6 +200,31 @@ describe("Decart SDK", () => {
         const dataFile = lastFormData?.get("data") as File;
         expect(dataFile).toBeInstanceOf(File);
       });
+
+      it("processes image-to-image with reference_image", async () => {
+        server.use(createMockHandler("/v1/generate/lucy-pro-i2i"));
+
+        const testBlob = new Blob(["test-image"], { type: "image/png" });
+        const testRefBlob = new Blob(["test-ref-image"], { type: "image/png" });
+
+        const result = await decart.process({
+          model: models.image("lucy-pro-i2i"),
+          prompt: "Add the hat from the reference image",
+          data: testBlob,
+          reference_image: testRefBlob,
+          seed: 42,
+        });
+
+        expect(result).toBeInstanceOf(Blob);
+        expect(lastFormData?.get("prompt")).toBe("Add the hat from the reference image");
+        expect(lastFormData?.get("seed")).toBe("42");
+
+        const dataFile = lastFormData?.get("data") as File;
+        expect(dataFile).toBeInstanceOf(File);
+
+        const refImageFile = lastFormData?.get("reference_image") as File;
+        expect(refImageFile).toBeInstanceOf(File);
+      });
     });
 
     describe("Abort Signal", () => {

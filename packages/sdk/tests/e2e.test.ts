@@ -76,6 +76,19 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
 
       await expectResult(result, "lucy-pro-i2i", ".png");
     });
+
+    it("lucy-pro-i2i: image-to-image with reference_image", async () => {
+      const result = await client.process({
+        model: models.image("lucy-pro-i2i"),
+        prompt: "Add the object from the reference image",
+        data: imageBlob,
+        reference_image: imageBlob,
+        seed: 334,
+        enhance_prompt: false,
+      });
+
+      await expectResult(result, "lucy-pro-i2i-reference_image", ".png");
+    });
   });
 
   describe("Queue API - Video Models", () => {

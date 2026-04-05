@@ -95,6 +95,9 @@ export const modelInputSchemas = {
     data: fileInputSchema.describe(
       "The image data to use for generation (File, Blob, ReadableStream, URL, or string URL)",
     ),
+    reference_image: fileInputSchema
+      .optional()
+      .describe("Optional reference image to guide the edit (File, Blob, ReadableStream, URL, or string URL)"),
     seed: z.number().optional().describe("The seed to use for the generation"),
     resolution: proResolutionSchema(),
     enhance_prompt: z.boolean().optional().describe("Whether to enhance the prompt"),

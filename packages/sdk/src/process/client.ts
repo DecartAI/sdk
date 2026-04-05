@@ -29,7 +29,7 @@ export const createProcessClient = (opts: ProcessClientOptions): ProcessClient =
 
     const processedInputs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(parsedInputs.data as Record<string, unknown>)) {
-      if (key === "data" || key === "start" || key === "end") {
+      if (key === "data" || key === "start" || key === "end" || key === "reference_image") {
         processedInputs[key] = await fileInputToBlob(value as FileInput);
       } else {
         processedInputs[key] = value;
