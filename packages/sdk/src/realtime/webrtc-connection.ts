@@ -11,12 +11,10 @@ import type {
   PromptAckMessage,
   SessionIdMessage,
   SetImageAckMessage,
+  TurnConfigMessage,
 } from "./types";
 
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "turn:127.0.0.1:3478?transport=tcp", username: "turn", credential: "turn" },
-];
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 const AVATAR_SETUP_TIMEOUT_MS = 30_000; // 30 seconds
 
 interface ConnectionCallbacks {
@@ -31,6 +29,7 @@ interface ConnectionCallbacks {
   initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
+  iceServers?: RTCIceServer[];
 }
 
 type WsMessageEvents = {
@@ -38,6 +37,7 @@ type WsMessageEvents = {
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
+  turnConfig: TurnConfigMessage;
 };
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
@@ -49,6 +49,7 @@ export class WebRTCConnection {
   private connectionReject: ((error: Error) => void) | null = null;
   private logger: Logger;
   private emitDiagnostic: DiagnosticEmitter;
+  private turnServers: RTCIceServer[] = [];
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
   constructor(private callbacks: ConnectionCallbacks = {}) {
@@ -257,6 +258,12 @@ export class WebRTCConnection {
         return;
       }
 
+      if (msg.type === "turn_config") {
+        this.turnServers = [{ urls: msg.urls, username: msg.username, credential: msg.credential }];
+        this.websocketMessagesEmitter.emit("turnConfig", msg);
+        return;
+      }
+
       // All other messages require peer connection
       if (!this.pc) return;
 
@@ -414,7 +421,11 @@ export class WebRTCConnection {
       });
       this.pc.close();
     }
-    this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const iceServers: RTCIceServer[] = [
+      ...(this.callbacks.iceServers ?? DEFAULT_ICE_SERVERS),
+      ...this.turnServers,
+    ];
+    this.pc = new RTCPeerConnection({ iceServers });
     this.setState("connecting");
 
     if (this.localStream) {
@@ -560,6 +571,7 @@ export class WebRTCConnection {
     this.ws?.close();
     this.ws = null;
     this.localStream = null;
+    this.turnServers = [];
     this.setState("disconnected");
   }
 

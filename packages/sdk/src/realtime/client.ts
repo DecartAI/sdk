@@ -96,6 +96,7 @@ const realTimeClientConnectOptionsSchema = z.object({
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
+  iceServers?: RTCIceServer[];
 };
 
 export type Events = {
@@ -194,6 +195,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         modelName: options.model.name,
         initialImage,
         initialPrompt,
+        iceServers: options.iceServers,
       });
 
       const manager = webrtcManager;
