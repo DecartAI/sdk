@@ -50,6 +50,11 @@ export interface ImageEditingInputs {
    * Can be a File, Blob, ReadableStream, URL, or string URL.
    */
   data?: FileInput;
+  /**
+   * Optional reference image to guide the edit.
+   * Can be a File, Blob, ReadableStream, URL, or string URL.
+   */
+  reference_image?: FileInput;
 }
 
 /**
