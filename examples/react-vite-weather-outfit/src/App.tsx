@@ -36,7 +36,7 @@ function App() {
     setResultFile(undefined);
     try {
       const resultBlob = await client.process({
-        model: models.image("lucy-pro-i2i"),
+        model: models.image("lucy-image-2"),
         data: imageFile,
         prompt: `A person wearing an outfit for ${condition.toLowerCase()} conditions`,
       });

@@ -70,7 +70,7 @@ const client = createDecartClient({
 });
 
 const blob = await client.process({
-  model: models.image('lucy-pro-i2i'),
+  model: models.image('lucy-image-2'),
   prompt: 'Turn this into a watercolor painting',
   data: sourceFile,
 });

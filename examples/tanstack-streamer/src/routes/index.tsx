@@ -19,7 +19,7 @@ function ProducerPage() {
 
   const start = useCallback(async () => {
     try {
-      const model = models.realtime("lucy_2_rt");
+      const model = models.realtime("lucy-2");
 
       setStatus("requesting-camera");
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -94,7 +94,7 @@ function ProducerPage() {
     <div style={{ padding: "2rem", fontFamily: "system-ui, sans-serif" }}>
       <h1>Producer</h1>
       <p style={{ color: "#666" }}>
-        Streams your camera through <code>lucy_2_rt</code> and generates a subscribe link for viewers.
+        Streams your camera through <code>lucy-2</code> and generates a subscribe link for viewers.
       </p>
 
       {status === "idle" && (

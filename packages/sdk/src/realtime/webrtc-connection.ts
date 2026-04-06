@@ -416,7 +416,7 @@ export class WebRTCConnection {
 
     if (this.localStream) {
       // For live_avatar: add receive-only video transceiver (sends audio only, receives audio+video)
-      if (this.callbacks.modelName === "live_avatar") {
+      if (this.callbacks.modelName === "live_avatar" || this.callbacks.modelName === "live-avatar") {
         this.pc.addTransceiver("video", { direction: "recvonly" });
       }
 

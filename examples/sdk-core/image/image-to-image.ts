@@ -16,7 +16,7 @@ run(async () => {
   // const referenceImage = fs.readFileSync("reference.png");
 
   const blob = await client.process({
-    model: models.image("lucy-pro-i2i"),
+    model: models.image("lucy-image-2"),
     prompt: "Transform to watercolor painting style",
     data: new Blob([inputImage]),
     // reference_image: new Blob([referenceImage]),

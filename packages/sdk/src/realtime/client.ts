@@ -135,7 +135,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       throw parsedOptions.error;
     }
 
-    const isAvatarLive = options.model.name === "live_avatar";
+    const isAvatarLive = options.model.name === "live_avatar" || options.model.name === "live-avatar";
 
     const { onRemoteStream, initialState } = parsedOptions.data;
 

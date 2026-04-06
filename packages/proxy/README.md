@@ -27,7 +27,7 @@ The proxy supports all model endpoints, apart from the realtime models.
 
 ## How It Works
 
-1. Client SDK makes a request to your proxy endpoint (e.g., `/api/decart/v1/generate/lucy-pro-i2i`)
+1. Client SDK makes a request to your proxy endpoint (e.g., `/api/decart/v1/generate/lucy-image-2`)
 2. Proxy middleware intercepts the request
 3. Proxy attaches your server's API key to the request
 4. Proxy forwards the request to `https://api.decart.ai`
