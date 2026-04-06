@@ -1,7 +1,8 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { _resetDeprecationWarnings, createDecartClient, isRealtimeModel, isVideoModel, models } from "../src/index.js";
+import { createDecartClient, isRealtimeModel, isVideoModel, models } from "../src/index.js";
+import { _resetDeprecationWarnings } from "../src/shared/model.js";
 
 const MOCK_RESPONSE_DATA = new Uint8Array([0x00, 0x01, 0x02]).buffer;
 const TEST_API_KEY = "test-api-key";
