@@ -266,7 +266,7 @@ export const modelDefinitionSchema = z.object({
 const _models = {
   realtime: {
     // Canonical names
-    "lucy": {
+    lucy: {
       urlPath: "/v1/stream",
       name: "lucy" as const,
       fps: 25,

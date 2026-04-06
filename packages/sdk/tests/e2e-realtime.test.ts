@@ -10,7 +10,14 @@ function createSyntheticStream(fps: number, width: number, height: number): Medi
   return canvas.captureStream(fps);
 }
 
-const REALTIME_MODELS: RealTimeModels[] = ["lucy-restyle", "lucy-restyle-2", "lucy", "lucy-2", "lucy-2.1", "lucy-2.1-vton"];
+const REALTIME_MODELS: RealTimeModels[] = [
+  "lucy-restyle",
+  "lucy-restyle-2",
+  "lucy",
+  "lucy-2",
+  "lucy-2.1",
+  "lucy-2.1-vton",
+];
 
 const TIMEOUT = 1 * 60 * 1000; // 1 minute
 describe.concurrent("Realtime E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
