@@ -1,13 +1,13 @@
 /**
  * Browser-only example - requires WebRTC APIs
- * Lucy v2v for realtime video editing (add objects, change elements)
+ * Lucy 2.1 for realtime video editing with reference image + prompt support
  * See examples/nextjs-realtime or examples/react-vite for runnable demos
  */
 
 import { createDecartClient, models } from "@decartai/sdk";
 
 async function main() {
-  const model = models.realtime("lucy");
+  const model = models.realtime("lucy-2.1");
 
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: true,
@@ -36,9 +36,18 @@ async function main() {
     },
   });
 
-  // Apply different edits
+  // set() replaces the full state — prompt + image atomically in a single message
+  await realtimeClient.set({
+    prompt: "A person wearing a superhero costume",
+    enhance: true,
+    image: "https://example.com/superhero-reference.png",
+  });
+
+  // Prompt-only set() clears the reference image.
+  await realtimeClient.set({ prompt: "Add sunglasses to the person" });
+
+  // setPrompt() as syntactic sugar for set() with prompt only
   realtimeClient.setPrompt("Change the person's shirt to red");
-  realtimeClient.setPrompt("Add sunglasses to the person");
 
   console.log("Session ID:", realtimeClient.sessionId);
 }

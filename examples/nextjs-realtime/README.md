@@ -43,8 +43,8 @@ pnpm dev
 
 ## Models
 
-This example uses `mirage_v2` for style transformation. You can also use:
+This example uses `lucy-restyle-2` for style transformation. You can also use:
 
-- `mirage` - MirageLSD video restyling model (older)
-- `lucy_v2v_720p_rt` - Lucy for video editing (add objects, change elements)
-- `lucy_2_rt` - Lucy 2 for video editing with reference image support (better quality)
+- `lucy-restyle` - MirageLSD video restyling model (older)
+- `lucy` - Lucy for video editing (add objects, change elements)
+- `lucy-2` - Lucy 2 for video editing with reference image support (better quality)

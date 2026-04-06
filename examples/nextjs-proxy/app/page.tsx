@@ -23,7 +23,7 @@ export default function Home() {
     try {
       const client = createDecartClient({ proxy: PROXY_ROUTE });
       const blob = await client.process({
-        model: models.image("lucy-pro-i2i"),
+        model: models.image("lucy-image-2"),
         prompt,
         data: sourceImage,
       });

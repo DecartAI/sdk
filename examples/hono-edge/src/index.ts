@@ -52,7 +52,7 @@ app.post("/api/image/generate", async (c) => {
     }
 
     const blob = await client.process({
-      model: models.image("lucy-pro-i2i"),
+      model: models.image("lucy-image-2"),
       prompt,
       data: parseBase64DataUrl(imageDataUrl, "image"),
     });
@@ -76,7 +76,7 @@ app.post("/api/video/generate", async (c) => {
     }
 
     const job = await client.queue.submit({
-      model: models.video("lucy-pro-v2v"),
+      model: models.video("lucy-clip"),
       prompt,
       data: parseBase64DataUrl(videoDataUrl, "video"),
     });

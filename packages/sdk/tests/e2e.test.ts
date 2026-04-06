@@ -65,21 +65,21 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
   }
 
   describe("Process API - Image Models", () => {
-    it("lucy-pro-i2i: image-to-image", async () => {
+    it("lucy-image-2: image-to-image", async () => {
       const result = await client.process({
-        model: models.image("lucy-pro-i2i"),
+        model: models.image("lucy-image-2"),
         prompt: "Oil painting in the style of Van Gogh",
         data: imageBlob,
         seed: 333,
         enhance_prompt: false,
       });
 
-      await expectResult(result, "lucy-pro-i2i", ".png");
+      await expectResult(result, "lucy-image-2", ".png");
     });
 
-    it("lucy-pro-i2i: image-to-image with reference_image", async () => {
+    it("lucy-image-2: image-to-image with reference_image", async () => {
       const result = await client.process({
-        model: models.image("lucy-pro-i2i"),
+        model: models.image("lucy-image-2"),
         prompt: "Add the object from the reference image",
         data: imageBlob,
         reference_image: imageBlob,
@@ -87,78 +87,101 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
         enhance_prompt: false,
       });
 
-      await expectResult(result, "lucy-pro-i2i-reference_image", ".png");
+      await expectResult(result, "lucy-image-2-reference_image", ".png");
     });
   });
 
   describe("Queue API - Video Models", () => {
-    it("lucy-pro-v2v: video-to-video", async () => {
+    it("lucy-clip: video-to-video", async () => {
       const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-pro-v2v"),
+        model: models.video("lucy-clip"),
         prompt: "Lego World animated style",
         data: videoBlob,
         seed: 999,
         enhance_prompt: true,
       });
 
-      await expectResult(result, "lucy-pro-v2v", ".mp4");
+      await expectResult(result, "lucy-clip", ".mp4");
     });
 
-    it("lucy-restyle-v2v: video restyling (prompt)", async () => {
+    it("lucy-restyle-2: video restyling (prompt)", async () => {
       const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-restyle-v2v"),
+        model: models.video("lucy-restyle-2"),
         prompt: "Cyberpunk neon city style",
         data: videoBlob,
         seed: 777,
       });
 
-      await expectResult(result, "lucy-restyle-v2v-prompt", ".mp4");
+      await expectResult(result, "lucy-restyle-2-prompt", ".mp4");
     });
 
-    it("lucy-restyle-v2v: video restyling (reference_image)", async () => {
+    it("lucy-restyle-2: video restyling (reference_image)", async () => {
       const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-restyle-v2v"),
+        model: models.video("lucy-restyle-2"),
         reference_image: imageBlob,
         data: videoBlob,
         seed: 777,
       });
 
-      await expectResult(result, "lucy-restyle-v2v-reference_image", ".mp4");
+      await expectResult(result, "lucy-restyle-2-reference_image", ".mp4");
     });
 
-    it("lucy-2-v2v: video editing (prompt)", async () => {
+    it("lucy-2: video editing (prompt)", async () => {
       const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-2-v2v"),
+        model: models.video("lucy-2"),
         prompt: "Watercolor painting style with soft brushstrokes",
         data: videoBlob,
         seed: 42,
       });
 
-      await expectResult(result, "lucy-2-v2v-prompt", ".mp4");
+      await expectResult(result, "lucy-2-prompt", ".mp4");
     });
 
-    it("lucy-2-v2v: video editing (reference_image)", async () => {
+    it("lucy-2: video editing (reference_image)", async () => {
       const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-2-v2v"),
+        model: models.video("lucy-2"),
         prompt: "",
         reference_image: imageBlob,
         data: videoBlob,
         seed: 42,
       });
 
-      await expectResult(result, "lucy-2-v2v-reference_image", ".mp4");
+      await expectResult(result, "lucy-2-reference_image", ".mp4");
     });
 
-    it("lucy-2-v2v: video editing (prompt + reference_image)", async () => {
+    it("lucy-2: video editing (prompt + reference_image)", async () => {
       const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-2-v2v"),
+        model: models.video("lucy-2"),
         prompt: "Watercolor painting style",
         reference_image: imageBlob,
         data: videoBlob,
         seed: 42,
       });
 
-      await expectResult(result, "lucy-2-v2v-both", ".mp4");
+      await expectResult(result, "lucy-2-both", ".mp4");
+    });
+
+    it("lucy-2.1: video editing (prompt)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-2.1"),
+        prompt: "Watercolor painting style with soft brushstrokes",
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-2.1-prompt", ".mp4");
+    });
+
+    it("lucy-2.1: video editing (reference_image)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-2.1"),
+        prompt: "",
+        reference_image: imageBlob,
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-2.1-reference_image", ".mp4");
     });
 
     it("lucy-motion: motion-guided image-to-video", async () => {

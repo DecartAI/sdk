@@ -159,13 +159,13 @@ export interface PromptInput {
  * This allows different models to have field-specific documentation while maintaining type safety.
  * Specific models are checked first, then falls back to category-based selection.
  */
-export type ModelSpecificInputs<T extends ModelDefinition> = T["name"] extends "lucy-pro-i2i"
+export type ModelSpecificInputs<T extends ModelDefinition> = T["name"] extends "lucy-pro-i2i" | "lucy-image-2"
   ? ImageEditingInputs
-  : T["name"] extends "lucy-restyle-v2v"
+  : T["name"] extends "lucy-restyle-v2v" | "lucy-restyle-2"
     ? VideoRestyleInputs
-    : T["name"] extends "lucy-2-v2v"
+    : T["name"] extends "lucy-2-v2v" | "lucy-2" | "lucy-2.1"
       ? VideoEdit2Inputs
-      : T["name"] extends "lucy-pro-v2v"
+      : T["name"] extends "lucy-pro-v2v" | "lucy-clip"
         ? VideoEditInputs
         : T["name"] extends ImageModels
           ? ImageGenerationInputs

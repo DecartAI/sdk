@@ -13,7 +13,7 @@ const inputImage = Bun.file(inputPath);
 
 console.log("Editing image...");
 const image = await client.process({
-  model: models.image("lucy-pro-i2i"),
+  model: models.image("lucy-image-2"),
   prompt,
   data: inputImage,
 });

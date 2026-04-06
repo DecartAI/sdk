@@ -6,7 +6,7 @@
 import { createDecartClient, models } from "@decartai/sdk";
 
 async function main() {
-  const model = models.realtime("mirage");
+  const model = models.realtime("lucy-restyle");
 
   // Get webcam stream with model-specific settings
   const stream = await navigator.mediaDevices.getUserMedia({

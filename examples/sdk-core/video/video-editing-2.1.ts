@@ -12,34 +12,18 @@ run(async () => {
     apiKey,
   });
 
-  console.log("Editing video with lucy-restyle-2...");
+  console.log("Editing video with lucy-2.1...");
 
   const inputVideo = fs.readFileSync("input.mp4");
 
-  // Option 1: Use a text prompt
   const result = await client.queue.submitAndPoll({
-    model: models.video("lucy-restyle-2"),
-    prompt: "Transform to anime style",
-    enhance_prompt: true,
+    model: models.video("lucy-2.1"),
+    prompt: "Transform to watercolor painting style with soft brushstrokes",
     data: new Blob([inputVideo]),
     onStatusChange: (job) => {
       console.log(`Job ${job.job_id}: ${job.status}`);
     },
   });
-
-  // Option 2: Use a reference image instead of a text prompt
-  // The inference backend will transform the reference image into a prompt.
-  // Note: You can use either 'prompt' or 'reference_image', but not both.
-  //
-  // const referenceImage = fs.readFileSync("reference.png");
-  // const result = await client.queue.submitAndPoll({
-  //   model: models.video("lucy-restyle-2"),
-  //   reference_image: new Blob([referenceImage]),
-  //   data: new Blob([inputVideo]),
-  //   onStatusChange: (job) => {
-  //     console.log(`Job ${job.job_id}: ${job.status}`);
-  //   },
-  // });
 
   if (result.status === "completed") {
     const output = Buffer.from(await result.data.arrayBuffer());

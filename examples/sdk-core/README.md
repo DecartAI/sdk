@@ -31,15 +31,15 @@ pnpm tsx image/image-to-image.ts
 
 Image models use the synchronous Process API - they return immediately with a Blob.
 
-- `image/image-to-image.ts` - Transform existing image with a prompt (`lucy-pro-i2i`)
+- `image/image-to-image.ts` - Transform existing image with a prompt (`lucy-image-2`)
 
 ### Video Generation
 
 Video models use the asynchronous Queue API - jobs are submitted and polled for completion.
 
-- `video/video-to-video.ts` - Transform existing video with a prompt (`lucy-pro-v2v`)
-- `video/video-editing.ts` - Edit video with prompt, reference image, or both (`lucy-2-v2v`)
-- `video/long-form-video-restyle.ts` - Transform existing video with `lucy-restyle-v2v`
+- `video/video-to-video.ts` - Transform existing video with a prompt (`lucy-clip`)
+- `video/video-editing.ts` - Edit video with prompt, reference image, or both (`lucy-2`)
+- `video/long-form-video-restyle.ts` - Transform existing video with `lucy-restyle-2`
 - `video/manual-polling.ts` - Manual job status polling
 
 ### Realtime (Browser-only)
@@ -64,7 +64,7 @@ See `examples/nextjs-realtime` or `examples/react-vite` for runnable demos.
 ```typescript
 // Image-to-image (edit image with prompt)
 const blob = await client.process({
-  model: models.image("lucy-pro-i2i"),
+  model: models.image("lucy-image-2"),
   prompt: "Transform to watercolor style",
   data: imageBlob,
 });
@@ -75,7 +75,7 @@ const blob = await client.process({
 ```typescript
 // Automatic polling (video-to-video)
 const result = await client.queue.submitAndPoll({
-  model: models.video("lucy-pro-v2v"),
+  model: models.video("lucy-clip"),
   prompt: "Make it look like a watercolor painting",
   data: videoBlob,
   onStatusChange: (job) => console.log(job.status),
@@ -91,7 +91,7 @@ const blob = await client.queue.result(job.job_id);
 
 ```typescript
 const realtimeClient = await client.realtime.connect(stream, {
-  model: models.realtime("mirage_v2"),
+  model: models.realtime("lucy-restyle-2"),
   onRemoteStream: (transformedStream) => { ... },
   initialState: { prompt: { text: "anime style", enhance: true } },
 });
@@ -106,7 +106,7 @@ realtimeClient.disconnect();
 ```typescript
 // Option 1: Use playAudio() to inject audio
 const realtimeClient = await client.realtime.connect(null, {
-  model: models.realtime("live_avatar"),
+  model: models.realtime("live-avatar"),
   onRemoteStream: (videoStream) => { ... },
   initialState: {
     image: "https://example.com/avatar.png",
@@ -118,7 +118,7 @@ await realtimeClient.playAudio(audioBlob);
 // Option 2: Use mic input directly
 const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
 const realtimeClient = await client.realtime.connect(micStream, {
-  model: models.realtime("live_avatar"),
+  model: models.realtime("live-avatar"),
   onRemoteStream: (videoStream) => { ... },
   initialState: {
     image: avatarFile,

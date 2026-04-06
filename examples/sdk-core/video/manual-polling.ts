@@ -13,7 +13,7 @@ run(async () => {
 
   // Submit job
   const job = await client.queue.submit({
-    model: models.video("lucy-pro-v2v"),
+    model: models.video("lucy-clip"),
     prompt: "A timelapse of a flower blooming",
     data: new Blob([inputVideo]),
   });
