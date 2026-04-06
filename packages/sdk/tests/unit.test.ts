@@ -1,7 +1,7 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDecartClient, isRealtimeModel, isVideoModel, models } from "../src/index.js";
+import { createDecartClient, isRealtimeModel, isVideoModel, models, _resetDeprecationWarnings } from "../src/index.js";
 
 const MOCK_RESPONSE_DATA = new Uint8Array([0x00, 0x01, 0x02]).buffer;
 const TEST_API_KEY = "test-api-key";
@@ -3549,12 +3549,25 @@ describe("Canonical Model Names", () => {
 
   describe("Deprecation warnings", () => {
     it("warns when using deprecated model name", () => {
+      _resetDeprecationWarnings();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      // Reset the warned set by re-importing
-      // Since warnDeprecated uses a module-level Set, we test the first call
+
       models.video("lucy-pro-v2v");
-      // The first call may or may not warn depending on prior test execution order,
-      // but we verify the mechanism works
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Model "lucy-pro-v2v" is deprecated. Use "lucy-clip" instead.'),
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("warns only once per deprecated alias", () => {
+      _resetDeprecationWarnings();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      models.video("lucy-pro-v2v");
+      models.video("lucy-pro-v2v");
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+
       warnSpy.mockRestore();
     });
   });

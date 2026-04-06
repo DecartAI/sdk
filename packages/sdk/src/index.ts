@@ -52,6 +52,7 @@ export {
   type ImageModels,
   isImageModel,
   isRealtimeModel,
+  _resetDeprecationWarnings,
   isVideoModel,
   type Model,
   type ModelDefinition,

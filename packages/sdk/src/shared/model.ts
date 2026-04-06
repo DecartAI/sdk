@@ -19,6 +19,11 @@ const MODEL_ALIASES: Record<string, string> = {
 
 const _warnedAliases = new Set<string>();
 
+/** @internal Test-only helper to reset deprecation warning tracking */
+export function _resetDeprecationWarnings(): void {
+  _warnedAliases.clear();
+}
+
 function warnDeprecated(model: string): void {
   const canonical = MODEL_ALIASES[model];
   if (canonical && !_warnedAliases.has(model)) {
