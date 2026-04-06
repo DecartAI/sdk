@@ -4,4 +4,3 @@ dist
 .DS_Store
 packages/sdk/tests/e2e-output
 .env
-examples/sdk-core/video/input.mp4
