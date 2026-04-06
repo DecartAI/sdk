@@ -261,6 +261,21 @@ export class WebRTCConnection {
       if (msg.type === "turn_config") {
         this.turnServers = [{ urls: msg.urls, username: msg.username, credential: msg.credential }];
         this.websocketMessagesEmitter.emit("turnConfig", msg);
+
+        // If PC already exists (turn_config arrived after Phase 3 started),
+        // update ICE servers and restart ICE to pick up TURN.
+        if (this.pc) {
+          const iceServers: RTCIceServer[] = [
+            ...(this.callbacks.iceServers ?? DEFAULT_ICE_SERVERS),
+            ...this.turnServers,
+          ];
+          this.pc.setConfiguration({ iceServers });
+          const offer = await this.pc.createOffer({ iceRestart: true });
+          this.modifyVP8Bitrate(offer);
+          await this.callbacks.customizeOffer?.(offer);
+          await this.pc.setLocalDescription(offer);
+          this.send({ type: "offer", sdp: offer.sdp || "" });
+        }
         return;
       }
 
