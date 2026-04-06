@@ -3504,6 +3504,103 @@ describe("Canonical Model Names", () => {
     });
   });
 
+  describe("Latest aliases", () => {
+    it("lucy-latest works as realtime model", () => {
+      const model = models.realtime("lucy-latest");
+      expect(model.name).toBe("lucy-latest");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
+    it("lucy-vton-latest works as realtime model", () => {
+      const model = models.realtime("lucy-vton-latest");
+      expect(model.name).toBe("lucy-vton-latest");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
+    it("lucy-restyle-latest works as realtime model", () => {
+      const model = models.realtime("lucy-restyle-latest");
+      expect(model.name).toBe("lucy-restyle-latest");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(22);
+      expect(model.width).toBe(1280);
+      expect(model.height).toBe(704);
+    });
+
+    it("lucy-latest works as video model", () => {
+      const model = models.video("lucy-latest");
+      expect(model.name).toBe("lucy-latest");
+      expect(model.urlPath).toBe("/v1/generate/lucy-latest");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-latest");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
+    it("lucy-restyle-latest works as video model", () => {
+      const model = models.video("lucy-restyle-latest");
+      expect(model.name).toBe("lucy-restyle-latest");
+      expect(model.urlPath).toBe("/v1/generate/lucy-restyle-latest");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-restyle-latest");
+      expect(model.fps).toBe(22);
+    });
+
+    it("lucy-clip-latest works as video model", () => {
+      const model = models.video("lucy-clip-latest");
+      expect(model.name).toBe("lucy-clip-latest");
+      expect(model.urlPath).toBe("/v1/generate/lucy-clip-latest");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-clip-latest");
+      expect(model.fps).toBe(25);
+    });
+
+    it("lucy-motion-latest works as video model", () => {
+      const model = models.video("lucy-motion-latest");
+      expect(model.name).toBe("lucy-motion-latest");
+      expect(model.urlPath).toBe("/v1/generate/lucy-motion-latest");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-motion-latest");
+      expect(model.fps).toBe(25);
+    });
+
+    it("lucy-image-latest works as image model", () => {
+      const model = models.image("lucy-image-latest");
+      expect(model.name).toBe("lucy-image-latest");
+      expect(model.urlPath).toBe("/v1/generate/lucy-image-latest");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-image-latest");
+    });
+
+    it("lucy-latest is both a realtime and video model", () => {
+      expect(isRealtimeModel("lucy-latest")).toBe(true);
+      expect(isVideoModel("lucy-latest")).toBe(true);
+    });
+
+    it("lucy-restyle-latest is both a realtime and video model", () => {
+      expect(isRealtimeModel("lucy-restyle-latest")).toBe(true);
+      expect(isVideoModel("lucy-restyle-latest")).toBe(true);
+    });
+
+    it("does not log deprecation warnings for -latest aliases", () => {
+      _resetDeprecationWarnings();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      models.realtime("lucy-latest");
+      models.realtime("lucy-vton-latest");
+      models.realtime("lucy-restyle-latest");
+      models.video("lucy-latest");
+      models.video("lucy-restyle-latest");
+      models.video("lucy-clip-latest");
+      models.video("lucy-motion-latest");
+      models.image("lucy-image-latest");
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+  });
+
   describe("Dual-surface models", () => {
     it("lucy-2 is both a realtime and video model", () => {
       expect(isRealtimeModel("lucy-2")).toBe(true);
