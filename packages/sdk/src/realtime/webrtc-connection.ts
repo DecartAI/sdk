@@ -300,6 +300,11 @@ export class WebRTCConnection {
           break;
         }
         case "answer":
+          // Ignore stale answers (e.g. from pre-ICE-restart offer)
+          if (this.pc.signalingState !== "have-local-offer") {
+            this.logger.debug("Ignoring stale answer", { signalingState: this.pc.signalingState });
+            break;
+          }
           await this.pc.setRemoteDescription({
             type: "answer",
             sdp: msg.sdp,
