@@ -91,6 +91,20 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
     });
   });
 
+  describe("Process API - Image Models (latest aliases)", () => {
+    it("lucy-image-latest: image-to-image", async () => {
+      const result = await client.process({
+        model: models.image("lucy-image-latest"),
+        prompt: "Oil painting in the style of Van Gogh",
+        data: imageBlob,
+        seed: 333,
+        enhance_prompt: false,
+      });
+
+      await expectResult(result, "lucy-image-latest", ".png");
+    });
+  });
+
   describe("Process API - Image Models (deprecated names)", () => {
     it("lucy-pro-i2i (deprecated): image-to-image", async () => {
       const result = await client.process({
@@ -231,6 +245,56 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       });
 
       await expectResult(result, "lucy-2-v2v", ".mp4");
+    });
+
+    // Latest aliases (server-side resolution)
+    it("lucy-latest: video editing", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-latest"),
+        prompt: "Watercolor painting style with soft brushstrokes",
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-latest", ".mp4");
+    });
+
+    it("lucy-restyle-latest: video restyling", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-restyle-latest"),
+        prompt: "Cyberpunk neon city style",
+        data: videoBlob,
+        seed: 777,
+      });
+
+      await expectResult(result, "lucy-restyle-latest", ".mp4");
+    });
+
+    it("lucy-clip-latest: video-to-video", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-clip-latest"),
+        prompt: "Lego World animated style",
+        data: videoBlob,
+        seed: 999,
+        enhance_prompt: true,
+      });
+
+      await expectResult(result, "lucy-clip-latest", ".mp4");
+    });
+
+    it("lucy-motion-latest: motion-guided image-to-video", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-motion-latest"),
+        data: imageBlob,
+        trajectory: [
+          { frame: 0, x: 0, y: 0 },
+          { frame: 1, x: 0.1, y: 0.2 },
+          { frame: 2, x: 0.2, y: 0.4 },
+        ],
+        seed: 555,
+      });
+
+      await expectResult(result, "lucy-motion-latest", ".mp4");
     });
 
     it("lucy-motion: motion-guided image-to-video", async () => {

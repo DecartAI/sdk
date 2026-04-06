@@ -43,6 +43,10 @@ export const realtimeModels = z.union([
   z.literal("lucy-restyle"),
   z.literal("lucy-restyle-2"),
   z.literal("live-avatar"),
+  // Latest aliases (server-side resolution)
+  z.literal("lucy-latest"),
+  z.literal("lucy-vton-latest"),
+  z.literal("lucy-restyle-latest"),
   // Deprecated names (use canonical names above instead)
   z.literal("mirage"),
   z.literal("mirage_v2"),
@@ -57,6 +61,11 @@ export const videoModels = z.union([
   z.literal("lucy-2.1"),
   z.literal("lucy-restyle-2"),
   z.literal("lucy-motion"),
+  // Latest aliases (server-side resolution)
+  z.literal("lucy-latest"),
+  z.literal("lucy-restyle-latest"),
+  z.literal("lucy-clip-latest"),
+  z.literal("lucy-motion-latest"),
   // Deprecated names (use canonical names above instead)
   z.literal("lucy-pro-v2v"),
   z.literal("lucy-restyle-v2v"),
@@ -65,6 +74,8 @@ export const videoModels = z.union([
 export const imageModels = z.union([
   // Canonical name
   z.literal("lucy-image-2"),
+  // Latest alias (server-side resolution)
+  z.literal("lucy-image-latest"),
   // Deprecated name (use canonical name above instead)
   z.literal("lucy-pro-i2i"),
 ]);
@@ -216,6 +227,29 @@ export const modelInputSchemas = {
     seed: z.number().optional().describe("The seed to use for the generation"),
     resolution: motionResolutionSchema,
   }),
+  // Latest aliases (server-side resolution)
+  "lucy-latest": videoEdit2Schema,
+  "lucy-restyle-latest": restyleSchema,
+  "lucy-clip-latest": videoEditSchema,
+  "lucy-motion-latest": z.object({
+    data: fileInputSchema.describe(
+      "The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
+    ),
+    trajectory: z
+      .array(
+        z.object({
+          frame: z.number().min(0),
+          x: z.number().min(0),
+          y: z.number().min(0),
+        }),
+      )
+      .min(2)
+      .max(1000)
+      .describe("The trajectory of the desired movement of the object in the image"),
+    seed: z.number().optional().describe("The seed to use for the generation"),
+    resolution: motionResolutionSchema,
+  }),
+  "lucy-image-latest": imageEditSchema,
   // Deprecated names (kept for backward compatibility)
   "lucy-pro-v2v": videoEditSchema,
   "lucy-pro-i2i": imageEditSchema,
@@ -327,6 +361,31 @@ const _models = {
       height: 720,
       inputSchema: z.object({}),
     },
+    // Latest aliases (server-side resolution)
+    "lucy-latest": {
+      urlPath: "/v1/stream",
+      name: "lucy-latest" as const,
+      fps: 20,
+      width: 1088,
+      height: 624,
+      inputSchema: z.object({}),
+    },
+    "lucy-vton-latest": {
+      urlPath: "/v1/stream",
+      name: "lucy-vton-latest" as const,
+      fps: 20,
+      width: 1088,
+      height: 624,
+      inputSchema: z.object({}),
+    },
+    "lucy-restyle-latest": {
+      urlPath: "/v1/stream",
+      name: "lucy-restyle-latest" as const,
+      fps: 22,
+      width: 1280,
+      height: 704,
+      inputSchema: z.object({}),
+    },
     // Deprecated names (use canonical names above instead)
     mirage: {
       urlPath: "/v1/stream",
@@ -379,6 +438,16 @@ const _models = {
       width: 1280,
       height: 704,
       inputSchema: modelInputSchemas["lucy-image-2"],
+    },
+    // Latest alias (server-side resolution)
+    "lucy-image-latest": {
+      urlPath: "/v1/generate/lucy-image-latest",
+      queueUrlPath: "/v1/jobs/lucy-image-latest",
+      name: "lucy-image-latest" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-image-latest"],
     },
     // Deprecated name
     "lucy-pro-i2i": {
@@ -437,6 +506,43 @@ const _models = {
       width: 1280,
       height: 704,
       inputSchema: modelInputSchemas["lucy-motion"],
+    },
+    // Latest aliases (server-side resolution)
+    "lucy-latest": {
+      urlPath: "/v1/generate/lucy-latest",
+      queueUrlPath: "/v1/jobs/lucy-latest",
+      name: "lucy-latest" as const,
+      fps: 20,
+      width: 1088,
+      height: 624,
+      inputSchema: modelInputSchemas["lucy-latest"],
+    },
+    "lucy-restyle-latest": {
+      urlPath: "/v1/generate/lucy-restyle-latest",
+      queueUrlPath: "/v1/jobs/lucy-restyle-latest",
+      name: "lucy-restyle-latest" as const,
+      fps: 22,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-restyle-latest"],
+    },
+    "lucy-clip-latest": {
+      urlPath: "/v1/generate/lucy-clip-latest",
+      queueUrlPath: "/v1/jobs/lucy-clip-latest",
+      name: "lucy-clip-latest" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-clip-latest"],
+    },
+    "lucy-motion-latest": {
+      urlPath: "/v1/generate/lucy-motion-latest",
+      queueUrlPath: "/v1/jobs/lucy-motion-latest",
+      name: "lucy-motion-latest" as const,
+      fps: 25,
+      width: 1280,
+      height: 704,
+      inputSchema: modelInputSchemas["lucy-motion-latest"],
     },
     // Deprecated names (use canonical names above instead)
     "lucy-pro-v2v": {
