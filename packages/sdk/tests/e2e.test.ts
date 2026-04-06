@@ -91,6 +91,20 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
     });
   });
 
+  describe("Process API - Image Models (deprecated names)", () => {
+    it("lucy-pro-i2i (deprecated): image-to-image", async () => {
+      const result = await client.process({
+        model: models.image("lucy-pro-i2i"),
+        prompt: "Oil painting in the style of Van Gogh",
+        data: imageBlob,
+        seed: 333,
+        enhance_prompt: false,
+      });
+
+      await expectResult(result, "lucy-pro-i2i", ".png");
+    });
+  });
+
   describe("Queue API - Video Models", () => {
     it("lucy-clip: video-to-video", async () => {
       const result = await client.queue.submitAndPoll({
@@ -182,6 +196,41 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       });
 
       await expectResult(result, "lucy-2.1-reference_image", ".mp4");
+    });
+
+    // Deprecated video model names (aliases)
+    it("lucy-pro-v2v (deprecated): video-to-video", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-pro-v2v"),
+        prompt: "Lego World animated style",
+        data: videoBlob,
+        seed: 999,
+        enhance_prompt: true,
+      });
+
+      await expectResult(result, "lucy-pro-v2v", ".mp4");
+    });
+
+    it("lucy-restyle-v2v (deprecated): video restyling", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-restyle-v2v"),
+        prompt: "Cyberpunk neon city style",
+        data: videoBlob,
+        seed: 777,
+      });
+
+      await expectResult(result, "lucy-restyle-v2v", ".mp4");
+    });
+
+    it("lucy-2-v2v (deprecated): video editing", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-2-v2v"),
+        prompt: "Watercolor painting style with soft brushstrokes",
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-2-v2v", ".mp4");
     });
 
     it("lucy-motion: motion-guided image-to-video", async () => {
