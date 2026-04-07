@@ -71,13 +71,6 @@ export type SessionIdMessage = {
   server_port: number;
 };
 
-export type TurnConfigMessage = {
-  type: "turn_config";
-  urls: string[];
-  username: string;
-  credential: string;
-};
-
 export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
 
 // Incoming message types (from server)
@@ -92,8 +85,7 @@ export type IncomingWebRTCMessage =
   | GenerationStartedMessage
   | GenerationTickMessage
   | GenerationEndedMessage
-  | SessionIdMessage
-  | TurnConfigMessage;
+  | SessionIdMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =
