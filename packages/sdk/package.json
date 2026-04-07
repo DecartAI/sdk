@@ -35,7 +35,6 @@
     "test": "vitest unit",
     "test:e2e": "vitest e2e",
     "test:e2e:realtime": "vitest --config vitest.config.e2e-realtime.ts",
-    "test:e2e:turn-tcp": "vitest --config vitest.config.e2e-turn-tcp.ts",
     "typecheck": "tsc --noEmit",
     "format": "biome format --write",
     "format:check": "biome check",
