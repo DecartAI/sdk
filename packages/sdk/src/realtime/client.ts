@@ -197,6 +197,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialImage,
         initialPrompt,
         iceServers: options.iceServers,
+        expectTurnConfig: !!options.iceTransportPolicy,
       });
 
       const manager = webrtcManager;
