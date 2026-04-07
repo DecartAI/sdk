@@ -20,6 +20,7 @@ export interface WebRTCConfig {
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
   iceServers?: RTCIceServer[];
+  expectTurnConfig?: boolean;
 }
 
 const PERMANENT_ERRORS = [
@@ -68,6 +69,7 @@ export class WebRTCManager {
       logger: this.logger,
       onDiagnostic: config.onDiagnostic,
       iceServers: config.iceServers,
+      expectTurnConfig: config.expectTurnConfig,
     });
   }
 

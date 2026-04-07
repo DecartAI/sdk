@@ -30,6 +30,7 @@ interface ConnectionCallbacks {
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
   iceServers?: RTCIceServer[];
+  expectTurnConfig?: boolean;
 }
 
 type WsMessageEvents = {
@@ -164,19 +165,19 @@ export class WebRTCConnection {
       }
 
       // Phase 2.5: Wait for turn_config if not yet received.
-      // turn_config arrives from the server during Phase 2 but may race with
-      // set_image_ack. Wait briefly so setupNewPeerConnection() includes TURN servers.
-      if (this.turnServers.length === 0) {
+      // Only wait when the server is expected to send TURN config (iceTransportPolicy was set).
+      // turn_config arrives during Phase 2 but may race with set_image_ack.
+      if (this.callbacks.expectTurnConfig && this.turnServers.length === 0) {
+        let turnHandler: (() => void) | null = null;
         await Promise.race([
           new Promise<void>((resolve) => {
-            const handler = () => resolve();
-            this.websocketMessagesEmitter.on("turnConfig", handler);
-            // Clean up if resolved by timeout
-            connectAbort.catch(() => this.websocketMessagesEmitter.off("turnConfig", handler));
+            turnHandler = () => resolve();
+            this.websocketMessagesEmitter.on("turnConfig", turnHandler);
           }),
           new Promise<void>((resolve) => setTimeout(resolve, 2000)),
           connectAbort,
         ]);
+        if (turnHandler) this.websocketMessagesEmitter.off("turnConfig", turnHandler);
       }
 
       // Phase 3: WebRTC handshake
