@@ -96,6 +96,8 @@ const realTimeClientConnectOptionsSchema = z.object({
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
+  iceServers?: RTCIceServer[];
+  iceTransportPolicy?: "tcp" | "udp" | "all";
 };
 
 export type Events = {
@@ -172,7 +174,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
 
       webrtcManager = new WebRTCManager({
-        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${options.iceTransportPolicy ? `&ice_transport_policy=${encodeURIComponent(options.iceTransportPolicy)}` : ""}`,
         integration,
         logger,
         onDiagnostic: (name, data) => {
@@ -194,6 +196,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         modelName: options.model.name,
         initialImage,
         initialPrompt,
+        iceServers: options.iceServers,
+        expectTurnConfig: !!options.iceTransportPolicy,
       });
 
       const manager = webrtcManager;

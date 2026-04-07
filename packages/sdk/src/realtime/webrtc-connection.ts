@@ -11,9 +11,10 @@ import type {
   PromptAckMessage,
   SessionIdMessage,
   SetImageAckMessage,
+  TurnConfigMessage,
 } from "./types";
 
-const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 const AVATAR_SETUP_TIMEOUT_MS = 30_000; // 30 seconds
 
 interface ConnectionCallbacks {
@@ -28,6 +29,8 @@ interface ConnectionCallbacks {
   initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
+  iceServers?: RTCIceServer[];
+  expectTurnConfig?: boolean;
 }
 
 type WsMessageEvents = {
@@ -35,6 +38,7 @@ type WsMessageEvents = {
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
+  turnConfig: TurnConfigMessage;
 };
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
@@ -46,6 +50,7 @@ export class WebRTCConnection {
   private connectionReject: ((error: Error) => void) | null = null;
   private logger: Logger;
   private emitDiagnostic: DiagnosticEmitter;
+  private turnServers: RTCIceServer[] = [];
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
   constructor(private callbacks: ConnectionCallbacks = {}) {
@@ -159,6 +164,22 @@ export class WebRTCConnection {
         });
       }
 
+      // Phase 2.5: Wait for turn_config if not yet received.
+      // Only wait when the server is expected to send TURN config (iceTransportPolicy was set).
+      // turn_config arrives during Phase 2 but may race with set_image_ack.
+      if (this.callbacks.expectTurnConfig && this.turnServers.length === 0) {
+        let turnHandler: (() => void) | null = null;
+        await Promise.race([
+          new Promise<void>((resolve) => {
+            turnHandler = () => resolve();
+            this.websocketMessagesEmitter.on("turnConfig", turnHandler);
+          }),
+          new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+          connectAbort,
+        ]);
+        if (turnHandler) this.websocketMessagesEmitter.off("turnConfig", turnHandler);
+      }
+
       // Phase 3: WebRTC handshake
       const handshakeStart = performance.now();
       await this.setupNewPeerConnection();
@@ -251,6 +272,12 @@ export class WebRTCConnection {
 
       if (msg.type === "session_id") {
         this.websocketMessagesEmitter.emit("sessionId", msg);
+        return;
+      }
+
+      if (msg.type === "turn_config") {
+        this.turnServers = [{ urls: msg.urls, username: msg.username, credential: msg.credential }];
+        this.websocketMessagesEmitter.emit("turnConfig", msg);
         return;
       }
 
@@ -411,7 +438,11 @@ export class WebRTCConnection {
       });
       this.pc.close();
     }
-    this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const iceServers: RTCIceServer[] = [
+      ...(this.callbacks.iceServers ?? DEFAULT_ICE_SERVERS),
+      ...this.turnServers,
+    ];
+    this.pc = new RTCPeerConnection({ iceServers });
     this.setState("connecting");
 
     if (this.localStream) {
@@ -557,6 +588,7 @@ export class WebRTCConnection {
     this.ws?.close();
     this.ws = null;
     this.localStream = null;
+    this.turnServers = [];
     this.setState("disconnected");
   }
 
