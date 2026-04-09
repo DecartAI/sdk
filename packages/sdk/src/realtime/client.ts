@@ -93,8 +93,7 @@ const realTimeClientConnectOptionsSchema = z.object({
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
-  rtpPortMin: z.number().optional(),
-  rtpPortMax: z.number().optional(),
+  rtpPort: z.number().optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -176,7 +175,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
 
       webrtcManager = new WebRTCManager({
-        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${options.iceTransportPolicy ? `&ice_transport_policy=${encodeURIComponent(options.iceTransportPolicy)}` : ""}${options.rtpPortMin != null ? `&rtp_port_min=${options.rtpPortMin}` : ""}${options.rtpPortMax != null ? `&rtp_port_max=${options.rtpPortMax}` : ""}`,
+        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${options.iceTransportPolicy ? `&ice_transport_policy=${encodeURIComponent(options.iceTransportPolicy)}` : ""}${options.rtpPort != null ? `&rtp_port=${options.rtpPort}` : ""}`,
         integration,
         logger,
         onDiagnostic: (name, data) => {
