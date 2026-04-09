@@ -442,7 +442,7 @@ export class WebRTCConnection {
       ...(this.callbacks.iceServers ?? DEFAULT_ICE_SERVERS),
       ...this.turnServers,
     ];
-    this.pc = new RTCPeerConnection({ iceServers });
+    this.pc = new RTCPeerConnection({ iceServers, ...(this.callbacks.expectTurnConfig && { iceTransportPolicy: "relay" }) });
     this.setState("connecting");
 
     if (this.localStream) {
