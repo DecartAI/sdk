@@ -31,6 +31,7 @@ interface ConnectionCallbacks {
   onDiagnostic?: DiagnosticEmitter;
   iceServers?: RTCIceServer[];
   expectTurnConfig?: boolean;
+  forceRelay?: boolean;
 }
 
 type WsMessageEvents = {
@@ -442,7 +443,7 @@ export class WebRTCConnection {
       ...(this.callbacks.iceServers ?? DEFAULT_ICE_SERVERS),
       ...this.turnServers,
     ];
-    this.pc = new RTCPeerConnection({ iceServers, ...(this.callbacks.expectTurnConfig && { iceTransportPolicy: "relay" }) });
+    this.pc = new RTCPeerConnection({ iceServers, ...(this.callbacks.forceRelay && { iceTransportPolicy: "relay" }) });
     this.setState("connecting");
 
     if (this.localStream) {

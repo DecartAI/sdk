@@ -21,6 +21,7 @@ export interface WebRTCConfig {
   initialPrompt?: { text: string; enhance?: boolean };
   iceServers?: RTCIceServer[];
   expectTurnConfig?: boolean;
+  forceRelay?: boolean;
 }
 
 const PERMANENT_ERRORS = [
@@ -70,6 +71,7 @@ export class WebRTCManager {
       onDiagnostic: config.onDiagnostic,
       iceServers: config.iceServers,
       expectTurnConfig: config.expectTurnConfig,
+      forceRelay: config.forceRelay,
     });
   }
 

@@ -198,6 +198,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialPrompt,
         iceServers: options.iceServers,
         expectTurnConfig: !!options.iceTransportPolicy,
+        forceRelay: !!options.iceTransportPolicy && options.iceTransportPolicy !== "all",
       });
 
       const manager = webrtcManager;
