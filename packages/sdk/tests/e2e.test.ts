@@ -212,6 +212,29 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       await expectResult(result, "lucy-2.1-reference_image", ".mp4");
     });
 
+    it("lucy-2.1-vton: virtual try-on (prompt)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-2.1-vton"),
+        prompt: "Wearing a red leather jacket",
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-2.1-vton-prompt", ".mp4");
+    });
+
+    it("lucy-2.1-vton: virtual try-on (reference_image)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-2.1-vton"),
+        prompt: "",
+        reference_image: imageBlob,
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-2.1-vton-reference_image", ".mp4");
+    });
+
     // Deprecated video model names (aliases)
     it("lucy-pro-v2v (deprecated): video-to-video", async () => {
       const result = await client.queue.submitAndPoll({

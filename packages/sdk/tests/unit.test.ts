@@ -3487,6 +3487,13 @@ describe("Canonical Model Names", () => {
       expect(model.queueUrlPath).toBe("/v1/jobs/lucy-2.1");
     });
 
+    it("lucy-2.1-vton as video model works", () => {
+      const model = models.video("lucy-2.1-vton");
+      expect(model.name).toBe("lucy-2.1-vton");
+      expect(model.urlPath).toBe("/v1/generate/lucy-2.1-vton");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-2.1-vton");
+    });
+
     it("lucy-restyle-2 as video model works", () => {
       const model = models.video("lucy-restyle-2");
       expect(model.name).toBe("lucy-restyle-2");
@@ -3542,6 +3549,16 @@ describe("Canonical Model Names", () => {
       expect(model.height).toBe(624);
     });
 
+    it("lucy-vton-latest works as video model", () => {
+      const model = models.video("lucy-vton-latest");
+      expect(model.name).toBe("lucy-vton-latest");
+      expect(model.urlPath).toBe("/v1/generate/lucy-vton-latest");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-vton-latest");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
     it("lucy-restyle-latest works as video model", () => {
       const model = models.video("lucy-restyle-latest");
       expect(model.name).toBe("lucy-restyle-latest");
@@ -3578,6 +3595,11 @@ describe("Canonical Model Names", () => {
       expect(isVideoModel("lucy-latest")).toBe(true);
     });
 
+    it("lucy-vton-latest is both a realtime and video model", () => {
+      expect(isRealtimeModel("lucy-vton-latest")).toBe(true);
+      expect(isVideoModel("lucy-vton-latest")).toBe(true);
+    });
+
     it("lucy-restyle-latest is both a realtime and video model", () => {
       expect(isRealtimeModel("lucy-restyle-latest")).toBe(true);
       expect(isVideoModel("lucy-restyle-latest")).toBe(true);
@@ -3591,6 +3613,7 @@ describe("Canonical Model Names", () => {
       models.realtime("lucy-vton-latest");
       models.realtime("lucy-restyle-latest");
       models.video("lucy-latest");
+      models.video("lucy-vton-latest");
       models.video("lucy-restyle-latest");
       models.video("lucy-clip-latest");
       models.video("lucy-motion-latest");
@@ -3610,6 +3633,11 @@ describe("Canonical Model Names", () => {
     it("lucy-2.1 is both a realtime and video model", () => {
       expect(isRealtimeModel("lucy-2.1")).toBe(true);
       expect(isVideoModel("lucy-2.1")).toBe(true);
+    });
+
+    it("lucy-2.1-vton is both a realtime and video model", () => {
+      expect(isRealtimeModel("lucy-2.1-vton")).toBe(true);
+      expect(isVideoModel("lucy-2.1-vton")).toBe(true);
     });
 
     it("lucy-restyle-2 is both a realtime and video model", () => {
