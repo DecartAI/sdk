@@ -59,10 +59,12 @@ export const videoModels = z.union([
   z.literal("lucy-clip"),
   z.literal("lucy-2"),
   z.literal("lucy-2.1"),
+  z.literal("lucy-2.1-vton"),
   z.literal("lucy-restyle-2"),
   z.literal("lucy-motion"),
   // Latest aliases (server-side resolution)
   z.literal("lucy-latest"),
+  z.literal("lucy-vton-latest"),
   z.literal("lucy-restyle-latest"),
   z.literal("lucy-clip-latest"),
   z.literal("lucy-motion-latest"),
@@ -209,6 +211,7 @@ export const modelInputSchemas = {
   "lucy-restyle-2": restyleSchema,
   "lucy-2": videoEdit2Schema,
   "lucy-2.1": videoEdit2Schema,
+  "lucy-2.1-vton": videoEdit2Schema,
   "lucy-motion": z.object({
     data: fileInputSchema.describe(
       "The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
@@ -229,6 +232,7 @@ export const modelInputSchemas = {
   }),
   // Latest aliases (server-side resolution)
   "lucy-latest": videoEdit2Schema,
+  "lucy-vton-latest": videoEdit2Schema,
   "lucy-restyle-latest": restyleSchema,
   "lucy-clip-latest": videoEditSchema,
   "lucy-motion-latest": z.object({
@@ -489,6 +493,15 @@ const _models = {
       height: 624,
       inputSchema: modelInputSchemas["lucy-2.1"],
     },
+    "lucy-2.1-vton": {
+      urlPath: "/v1/generate/lucy-2.1-vton",
+      queueUrlPath: "/v1/jobs/lucy-2.1-vton",
+      name: "lucy-2.1-vton" as const,
+      fps: 20,
+      width: 1088,
+      height: 624,
+      inputSchema: modelInputSchemas["lucy-2.1-vton"],
+    },
     "lucy-restyle-2": {
       urlPath: "/v1/generate/lucy-restyle-2",
       queueUrlPath: "/v1/jobs/lucy-restyle-2",
@@ -516,6 +529,15 @@ const _models = {
       width: 1088,
       height: 624,
       inputSchema: modelInputSchemas["lucy-latest"],
+    },
+    "lucy-vton-latest": {
+      urlPath: "/v1/generate/lucy-vton-latest",
+      queueUrlPath: "/v1/jobs/lucy-vton-latest",
+      name: "lucy-vton-latest" as const,
+      fps: 20,
+      width: 1088,
+      height: 624,
+      inputSchema: modelInputSchemas["lucy-vton-latest"],
     },
     "lucy-restyle-latest": {
       urlPath: "/v1/generate/lucy-restyle-latest",
@@ -603,6 +625,7 @@ export const models = {
    *   - `"lucy-clip"` - Video-to-video editing
    *   - `"lucy-2"` - Long-form video editing (720p)
    *   - `"lucy-2.1"` - Long-form video editing (Lucy 2.1)
+   *   - `"lucy-2.1-vton"` - Virtual try-on video editing
    *   - `"lucy-restyle-2"` - Video restyling
    *   - `"lucy-motion"` - Motion generation
    */
