@@ -1140,8 +1140,8 @@ describe("Lucy 2 realtime", () => {
 
     it("has expected dimensions", () => {
       const lucyModel = models.realtime("lucy_2_rt");
-      expect(lucyModel.width).toBe(1280);
-      expect(lucyModel.height).toBe(720);
+      expect(lucyModel.width).toBe(1088);
+      expect(lucyModel.height).toBe(624);
     });
 
     it("has correct fps", () => {
@@ -3420,8 +3420,8 @@ describe("Canonical Model Names", () => {
       expect(model.name).toBe("lucy-2");
       expect(model.urlPath).toBe("/v1/stream");
       expect(model.fps).toBe(20);
-      expect(model.width).toBe(1280);
-      expect(model.height).toBe(720);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
     });
 
     it("lucy-2.1 canonical name works", () => {
