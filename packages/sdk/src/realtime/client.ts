@@ -93,6 +93,11 @@ const realTimeClientConnectOptionsSchema = z.object({
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
+  // Opt-in per-session WebRTC transport. Defaults to "aiortc" (current
+  // shipping behavior). Set to "livekit" to join a LiveKit SFU room; the
+  // inference pod must have livekit in TRANSPORTS_ENABLED or the session
+  // will be rejected.
+  transport: z.enum(["aiortc", "livekit"]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -194,6 +199,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         modelName: options.model.name,
         initialImage,
         initialPrompt,
+        transport: options.transport,
       });
 
       const manager = webrtcManager;

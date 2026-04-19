@@ -2,8 +2,14 @@ import pRetry, { AbortError } from "p-retry";
 
 import type { Logger } from "../utils/logger";
 import type { DiagnosticEmitter } from "./diagnostics";
+import { LiveKitConnection } from "./transports/livekit";
+import type { TransportKind } from "./transports";
 import type { ConnectionState, OutgoingMessage } from "./types";
 import { WebRTCConnection } from "./webrtc-connection";
+
+// Shared shape both connection types expose — narrows the union for
+// WebRTCManager so both transports can be driven uniformly.
+type TransportConnection = WebRTCConnection | LiveKitConnection;
 
 export interface WebRTCConfig {
   webrtcUrl: string;
@@ -19,6 +25,13 @@ export interface WebRTCConfig {
   modelName?: string;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
+  /**
+   * Selects the underlying WebRTC transport. Default is "aiortc" for
+   * back-compat with existing deployments. Set to "livekit" to join a
+   * LiveKit SFU room (requires the inference pod to enable it in
+   * TRANSPORTS_ENABLED).
+   */
+  transport?: TransportKind;
 }
 
 const PERMANENT_ERRORS = [
@@ -40,7 +53,7 @@ const RETRY_OPTIONS = {
 } as const;
 
 export class WebRTCManager {
-  private connection: WebRTCConnection;
+  private connection: TransportConnection;
   private config: WebRTCConfig;
   private logger: Logger;
   private localStream: MediaStream | null = null;
@@ -54,19 +67,27 @@ export class WebRTCManager {
   constructor(config: WebRTCConfig) {
     this.config = config;
     this.logger = config.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
-    this.connection = new WebRTCConnection({
+    const transport: TransportKind = config.transport ?? "aiortc";
+    const sharedOpts = {
       onRemoteStream: config.onRemoteStream,
-      onStateChange: (state) => this.handleConnectionStateChange(state),
+      onStateChange: (state: ConnectionState) => this.handleConnectionStateChange(state),
       onError: config.onError,
-      customizeOffer: config.customizeOffer,
-      vp8MinBitrate: config.vp8MinBitrate,
-      vp8StartBitrate: config.vp8StartBitrate,
       modelName: config.modelName,
       initialImage: config.initialImage,
       initialPrompt: config.initialPrompt,
       logger: this.logger,
       onDiagnostic: config.onDiagnostic,
-    });
+    };
+    if (transport === "livekit") {
+      this.connection = new LiveKitConnection(sharedOpts);
+    } else {
+      this.connection = new WebRTCConnection({
+        ...sharedOpts,
+        customizeOffer: config.customizeOffer,
+        vp8MinBitrate: config.vp8MinBitrate,
+        vp8StartBitrate: config.vp8StartBitrate,
+      });
+    }
   }
 
   private emitState(state: ConnectionState): void {
