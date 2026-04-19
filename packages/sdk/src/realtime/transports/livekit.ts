@@ -1,0 +1,383 @@
+/**
+ * LiveKit transport for the realtime SDK.
+ *
+ * Control flow mirrors WebRTCConnection (same WS URL, same control messages
+ * for prompt/set_image/init/session_id/generation_tick). The only differences
+ * are in the media handshake:
+ *
+ *   Client → bouncer WS: { type: "livekit_join" }
+ *   bouncer/inference   → { type: "livekit_room_info", livekit_url, token, room_name }
+ *   Client → LiveKit SFU: Room.connect(url, token) + publishTrack(...)
+ *
+ * Public surface matches WebRTCConnection enough that WebRTCManager can swap
+ * implementations behind a `transport` option.
+ */
+
+import mitt from "mitt";
+import {
+  ConnectionState as LKConnectionState,
+  Room,
+  RoomEvent,
+  Track,
+  TrackEvent,
+  type RemoteTrack,
+  type RemoteTrackPublication,
+  type RemoteParticipant,
+} from "livekit-client";
+
+import type { Logger } from "../../utils/logger";
+import { buildUserAgent } from "../../utils/user-agent";
+import type { DiagnosticEmitter } from "../diagnostics";
+import type {
+  ConnectionState,
+  GenerationTickMessage,
+  IncomingWebRTCMessage,
+  OutgoingWebRTCMessage,
+  PromptAckMessage,
+  SessionIdMessage,
+  SetImageAckMessage,
+} from "../types";
+
+const AVATAR_SETUP_TIMEOUT_MS = 30_000;
+const ROOM_INFO_TIMEOUT_MS = 15_000;
+
+interface LiveKitCallbacks {
+  onRemoteStream?: (stream: MediaStream) => void;
+  onStateChange?: (state: ConnectionState) => void;
+  onError?: (error: Error) => void;
+  modelName?: string;
+  initialImage?: string;
+  initialPrompt?: { text: string; enhance?: boolean };
+  logger?: Logger;
+  onDiagnostic?: DiagnosticEmitter;
+}
+
+type WsMessageEvents = {
+  promptAck: PromptAckMessage;
+  setImageAck: SetImageAckMessage;
+  sessionId: SessionIdMessage;
+  generationTick: GenerationTickMessage;
+};
+
+const noopDiagnostic: DiagnosticEmitter = () => {};
+
+interface RoomInfoMessage {
+  type: "livekit_room_info";
+  livekit_url: string;
+  token: string;
+  room_name: string;
+}
+
+export class LiveKitConnection {
+  private ws: WebSocket | null = null;
+  private room: Room | null = null;
+  private localStream: MediaStream | null = null;
+  private connectionReject: ((error: Error) => void) | null = null;
+  private logger: Logger;
+  private emitDiagnostic: DiagnosticEmitter;
+  state: ConnectionState = "disconnected";
+  websocketMessagesEmitter = mitt<WsMessageEvents>();
+
+  constructor(private callbacks: LiveKitCallbacks = {}) {
+    this.logger = callbacks.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
+    this.emitDiagnostic = callbacks.onDiagnostic ?? noopDiagnostic;
+  }
+
+  getPeerConnection(): RTCPeerConnection | null {
+    // No raw PC for the LiveKit transport. Stats come from room.getStats().
+    return null;
+  }
+
+  async connect(url: string, localStream: MediaStream | null, timeout: number, integration?: string): Promise<void> {
+    this.localStream = localStream;
+
+    // Append user agent exactly like the aiortc transport.
+    const userAgent = encodeURIComponent(buildUserAgent(integration));
+    const separator = url.includes("?") ? "&" : "?";
+    const wsUrl = `${url}${separator}user_agent=${userAgent}`;
+
+    let rejectConnect!: (error: Error) => void;
+    const connectAbort = new Promise<never>((_, reject) => {
+      rejectConnect = reject;
+    });
+    connectAbort.catch(() => {});
+    this.connectionReject = (error) => rejectConnect(error);
+
+    try {
+      // Phase 1 — control WS + livekit_join/livekit_room_info handshake.
+      const roomInfoStart = performance.now();
+      await this.openControlWs(wsUrl, timeout);
+      const roomInfo = await this.requestRoomInfo();
+      this.emitDiagnostic("phaseTiming", {
+        phase: "websocket",
+        durationMs: performance.now() - roomInfoStart,
+        success: true,
+      });
+
+      // Phase 2 — join the SFU room and publish local tracks.
+      const roomStart = performance.now();
+      await this.joinRoom(roomInfo);
+      this.emitDiagnostic("phaseTiming", {
+        phase: "webrtc-handshake",
+        durationMs: performance.now() - roomStart,
+        success: true,
+      });
+
+      // Phase 3 — optional: send initial prompt over control WS.
+      if (this.callbacks.initialPrompt) {
+        await this.sendInitialPrompt(this.callbacks.initialPrompt);
+      }
+
+      this.setState("connected");
+    } catch (error) {
+      this.cleanup();
+      throw error;
+    } finally {
+      this.connectionReject = null;
+    }
+  }
+
+  send(message: OutgoingWebRTCMessage): boolean {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(message));
+      return true;
+    }
+    this.logger.warn("Message dropped: WebSocket is not open");
+    return false;
+  }
+
+  async setImageBase64(
+    imageBase64: string | null,
+    options?: { prompt?: string | null; enhance?: boolean; timeout?: number },
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.websocketMessagesEmitter.off("setImageAck", listener);
+        reject(new Error("Image send timed out"));
+      }, options?.timeout ?? AVATAR_SETUP_TIMEOUT_MS);
+
+      const listener = (msg: SetImageAckMessage) => {
+        clearTimeout(timeoutId);
+        this.websocketMessagesEmitter.off("setImageAck", listener);
+        if (msg.success) {
+          resolve();
+        } else {
+          reject(new Error(msg.error ?? "Failed to send image"));
+        }
+      };
+      this.websocketMessagesEmitter.on("setImageAck", listener);
+
+      const message: {
+        type: "set_image";
+        image_data: string | null;
+        prompt?: string | null;
+        enhance_prompt?: boolean;
+      } = { type: "set_image", image_data: imageBase64 };
+      if (options?.prompt !== undefined) message.prompt = options.prompt;
+      if (options?.enhance !== undefined) message.enhance_prompt = options.enhance;
+
+      if (!this.send(message)) {
+        clearTimeout(timeoutId);
+        this.websocketMessagesEmitter.off("setImageAck", listener);
+        reject(new Error("WebSocket is not open"));
+      }
+    });
+  }
+
+  cleanup(): void {
+    this.setState("disconnected");
+    if (this.room) {
+      // Fire and forget — disconnect is async but we don't want to await
+      // during cleanup paths.
+      this.room.disconnect().catch(() => {});
+      this.room = null;
+    }
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {
+        // ignore
+      }
+      this.ws = null;
+    }
+    this.localStream = null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Private — control WS
+  // -------------------------------------------------------------------------
+
+  private async openControlWs(wsUrl: string, timeout: number): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("WebSocket timeout")), timeout);
+      this.ws = new WebSocket(wsUrl);
+      this.ws.onopen = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      this.ws.onclose = (e) => {
+        this.logger.info("LiveKit control WS closed", { code: e.code, reason: e.reason });
+        // If the room is still connecting this also aborts the connect flow.
+        this.connectionReject?.(new Error(`WebSocket closed: ${e.code} ${e.reason}`));
+        if (!this.room || this.room.state !== LKConnectionState.Connected) {
+          this.setState("disconnected");
+        }
+      };
+      this.ws.onerror = () => {
+        // Error events don't carry details; onclose handles state transitions.
+      };
+      this.ws.onmessage = (e) => {
+        try {
+          this.handleControlMessage(JSON.parse(e.data));
+        } catch (error) {
+          this.logger.error("LiveKit control WS message parse error", { error: String(error) });
+        }
+      };
+    });
+  }
+
+  private async requestRoomInfo(): Promise<RoomInfoMessage> {
+    this.send({ type: "livekit_join" } as unknown as OutgoingWebRTCMessage);
+    return await new Promise<RoomInfoMessage>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error(`livekit_room_info timeout (${ROOM_INFO_TIMEOUT_MS}ms)`));
+      }, ROOM_INFO_TIMEOUT_MS);
+
+      const handler = (msg: IncomingWebRTCMessage | RoomInfoMessage) => {
+        if ((msg as RoomInfoMessage).type === "livekit_room_info") {
+          cleanup();
+          resolve(msg as RoomInfoMessage);
+        } else if ((msg as { type: string }).type === "error") {
+          cleanup();
+          reject(new Error((msg as { error?: string }).error ?? "server error"));
+        }
+      };
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.pendingRoomInfoResolvers = this.pendingRoomInfoResolvers.filter((h) => h !== handler);
+      };
+      this.pendingRoomInfoResolvers.push(handler);
+    });
+  }
+
+  private pendingRoomInfoResolvers: Array<(msg: IncomingWebRTCMessage | RoomInfoMessage) => void> = [];
+
+  private handleControlMessage(msg: IncomingWebRTCMessage | RoomInfoMessage): void {
+    // First give pending livekit_room_info awaiters a chance.
+    for (const resolver of [...this.pendingRoomInfoResolvers]) {
+      resolver(msg);
+    }
+
+    // Then fan out control-plane acks to the shared emitter (same events
+    // WebRTCConnection emits so RealTimeClient consumes both identically).
+    const typed = msg as IncomingWebRTCMessage;
+    switch (typed.type) {
+      case "prompt_ack":
+        this.websocketMessagesEmitter.emit("promptAck", typed);
+        break;
+      case "set_image_ack":
+        this.websocketMessagesEmitter.emit("setImageAck", typed);
+        break;
+      case "session_id":
+        this.websocketMessagesEmitter.emit("sessionId", typed);
+        break;
+      case "generation_tick":
+        this.websocketMessagesEmitter.emit("generationTick", typed);
+        break;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Private — LiveKit room
+  // -------------------------------------------------------------------------
+
+  private async joinRoom(info: RoomInfoMessage): Promise<void> {
+    this.room = new Room({
+      adaptiveStream: false,
+      dynacast: false,
+    });
+
+    this.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub: RemoteTrackPublication, _p: RemoteParticipant) => {
+      if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {
+        // Compose a MediaStream for the SDK consumer. We attach the track
+        // element so downstream TrackEvent.VideoPlaybackStarted fires and
+        // the browser actually starts decoding — the element isn't kept.
+        track.attach();
+        const mediaStreamTrack = track.mediaStreamTrack;
+        if (mediaStreamTrack) {
+          const stream = new MediaStream([mediaStreamTrack]);
+          this.callbacks.onRemoteStream?.(stream);
+        }
+        track.on(TrackEvent.VideoPlaybackStarted, () => {
+          this.setState("generating");
+        });
+      }
+    });
+
+    this.room.on(RoomEvent.Connected, () => {
+      this.logger.info("LiveKit room connected");
+    });
+    this.room.on(RoomEvent.Disconnected, (reason?: unknown) => {
+      this.logger.info("LiveKit room disconnected", { reason: String(reason) });
+      this.setState("disconnected");
+    });
+
+    await this.room.connect(info.livekit_url, info.token);
+
+    // Publish local tracks. Inference server expects a video track; audio is optional.
+    if (this.localStream) {
+      for (const track of this.localStream.getTracks()) {
+        if (track.kind === "video") {
+          await this.room.localParticipant.publishTrack(track, {
+            simulcast: true,
+            source: Track.Source.Camera,
+          });
+        } else {
+          await this.room.localParticipant.publishTrack(track);
+        }
+      }
+    }
+  }
+
+  private async sendInitialPrompt(prompt: { text: string; enhance?: boolean }): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.websocketMessagesEmitter.off("promptAck", listener);
+        reject(new Error("Prompt send timed out"));
+      }, AVATAR_SETUP_TIMEOUT_MS);
+
+      const listener = (msg: PromptAckMessage) => {
+        if (msg.prompt === prompt.text) {
+          clearTimeout(timeoutId);
+          this.websocketMessagesEmitter.off("promptAck", listener);
+          if (msg.success) {
+            resolve();
+          } else {
+            reject(new Error(msg.error ?? "Failed to send prompt"));
+          }
+        }
+      };
+      this.websocketMessagesEmitter.on("promptAck", listener);
+
+      const message = {
+        type: "prompt",
+        prompt: prompt.text,
+        enhance: prompt.enhance ?? false,
+      } as unknown as OutgoingWebRTCMessage;
+
+      if (!this.send(message)) {
+        clearTimeout(timeoutId);
+        this.websocketMessagesEmitter.off("promptAck", listener);
+        reject(new Error("WebSocket is not open"));
+      }
+    });
+  }
+
+  private setState(state: ConnectionState): void {
+    if (this.state !== state) {
+      this.state = state;
+      this.callbacks.onStateChange?.(state);
+    }
+  }
+}
