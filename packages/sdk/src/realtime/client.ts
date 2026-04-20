@@ -18,6 +18,7 @@ import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } fro
 import type {
   ConnectionState,
   GenerationTickMessage,
+  MarkerConfigMessage,
   ServerMetricsMessage,
   SessionIdMessage,
 } from "./types";
@@ -120,6 +121,15 @@ export type Events = {
    * the webrtc-bench tool). Normal SDK consumers can ignore this event.
    */
   serverMetrics: ServerMetricsMessage;
+  /**
+   * Server→client handshake for E2E pixel-latency marker stamping. Emitted
+   * once after the server first re-stamps a client marker onto an output
+   * frame, carrying the server's actual stamp dimensions. Opt-in via
+   * `?pixel_latency=1&stamp_width=...&stamp_height=...`. The webrtc-bench
+   * tool uses this to align its PixelMarkerReader's search window; normal
+   * SDK consumers can ignore this event.
+   */
+  markerConfig: MarkerConfigMessage;
 };
 
 export type RealTimeClient = {
@@ -281,6 +291,13 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         emitOrBuffer("serverMetrics", msg);
       };
       manager.getWebsocketMessageEmitter().on("serverMetrics", serverMetricsListener);
+
+      // Opt-in E2E pixel-latency handshake. Same fan-out pattern; consumed
+      // by the webrtc-bench tool to configure its PixelMarkerReader.
+      const markerConfigListener = (msg: MarkerConfigMessage) => {
+        emitOrBuffer("markerConfig", msg);
+      };
+      manager.getWebsocketMessageEmitter().on("markerConfig", markerConfigListener);
 
       await manager.connect(inputStream);
 

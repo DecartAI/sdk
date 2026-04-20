@@ -81,6 +81,22 @@ export type ServerMetricsMessage = {
   video_out_qsize?: number;
 };
 
+/**
+ * Server→client handshake for E2E pixel-latency marker stamping. Sent once
+ * by the inference server the first time it re-stamps a client-placed
+ * marker onto an output frame. Carries the server's actual stamp
+ * dimensions, which can differ from the client-sent `stamp_width` /
+ * `stamp_height` when the server transcodes. The client's
+ * `PixelMarkerReader` should use these to scale its search window.
+ * Only sent when the WS URL carries `?pixel_latency=1` (default off).
+ * Fields mirror inference_server/rt/ws.py::_send_marker_config.
+ */
+export type MarkerConfigMessage = {
+  type: "marker_config";
+  stamp_width: number;
+  stamp_height: number;
+};
+
 export type SessionIdMessage = {
   type: "session_id";
   session_id: string;
@@ -103,7 +119,8 @@ export type IncomingWebRTCMessage =
   | GenerationTickMessage
   | GenerationEndedMessage
   | SessionIdMessage
-  | ServerMetricsMessage;
+  | ServerMetricsMessage
+  | MarkerConfigMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =

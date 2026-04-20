@@ -32,6 +32,7 @@ import type {
   ConnectionState,
   GenerationTickMessage,
   IncomingWebRTCMessage,
+  MarkerConfigMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
   ServerMetricsMessage,
@@ -59,6 +60,7 @@ type WsMessageEvents = {
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
   serverMetrics: ServerMetricsMessage;
+  markerConfig: MarkerConfigMessage;
 };
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
@@ -290,6 +292,11 @@ export class LiveKitConnection {
       case "server_metrics":
         // Opt-in server-side stats for the webrtc-bench tool.
         this.websocketMessagesEmitter.emit("serverMetrics", typed);
+        break;
+      case "marker_config":
+        // Server→client handshake for E2E pixel-latency marker stamping.
+        // Opt-in; consumed by the webrtc-bench tool's PixelMarkerReader.
+        this.websocketMessagesEmitter.emit("markerConfig", typed);
         break;
     }
   }
