@@ -7,6 +7,7 @@ import type {
   ConnectionState,
   GenerationTickMessage,
   IncomingWebRTCMessage,
+  MarkerConfigMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
   ServerMetricsMessage,
@@ -37,6 +38,7 @@ type WsMessageEvents = {
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
   serverMetrics: ServerMetricsMessage;
+  markerConfig: MarkerConfigMessage;
 };
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
@@ -260,6 +262,15 @@ export class WebRTCConnection {
         // Optional, opted into via `?emit_server_metrics=1` on the WS URL.
         // Consumed by the webrtc-bench tool; ignored by normal SDK clients.
         this.websocketMessagesEmitter.emit("serverMetrics", msg);
+        return;
+      }
+
+      if (msg.type === "marker_config") {
+        // Server→client handshake for E2E pixel-latency. Opted into via
+        // `?pixel_latency=1` on the WS URL. The bench tool forwards this to
+        // its PixelMarkerReader to align the search window with the server's
+        // actual stamp dimensions (may differ under transcoding).
+        this.websocketMessagesEmitter.emit("markerConfig", msg);
         return;
       }
 
