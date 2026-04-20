@@ -64,6 +64,23 @@ export type GenerationEndedMessage = {
   reason: string;
 };
 
+/**
+ * Per-session server-side metrics, emitted periodically when the WS URL
+ * carries `?emit_server_metrics=1` (default off). Used by the webrtc-bench
+ * tool. Fields mirror inference_server/rt/metrics_emitter.py.
+ */
+export type ServerMetricsMessage = {
+  type: "server_metrics";
+  session_id: string;
+  input_fps?: number;
+  output_fps?: number;
+  input_frame_count?: number;
+  output_frame_count?: number;
+  pipeline_latency_ms?: number;
+  video_in_qsize?: number;
+  video_out_qsize?: number;
+};
+
 export type SessionIdMessage = {
   type: "session_id";
   session_id: string;
@@ -85,7 +102,8 @@ export type IncomingWebRTCMessage =
   | GenerationStartedMessage
   | GenerationTickMessage
   | GenerationEndedMessage
-  | SessionIdMessage;
+  | SessionIdMessage
+  | ServerMetricsMessage;
 
 // Outgoing message types (to server)
 export type OutgoingWebRTCMessage =
