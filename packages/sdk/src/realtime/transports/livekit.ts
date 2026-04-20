@@ -34,6 +34,7 @@ import type {
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
+  ServerMetricsMessage,
   SessionIdMessage,
   SetImageAckMessage,
 } from "../types";
@@ -57,6 +58,7 @@ type WsMessageEvents = {
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
+  serverMetrics: ServerMetricsMessage;
 };
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
@@ -284,6 +286,10 @@ export class LiveKitConnection {
         break;
       case "generation_tick":
         this.websocketMessagesEmitter.emit("generationTick", typed);
+        break;
+      case "server_metrics":
+        // Opt-in server-side stats for the webrtc-bench tool.
+        this.websocketMessagesEmitter.emit("serverMetrics", typed);
         break;
     }
   }
