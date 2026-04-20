@@ -15,7 +15,12 @@ import {
   type SubscribeOptions,
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
-import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
+import type {
+  ConnectionState,
+  GenerationTickMessage,
+  ServerMetricsMessage,
+  SessionIdMessage,
+} from "./types";
 import { WebRTCManager } from "./webrtc-manager";
 import { type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
@@ -109,6 +114,12 @@ export type Events = {
   generationTick: { seconds: number };
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
+  /**
+   * Optional server-side per-session metrics. Emitted only when the client
+   * connects with `?emit_server_metrics=1` on the realtime URL (consumed by
+   * the webrtc-bench tool). Normal SDK consumers can ignore this event.
+   */
+  serverMetrics: ServerMetricsMessage;
 };
 
 export type RealTimeClient = {
@@ -263,6 +274,13 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         emitOrBuffer("generationTick", { seconds: msg.seconds });
       };
       manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
+
+      // Opt-in server-side metrics — fans WebRTCConnection + LiveKitConnection
+      // emissions out onto the public RealTimeClient.on("serverMetrics", …).
+      const serverMetricsListener = (msg: ServerMetricsMessage) => {
+        emitOrBuffer("serverMetrics", msg);
+      };
+      manager.getWebsocketMessageEmitter().on("serverMetrics", serverMetricsListener);
 
       await manager.connect(inputStream);
 

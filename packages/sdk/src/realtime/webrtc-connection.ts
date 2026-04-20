@@ -9,6 +9,7 @@ import type {
   IncomingWebRTCMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
+  ServerMetricsMessage,
   SessionIdMessage,
   SetImageAckMessage,
 } from "./types";
@@ -35,6 +36,7 @@ type WsMessageEvents = {
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
+  serverMetrics: ServerMetricsMessage;
 };
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
@@ -251,6 +253,13 @@ export class WebRTCConnection {
 
       if (msg.type === "session_id") {
         this.websocketMessagesEmitter.emit("sessionId", msg);
+        return;
+      }
+
+      if (msg.type === "server_metrics") {
+        // Optional, opted into via `?emit_server_metrics=1` on the WS URL.
+        // Consumed by the webrtc-bench tool; ignored by normal SDK clients.
+        this.websocketMessagesEmitter.emit("serverMetrics", msg);
         return;
       }
 
