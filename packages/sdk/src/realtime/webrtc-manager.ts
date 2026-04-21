@@ -6,6 +6,7 @@ import { LiveKitConnection } from "./transports/livekit";
 import type { TransportKind } from "./transports";
 import type { ConnectionState, OutgoingMessage } from "./types";
 import { WebRTCConnection } from "./webrtc-connection";
+import type { StatsProvider } from "./webrtc-stats";
 
 // Shared shape both connection types expose — narrows the union for
 // WebRTCManager so both transports can be driven uniformly.
@@ -259,6 +260,14 @@ export class WebRTCManager {
 
   getPeerConnection(): RTCPeerConnection | null {
     return this.connection.getPeerConnection();
+  }
+
+  /**
+   * Stats source for WebRTCStatsCollector. For aiortc this is the raw
+   * RTCPeerConnection; for livekit it's an aggregator over room tracks.
+   */
+  getStatsProvider(): StatsProvider | null {
+    return this.connection.getStatsProvider();
   }
 
   getWebsocketMessageEmitter() {

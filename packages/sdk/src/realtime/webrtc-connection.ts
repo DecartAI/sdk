@@ -3,6 +3,7 @@ import mitt from "mitt";
 import type { Logger } from "../utils/logger";
 import { buildUserAgent } from "../utils/user-agent";
 import type { DiagnosticEmitter, IceCandidateEvent } from "./diagnostics";
+import type { StatsProvider } from "./webrtc-stats";
 import type {
   ConnectionState,
   GenerationTickMessage,
@@ -56,6 +57,11 @@ export class WebRTCConnection {
   }
 
   getPeerConnection(): RTCPeerConnection | null {
+    return this.pc;
+  }
+
+  /** RTCPeerConnection already satisfies StatsProvider (has getStats()). */
+  getStatsProvider(): StatsProvider | null {
     return this.pc;
   }
 
