@@ -20,6 +20,7 @@ import {
   RoomEvent,
   Track,
   TrackEvent,
+  type LocalTrack,
   type RemoteTrack,
   type RemoteTrackPublication,
   type RemoteParticipant,
@@ -28,6 +29,7 @@ import {
 import type { Logger } from "../../utils/logger";
 import { buildUserAgent } from "../../utils/user-agent";
 import type { DiagnosticEmitter } from "../diagnostics";
+import type { StatsProvider } from "../webrtc-stats";
 import type {
   ConnectionState,
   GenerationTickMessage,
@@ -77,6 +79,7 @@ export class LiveKitConnection {
   private connectionReject: ((error: Error) => void) | null = null;
   private logger: Logger;
   private emitDiagnostic: DiagnosticEmitter;
+  private statsProvider: StatsProvider | null = null;
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
 
@@ -86,8 +89,22 @@ export class LiveKitConnection {
   }
 
   getPeerConnection(): RTCPeerConnection | null {
-    // No raw PC for the LiveKit transport. Stats come from room.getStats().
+    // No raw PC for the LiveKit transport — the SFU hides the PCs behind
+    // a Room abstraction. Callers that need stats should use
+    // getStatsProvider() instead; it aggregates per-track `getRTCStatsReport()`
+    // results into an RTCStatsReport-shaped object.
     return null;
+  }
+
+  /**
+   * Stats provider for the livekit transport. Aggregates
+   * `track.getRTCStatsReport()` from every local (outbound) and remote
+   * (inbound) track in the room into a single RTCStatsReport-compatible
+   * Map. That's the minimum surface WebRTCStatsCollector.parse() needs —
+   * it calls `.forEach` and keys off `report.type`.
+   */
+  getStatsProvider(): StatsProvider | null {
+    return this.statsProvider;
   }
 
   async connect(url: string, localStream: MediaStream | null, timeout: number, integration?: string): Promise<void> {
@@ -194,6 +211,7 @@ export class LiveKitConnection {
       this.room.disconnect().catch(() => {});
       this.room = null;
     }
+    this.statsProvider = null;
     if (this.ws) {
       try {
         this.ws.close();
@@ -331,6 +349,12 @@ export class LiveKitConnection {
 
     await this.room.connect(info.livekit_url, info.token);
 
+    // Wire up the stats provider now that the room has local+remote
+    // participant objects available. Held by reference here so the SDK
+    // client's identity-check in handleConnectionStateChange() sees a
+    // stable provider for this room.
+    this.statsProvider = createLiveKitStatsProvider(this.room);
+
     // Publish local tracks. Inference server expects a video track; audio is optional.
     if (this.localStream) {
       for (const track of this.localStream.getTracks()) {
@@ -386,4 +410,73 @@ export class LiveKitConnection {
       this.callbacks.onStateChange?.(state);
     }
   }
+}
+
+/**
+ * Build a StatsProvider that aggregates `track.getRTCStatsReport()` across
+ * every local and remote track in a livekit Room into a single
+ * RTCStatsReport-shaped Map.
+ *
+ * Why this shape: `WebRTCStatsCollector.parse()` expects to call
+ * `.forEach((stat) => { ... })` on the returned object and keys off each
+ * entry's `type` (inbound-rtp, outbound-rtp, candidate-pair). The standard
+ * `RTCStatsReport` is an iterable map-like — our aggregate mimics that by
+ * returning a `Map<string, unknown>` (structurally compatible with the spec).
+ *
+ * Each livekit track's `getRTCStatsReport()` under the hood calls
+ * `RTCRtpSender.getStats()` / `RTCRtpReceiver.getStats()`, which in all
+ * current browsers returns the track's inbound-rtp/outbound-rtp plus the
+ * associated candidate-pair and transport reports. Stitching them together
+ * per-tick gives us a report that looks like an aiortc-style
+ * `RTCPeerConnection.getStats()` for parsing purposes.
+ *
+ * Key collisions (candidate-pair ids repeat across publisher+subscriber
+ * PCs) are namespaced with a monotonic suffix so `forEach` sees every
+ * entry once. `parse()` only cares about the last `candidate-pair` where
+ * `state == "succeeded"`, so duplicate candidate-pair entries are harmless.
+ */
+function createLiveKitStatsProvider(room: Room): StatsProvider {
+  let uid = 0;
+
+  const collectFromTrack = async (
+    track: LocalTrack | RemoteTrack | undefined,
+    entries: Array<[string, unknown]>,
+  ): Promise<void> => {
+    if (!track) return;
+    let report: RTCStatsReport | undefined;
+    try {
+      report = await track.getRTCStatsReport();
+    } catch {
+      // Track is likely unmuted/unattached or the PC is mid-teardown — skip it.
+      return;
+    }
+    if (!report) return;
+    report.forEach((stat, id) => {
+      entries.push([`${id}#${uid++}`, stat]);
+    });
+  };
+
+  return {
+    async getStats(): Promise<RTCStatsReport> {
+      const entries: Array<[string, unknown]> = [];
+
+      // Outbound: the local participant's published tracks (what we send to
+      // the SFU — the server reads these as its inbound video/audio).
+      for (const pub of room.localParticipant.trackPublications.values()) {
+        await collectFromTrack(pub.track, entries);
+      }
+
+      // Inbound: every remote participant's tracks (what the server sends
+      // back to us — the model output).
+      for (const participant of room.remoteParticipants.values()) {
+        for (const pub of participant.trackPublications.values()) {
+          await collectFromTrack(pub.track as RemoteTrack | undefined, entries);
+        }
+      }
+
+      // `Map` is structurally compatible with `RTCStatsReport` for the
+      // callers we care about (WebRTCStatsCollector.parse uses forEach).
+      return new Map(entries) as unknown as RTCStatsReport;
+    },
+  };
 }
