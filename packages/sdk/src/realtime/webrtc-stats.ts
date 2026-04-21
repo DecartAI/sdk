@@ -60,11 +60,21 @@ export type StatsOptions = {
   intervalMs?: number;
 };
 
+/**
+ * Transport-agnostic source of `RTCStatsReport`. `RTCPeerConnection` already
+ * satisfies it (its `getStats()` returns `Promise<RTCStatsReport>`); the
+ * LiveKit transport provides a custom adapter that aggregates per-track stats
+ * from the room. See `transports/livekit.ts` for the livekit impl.
+ */
+export interface StatsProvider {
+  getStats(): Promise<RTCStatsReport>;
+}
+
 const DEFAULT_INTERVAL_MS = 1000;
 const MIN_INTERVAL_MS = 500;
 
 export class WebRTCStatsCollector {
-  private pc: RTCPeerConnection | null = null;
+  private source: StatsProvider | null = null;
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private prevBytesVideo = 0;
   private prevBytesAudio = 0;
@@ -83,10 +93,10 @@ export class WebRTCStatsCollector {
     this.intervalMs = Math.max(options.intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS);
   }
 
-  /** Attach to a peer connection and start polling. */
-  start(pc: RTCPeerConnection, onStats: (stats: WebRTCStats) => void): void {
+  /** Attach to a stats provider (RTCPeerConnection or equivalent) and start polling. */
+  start(source: StatsProvider, onStats: (stats: WebRTCStats) => void): void {
     this.stop();
-    this.pc = pc;
+    this.source = source;
     this.onStats = onStats;
     this.prevBytesVideo = 0;
     this.prevBytesAudio = 0;
@@ -106,7 +116,7 @@ export class WebRTCStatsCollector {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    this.pc = null;
+    this.source = null;
     this.onStats = null;
   }
 
@@ -115,14 +125,14 @@ export class WebRTCStatsCollector {
   }
 
   private async collect(): Promise<void> {
-    if (!this.pc || !this.onStats) return;
+    if (!this.source || !this.onStats) return;
 
     try {
-      const rawStats = await this.pc.getStats();
+      const rawStats = await this.source.getStats();
       const stats = this.parse(rawStats);
       this.onStats(stats);
     } catch {
-      // PC might be closed; stop silently
+      // Source might be closed; stop silently
       this.stop();
     }
   }
@@ -131,9 +141,13 @@ export class WebRTCStatsCollector {
     const now = performance.now();
     const elapsed = this.prevTimestamp > 0 ? (now - this.prevTimestamp) / 1000 : 0;
 
+    // Explicit NonNullable aliases so TypeScript can track field
+    // mutations inside the `forEach` closure below — otherwise it narrows
+    // the `| null` union to `never` after the first assignment.
+    type OutboundVideo = NonNullable<WebRTCStats["outboundVideo"]>;
     let video: WebRTCStats["video"] = null;
     let audio: WebRTCStats["audio"] = null;
-    let outboundVideo: WebRTCStats["outboundVideo"] = null;
+    let outboundVideo: OutboundVideo | null = null;
     const connection: WebRTCStats["connection"] = {
       currentRoundTripTime: null,
       availableOutgoingBitrate: null,
@@ -176,21 +190,48 @@ export class WebRTCStatsCollector {
       }
 
       if (report.type === "outbound-rtp" && report.kind === "video") {
+        // Simulcast produces one outbound-rtp report per spatial layer
+        // (3 layers is common). Earlier versions picked whichever layer
+        // `forEach` visited last, which (a) underreports total outbound
+        // traffic and (b) causes bitrate to go violently negative across
+        // ticks because layer byte counters are independent and the "last
+        // visited" layer alternates. Accumulate byte/packet totals across
+        // every layer; pick scalar fields (resolution, fps, quality-
+        // limitation reason) from the highest-resolution layer so the
+        // reported frame size matches what's actually on the wire.
         const r = report as Record<string, unknown>;
         const bytesSent = (r.bytesSent as number) ?? 0;
-        const outBitrate = elapsed > 0 ? ((bytesSent - this.prevBytesSentVideo) * 8) / elapsed : 0;
-        this.prevBytesSentVideo = bytesSent;
+        const packetsSent = (r.packetsSent as number) ?? 0;
+        const frameWidth = (r.frameWidth as number) ?? 0;
+        const frameHeight = (r.frameHeight as number) ?? 0;
+        const pixels = frameWidth * frameHeight;
 
-        outboundVideo = {
-          qualityLimitationReason: (r.qualityLimitationReason as string) ?? "none",
-          qualityLimitationDurations: (r.qualityLimitationDurations as Record<string, number>) ?? {},
-          bytesSent,
-          packetsSent: (r.packetsSent as number) ?? 0,
-          framesPerSecond: (r.framesPerSecond as number) ?? 0,
-          frameWidth: (r.frameWidth as number) ?? 0,
-          frameHeight: (r.frameHeight as number) ?? 0,
-          bitrate: Math.round(outBitrate),
-        };
+        if (outboundVideo === null) {
+          outboundVideo = {
+            qualityLimitationReason: (r.qualityLimitationReason as string) ?? "none",
+            qualityLimitationDurations: (r.qualityLimitationDurations as Record<string, number>) ?? {},
+            bytesSent,
+            packetsSent,
+            framesPerSecond: (r.framesPerSecond as number) ?? 0,
+            frameWidth,
+            frameHeight,
+            bitrate: 0,
+          };
+        } else {
+          outboundVideo.bytesSent += bytesSent;
+          outboundVideo.packetsSent += packetsSent;
+          // Promote scalar fields whenever a higher-resolution layer
+          // appears — we want reported resolution to match the largest
+          // active layer, not the lowest.
+          if (pixels > outboundVideo.frameWidth * outboundVideo.frameHeight) {
+            outboundVideo.frameWidth = frameWidth;
+            outboundVideo.frameHeight = frameHeight;
+            outboundVideo.framesPerSecond = (r.framesPerSecond as number) ?? 0;
+            outboundVideo.qualityLimitationReason = (r.qualityLimitationReason as string) ?? "none";
+            outboundVideo.qualityLimitationDurations =
+              (r.qualityLimitationDurations as Record<string, number>) ?? {};
+          }
+        }
       }
 
       if (report.type === "inbound-rtp" && report.kind === "audio") {
@@ -219,6 +260,24 @@ export class WebRTCStatsCollector {
         }
       }
     });
+
+    // Compute outbound video bitrate after the loop, now that we know
+    // the summed bytesSent across all simulcast layers. Doing it per-
+    // report would misattribute deltas to whichever layer came last.
+    //
+    // Cast via `unknown` because TypeScript can't track the non-null
+    // assignment inside the forEach closure above — flow analysis sees
+    // only the initial `let outboundVideo = null` and narrows to `never`.
+    const ov = outboundVideo as unknown as OutboundVideo | null;
+    if (ov !== null) {
+      const outBitrate =
+        elapsed > 0 ? ((ov.bytesSent - this.prevBytesSentVideo) * 8) / elapsed : 0;
+      // Clamp to zero: when tracks are added/removed mid-session (new
+      // simulcast layer, publisher swap) total bytesSent can transiently
+      // drop. Negative bitrate is nonsensical to downstream consumers.
+      ov.bitrate = Math.max(0, Math.round(outBitrate));
+      this.prevBytesSentVideo = ov.bytesSent;
+    }
 
     this.prevTimestamp = now;
 
