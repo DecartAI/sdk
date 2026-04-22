@@ -3,6 +3,8 @@ export type WebRTCStats = {
   video: {
     framesDecoded: number;
     framesDropped: number;
+    framesReceived: number;
+    keyFramesDecoded: number;
     framesPerSecond: number;
     frameWidth: number;
     frameHeight: number;
@@ -22,6 +24,39 @@ export type WebRTCStats = {
     freezeCountDelta: number;
     /** Delta: freeze duration (seconds) since previous sample. */
     freezeDurationDelta: number;
+    /** NACKs sent to the sender (requesting packet retransmission). */
+    nackCount: number;
+    nackCountDelta: number;
+    /** PLIs sent to the sender (full frame retransmission request). */
+    pliCount: number;
+    /** FIRs sent to the sender (forced intra-refresh request). */
+    firCount: number;
+    /**
+     * Average decode time (ms/frame), cumulative since stream start.
+     * Derived from totalDecodeTime/framesDecoded. `null` if the browser
+     * hasn't produced the underlying counters yet.
+     */
+    avgDecodeTimeMs: number | null;
+    /** Average jitter-buffer time (ms/frame emitted). Cumulative. */
+    avgJitterBufferMs: number | null;
+    /**
+     * Average total processing delay (ms/frame decoded) — from network
+     * receive to decoder output. Cumulative.
+     */
+    avgProcessingDelayMs: number | null;
+    /** Average inter-frame delay at the decoder (ms). */
+    avgInterFrameDelayMs: number | null;
+    /**
+     * Std-dev of inter-frame delay (ms), computed from
+     * totalInterFrameDelay + totalSquaredInterFrameDelay.
+     */
+    interFrameDelayVarianceMs: number | null;
+    /** Current target delay of the jitter buffer (ms). */
+    jitterBufferTargetDelayMs: number | null;
+    /** Current minimum delay of the jitter buffer (ms). */
+    jitterBufferMinimumDelayMs: number | null;
+    /** Which decoder the browser picked (e.g. "libvpx", "ExternalDecoder"). */
+    decoderImplementation: string;
   } | null;
   audio: {
     bytesReceived: number;
@@ -46,6 +81,37 @@ export type WebRTCStats = {
     frameHeight: number;
     /** Estimated outbound bitrate in bits/sec, computed from bytesSent delta. */
     bitrate: number;
+    /** Encoder's current target bitrate in kbps (BWE output). */
+    targetBitrateKbps: number | null;
+    /** Average encode time per frame (ms), cumulative. */
+    avgEncodeTimeMs: number | null;
+    /** Average packet send delay (ms), cumulative. */
+    avgPacketSendDelayMs: number | null;
+    /** Average quantization parameter across encoded frames (lower is better). */
+    avgQp: number | null;
+    /** NACKs received from receiver (retransmission requests). */
+    nackCount: number;
+    /** PLIs received from receiver. */
+    pliCount: number;
+    /** FIRs received from receiver. */
+    firCount: number;
+    retransmittedBytesSent: number;
+    retransmittedPacketsSent: number;
+    /** Which encoder the browser picked (e.g. "libvpx", "SimulcastEncoderAdapter"). */
+    encoderImplementation: string;
+  } | null;
+  /**
+   * Remote-inbound stats — what the far end reports *about its reception
+   * of our outbound stream*. Answers "does the server think we're lossy?"
+   * independently of what we see locally. Populated from
+   * `remote-inbound-rtp` reports.
+   */
+  remoteInbound: {
+    fractionLost: number | null;
+    /** In seconds. */
+    jitter: number | null;
+    /** In seconds. Often more accurate than connection.currentRoundTripTime. */
+    roundTripTime: number | null;
   } | null;
   connection: {
     /** Current round-trip time in seconds, or null if unavailable. */
@@ -109,6 +175,7 @@ export class WebRTCStatsCollector {
   private prevFreezeCount = 0;
   private prevFreezeDuration = 0;
   private prevPacketsLostAudio = 0;
+  private prevNackCountInbound = 0;
   private onStats: ((stats: WebRTCStats) => void) | null = null;
   private intervalMs: number;
 
@@ -130,6 +197,7 @@ export class WebRTCStatsCollector {
     this.prevFreezeCount = 0;
     this.prevFreezeDuration = 0;
     this.prevPacketsLostAudio = 0;
+    this.prevNackCountInbound = 0;
     this.intervalId = setInterval(() => this.collect(), this.intervalMs);
   }
 
@@ -171,6 +239,7 @@ export class WebRTCStatsCollector {
     let video: WebRTCStats["video"] = null;
     let audio: WebRTCStats["audio"] = null;
     let outboundVideo: OutboundVideo | null = null;
+    let remoteInbound: WebRTCStats["remoteInbound"] = null;
     const connection: WebRTCStats["connection"] = {
       currentRoundTripTime: null,
       availableOutgoingBitrate: null,
@@ -195,10 +264,60 @@ export class WebRTCStatsCollector {
         const framesDropped = (r.framesDropped as number) ?? 0;
         const freezeCount = (r.freezeCount as number) ?? 0;
         const freezeDuration = (r.totalFreezesDuration as number) ?? 0;
+        const framesDecoded = (r.framesDecoded as number) ?? 0;
+        const nackCount = (r.nackCount as number) ?? 0;
+
+        // Browser cumulative counters — averages below are
+        // (cumulativeTotal / denominator). `jitterBufferEmittedCount` is
+        // the canonical denominator per the WebRTC stats spec for the
+        // `jitterBuffer*` averages; `framesDecoded` for decode/processing
+        // averages.
+        const jbEmitted = (r.jitterBufferEmittedCount as number) ?? 0;
+        const totalDecodeTime = (r.totalDecodeTime as number) ?? 0;
+        const totalProcessingDelay = (r.totalProcessingDelay as number) ?? 0;
+        const totalInterFrameDelay = (r.totalInterFrameDelay as number) ?? 0;
+        const totalSquaredInterFrameDelay = (r.totalSquaredInterFrameDelay as number) ?? 0;
+        const jitterBufferDelay = (r.jitterBufferDelay as number) ?? 0;
+        const jitterBufferTargetDelay = (r.jitterBufferTargetDelay as number) ?? 0;
+        const jitterBufferMinimumDelay = (r.jitterBufferMinimumDelay as number) ?? 0;
+
+        const avgDecodeTimeMs = framesDecoded > 0
+          ? (totalDecodeTime / framesDecoded) * 1000
+          : null;
+        const avgProcessingDelayMs = framesDecoded > 0
+          ? (totalProcessingDelay / framesDecoded) * 1000
+          : null;
+        const avgInterFrameDelayMs = framesDecoded > 0
+          ? (totalInterFrameDelay / framesDecoded) * 1000
+          : null;
+        // Variance σ² = E[X²] - E[X]² ; std-dev = sqrt(σ²). Report std-dev
+        // in ms — more actionable than variance for a threshold-based
+        // "is the path jittery" check.
+        const interFrameDelayVarianceMs =
+          framesDecoded > 0
+            ? Math.sqrt(
+                Math.max(
+                  0,
+                  totalSquaredInterFrameDelay / framesDecoded -
+                    Math.pow(totalInterFrameDelay / framesDecoded, 2),
+                ),
+              ) * 1000
+            : null;
+        const avgJitterBufferMs = jbEmitted > 0
+          ? (jitterBufferDelay / jbEmitted) * 1000
+          : null;
+        const jitterBufferTargetDelayMs = jbEmitted > 0
+          ? (jitterBufferTargetDelay / jbEmitted) * 1000
+          : null;
+        const jitterBufferMinimumDelayMs = jbEmitted > 0
+          ? (jitterBufferMinimumDelay / jbEmitted) * 1000
+          : null;
 
         video = {
-          framesDecoded: (r.framesDecoded as number) ?? 0,
+          framesDecoded,
           framesDropped,
+          framesReceived: (r.framesReceived as number) ?? 0,
+          keyFramesDecoded: (r.keyFramesDecoded as number) ?? 0,
           framesPerSecond: (r.framesPerSecond as number) ?? 0,
           frameWidth: (r.frameWidth as number) ?? 0,
           frameHeight: (r.frameHeight as number) ?? 0,
@@ -213,11 +332,24 @@ export class WebRTCStatsCollector {
           framesDroppedDelta: Math.max(0, framesDropped - this.prevFramesDropped),
           freezeCountDelta: Math.max(0, freezeCount - this.prevFreezeCount),
           freezeDurationDelta: Math.max(0, freezeDuration - this.prevFreezeDuration),
+          nackCount,
+          nackCountDelta: Math.max(0, nackCount - this.prevNackCountInbound),
+          pliCount: (r.pliCount as number) ?? 0,
+          firCount: (r.firCount as number) ?? 0,
+          avgDecodeTimeMs,
+          avgJitterBufferMs,
+          avgProcessingDelayMs,
+          avgInterFrameDelayMs,
+          interFrameDelayVarianceMs,
+          jitterBufferTargetDelayMs,
+          jitterBufferMinimumDelayMs,
+          decoderImplementation: (r.decoderImplementation as string) ?? "",
         };
         this.prevPacketsLostVideo = packetsLost;
         this.prevFramesDropped = framesDropped;
         this.prevFreezeCount = freezeCount;
         this.prevFreezeDuration = freezeDuration;
+        this.prevNackCountInbound = nackCount;
       }
 
       if (report.type === "outbound-rtp" && report.kind === "video") {
@@ -236,6 +368,24 @@ export class WebRTCStatsCollector {
         const frameWidth = (r.frameWidth as number) ?? 0;
         const frameHeight = (r.frameHeight as number) ?? 0;
         const pixels = frameWidth * frameHeight;
+        const framesEncoded = (r.framesEncoded as number) ?? 0;
+        const totalEncodeTime = (r.totalEncodeTime as number) ?? 0;
+        const totalPacketSendDelay = (r.totalPacketSendDelay as number) ?? 0;
+        const qpSum = (r.qpSum as number) ?? 0;
+        const nackCount = (r.nackCount as number) ?? 0;
+        const pliCount = (r.pliCount as number) ?? 0;
+        const firCount = (r.firCount as number) ?? 0;
+        const retransmittedBytesSent = (r.retransmittedBytesSent as number) ?? 0;
+        const retransmittedPacketsSent = (r.retransmittedPacketsSent as number) ?? 0;
+        const targetBitrate = (r.targetBitrate as number | undefined) ?? null;
+
+        const avgEncodeTimeMs = framesEncoded > 0
+          ? (totalEncodeTime / framesEncoded) * 1000
+          : null;
+        const avgPacketSendDelayMs = packetsSent > 0
+          ? (totalPacketSendDelay / packetsSent) * 1000
+          : null;
+        const avgQp = framesEncoded > 0 ? qpSum / framesEncoded : null;
 
         if (outboundVideo === null) {
           outboundVideo = {
@@ -247,13 +397,30 @@ export class WebRTCStatsCollector {
             frameWidth,
             frameHeight,
             bitrate: 0,
+            targetBitrateKbps: targetBitrate != null ? Math.round(targetBitrate / 1000) : null,
+            avgEncodeTimeMs,
+            avgPacketSendDelayMs,
+            avgQp,
+            nackCount,
+            pliCount,
+            firCount,
+            retransmittedBytesSent,
+            retransmittedPacketsSent,
+            encoderImplementation: (r.encoderImplementation as string) ?? "",
           };
         } else {
           outboundVideo.bytesSent += bytesSent;
           outboundVideo.packetsSent += packetsSent;
+          outboundVideo.nackCount += nackCount;
+          outboundVideo.pliCount += pliCount;
+          outboundVideo.firCount += firCount;
+          outboundVideo.retransmittedBytesSent += retransmittedBytesSent;
+          outboundVideo.retransmittedPacketsSent += retransmittedPacketsSent;
           // Promote scalar fields whenever a higher-resolution layer
           // appears — we want reported resolution to match the largest
-          // active layer, not the lowest.
+          // active layer, not the lowest. avgEncodeTime / targetBitrate /
+          // encoderImplementation are also most representative of the
+          // primary layer.
           if (pixels > outboundVideo.frameWidth * outboundVideo.frameHeight) {
             outboundVideo.frameWidth = frameWidth;
             outboundVideo.frameHeight = frameHeight;
@@ -261,8 +428,23 @@ export class WebRTCStatsCollector {
             outboundVideo.qualityLimitationReason = (r.qualityLimitationReason as string) ?? "none";
             outboundVideo.qualityLimitationDurations =
               (r.qualityLimitationDurations as Record<string, number>) ?? {};
+            outboundVideo.targetBitrateKbps =
+              targetBitrate != null ? Math.round(targetBitrate / 1000) : null;
+            outboundVideo.avgEncodeTimeMs = avgEncodeTimeMs;
+            outboundVideo.avgPacketSendDelayMs = avgPacketSendDelayMs;
+            outboundVideo.avgQp = avgQp;
+            outboundVideo.encoderImplementation = (r.encoderImplementation as string) ?? "";
           }
         }
+      }
+
+      if (report.type === "remote-inbound-rtp" && report.kind === "video") {
+        const r = report as Record<string, unknown>;
+        remoteInbound = {
+          fractionLost: (r.fractionLost as number | undefined) ?? null,
+          jitter: (r.jitter as number | undefined) ?? null,
+          roundTripTime: (r.roundTripTime as number | undefined) ?? null,
+        };
       }
 
       if (report.type === "inbound-rtp" && report.kind === "audio") {
@@ -349,6 +531,7 @@ export class WebRTCStatsCollector {
       audio,
       outboundVideo,
       connection,
+      remoteInbound,
     };
   }
 }
