@@ -52,7 +52,30 @@ export type WebRTCStats = {
     currentRoundTripTime: number | null;
     /** Available outgoing bitrate estimate in bits/sec, or null if unavailable. */
     availableOutgoingBitrate: number | null;
+    /**
+     * Selected ICE candidate pairs (usually one per PC). Populated from
+     * the `candidate-pair` report with state="succeeded" plus the matching
+     * `local-candidate` / `remote-candidate` lookups. Lets diagnostic tools
+     * tell direct-UDP sessions from TURN-relayed ones — the path affects
+     * jitter and failure modes, so this is essential signal for
+     * benchmarking and incident triage.
+     */
+    selectedCandidatePairs: Array<{
+      local: IceCandidateInfo;
+      remote: IceCandidateInfo;
+    }>;
   };
+};
+
+/** One side of an ICE candidate pair (sender or receiver). */
+export type IceCandidateInfo = {
+  /** "host" | "srflx" | "prflx" | "relay" */
+  candidateType: string;
+  /** IP (v4 or v6). May be `""` for mDNS-obfuscated host candidates. */
+  address: string;
+  port: number;
+  /** "udp" | "tcp" */
+  protocol: string;
 };
 
 export type StatsOptions = {
@@ -151,7 +174,15 @@ export class WebRTCStatsCollector {
     const connection: WebRTCStats["connection"] = {
       currentRoundTripTime: null,
       availableOutgoingBitrate: null,
+      selectedCandidatePairs: [],
     };
+
+    // First pass — collect succeeded candidate-pair IDs. Resolving them
+    // into local/remote candidate objects happens after the main forEach
+    // so we have access to every report (ordering of rawStats is not
+    // guaranteed: a succeeded pair's local-candidate may appear before
+    // or after it).
+    const succeededPairs: Array<{ localId: string; remoteId: string }> = [];
 
     rawStats.forEach((report) => {
       if (report.type === "inbound-rtp" && report.kind === "video") {
@@ -257,9 +288,40 @@ export class WebRTCStatsCollector {
         if (r.state === "succeeded") {
           connection.currentRoundTripTime = (r.currentRoundTripTime as number) ?? null;
           connection.availableOutgoingBitrate = (r.availableOutgoingBitrate as number) ?? null;
+          const localId = r.localCandidateId as string | undefined;
+          const remoteId = r.remoteCandidateId as string | undefined;
+          if (localId && remoteId) {
+            succeededPairs.push({ localId, remoteId });
+          }
         }
       }
     });
+
+    // Resolve candidate IDs to their local/remote-candidate reports now
+    // that we've seen every entry in the rawStats map. `rawStats.get()`
+    // is O(1) on the spec-compliant Map, so per-pair resolution is cheap.
+    if (succeededPairs.length > 0) {
+      const toInfo = (id: string): IceCandidateInfo | null => {
+        const c = (rawStats as unknown as Map<string, unknown>).get(id) as
+          | Record<string, unknown>
+          | undefined;
+        if (!c) return null;
+        return {
+          // browsers may report `ip` (older spec) or `address` (newer). Prefer `address`.
+          candidateType: (c.candidateType as string) ?? "",
+          address: ((c.address as string) ?? (c.ip as string) ?? "") as string,
+          port: (c.port as number) ?? 0,
+          protocol: (c.protocol as string) ?? "",
+        };
+      };
+      for (const { localId, remoteId } of succeededPairs) {
+        const local = toInfo(localId);
+        const remote = toInfo(remoteId);
+        if (local && remote) {
+          connection.selectedCandidatePairs.push({ local, remote });
+        }
+      }
+    }
 
     // Compute outbound video bitrate after the loop, now that we know
     // the summed bytesSent across all simulcast layers. Doing it per-
