@@ -48,6 +48,14 @@ export interface WebRTCConfig {
   livekitAdaptiveStream?: boolean;
   livekitDynacast?: boolean;
   /**
+   * Client-side `publishTrack` knobs. Let the bench pin a codec to
+   * match server-side, override the 30-fps default, or choose how
+   * livekit-client degrades under bandwidth pressure.
+   */
+  livekitPublishCodec?: "vp8" | "vp9" | "h264" | "av1";
+  livekitPublishMaxFramerate?: number;
+  livekitDegradationPreference?: "balanced" | "maintain-framerate" | "maintain-resolution";
+  /**
    * Selects the underlying WebRTC transport. Default is "aiortc" for
    * back-compat with existing deployments. Set to "livekit" to join a
    * LiveKit SFU room (requires the inference pod to enable it in
@@ -107,6 +115,9 @@ export class WebRTCManager {
         publishMaxBitrateKbps: config.livekitPublishMaxBitrateKbps,
         adaptiveStream: config.livekitAdaptiveStream,
         dynacast: config.livekitDynacast,
+        publishCodec: config.livekitPublishCodec,
+        publishMaxFramerate: config.livekitPublishMaxFramerate,
+        degradationPreference: config.livekitDegradationPreference,
       });
     } else {
       this.connection = new WebRTCConnection({

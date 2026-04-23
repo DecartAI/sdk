@@ -113,6 +113,11 @@ const realTimeClientConnectOptionsSchema = z.object({
   livekitPublishMaxBitrateKbps: z.union([z.number().positive(), z.null()]).optional(),
   livekitAdaptiveStream: z.boolean().optional(),
   livekitDynacast: z.boolean().optional(),
+  // Client-side publishTrack knobs: pin a codec (symmetric with
+  // server), override the 30 fps default, choose degradation behavior.
+  livekitPublishCodec: z.enum(["vp8", "vp9", "h264", "av1"]).optional(),
+  livekitPublishMaxFramerate: z.number().positive().optional(),
+  livekitDegradationPreference: z.enum(["balanced", "maintain-framerate", "maintain-resolution"]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -235,6 +240,9 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         livekitPublishMaxBitrateKbps: options.livekitPublishMaxBitrateKbps,
         livekitAdaptiveStream: options.livekitAdaptiveStream,
         livekitDynacast: options.livekitDynacast,
+        livekitPublishCodec: options.livekitPublishCodec,
+        livekitPublishMaxFramerate: options.livekitPublishMaxFramerate,
+        livekitDegradationPreference: options.livekitDegradationPreference,
       });
 
       const manager = webrtcManager;
