@@ -55,9 +55,25 @@ interface LiveKitCallbacks {
   onDiagnostic?: DiagnosticEmitter;
   /** Override livekit-client `publishTrack` simulcast option. Defaults to true. */
   publishSimulcast?: boolean;
-  /** Explicit client-side uplink cap in kbps. Omit for Chrome BWE default. */
-  publishMaxBitrateKbps?: number;
+  /**
+   * Client-side uplink cap in kbps. Defaults to 2500 to match the
+   * server-side publish cap (see inference_server/rt/livekit/conn.py).
+   * Pass `null` explicitly to omit the cap entirely and let Chrome BWE
+   * run uncapped.
+   */
+  publishMaxBitrateKbps?: number | null;
+  /**
+   * livekit-client `Room` options. Both default to `false` — matches the
+   * current shipped behavior. Exposed primarily so the webrtc-bench tool
+   * can sweep these without forking the SDK. Enabling either in production
+   * changes quality/bandwidth trade-offs, so leave them off unless you
+   * know what you're doing.
+   */
+  adaptiveStream?: boolean;
+  dynacast?: boolean;
 }
+
+const DEFAULT_PUBLISH_MAX_BITRATE_KBPS = 2500;
 
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
@@ -322,8 +338,8 @@ export class LiveKitConnection {
 
   private async joinRoom(info: RoomInfoMessage): Promise<void> {
     this.room = new Room({
-      adaptiveStream: false,
-      dynacast: false,
+      adaptiveStream: this.callbacks.adaptiveStream ?? false,
+      dynacast: this.callbacks.dynacast ?? false,
     });
 
     this.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub: RemoteTrackPublication, _p: RemoteParticipant) => {
@@ -362,12 +378,20 @@ export class LiveKitConnection {
     // Publish local tracks. Inference server expects a video track; audio is optional.
     if (this.localStream) {
       const publishSimulcast = this.callbacks.publishSimulcast ?? true;
-      const maxBitrate = this.callbacks.publishMaxBitrateKbps != null
-        ? this.callbacks.publishMaxBitrateKbps * 1000
-        : undefined;
+      // Three-state resolution for the bitrate cap:
+      //   undefined → apply the SDK default (2500 kbps)
+      //   null      → explicit opt-out, no cap (Chrome BWE runs unclamped)
+      //   number    → explicit kbps value
+      const configuredBitrateKbps = this.callbacks.publishMaxBitrateKbps;
+      const maxBitrate =
+        configuredBitrateKbps === null
+          ? undefined
+          : (configuredBitrateKbps ?? DEFAULT_PUBLISH_MAX_BITRATE_KBPS) * 1000;
       this.logger.info("LiveKit client publish config", {
         simulcast: publishSimulcast,
         maxBitrate,
+        adaptiveStream: this.callbacks.adaptiveStream ?? false,
+        dynacast: this.callbacks.dynacast ?? false,
       });
       for (const track of this.localStream.getTracks()) {
         if (track.kind === "video") {
