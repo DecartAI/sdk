@@ -510,6 +510,42 @@
             // Also log to browser console
             console.log(`[Decart SDK] ${message}`);
         }
+
+        /**
+         * Logger for createDecartClient: mirrors to on-page log + [DecartSDK] in DevTools
+         * (createConsoleLogger alone only shows in the browser console, not in #logs-container.)
+         */
+        function createDemoLogger() {
+            const toPage = (label, message, data) => {
+                const line =
+                    data !== undefined
+                        ? `${message} ${typeof data === "object" ? JSON.stringify(data) : String(data)}`
+                        : message;
+                addLog(
+                    `[SDK ${label}] ${line}`,
+                    label === "error" ? "error" : "info",
+                );
+            };
+            const c = createConsoleLogger("info");
+            return {
+                debug: (msg, data) => {
+                    c.debug(msg, data);
+                    toPage("debug", msg, data);
+                },
+                info: (msg, data) => {
+                    c.info(msg, data);
+                    toPage("info", msg, data);
+                },
+                warn: (msg, data) => {
+                    c.warn(msg, data);
+                    toPage("warn", msg, data);
+                },
+                error: (msg, data) => {
+                    c.error(msg, data);
+                    toPage("error", msg, data);
+                },
+            };
+        }
         
         // Update connection status
         function updateStatus(status) {
@@ -544,18 +580,49 @@
         elements.startCamera.addEventListener('click', async () => {
             try {
                 addLog('Requesting camera access...', 'info');
-                const isMobile = window.matchMedia('(max-width: 768px)').matches;
+                // Shortest viewport edge: phones in landscape are still "mobile" (max-width:768 is false e.g. 844×390).
+                const isMobile =
+                    window.matchMedia('(max-width: 768px)').matches ||
+                    Math.min(window.innerWidth, window.innerHeight) <= 900;
                 const camWidth = isMobile ? model.height : model.width;
                 const camHeight = isMobile ? model.width : model.height;
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        frameRate: model.fps,
-                        width: camWidth,
-                        height: camHeight,
-                        ...(isMobile && { facingMode: 'user' }),
-                    },
-                    audio: true
-                });
+                const videoConstraints = isMobile
+                    ? {
+                        frameRate: { ideal: model.fps, max: 60 },
+                        width: { ideal: camWidth },
+                        height: { ideal: camHeight },
+                        aspectRatio: { ideal: camWidth / camHeight },
+                        facingMode: { ideal: 'user' },
+                    }
+                    : {
+                        frameRate: { ideal: model.fps, max: 60 },
+                        width: { ideal: camWidth },
+                        height: { ideal: camHeight },
+                    };
+                addLog(
+                    `Camera: ${isMobile ? "portrait (mobile)" : "landscape (desktop)"} ideal ${camWidth}×${camHeight}`,
+                    'info',
+                );
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        video: videoConstraints,
+                        audio: true,
+                    });
+                } catch (err) {
+                    if (isMobile) {
+                        addLog(`Camera: tight constraints failed (${String(err)}), retrying with looser portrait…`, 'error');
+                        localStream = await navigator.mediaDevices.getUserMedia({
+                            video: {
+                                width: { ideal: camWidth },
+                                height: { ideal: camHeight },
+                                facingMode: { ideal: 'user' },
+                            },
+                            audio: true,
+                        });
+                    } else {
+                        throw err;
+                    }
+                }
                 
                 elements.localVideo.srcObject = localStream;
                 elements.startCamera.disabled = true;
@@ -590,7 +657,7 @@
                 decartClient = createDecartClient({
                     apiKey,
                     ...(realtimeBaseUrl && { realtimeBaseUrl }),
-                    logger: createConsoleLogger('info'),
+                    logger: createDemoLogger(),
                 });
                 
                 addLog('Connecting to Decart server...', 'info');
@@ -892,7 +959,7 @@
                     decartClient = createDecartClient({
                         apiKey,
                         ...(realtimeBaseUrl && { realtimeBaseUrl }),
-                        logger: createConsoleLogger('info'),
+                        logger: createDemoLogger(),
                     });
                     addLog('Initialized Decart client for processing', 'info');
                 }
