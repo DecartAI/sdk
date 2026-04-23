@@ -32,9 +32,21 @@ export interface WebRTCConfig {
    * livekit transport. Useful for diagnostic/benchmark tooling — lets
    * callers cap the client's uplink encoder or toggle simulcast without
    * modifying SDK internals.
+   *
+   * `livekitPublishMaxBitrateKbps`: undefined → SDK default (2500 kbps);
+   * `null` → explicit opt-out, no cap (let Chrome BWE run unclamped);
+   * a positive number → explicit kbps value.
    */
   livekitPublishSimulcast?: boolean;
-  livekitPublishMaxBitrateKbps?: number;
+  livekitPublishMaxBitrateKbps?: number | null;
+  /**
+   * livekit-client `Room` options. Both default to `false`. Exposed for
+   * the bench tool; enabling either changes quality/bandwidth
+   * trade-offs, so leave them off in production unless you've verified
+   * the behavior end-to-end.
+   */
+  livekitAdaptiveStream?: boolean;
+  livekitDynacast?: boolean;
   /**
    * Selects the underlying WebRTC transport. Default is "aiortc" for
    * back-compat with existing deployments. Set to "livekit" to join a
@@ -93,6 +105,8 @@ export class WebRTCManager {
         ...sharedOpts,
         publishSimulcast: config.livekitPublishSimulcast,
         publishMaxBitrateKbps: config.livekitPublishMaxBitrateKbps,
+        adaptiveStream: config.livekitAdaptiveStream,
+        dynacast: config.livekitDynacast,
       });
     } else {
       this.connection = new WebRTCConnection({
