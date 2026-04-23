@@ -27,6 +27,15 @@ export interface WebRTCConfig {
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
   /**
+   * Client-side publish options for the livekit transport. Ignored on
+   * aiortc. Forwarded to `LocalParticipant.publishTrack(...)` in the
+   * livekit transport. Useful for diagnostic/benchmark tooling — lets
+   * callers cap the client's uplink encoder or toggle simulcast without
+   * modifying SDK internals.
+   */
+  livekitPublishSimulcast?: boolean;
+  livekitPublishMaxBitrateKbps?: number;
+  /**
    * Selects the underlying WebRTC transport. Default is "aiortc" for
    * back-compat with existing deployments. Set to "livekit" to join a
    * LiveKit SFU room (requires the inference pod to enable it in
@@ -80,7 +89,11 @@ export class WebRTCManager {
       onDiagnostic: config.onDiagnostic,
     };
     if (transport === "livekit") {
-      this.connection = new LiveKitConnection(sharedOpts);
+      this.connection = new LiveKitConnection({
+        ...sharedOpts,
+        publishSimulcast: config.livekitPublishSimulcast,
+        publishMaxBitrateKbps: config.livekitPublishMaxBitrateKbps,
+      });
     } else {
       this.connection = new WebRTCConnection({
         ...sharedOpts,
