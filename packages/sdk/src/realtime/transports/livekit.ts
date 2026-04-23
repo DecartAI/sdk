@@ -73,7 +73,7 @@ interface LiveKitCallbacks {
   dynacast?: boolean;
 }
 
-const DEFAULT_PUBLISH_MAX_BITRATE_KBPS = 2500;
+const DEFAULT_PUBLISH_MAX_BITRATE_KBPS = 3500;
 
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
