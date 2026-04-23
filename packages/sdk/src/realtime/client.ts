@@ -103,10 +103,16 @@ const realTimeClientConnectOptionsSchema = z.object({
   // inference pod must have livekit in TRANSPORTS_ENABLED or the session
   // will be rejected.
   transport: z.enum(["aiortc", "livekit"]).optional(),
-  // Client-side livekit publish overrides. Ignored on aiortc. Both
-  // default to the livekit-client defaults when omitted.
+  // Client-side livekit publish overrides. Ignored on aiortc.
+  //  - `livekitPublishSimulcast` defaults to true (livekit-client default).
+  //  - `livekitPublishMaxBitrateKbps` defaults to 2500. Pass `null` to
+  //    opt out of the cap entirely (lets Chrome BWE run unclamped).
+  //  - `livekitAdaptiveStream` / `livekitDynacast` default to `false`
+  //    (matches historical shipped behavior). Exposed for the bench tool.
   livekitPublishSimulcast: z.boolean().optional(),
-  livekitPublishMaxBitrateKbps: z.number().positive().optional(),
+  livekitPublishMaxBitrateKbps: z.union([z.number().positive(), z.null()]).optional(),
+  livekitAdaptiveStream: z.boolean().optional(),
+  livekitDynacast: z.boolean().optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -227,6 +233,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         transport: options.transport,
         livekitPublishSimulcast: options.livekitPublishSimulcast,
         livekitPublishMaxBitrateKbps: options.livekitPublishMaxBitrateKbps,
+        livekitAdaptiveStream: options.livekitAdaptiveStream,
+        livekitDynacast: options.livekitDynacast,
       });
 
       const manager = webrtcManager;
