@@ -71,6 +71,28 @@ interface LiveKitCallbacks {
    */
   adaptiveStream?: boolean;
   dynacast?: boolean;
+  /**
+   * `publishTrack({ videoCodec })`. Undefined = let livekit-client pick
+   * (browser-negotiated, usually VP8 or VP9). Set to pin an explicit
+   * codec — useful when testing symmetric codec paths (when
+   * combined with a matching server-side TrackPublishOptions.video_codec).
+   */
+  publishCodec?: "vp8" | "vp9" | "h264" | "av1";
+  /**
+   * `publishTrack({ videoEncoding.maxFramerate })`. Default: 30 when a
+   * bitrate cap is set. Exposed as a separate knob so the bench can
+   * match server-side `serverMaxFramerate`.
+   */
+  publishMaxFramerate?: number;
+  /**
+   * `publishTrack({ degradationPreference })`. When bandwidth is
+   * constrained, livekit-client picks what to sacrifice: smoother
+   * motion (lower resolution) vs sharper image (lower framerate).
+   * Defaults to "balanced" (livekit-client default). For interactive
+   * video, "maintain-framerate" is usually better — frozen sharp
+   * pictures feel worse than blurry motion.
+   */
+  degradationPreference?: "balanced" | "maintain-framerate" | "maintain-resolution";
 }
 
 const DEFAULT_PUBLISH_MAX_BITRATE_KBPS = 3500;
@@ -387,20 +409,30 @@ export class LiveKitConnection {
         configuredBitrateKbps === null
           ? undefined
           : (configuredBitrateKbps ?? DEFAULT_PUBLISH_MAX_BITRATE_KBPS) * 1000;
+      const publishCodec = this.callbacks.publishCodec;
+      const publishMaxFramerate = this.callbacks.publishMaxFramerate ?? 30;
+      const degradationPreference = this.callbacks.degradationPreference;
       this.logger.info("LiveKit client publish config", {
         simulcast: publishSimulcast,
         maxBitrate,
+        maxFramerate: publishMaxFramerate,
+        codec: publishCodec ?? "(negotiated)",
+        degradationPreference: degradationPreference ?? "(balanced)",
         adaptiveStream: this.callbacks.adaptiveStream ?? false,
         dynacast: this.callbacks.dynacast ?? false,
       });
       for (const track of this.localStream.getTracks()) {
         if (track.kind === "video") {
+          const videoEncoding =
+            maxBitrate != null
+              ? { maxBitrate, maxFramerate: publishMaxFramerate }
+              : undefined;
           await this.room.localParticipant.publishTrack(track, {
             simulcast: publishSimulcast,
             source: Track.Source.Camera,
-            ...(maxBitrate != null
-              ? { videoEncoding: { maxBitrate, maxFramerate: 30 } }
-              : {}),
+            ...(publishCodec ? { videoCodec: publishCodec } : {}),
+            ...(videoEncoding ? { videoEncoding } : {}),
+            ...(degradationPreference ? { degradationPreference } : {}),
           });
         } else {
           await this.room.localParticipant.publishTrack(track);
