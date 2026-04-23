@@ -103,6 +103,10 @@ const realTimeClientConnectOptionsSchema = z.object({
   // inference pod must have livekit in TRANSPORTS_ENABLED or the session
   // will be rejected.
   transport: z.enum(["aiortc", "livekit"]).optional(),
+  // Client-side livekit publish overrides. Ignored on aiortc. Both
+  // default to the livekit-client defaults when omitted.
+  livekitPublishSimulcast: z.boolean().optional(),
+  livekitPublishMaxBitrateKbps: z.number().positive().optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -221,6 +225,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialImage,
         initialPrompt,
         transport: options.transport,
+        livekitPublishSimulcast: options.livekitPublishSimulcast,
+        livekitPublishMaxBitrateKbps: options.livekitPublishMaxBitrateKbps,
       });
 
       const manager = webrtcManager;

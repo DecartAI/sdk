@@ -53,6 +53,10 @@ interface LiveKitCallbacks {
   initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
+  /** Override livekit-client `publishTrack` simulcast option. Defaults to true. */
+  publishSimulcast?: boolean;
+  /** Explicit client-side uplink cap in kbps. Omit for Chrome BWE default. */
+  publishMaxBitrateKbps?: number;
 }
 
 type WsMessageEvents = {
@@ -357,11 +361,22 @@ export class LiveKitConnection {
 
     // Publish local tracks. Inference server expects a video track; audio is optional.
     if (this.localStream) {
+      const publishSimulcast = this.callbacks.publishSimulcast ?? true;
+      const maxBitrate = this.callbacks.publishMaxBitrateKbps != null
+        ? this.callbacks.publishMaxBitrateKbps * 1000
+        : undefined;
+      this.logger.info("LiveKit client publish config", {
+        simulcast: publishSimulcast,
+        maxBitrate,
+      });
       for (const track of this.localStream.getTracks()) {
         if (track.kind === "video") {
           await this.room.localParticipant.publishTrack(track, {
-            simulcast: true,
+            simulcast: publishSimulcast,
             source: Track.Source.Camera,
+            ...(maxBitrate != null
+              ? { videoEncoding: { maxBitrate, maxFramerate: 30 } }
+              : {}),
           });
         } else {
           await this.room.localParticipant.publishTrack(track);
