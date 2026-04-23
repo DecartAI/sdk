@@ -436,7 +436,7 @@
     
     <script type="module">
         // Import the Decart SDK (with cache busting timestamp)
-        import { createDecartClient, models } from './dist/index.js';
+        import { createDecartClient, models, createConsoleLogger } from './dist/index.js';
 
         
         // State management
@@ -544,11 +544,15 @@
         elements.startCamera.addEventListener('click', async () => {
             try {
                 addLog('Requesting camera access...', 'info');
+                const isMobile = window.matchMedia('(max-width: 768px)').matches;
+                const camWidth = isMobile ? model.height : model.width;
+                const camHeight = isMobile ? model.width : model.height;
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         frameRate: model.fps,
-                        width: model.width,
-                        height: model.height,
+                        width: camWidth,
+                        height: camHeight,
+                        ...(isMobile && { facingMode: 'user' }),
                     },
                     audio: true
                 });
@@ -586,6 +590,7 @@
                 decartClient = createDecartClient({
                     apiKey,
                     ...(realtimeBaseUrl && { realtimeBaseUrl }),
+                    logger: createConsoleLogger('info'),
                 });
                 
                 addLog('Connecting to Decart server...', 'info');
@@ -887,6 +892,7 @@
                     decartClient = createDecartClient({
                         apiKey,
                         ...(realtimeBaseUrl && { realtimeBaseUrl }),
+                        logger: createConsoleLogger('info'),
                     });
                     addLog('Initialized Decart client for processing', 'info');
                 }
