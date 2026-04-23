@@ -116,6 +116,12 @@ export class WebRTCManager {
         vp8StartBitrate: config.vp8StartBitrate,
       });
     }
+    // Unconditional log so SDK consumers can verify the logger pipeline is wired
+    // up regardless of transport or handshake outcome.
+    this.logger.info("|||||||||||||||||||||||||||||||WebRTC transport selected", {
+      transport,
+      modelName: config.modelName,
+    });
   }
 
   private emitState(state: ConnectionState): void {

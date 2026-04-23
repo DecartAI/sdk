@@ -580,10 +580,12 @@
         elements.startCamera.addEventListener('click', async () => {
             try {
                 addLog('Requesting camera access...', 'info');
-                // Shortest viewport edge: phones in landscape are still "mobile" (max-width:768 is false e.g. 844×390).
+                // Real mobile signal: CSS breakpoint OR (touch + coarse pointer).
+                // `Math.min(innerWidth, innerHeight) <= 900` is NOT a good heuristic —
+                // laptop viewports are routinely <900 high because of the browser chrome.
                 const isMobile =
                     window.matchMedia('(max-width: 768px)').matches ||
-                    Math.min(window.innerWidth, window.innerHeight) <= 900;
+                    (navigator.maxTouchPoints > 0 && window.matchMedia('(pointer: coarse)').matches);
                 const camWidth = isMobile ? model.height : model.width;
                 const camHeight = isMobile ? model.width : model.height;
                 const videoConstraints = isMobile
