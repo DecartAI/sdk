@@ -595,23 +595,72 @@
             return window.matchMedia('(orientation: portrait)').matches || window.innerHeight >= window.innerWidth;
         }
 
-        async function requestLocalMediaStream({ requestPortrait, streamAudio, camWidth, camHeight, mobileDevice }) {
-            const baseConstraints = {
-                frameRate: { ideal: model.fps, max: 60 },
-                width: { ideal: camWidth },
-                height: { ideal: camHeight },
-            };
+        function getCaptureDimensions({ requestPortrait }) {
+            if (!requestPortrait) {
+                return {
+                    width: model.width,
+                    height: model.height,
+                    profile: 'model-native',
+                };
+            }
 
-            const attempts = [
-                {
-                    label: requestPortrait ? 'portrait-preferred' : 'default',
+            // Use common mobile portrait capture sizes (from working LiveKit sample),
+            // because model-native 704x1280 is often rejected and downgraded to landscape.
+            const use1080Profile = model.width >= 1920 || model.height >= 1080;
+            const shortEdge = use1080Profile ? 1080 : 720;
+            const longEdge = use1080Profile ? 1920 : 1280;
+
+            return {
+                width: shortEdge,
+                height: longEdge,
+                profile: use1080Profile ? 'portrait-1080p' : 'portrait-720p',
+            };
+        }
+
+        function getVideoTrackSettings(stream) {
+            const [videoTrack] = stream?.getVideoTracks?.() ?? [];
+            if (!videoTrack?.getSettings) {
+                return null;
+            }
+            const settings = videoTrack.getSettings();
+            return {
+                width: settings.width ?? 0,
+                height: settings.height ?? 0,
+                frameRate: settings.frameRate ?? 0,
+            };
+        }
+
+        async function requestLocalMediaStream({ requestPortrait, streamAudio, camWidth, camHeight, mobileDevice }) {
+            const baseFrameRate = { ideal: model.fps, max: 30 };
+            const portraitAspectRatio = camWidth / camHeight;
+            const attempts = [];
+
+            if (requestPortrait) {
+                attempts.push({
+                    label: 'portrait-exact',
                     video: {
-                        ...baseConstraints,
+                        width: { exact: camWidth },
+                        height: { exact: camHeight },
+                        aspectRatio: { exact: portraitAspectRatio },
+                        resizeMode: 'crop-and-scale',
+                        frameRate: baseFrameRate,
                         ...(mobileDevice ? { facingMode: { ideal: 'user' } } : {}),
-                        ...(requestPortrait ? { aspectRatio: { ideal: camWidth / camHeight } } : {}),
                     },
+                });
+            }
+
+            attempts.push({
+                label: requestPortrait ? 'portrait-ideal' : 'default-ideal',
+                video: {
+                    width: { ideal: camWidth },
+                    height: { ideal: camHeight },
+                    frameRate: baseFrameRate,
+                    ...(mobileDevice ? { facingMode: { ideal: 'user' } } : {}),
+                    ...(requestPortrait
+                        ? { aspectRatio: { ideal: portraitAspectRatio }, resizeMode: 'crop-and-scale' }
+                        : {}),
                 },
-            ];
+            });
 
             if (mobileDevice) {
                 attempts.push({
@@ -633,10 +682,11 @@
             for (const attempt of attempts) {
                 try {
                     addLog(`Camera request attempt: ${attempt.label}`, 'info');
-                    return await navigator.mediaDevices.getUserMedia({
+                    const stream = await navigator.mediaDevices.getUserMedia({
                         video: attempt.video,
                         audio: streamAudio,
                     });
+                    return { stream, attemptLabel: attempt.label };
                 } catch (error) {
                     lastError = error;
                     addLog(`Camera request ${attempt.label} failed: ${error.message}`, 'error');
@@ -662,22 +712,73 @@
                 const mobileDevice = isLikelyMobileDevice();
                 const portraitViewport = isPortraitViewport();
                 const requestPortrait = mobileDevice && portraitViewport;
-                const camWidth = requestPortrait ? model.height : model.width;
-                const camHeight = requestPortrait ? model.width : model.height;
+                const captureDimensions = getCaptureDimensions({ requestPortrait });
+                const camWidth = captureDimensions.width;
+                const camHeight = captureDimensions.height;
                 const streamAudio = elements.streamAudioToggle.checked;
 
                 addLog(
-                    `Camera target: ${requestPortrait ? "portrait" : "landscape"} | mobile=${mobileDevice} | viewportPortrait=${portraitViewport} | ideal ${camWidth}×${camHeight}`,
+                    `Camera target: ${requestPortrait ? "portrait" : "landscape"} | profile=${captureDimensions.profile} | mobile=${mobileDevice} | viewportPortrait=${portraitViewport} | requested ${camWidth}×${camHeight}`,
                     'info',
                 );
                 addLog(`Microphone audio: ${streamAudio ? 'enabled' : 'disabled'}`, 'info');
-                localStream = await requestLocalMediaStream({
+                const cameraRequest = await requestLocalMediaStream({
                     requestPortrait,
                     streamAudio,
                     camWidth,
                     camHeight,
                     mobileDevice,
                 });
+                localStream = cameraRequest.stream;
+                addLog(`Camera stream established via ${cameraRequest.attemptLabel}`, 'info');
+
+                const initialSettings = getVideoTrackSettings(localStream);
+                if (initialSettings) {
+                    addLog(
+                        `Camera track settings: ${initialSettings.width}×${initialSettings.height} @ ${Math.round(initialSettings.frameRate || 0)}fps`,
+                        'info',
+                    );
+
+                    if (
+                        requestPortrait &&
+                        initialSettings.width > 0 &&
+                        initialSettings.height > 0 &&
+                        initialSettings.width > initialSettings.height
+                    ) {
+                        addLog('Camera still landscape after portrait request; retrying strict portrait constraints...', 'error');
+
+                        try {
+                            const strictPortraitStream = await navigator.mediaDevices.getUserMedia({
+                                video: {
+                                    width: { exact: camWidth },
+                                    height: { exact: camHeight },
+                                    aspectRatio: { exact: camWidth / camHeight },
+                                    resizeMode: 'crop-and-scale',
+                                    frameRate: { ideal: model.fps, max: 30 },
+                                    ...(mobileDevice ? { facingMode: { ideal: 'user' } } : {}),
+                                },
+                                audio: streamAudio,
+                            });
+
+                            localStream.getTracks().forEach((track) => track.stop());
+                            localStream = strictPortraitStream;
+
+                            const strictSettings = getVideoTrackSettings(localStream);
+                            if (strictSettings) {
+                                addLog(
+                                    `Strict portrait track settings: ${strictSettings.width}×${strictSettings.height} @ ${Math.round(strictSettings.frameRate || 0)}fps`,
+                                    'info',
+                                );
+
+                                if (strictSettings.width > strictSettings.height) {
+                                    addLog('Device/browser is still providing landscape frames despite strict portrait constraints.', 'error');
+                                }
+                            }
+                        } catch (strictError) {
+                            addLog(`Strict portrait retry failed: ${strictError.message}`, 'error');
+                        }
+                    }
+                }
                 
                 elements.localVideo.srcObject = localStream;
                 elements.startCamera.disabled = true;
