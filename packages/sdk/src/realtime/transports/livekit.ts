@@ -1,45 +1,42 @@
 /**
  * LiveKit transport for the realtime SDK.
  *
- * Control flow mirrors WebRTCConnection (same WS URL, same control messages
- * for prompt/set_image/init/session_id/generation_tick). The only differences
- * are in the media handshake:
+ * Control messages (prompt, set_image, session_id, generation_tick, acks)
+ * flow over the Decart WebSocket; media is carried by a LiveKit room:
  *
  *   Client → bouncer WS: { type: "livekit_join" }
  *   bouncer/inference   → { type: "livekit_room_info", livekit_url, token, room_name }
  *   Client → LiveKit SFU: Room.connect(url, token) + publishTrack(...)
- *
- * Public surface matches WebRTCConnection enough that WebRTCManager can swap
- * implementations behind a `transport` option.
  */
 
-import mitt from "mitt";
 import {
   ConnectionState as LKConnectionState,
+  type LocalTrack,
+  type RemoteParticipant,
+  type RemoteTrack,
+  type RemoteTrackPublication,
   Room,
   RoomEvent,
   Track,
   TrackEvent,
-  type LocalTrack,
-  type RemoteTrack,
-  type RemoteTrackPublication,
-  type RemoteParticipant,
 } from "livekit-client";
+import mitt from "mitt";
 
 import type { Logger } from "../../utils/logger";
 import { buildUserAgent } from "../../utils/user-agent";
 import type { DiagnosticEmitter } from "../diagnostics";
-import type { StatsProvider } from "../webrtc-stats";
 import type {
   ConnectionState,
   GenerationTickMessage,
   IncomingWebRTCMessage,
+  LiveKitRoomInfoMessage,
   OutgoingWebRTCMessage,
   PromptAckMessage,
   ServerMetricsMessage,
   SessionIdMessage,
   SetImageAckMessage,
 } from "../types";
+import type { StatsProvider } from "../webrtc-stats";
 
 const AVATAR_SETUP_TIMEOUT_MS = 30_000;
 const ROOM_INFO_TIMEOUT_MS = 15_000;
@@ -56,7 +53,7 @@ interface LiveKitCallbacks {
   /** Override livekit-client `publishTrack` simulcast option. Defaults to true. */
   publishSimulcast?: boolean;
   /**
-   * Client-side uplink cap in kbps. Defaults to 2500 to match the
+   * Client-side uplink cap in kbps. Defaults to 3500 to match the
    * server-side publish cap (see inference_server/rt/livekit/conn.py).
    * Pass `null` explicitly to omit the cap entirely and let Chrome BWE
    * run uncapped.
@@ -107,13 +104,6 @@ type WsMessageEvents = {
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
 
-interface RoomInfoMessage {
-  type: "livekit_room_info";
-  livekit_url: string;
-  token: string;
-  room_name: string;
-}
-
 export class LiveKitConnection {
   private ws: WebSocket | null = null;
   private room: Room | null = null;
@@ -122,6 +112,7 @@ export class LiveKitConnection {
   private logger: Logger;
   private emitDiagnostic: DiagnosticEmitter;
   private statsProvider: StatsProvider | null = null;
+  private remoteStream: MediaStream | null = null;
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
 
@@ -152,7 +143,7 @@ export class LiveKitConnection {
   async connect(url: string, localStream: MediaStream | null, timeout: number, integration?: string): Promise<void> {
     this.localStream = localStream;
 
-    // Append user agent exactly like the aiortc transport.
+    // Append user agent as a query parameter; browsers do not support WS headers.
     const userAgent = encodeURIComponent(buildUserAgent(integration));
     const separator = url.includes("?") ? "&" : "?";
     const wsUrl = `${url}${separator}user_agent=${userAgent}`;
@@ -167,8 +158,8 @@ export class LiveKitConnection {
     try {
       // Phase 1 — control WS + livekit_join/livekit_room_info handshake.
       const roomInfoStart = performance.now();
-      await this.openControlWs(wsUrl, timeout);
-      const roomInfo = await this.requestRoomInfo();
+      await Promise.race([this.openControlWs(wsUrl, timeout), connectAbort]);
+      const roomInfo = await Promise.race([this.requestRoomInfo(), connectAbort]);
       this.emitDiagnostic("phaseTiming", {
         phase: "websocket",
         durationMs: performance.now() - roomInfoStart,
@@ -177,16 +168,44 @@ export class LiveKitConnection {
 
       // Phase 2 — join the SFU room and publish local tracks.
       const roomStart = performance.now();
-      await this.joinRoom(roomInfo);
+      await Promise.race([this.joinRoom(roomInfo), connectAbort]);
       this.emitDiagnostic("phaseTiming", {
         phase: "webrtc-handshake",
         durationMs: performance.now() - roomStart,
         success: true,
       });
 
-      // Phase 3 — optional: send initial prompt over control WS.
-      if (this.callbacks.initialPrompt) {
-        await this.sendInitialPrompt(this.callbacks.initialPrompt);
+      // Phase 3 — optional startup conditioning over the control WS.
+      if (this.callbacks.initialImage) {
+        const imageStart = performance.now();
+        await Promise.race([
+          this.setImageBase64(this.callbacks.initialImage, {
+            prompt: this.callbacks.initialPrompt?.text,
+            enhance: this.callbacks.initialPrompt?.enhance,
+          }),
+          connectAbort,
+        ]);
+        this.emitDiagnostic("phaseTiming", {
+          phase: "avatar-image",
+          durationMs: performance.now() - imageStart,
+          success: true,
+        });
+      } else if (this.callbacks.initialPrompt) {
+        const promptStart = performance.now();
+        await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
+        this.emitDiagnostic("phaseTiming", {
+          phase: "initial-prompt",
+          durationMs: performance.now() - promptStart,
+          success: true,
+        });
+      } else if (localStream) {
+        const passthroughStart = performance.now();
+        await Promise.race([this.setImageBase64(null, { prompt: null }), connectAbort]);
+        this.emitDiagnostic("phaseTiming", {
+          phase: "initial-prompt",
+          durationMs: performance.now() - passthroughStart,
+          success: true,
+        });
       }
 
       this.setState("connected");
@@ -254,6 +273,7 @@ export class LiveKitConnection {
       this.room = null;
     }
     this.statsProvider = null;
+    this.remoteStream = null;
     if (this.ws) {
       try {
         this.ws.close();
@@ -298,21 +318,21 @@ export class LiveKitConnection {
     });
   }
 
-  private async requestRoomInfo(): Promise<RoomInfoMessage> {
-    this.send({ type: "livekit_join" } as unknown as OutgoingWebRTCMessage);
-    return await new Promise<RoomInfoMessage>((resolve, reject) => {
+  private async requestRoomInfo(): Promise<LiveKitRoomInfoMessage> {
+    this.send({ type: "livekit_join" });
+    return await new Promise<LiveKitRoomInfoMessage>((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
         reject(new Error(`livekit_room_info timeout (${ROOM_INFO_TIMEOUT_MS}ms)`));
       }, ROOM_INFO_TIMEOUT_MS);
 
-      const handler = (msg: IncomingWebRTCMessage | RoomInfoMessage) => {
-        if ((msg as RoomInfoMessage).type === "livekit_room_info") {
+      const handler = (msg: IncomingWebRTCMessage) => {
+        if (msg.type === "livekit_room_info") {
           cleanup();
-          resolve(msg as RoomInfoMessage);
-        } else if ((msg as { type: string }).type === "error") {
+          resolve(msg);
+        } else if (msg.type === "error") {
           cleanup();
-          reject(new Error((msg as { error?: string }).error ?? "server error"));
+          reject(new Error(msg.error));
         }
       };
       const cleanup = () => {
@@ -323,34 +343,39 @@ export class LiveKitConnection {
     });
   }
 
-  private pendingRoomInfoResolvers: Array<(msg: IncomingWebRTCMessage | RoomInfoMessage) => void> = [];
+  private pendingRoomInfoResolvers: Array<(msg: IncomingWebRTCMessage) => void> = [];
 
-  private handleControlMessage(msg: IncomingWebRTCMessage | RoomInfoMessage): void {
+  private handleControlMessage(msg: IncomingWebRTCMessage): void {
     // First give pending livekit_room_info awaiters a chance.
     for (const resolver of [...this.pendingRoomInfoResolvers]) {
       resolver(msg);
     }
 
-    // Then fan out control-plane acks to the shared emitter (same events
-    // WebRTCConnection emits so RealTimeClient consumes both identically).
-    const typed = msg as IncomingWebRTCMessage;
-    switch (typed.type) {
+    // Then fan out control-plane acks to the public realtime client.
+    switch (msg.type) {
       case "prompt_ack":
-        this.websocketMessagesEmitter.emit("promptAck", typed);
+        this.websocketMessagesEmitter.emit("promptAck", msg);
         break;
       case "set_image_ack":
-        this.websocketMessagesEmitter.emit("setImageAck", typed);
+        this.websocketMessagesEmitter.emit("setImageAck", msg);
         break;
       case "session_id":
-        this.websocketMessagesEmitter.emit("sessionId", typed);
+        this.websocketMessagesEmitter.emit("sessionId", msg);
         break;
       case "generation_tick":
-        this.websocketMessagesEmitter.emit("generationTick", typed);
+        this.websocketMessagesEmitter.emit("generationTick", msg);
         break;
       case "server_metrics":
         // Opt-in server-side stats for the webrtc-bench tool.
-        this.websocketMessagesEmitter.emit("serverMetrics", typed);
+        this.websocketMessagesEmitter.emit("serverMetrics", msg);
         break;
+      case "error": {
+        const error = new Error(msg.error) as Error & { source?: string };
+        error.source = "server";
+        this.callbacks.onError?.(error);
+        this.connectionReject?.(error);
+        break;
+      }
     }
   }
 
@@ -358,28 +383,34 @@ export class LiveKitConnection {
   // Private — LiveKit room
   // -------------------------------------------------------------------------
 
-  private async joinRoom(info: RoomInfoMessage): Promise<void> {
+  private async joinRoom(info: LiveKitRoomInfoMessage): Promise<void> {
     this.room = new Room({
       adaptiveStream: this.callbacks.adaptiveStream ?? false,
       dynacast: this.callbacks.dynacast ?? false,
     });
 
-    this.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub: RemoteTrackPublication, _p: RemoteParticipant) => {
-      if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {
-        // Compose a MediaStream for the SDK consumer. We attach the track
-        // element so downstream TrackEvent.VideoPlaybackStarted fires and
-        // the browser actually starts decoding — the element isn't kept.
-        track.attach();
-        const mediaStreamTrack = track.mediaStreamTrack;
-        if (mediaStreamTrack) {
-          const stream = new MediaStream([mediaStreamTrack]);
-          this.callbacks.onRemoteStream?.(stream);
+    this.room.on(
+      RoomEvent.TrackSubscribed,
+      (track: RemoteTrack, _pub: RemoteTrackPublication, _p: RemoteParticipant) => {
+        if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {
+          // Compose a MediaStream for the SDK consumer. We attach the track
+          // element so downstream TrackEvent.VideoPlaybackStarted fires and
+          // the browser actually starts decoding — the element isn't kept.
+          track.attach();
+          const mediaStreamTrack = track.mediaStreamTrack;
+          if (mediaStreamTrack) {
+            this.remoteStream ??= new MediaStream();
+            if (!this.remoteStream.getTracks().includes(mediaStreamTrack)) {
+              this.remoteStream.addTrack(mediaStreamTrack);
+            }
+            this.callbacks.onRemoteStream?.(this.remoteStream);
+          }
+          track.on(TrackEvent.VideoPlaybackStarted, () => {
+            this.setState("generating");
+          });
         }
-        track.on(TrackEvent.VideoPlaybackStarted, () => {
-          this.setState("generating");
-        });
-      }
-    });
+      },
+    );
 
     this.room.on(RoomEvent.Connected, () => {
       this.logger.info("LiveKit room connected");
@@ -406,9 +437,7 @@ export class LiveKitConnection {
       //   number    → explicit kbps value
       const configuredBitrateKbps = this.callbacks.publishMaxBitrateKbps;
       const maxBitrate =
-        configuredBitrateKbps === null
-          ? undefined
-          : (configuredBitrateKbps ?? DEFAULT_PUBLISH_MAX_BITRATE_KBPS) * 1000;
+        configuredBitrateKbps === null ? undefined : (configuredBitrateKbps ?? DEFAULT_PUBLISH_MAX_BITRATE_KBPS) * 1000;
       const publishCodec = this.callbacks.publishCodec;
       const publishMaxFramerate = this.callbacks.publishMaxFramerate ?? 30;
       const degradationPreference = this.callbacks.degradationPreference;
@@ -423,10 +452,7 @@ export class LiveKitConnection {
       });
       for (const track of this.localStream.getTracks()) {
         if (track.kind === "video") {
-          const videoEncoding =
-            maxBitrate != null
-              ? { maxBitrate, maxFramerate: publishMaxFramerate }
-              : undefined;
+          const videoEncoding = maxBitrate != null ? { maxBitrate, maxFramerate: publishMaxFramerate } : undefined;
           await this.room.localParticipant.publishTrack(track, {
             simulcast: publishSimulcast,
             source: Track.Source.Camera,
@@ -461,11 +487,11 @@ export class LiveKitConnection {
       };
       this.websocketMessagesEmitter.on("promptAck", listener);
 
-      const message = {
+      const message: OutgoingWebRTCMessage = {
         type: "prompt",
         prompt: prompt.text,
-        enhance: prompt.enhance ?? false,
-      } as unknown as OutgoingWebRTCMessage;
+        enhance_prompt: prompt.enhance ?? true,
+      };
 
       if (!this.send(message)) {
         clearTimeout(timeoutId);
@@ -498,8 +524,7 @@ export class LiveKitConnection {
  * `RTCRtpSender.getStats()` / `RTCRtpReceiver.getStats()`, which in all
  * current browsers returns the track's inbound-rtp/outbound-rtp plus the
  * associated candidate-pair and transport reports. Stitching them together
- * per-tick gives us a report that looks like an aiortc-style
- * `RTCPeerConnection.getStats()` for parsing purposes.
+ * per-tick gives us a report compatible with the SDK's stats parser.
  *
  * Key collisions (candidate-pair ids repeat across publisher+subscriber
  * PCs) are namespaced with a monotonic suffix so `forEach` sees every

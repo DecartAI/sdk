@@ -104,11 +104,9 @@ export class ProxySession {
         case "set_image":
           console.log(`[${id}] → set_image (has_prompt=${Boolean(msg.prompt)})`);
           break;
-        case "offer":
-          console.log(`[${id}] → offer`);
+        case "livekit_join":
+          console.log(`[${id}] → livekit_join`);
           break;
-        case "ice-candidate":
-          break; // too noisy
       }
     } catch {
       // non-JSON — forwarded as-is
@@ -141,14 +139,10 @@ export class ProxySession {
         case "error":
           console.error(`[${id}] ← error: ${msg.error}`);
           break;
-        case "ice-restart":
-          console.log(`[${id}] ← ice-restart`);
-          break;
-        case "answer":
-          console.log(`[${id}] ← answer`);
+        case "livekit_room_info":
+          console.log(`[${id}] ← livekit_room_info (room=${msg.room_name})`);
           break;
         case "generation_tick":
-        case "ice-candidate":
           break; // too noisy
       }
     } catch {

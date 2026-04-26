@@ -1,16 +1,5 @@
-export interface OfferMessage {
-  type: "offer";
-  sdp: string;
-}
-
-export interface IceCandidateMessage {
-  type: "ice-candidate";
-  candidate: {
-    candidate: string;
-    sdpMLineIndex: number;
-    sdpMid: string;
-    usernameFragment?: string;
-  } | null;
+export interface LiveKitJoinMessage {
+  type: "livekit_join";
 }
 
 export interface PromptMessage {
@@ -26,11 +15,13 @@ export interface SetImageMessage {
   enhance_prompt?: boolean;
 }
 
-export type IncomingMessage = OfferMessage | IceCandidateMessage | PromptMessage | SetImageMessage;
+export type IncomingMessage = LiveKitJoinMessage | PromptMessage | SetImageMessage;
 
-export interface AnswerMessage {
-  type: "answer";
-  sdp: string;
+export interface LiveKitRoomInfoMessage {
+  type: "livekit_room_info";
+  livekit_url: string;
+  token: string;
+  room_name: string;
 }
 
 export interface SessionIdMessage {
@@ -80,23 +71,12 @@ export interface ErrorMessage {
   error: string;
 }
 
-export interface IceRestartMessage {
-  type: "ice-restart";
-  turn_config: {
-    username: string;
-    credential: string;
-    server_url: string;
-  };
-}
-
 export type OutgoingMessage =
-  | AnswerMessage
-  | IceCandidateMessage
+  | LiveKitRoomInfoMessage
   | SessionIdMessage
   | PromptAckMessage
   | SetImageAckMessage
   | GenerationStartedMessage
   | GenerationTickMessage
   | GenerationEndedMessage
-  | ErrorMessage
-  | IceRestartMessage;
+  | ErrorMessage;

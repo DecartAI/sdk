@@ -21,12 +21,12 @@
   - `polling.ts` - Polling logic until job completion
   - `request.ts` - HTTP request handling for queue API
   - `types.ts` - TypeScript types for queue operations
-- **src/realtime/** - WebRTC real-time video streaming logic
-  - `client.ts` - Real-time client implementation with WebRTC connection management
-  - `webrtc-manager.ts` - WebRTC connection lifecycle and signaling
-  - `webrtc-connection.ts` - Low-level WebRTC peer connection handling
-  - `methods.ts` - WebRTC method implementations
-  - `types.ts` - TypeScript types for WebRTC messages and events
+- **src/realtime/** - LiveKit-backed real-time video streaming logic
+  - `client.ts` - Real-time client implementation and public event surface
+  - `webrtc-manager.ts` - Realtime connection lifecycle and retry management
+  - `transports/livekit.ts` - LiveKit room connection and control WebSocket handling
+  - `methods.ts` - Realtime method implementations
+  - `types.ts` - TypeScript types for realtime control messages and events
 - **src/shared/** - Shared model definitions and types
   - `model.ts` - Model registry with definitions for realtime, video, and image models
   - `request.ts` - Shared HTTP request utilities and file input processing
@@ -46,7 +46,7 @@
 - **Imports**: Named exports preferred, use `export type` for types, no file extensions needed
 - **Error Handling**: Use error factory pattern (createSDKError), include ERROR_CODES constants
 - **Validation**: Use Zod schemas for runtime validation (e.g., decartClientOptionsSchema)
-- **WebRTC**: Implement proper connection lifecycle with error recovery
+- **Realtime**: LiveKit is the only media transport; keep client usage stable and implement proper connection lifecycle with error recovery
 - **Events**: Use mitt for typed event emitters (connection state, errors)
 - **Formatting**: Use Biome formatter (`pnpm format`), enforced formatting standards
 - **Dependencies**: 
