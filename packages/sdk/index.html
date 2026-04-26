@@ -612,10 +612,14 @@
         // Many mobile browsers ignore portrait width/height constraints (and lie in
         // getSettings() about it), so we let the device deliver its natural frames
         // and force portrait orientation downstream via a canvas pipeline.
-        async function requestRawCameraStream({ streamAudio, mobileDevice }) {
+        async function requestRawCameraStream({ streamAudio, mobileDevice, wantPortrait }) {
             const constraints = {
                 video: {
                     frameRate: { ideal: model.fps, max: 30 },
+                    ...(!mobileDevice ? {
+                        width: { ideal: wantPortrait ? 720 : 1280 },
+                        height: { ideal: wantPortrait ? 1280 : 720 },
+                    } : {}),
                     ...(mobileDevice ? { facingMode: { ideal: 'user' } } : {}),
                 },
                 audio: streamAudio,
@@ -780,7 +784,7 @@
 
                 // Acquire raw camera stream WITHOUT resolution constraints — we
                 // enforce portrait orientation downstream via canvas if needed.
-                rawCameraStream = await requestRawCameraStream({ streamAudio, mobileDevice });
+                rawCameraStream = await requestRawCameraStream({ streamAudio, mobileDevice, wantPortrait });
 
                 const rawSettings = getVideoTrackSettings(rawCameraStream);
                 if (rawSettings) {
