@@ -1,6 +1,6 @@
 # React + Vite Weather Outfit
 
-A simple React + Vite demo that generates weather-appropriate outfits from an input photo using the Decart SDK (image-to-image with the `lucy-pro-i2i` model).
+A simple React + Vite demo that generates weather-appropriate outfits from an input photo using the Decart SDK (image-to-image with the `lucy-image-2` model).
 
 ## Setup
 
@@ -35,9 +35,9 @@ pnpm dev
 ## How it works
 
 1. The chosen image (sample or uploaded) is sent to Decart.
-2. The `lucy-pro-i2i` model applies a prompt.
+2. The `lucy-image-2` model applies a prompt.
 3. The processed image is returned.
 
 ## Model
 
-`lucy-pro-i2i` — image-to-image style/editing model used to restyle outfits for the selected weather.
+`lucy-image-2` — image-to-image style/editing model used to restyle outfits for the selected weather.

@@ -69,15 +69,10 @@
 - `lucy_2_rt` - Real-time video editing model (supports reference image)
 
 ### Video Models (Queue API)
-- `lucy-dev-i2v` - image-to-video (Dev quality)
-- `lucy-fast-v2v` - video-to-video (Fast quality)
-- `lucy-pro-t2v` - text-to-video (Pro quality)
-- `lucy-pro-i2v` - image-to-video (Pro quality)
 - `lucy-pro-v2v` - video-to-video (Pro quality)
 - `lucy-motion` - motion-based image-to-video (trajectory-guided animation)
 - `lucy-restyle-v2v` - video restyling (video-to-video)
 - `lucy-2-v2v` - video-to-video editing (long-form, 720p)
 
 ### Image Models (Process API)
-- `lucy-pro-t2i` - text-to-image (Pro quality)
 - `lucy-pro-i2i` - image-to-image (Pro quality)

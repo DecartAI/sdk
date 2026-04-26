@@ -8,12 +8,13 @@ import styles from "./page.module.css";
 
 export default function Home() {
   const [prompt, setPrompt] = useState("");
+  const [sourceImage, setSourceImage] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || !sourceImage) return;
 
     setLoading(true);
     setError(null);
@@ -21,11 +22,15 @@ export default function Home() {
 
     try {
       const client = createDecartClient({ proxy: PROXY_ROUTE });
-      const blob = await client.process({ model: models.image("lucy-pro-t2i"), prompt });
+      const blob = await client.process({
+        model: models.image("lucy-image-2"),
+        prompt,
+        data: sourceImage,
+      });
       const url = URL.createObjectURL(blob);
       setImageUrl(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate image");
+      setError(err instanceof Error ? err.message : "Failed to edit image");
     } finally {
       setLoading(false);
     }
@@ -34,7 +39,7 @@ export default function Home() {
   return (
     <main className={styles.container}>
       <h1 className={styles.title}>Decart SDK - Next.js Proxy Example</h1>
-      <p className={styles.description}>Generate images using the Decart SDK through the Next.js proxy</p>
+      <p className={styles.description}>Edit an image using the Decart SDK through the Next.js proxy</p>
 
       <div className={styles.form}>
         <input
@@ -42,12 +47,24 @@ export default function Home() {
           className={styles.input}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Enter a prompt (e.g., 'A beautiful sunset over mountains')"
+          placeholder="Enter an edit prompt (e.g., 'Turn this into a watercolor painting')"
           disabled={loading}
           onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
         />
-        <button className={styles.button} onClick={handleGenerate} disabled={loading || !prompt.trim()} type="button">
-          {loading ? "Generating..." : "Generate Image"}
+        <input
+          type="file"
+          className={styles.input}
+          accept="image/*"
+          disabled={loading}
+          onChange={(e) => setSourceImage(e.target.files?.[0] ?? null)}
+        />
+        <button
+          className={styles.button}
+          onClick={handleGenerate}
+          disabled={loading || !prompt.trim() || !sourceImage}
+          type="button"
+        >
+          {loading ? "Editing..." : "Edit Image"}
         </button>
       </div>
 
@@ -57,7 +74,7 @@ export default function Home() {
         <div className={styles.result}>
           <Image
             src={imageUrl}
-            alt="Generated"
+            alt="Edited"
             sizes="100vw"
             width={800}
             height={450}

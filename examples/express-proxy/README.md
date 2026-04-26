@@ -60,18 +60,19 @@ app.use(route, handler({
 The frontend:
 1. Loads the Decart SDK from CDN
 2. Creates a client pointing to the proxy endpoint
-3. Uses the SDK normally - no API key needed!
+3. Uploads a source image from the browser and edits it with a prompt
 
 ```javascript
 import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
-  proxy: '/api/decart', // Points to your Express proxy
+  proxy: '/api/decart',
 });
 
 const blob = await client.process({
-  model: models.image('lucy-pro-t2i'),
-  prompt: 'A beautiful sunset',
+  model: models.image('lucy-image-2'),
+  prompt: 'Turn this into a watercolor painting',
+  data: sourceFile,
 });
 ```
 
@@ -86,8 +87,8 @@ const blob = await client.process({
 
 1. Start the server: `pnpm dev`
 2. Open `http://localhost:3000` in your browser
-3. Enter a prompt and click "Generate Image"
-4. The image will be generated through the proxy
+3. Enter a prompt, choose a source image, and click "Edit Image"
+4. The edited image will be generated through the proxy
 
 ## Security Notes
 

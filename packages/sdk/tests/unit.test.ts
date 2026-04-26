@@ -1,7 +1,8 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDecartClient, models } from "../src/index.js";
+import { createDecartClient, isRealtimeModel, isVideoModel, models } from "../src/index.js";
+import { _resetDeprecationWarnings } from "../src/shared/model.js";
 
 const MOCK_RESPONSE_DATA = new Uint8Array([0x00, 0x01, 0x02]).buffer;
 const TEST_API_KEY = "test-api-key";
@@ -105,12 +106,15 @@ describe("Decart SDK", () => {
     });
 
     describe("Model Processing", () => {
-      it("processes text-to-image", async () => {
-        server.use(createMockHandler("/v1/generate/lucy-pro-t2i"));
+      it("processes image-to-image", async () => {
+        server.use(createMockHandler("/v1/generate/lucy-pro-i2i"));
+
+        const testBlob = new Blob(["test-image"], { type: "image/png" });
 
         const result = await decart.process({
-          model: models.image("lucy-pro-t2i"),
+          model: models.image("lucy-pro-i2i"),
           prompt: "A cat playing piano",
+          data: testBlob,
           seed: 42,
         });
 
@@ -121,11 +125,14 @@ describe("Decart SDK", () => {
       });
 
       it("includes User-Agent header in requests", async () => {
-        server.use(createMockHandler("/v1/generate/lucy-pro-t2i"));
+        server.use(createMockHandler("/v1/generate/lucy-pro-i2i"));
+
+        const testBlob = new Blob(["test-image"], { type: "image/png" });
 
         await decart.process({
-          model: models.image("lucy-pro-t2i"),
+          model: models.image("lucy-pro-i2i"),
           prompt: "Test prompt",
+          data: testBlob,
         });
 
         const userAgent = lastRequest?.headers.get("user-agent");
@@ -140,11 +147,14 @@ describe("Decart SDK", () => {
           integration: "vercel-ai-sdk/3.0.0",
         });
 
-        server.use(createMockHandler("/v1/generate/lucy-pro-t2i"));
+        server.use(createMockHandler("/v1/generate/lucy-pro-i2i"));
+
+        const testBlob = new Blob(["test-image"], { type: "image/png" });
 
         await decartWithIntegration.process({
-          model: models.image("lucy-pro-t2i"),
+          model: models.image("lucy-pro-i2i"),
           prompt: "Test with integration",
+          data: testBlob,
         });
 
         const userAgent = lastRequest?.headers.get("user-agent");
@@ -153,12 +163,15 @@ describe("Decart SDK", () => {
         expect(userAgent).toMatch(/^decart-js-sdk\/[\d.]+-?\w* lang\/js vercel-ai-sdk\/3\.0\.0 runtime\/[\w./]+$/);
       });
 
-      it("processes text-to-image with resolution", async () => {
-        server.use(createMockHandler("/v1/generate/lucy-pro-t2i"));
+      it("processes image-to-image with resolution", async () => {
+        server.use(createMockHandler("/v1/generate/lucy-pro-i2i"));
+
+        const testBlob = new Blob(["test-image"], { type: "image/png" });
 
         const result = await decart.process({
-          model: models.image("lucy-pro-t2i"),
+          model: models.image("lucy-pro-i2i"),
           prompt: "A beautiful landscape",
+          data: testBlob,
           seed: 123,
           resolution: "480p",
         });
@@ -170,7 +183,7 @@ describe("Decart SDK", () => {
         expect(lastFormData?.get("resolution")).toBe("480p");
       });
 
-      it("processes image-to-image", async () => {
+      it("processes image-to-image with enhance_prompt", async () => {
         server.use(createMockHandler("/v1/generate/lucy-pro-i2i"));
 
         const testBlob = new Blob(["test-image"], { type: "image/png" });
@@ -188,6 +201,31 @@ describe("Decart SDK", () => {
         const dataFile = lastFormData?.get("data") as File;
         expect(dataFile).toBeInstanceOf(File);
       });
+
+      it("processes image-to-image with reference_image", async () => {
+        server.use(createMockHandler("/v1/generate/lucy-pro-i2i"));
+
+        const testBlob = new Blob(["test-image"], { type: "image/png" });
+        const testRefBlob = new Blob(["test-ref-image"], { type: "image/png" });
+
+        const result = await decart.process({
+          model: models.image("lucy-pro-i2i"),
+          prompt: "Add the hat from the reference image",
+          data: testBlob,
+          reference_image: testRefBlob,
+          seed: 42,
+        });
+
+        expect(result).toBeInstanceOf(Blob);
+        expect(lastFormData?.get("prompt")).toBe("Add the hat from the reference image");
+        expect(lastFormData?.get("seed")).toBe("42");
+
+        const dataFile = lastFormData?.get("data") as File;
+        expect(dataFile).toBeInstanceOf(File);
+
+        const refImageFile = lastFormData?.get("reference_image") as File;
+        expect(refImageFile).toBeInstanceOf(File);
+      });
     });
 
     describe("Abort Signal", () => {
@@ -195,7 +233,7 @@ describe("Decart SDK", () => {
         const controller = new AbortController();
 
         server.use(
-          http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, async () => {
+          http.post(`${BASE_URL}/v1/generate/lucy-pro-i2i`, async () => {
             await new Promise((resolve) => setTimeout(resolve, 100));
             return HttpResponse.arrayBuffer(MOCK_RESPONSE_DATA, {
               headers: { "Content-Type": "application/octet-stream" },
@@ -203,9 +241,12 @@ describe("Decart SDK", () => {
           }),
         );
 
+        const testBlob = new Blob(["test-image"], { type: "image/png" });
+
         const processPromise = decart.process({
-          model: models.image("lucy-pro-t2i"),
+          model: models.image("lucy-pro-i2i"),
           prompt: "test",
+          data: testBlob,
           signal: controller.signal,
         });
 
@@ -216,15 +257,6 @@ describe("Decart SDK", () => {
     });
 
     describe("Input Validation", () => {
-      it("validates required inputs for text-to-image", async () => {
-        await expect(
-          decart.process({
-            model: models.image("lucy-pro-t2i"),
-            // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
-          } as any),
-        ).rejects.toThrow("Invalid inputs");
-      });
-
       it("validates required inputs for image-to-image", async () => {
         await expect(
           decart.process({
@@ -236,10 +268,13 @@ describe("Decart SDK", () => {
       });
 
       it("validates prompt max length is 1000 characters", async () => {
+        const testBlob = new Blob(["test-image"], { type: "image/png" });
+
         await expect(
           decart.process({
-            model: models.image("lucy-pro-t2i"),
+            model: models.image("lucy-pro-i2i"),
             prompt: "a".repeat(1001),
+            data: testBlob,
           }),
         ).rejects.toThrow("expected string to have <=1000 characters");
       });
@@ -248,15 +283,18 @@ describe("Decart SDK", () => {
     describe("Error Handling", () => {
       it("handles API errors", async () => {
         server.use(
-          http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, () => {
+          http.post(`${BASE_URL}/v1/generate/lucy-pro-i2i`, () => {
             return HttpResponse.text("Internal Server Error", { status: 500 });
           }),
         );
 
+        const testBlob = new Blob(["test-image"], { type: "image/png" });
+
         await expect(
           decart.process({
-            model: models.image("lucy-pro-t2i"),
+            model: models.image("lucy-pro-i2i"),
             prompt: "test",
+            data: testBlob,
           }),
         ).rejects.toThrow("Processing failed");
       });
@@ -293,31 +331,6 @@ describe("Queue API", () => {
   });
 
   describe("submit", () => {
-    it("submits text-to-video job", async () => {
-      server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-t2v", async ({ request }) => {
-          lastRequest = request;
-          lastFormData = await request.formData();
-          return HttpResponse.json({
-            job_id: "job_123",
-            status: "pending",
-          });
-        }),
-      );
-
-      const result = await decart.queue.submit({
-        model: models.video("lucy-pro-t2v"),
-        prompt: "A cat playing piano",
-        seed: 42,
-      });
-
-      expect(result.job_id).toBe("job_123");
-      expect(result.status).toBe("pending");
-      expect(lastRequest?.headers.get("x-api-key")).toBe("test-api-key");
-      expect(lastFormData?.get("prompt")).toBe("A cat playing piano");
-      expect(lastFormData?.get("seed")).toBe("42");
-    });
-
     it("submits video-to-video job", async () => {
       server.use(
         http.post("http://localhost/v1/jobs/lucy-pro-v2v", async ({ request }) => {
@@ -598,34 +611,6 @@ describe("Queue API", () => {
       ).rejects.toThrow("Invalid inputs");
     });
 
-    it("submits image-to-video job", async () => {
-      server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-i2v", async ({ request }) => {
-          lastRequest = request;
-          lastFormData = await request.formData();
-          return HttpResponse.json({
-            job_id: "job_i2v",
-            status: "pending",
-          });
-        }),
-      );
-
-      const testBlob = new Blob(["test-image"], { type: "image/png" });
-
-      const result = await decart.queue.submit({
-        model: models.video("lucy-pro-i2v"),
-        prompt: "The image comes to life",
-        data: testBlob,
-      });
-
-      expect(result.job_id).toBe("job_i2v");
-      expect(result.status).toBe("pending");
-      expect(lastFormData?.get("prompt")).toBe("The image comes to life");
-
-      const dataFile = lastFormData?.get("data") as File;
-      expect(dataFile).toBeInstanceOf(File);
-    });
-
     it("submits motion video job", async () => {
       server.use(
         http.post("http://localhost/v1/jobs/lucy-motion", async ({ request }) => {
@@ -657,15 +642,6 @@ describe("Queue API", () => {
       expect(lastFormData?.get("trajectory")).toBeDefined();
     });
 
-    it("validates required inputs", async () => {
-      await expect(
-        decart.queue.submit({
-          model: models.video("lucy-pro-t2v"),
-          // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
-        } as any),
-      ).rejects.toThrow("Invalid inputs");
-    });
-
     it("validates required inputs for video-to-video", async () => {
       await expect(
         decart.queue.submit({
@@ -694,15 +670,18 @@ describe("Queue API", () => {
 
     it("handles API errors", async () => {
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-t2v", () => {
+        http.post("http://localhost/v1/jobs/lucy-pro-v2v", () => {
           return HttpResponse.text("Internal Server Error", { status: 500 });
         }),
       );
 
+      const testBlob = new Blob(["test-video"], { type: "video/mp4" });
+
       await expect(
         decart.queue.submit({
-          model: models.video("lucy-pro-t2v"),
+          model: models.video("lucy-pro-v2v"),
           prompt: "test",
+          data: testBlob,
         }),
       ).rejects.toThrow("Failed to submit job");
     });
@@ -772,7 +751,7 @@ describe("Queue API", () => {
       const statusChanges: Array<{ job_id: string; status: string }> = [];
 
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-t2v", async ({ request }) => {
+        http.post("http://localhost/v1/jobs/lucy-pro-v2v", async ({ request }) => {
           lastFormData = await request.formData();
           return HttpResponse.json({
             job_id: "job_456",
@@ -799,9 +778,12 @@ describe("Queue API", () => {
         }),
       );
 
+      const testBlob = new Blob(["test-video"], { type: "video/mp4" });
+
       const result = await decart.queue.submitAndPoll({
-        model: models.video("lucy-pro-t2v"),
+        model: models.video("lucy-pro-v2v"),
         prompt: "A beautiful sunset",
+        data: testBlob,
         onStatusChange: (job) => {
           statusChanges.push({ job_id: job.job_id, status: job.status });
         },
@@ -817,7 +799,7 @@ describe("Queue API", () => {
 
     it("returns failed status when job fails", async () => {
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-t2v", () => {
+        http.post("http://localhost/v1/jobs/lucy-pro-v2v", () => {
           return HttpResponse.json({
             job_id: "job_789",
             status: "pending",
@@ -831,9 +813,12 @@ describe("Queue API", () => {
         }),
       );
 
+      const testBlob = new Blob(["test-video"], { type: "video/mp4" });
+
       const result = await decart.queue.submitAndPoll({
-        model: models.video("lucy-pro-t2v"),
+        model: models.video("lucy-pro-v2v"),
         prompt: "This will fail",
+        data: testBlob,
       });
 
       expect(result.status).toBe("failed");
@@ -846,7 +831,7 @@ describe("Queue API", () => {
       const controller = new AbortController();
 
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-t2v", () => {
+        http.post("http://localhost/v1/jobs/lucy-pro-v2v", () => {
           return HttpResponse.json({
             job_id: "job_abort",
             status: "pending",
@@ -861,9 +846,12 @@ describe("Queue API", () => {
         }),
       );
 
+      const testBlob = new Blob(["test-video"], { type: "video/mp4" });
+
       const pollPromise = decart.queue.submitAndPoll({
-        model: models.video("lucy-pro-t2v"),
+        model: models.video("lucy-pro-v2v"),
         prompt: "test",
+        data: testBlob,
         signal: controller.signal,
       });
 
@@ -1063,10 +1051,10 @@ describe("Tokens API", () => {
         }),
       );
 
-      await decart.tokens.create({ allowedModels: ["lucy-pro-t2v", "lucy-pro-i2v"] });
+      await decart.tokens.create({ allowedModels: ["lucy-pro-v2v", "lucy-restyle-v2v"] });
 
       const body = await lastRequest?.json();
-      expect(body).toEqual({ allowedModels: ["lucy-pro-t2v", "lucy-pro-i2v"] });
+      expect(body).toEqual({ allowedModels: ["lucy-pro-v2v", "lucy-restyle-v2v"] });
     });
 
     it("sends constraints in request body", async () => {
@@ -1100,7 +1088,7 @@ describe("Tokens API", () => {
       await decart.tokens.create({
         metadata: { role: "viewer" },
         expiresIn: 300,
-        allowedModels: ["lucy-pro-t2v"],
+        allowedModels: ["lucy-pro-v2v"],
         constraints: { realtime: { maxSessionDuration: 60 } },
       });
 
@@ -1108,7 +1096,7 @@ describe("Tokens API", () => {
       expect(body).toEqual({
         metadata: { role: "viewer" },
         expiresIn: 300,
-        allowedModels: ["lucy-pro-t2v"],
+        allowedModels: ["lucy-pro-v2v"],
         constraints: { realtime: { maxSessionDuration: 60 } },
       });
     });
@@ -1120,19 +1108,19 @@ describe("Tokens API", () => {
           return HttpResponse.json({
             apiKey: "ek_test123",
             expiresAt: "2024-12-15T12:15:00Z",
-            permissions: { models: ["lucy-pro-t2v", "lucy-pro-i2v"] },
+            permissions: { models: ["lucy-pro-v2v", "lucy-restyle-v2v"] },
             constraints: { realtime: { maxSessionDuration: 120 } },
           });
         }),
       );
 
       const result = await decart.tokens.create({
-        allowedModels: ["lucy-pro-t2v", "lucy-pro-i2v"],
+        allowedModels: ["lucy-pro-v2v", "lucy-restyle-v2v"],
         constraints: { realtime: { maxSessionDuration: 120 } },
       });
 
       expect(result.apiKey).toBe("ek_test123");
-      expect(result.permissions).toEqual({ models: ["lucy-pro-t2v", "lucy-pro-i2v"] });
+      expect(result.permissions).toEqual({ models: ["lucy-pro-v2v", "lucy-restyle-v2v"] });
       expect(result.constraints).toEqual({ realtime: { maxSessionDuration: 120 } });
     });
   });
@@ -3413,5 +3401,272 @@ describe("CustomModelDefinition", () => {
 
     const result = modelDefinitionSchema.safeParse(invalidModel);
     expect(result.success).toBe(false);
+  });
+});
+
+describe("Canonical Model Names", () => {
+  describe("Realtime canonical models", () => {
+    it("lucy canonical name works", () => {
+      const model = models.realtime("lucy");
+      expect(model.name).toBe("lucy");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(25);
+      expect(model.width).toBe(1280);
+      expect(model.height).toBe(704);
+    });
+
+    it("lucy-2 canonical name works", () => {
+      const model = models.realtime("lucy-2");
+      expect(model.name).toBe("lucy-2");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1280);
+      expect(model.height).toBe(720);
+    });
+
+    it("lucy-2.1 canonical name works", () => {
+      const model = models.realtime("lucy-2.1");
+      expect(model.name).toBe("lucy-2.1");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
+    it("lucy-2.1-vton canonical name works", () => {
+      const model = models.realtime("lucy-2.1-vton");
+      expect(model.name).toBe("lucy-2.1-vton");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
+    it("lucy-restyle canonical name works", () => {
+      const model = models.realtime("lucy-restyle");
+      expect(model.name).toBe("lucy-restyle");
+      expect(model.fps).toBe(25);
+    });
+
+    it("lucy-restyle-2 canonical name works", () => {
+      const model = models.realtime("lucy-restyle-2");
+      expect(model.name).toBe("lucy-restyle-2");
+      expect(model.fps).toBe(22);
+    });
+
+    it("live-avatar canonical name works", () => {
+      const model = models.realtime("live-avatar");
+      expect(model.name).toBe("live-avatar");
+      expect(model.fps).toBe(25);
+      expect(model.width).toBe(1280);
+      expect(model.height).toBe(720);
+    });
+  });
+
+  describe("Video canonical models", () => {
+    it("lucy-clip canonical name works", () => {
+      const model = models.video("lucy-clip");
+      expect(model.name).toBe("lucy-clip");
+      expect(model.urlPath).toBe("/v1/generate/lucy-clip");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-clip");
+      expect(model.fps).toBe(25);
+    });
+
+    it("lucy-2 as video model works", () => {
+      const model = models.video("lucy-2");
+      expect(model.name).toBe("lucy-2");
+      expect(model.urlPath).toBe("/v1/generate/lucy-2");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-2");
+      expect(model.fps).toBe(20);
+    });
+
+    it("lucy-2.1 as video model works", () => {
+      const model = models.video("lucy-2.1");
+      expect(model.name).toBe("lucy-2.1");
+      expect(model.urlPath).toBe("/v1/generate/lucy-2.1");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-2.1");
+    });
+
+    it("lucy-restyle-2 as video model works", () => {
+      const model = models.video("lucy-restyle-2");
+      expect(model.name).toBe("lucy-restyle-2");
+      expect(model.urlPath).toBe("/v1/generate/lucy-restyle-2");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-restyle-2");
+    });
+  });
+
+  describe("Image canonical models", () => {
+    it("lucy-image-2 canonical name works", () => {
+      const model = models.image("lucy-image-2");
+      expect(model.name).toBe("lucy-image-2");
+      expect(model.urlPath).toBe("/v1/generate/lucy-image-2");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-image-2");
+    });
+  });
+
+  describe("Latest aliases", () => {
+    it("lucy-latest works as realtime model", () => {
+      const model = models.realtime("lucy-latest");
+      expect(model.name).toBe("lucy-latest");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
+    it("lucy-vton-latest works as realtime model", () => {
+      const model = models.realtime("lucy-vton-latest");
+      expect(model.name).toBe("lucy-vton-latest");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
+    it("lucy-restyle-latest works as realtime model", () => {
+      const model = models.realtime("lucy-restyle-latest");
+      expect(model.name).toBe("lucy-restyle-latest");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(22);
+      expect(model.width).toBe(1280);
+      expect(model.height).toBe(704);
+    });
+
+    it("lucy-latest works as video model", () => {
+      const model = models.video("lucy-latest");
+      expect(model.name).toBe("lucy-latest");
+      expect(model.urlPath).toBe("/v1/generate/lucy-latest");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-latest");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
+    it("lucy-restyle-latest works as video model", () => {
+      const model = models.video("lucy-restyle-latest");
+      expect(model.name).toBe("lucy-restyle-latest");
+      expect(model.urlPath).toBe("/v1/generate/lucy-restyle-latest");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-restyle-latest");
+      expect(model.fps).toBe(22);
+    });
+
+    it("lucy-clip-latest works as video model", () => {
+      const model = models.video("lucy-clip-latest");
+      expect(model.name).toBe("lucy-clip-latest");
+      expect(model.urlPath).toBe("/v1/generate/lucy-clip-latest");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-clip-latest");
+      expect(model.fps).toBe(25);
+    });
+
+    it("lucy-motion-latest works as video model", () => {
+      const model = models.video("lucy-motion-latest");
+      expect(model.name).toBe("lucy-motion-latest");
+      expect(model.urlPath).toBe("/v1/generate/lucy-motion-latest");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-motion-latest");
+      expect(model.fps).toBe(25);
+    });
+
+    it("lucy-image-latest works as image model", () => {
+      const model = models.image("lucy-image-latest");
+      expect(model.name).toBe("lucy-image-latest");
+      expect(model.urlPath).toBe("/v1/generate/lucy-image-latest");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-image-latest");
+    });
+
+    it("lucy-latest is both a realtime and video model", () => {
+      expect(isRealtimeModel("lucy-latest")).toBe(true);
+      expect(isVideoModel("lucy-latest")).toBe(true);
+    });
+
+    it("lucy-restyle-latest is both a realtime and video model", () => {
+      expect(isRealtimeModel("lucy-restyle-latest")).toBe(true);
+      expect(isVideoModel("lucy-restyle-latest")).toBe(true);
+    });
+
+    it("does not log deprecation warnings for -latest aliases", () => {
+      _resetDeprecationWarnings();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      models.realtime("lucy-latest");
+      models.realtime("lucy-vton-latest");
+      models.realtime("lucy-restyle-latest");
+      models.video("lucy-latest");
+      models.video("lucy-restyle-latest");
+      models.video("lucy-clip-latest");
+      models.video("lucy-motion-latest");
+      models.image("lucy-image-latest");
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe("Dual-surface models", () => {
+    it("lucy-2 is both a realtime and video model", () => {
+      expect(isRealtimeModel("lucy-2")).toBe(true);
+      expect(isVideoModel("lucy-2")).toBe(true);
+    });
+
+    it("lucy-2.1 is both a realtime and video model", () => {
+      expect(isRealtimeModel("lucy-2.1")).toBe(true);
+      expect(isVideoModel("lucy-2.1")).toBe(true);
+    });
+
+    it("lucy-restyle-2 is both a realtime and video model", () => {
+      expect(isRealtimeModel("lucy-restyle-2")).toBe(true);
+      expect(isVideoModel("lucy-restyle-2")).toBe(true);
+    });
+  });
+
+  describe("Deprecated names still work", () => {
+    it("lucy_2_rt still works as realtime model", () => {
+      const model = models.realtime("lucy_2_rt");
+      expect(model.name).toBe("lucy_2_rt");
+    });
+
+    it("mirage_v2 still works as realtime model", () => {
+      const model = models.realtime("mirage_v2");
+      expect(model.name).toBe("mirage_v2");
+    });
+
+    it("live_avatar still works as realtime model", () => {
+      const model = models.realtime("live_avatar");
+      expect(model.name).toBe("live_avatar");
+    });
+
+    it("lucy-pro-v2v still works as video model", () => {
+      const model = models.video("lucy-pro-v2v");
+      expect(model.name).toBe("lucy-pro-v2v");
+    });
+
+    it("lucy-pro-i2i still works as image model", () => {
+      const model = models.image("lucy-pro-i2i");
+      expect(model.name).toBe("lucy-pro-i2i");
+    });
+  });
+
+  describe("Deprecation warnings", () => {
+    it("warns when using deprecated model name", () => {
+      _resetDeprecationWarnings();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      models.video("lucy-pro-v2v");
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Model "lucy-pro-v2v" is deprecated. Use "lucy-clip" instead.'),
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("warns only once per deprecated alias", () => {
+      _resetDeprecationWarnings();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      models.video("lucy-pro-v2v");
+      models.video("lucy-pro-v2v");
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+
+      warnSpy.mockRestore();
+    });
   });
 });

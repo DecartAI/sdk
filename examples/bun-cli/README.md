@@ -1,6 +1,6 @@
 # Bun CLI Example
 
-A simple CLI for text-to-image generation using the Decart SDK.
+A simple CLI for image editing using the Decart SDK.
 
 ## Setup
 
@@ -27,13 +27,13 @@ A simple CLI for text-to-image generation using the Decart SDK.
 ## Usage
 
 ### Dev-time
-```
-./cli.ts text-to-image "A cyberpunk cityscape at night"
+```bash
+./cli.ts image-edit "A cyberpunk cityscape at night" ./input.png
 ```
 
 ### Compiled
 ```bash
-decart text-to-image "A cyberpunk cityscape at night"
+decart image-edit "A cyberpunk cityscape at night" ./input.png
 ```
 
-The generated image will be saved to `output.png`.
+The edited image will be saved to `output.png`.

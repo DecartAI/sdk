@@ -7,12 +7,15 @@ run(async () => {
     apiKey: process.env.DECART_API_KEY!,
   });
 
-  console.log("Submitting video generation job...");
+  console.log("Submitting video editing job...");
+
+  const inputVideo = fs.readFileSync("input.mp4");
 
   // Submit job
   const job = await client.queue.submit({
-    model: models.video("lucy-pro-t2v"),
+    model: models.video("lucy-clip"),
     prompt: "A timelapse of a flower blooming",
+    data: new Blob([inputVideo]),
   });
 
   console.log("Job ID:", job.job_id);

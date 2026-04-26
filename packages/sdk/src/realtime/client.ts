@@ -118,9 +118,15 @@ const realTimeClientConnectOptionsSchema = z.object({
   livekitPublishCodec: z.enum(["vp8", "vp9", "h264", "av1"]).optional(),
   livekitPublishMaxFramerate: z.number().positive().optional(),
   livekitDegradationPreference: z.enum(["balanced", "maintain-framerate", "maintain-resolution"]).optional(),
+  // aiortc-only: pin a specific RTP port on restrictive networks.
+  // Forwarded as the `rtp_port` query param to the upstream WS.
+  // Ignored on the livekit transport (SFU controls media ports).
+  rtpPort: z.number().optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
+  iceServers?: RTCIceServer[];
+  iceTransportPolicy?: "tcp" | "udp" | "all";
 };
 
 export type Events = {
@@ -166,7 +172,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       throw parsedOptions.error;
     }
 
-    const isAvatarLive = options.model.name === "live_avatar";
+    const isAvatarLive = options.model.name === "live_avatar" || options.model.name === "live-avatar";
 
     const { onRemoteStream, initialState } = parsedOptions.data;
 
@@ -213,7 +219,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
 
       webrtcManager = new WebRTCManager({
-        webrtcUrl: `${url}?${extraQueryPrefix}api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+        webrtcUrl: `${url}?${extraQueryPrefix}api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${options.iceTransportPolicy ? `&ice_transport_policy=${encodeURIComponent(options.iceTransportPolicy)}` : ""}${options.rtpPort != null ? `&rtp_port=${options.rtpPort}` : ""}`,
         integration,
         logger,
         onDiagnostic: (name, data) => {
@@ -243,6 +249,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         livekitPublishCodec: options.livekitPublishCodec,
         livekitPublishMaxFramerate: options.livekitPublishMaxFramerate,
         livekitDegradationPreference: options.livekitDegradationPreference,
+        // TURN-TCP support (PR #116). aiortc-only — livekit owns its
+        // own ICE config via the SFU. Pass-through here so they reach
+        // WebRTCConnection; LiveKitConnection ignores them.
+        iceServers: options.iceServers,
+        expectTurnConfig: !!options.iceTransportPolicy,
+        forceRelay: !!options.iceTransportPolicy && options.iceTransportPolicy !== "all",
       });
 
       const manager = webrtcManager;

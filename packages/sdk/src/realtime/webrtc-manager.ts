@@ -62,6 +62,23 @@ export interface WebRTCConfig {
    * TRANSPORTS_ENABLED).
    */
   transport?: TransportKind;
+  /**
+   * TURN-TCP support (PR #116). aiortc-only — only consumed by
+   * WebRTCConnection; LiveKitConnection ignores these (the SFU owns
+   * its own ICE config). Pass-through still happens here so wiring
+   * stays uniform across transports.
+   *
+   * `iceServers` — explicit STUN/TURN servers to merge into the
+   *    RTCPeerConnection config.
+   * `expectTurnConfig` — when true, WebRTCConnection.connect() awaits
+   *    a `turn_config` WS message from the server before creating
+   *    the peer connection, then merges the server-pushed creds.
+   * `forceRelay` — when true, sets RTCConfiguration.iceTransportPolicy
+   *    to "relay" (TURN-only).
+   */
+  iceServers?: RTCIceServer[];
+  expectTurnConfig?: boolean;
+  forceRelay?: boolean;
 }
 
 const PERMANENT_ERRORS = [
@@ -109,6 +126,9 @@ export class WebRTCManager {
       onDiagnostic: config.onDiagnostic,
     };
     if (transport === "livekit") {
+      // TURN-TCP knobs (iceServers / expectTurnConfig / forceRelay)
+      // are aiortc-only: the LiveKit SFU owns its own ICE config, so
+      // we deliberately don't forward them here.
       this.connection = new LiveKitConnection({
         ...sharedOpts,
         publishSimulcast: config.livekitPublishSimulcast,
@@ -125,6 +145,9 @@ export class WebRTCManager {
         customizeOffer: config.customizeOffer,
         vp8MinBitrate: config.vp8MinBitrate,
         vp8StartBitrate: config.vp8StartBitrate,
+        iceServers: config.iceServers,
+        expectTurnConfig: config.expectTurnConfig,
+        forceRelay: config.forceRelay,
       });
     }
     // Unconditional log so SDK consumers can verify the logger pipeline is wired

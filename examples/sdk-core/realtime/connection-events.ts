@@ -7,7 +7,7 @@
 import { createDecartClient, type DecartSDKError, models } from "@decartai/sdk";
 
 async function main() {
-  const model = models.realtime("mirage_v2");
+  const model = models.realtime("lucy-restyle-2");
 
   const stream = await navigator.mediaDevices.getUserMedia({
     video: {

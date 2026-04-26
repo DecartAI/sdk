@@ -7,7 +7,7 @@
 import { createDecartClient, models } from "@decartai/sdk";
 
 async function main() {
-  const model = models.realtime("lucy_2_rt");
+  const model = models.realtime("lucy-2");
 
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: true,

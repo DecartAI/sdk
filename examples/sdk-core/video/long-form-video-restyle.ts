@@ -12,13 +12,13 @@ run(async () => {
     apiKey,
   });
 
-  console.log("Editing video with lucy-restyle-v2v...");
+  console.log("Editing video with lucy-restyle-2...");
 
   const inputVideo = fs.readFileSync("input.mp4");
 
   // Option 1: Use a text prompt
   const result = await client.queue.submitAndPoll({
-    model: models.video("lucy-restyle-v2v"),
+    model: models.video("lucy-restyle-2"),
     prompt: "Transform to anime style",
     enhance_prompt: true,
     data: new Blob([inputVideo]),
@@ -33,7 +33,7 @@ run(async () => {
   //
   // const referenceImage = fs.readFileSync("reference.png");
   // const result = await client.queue.submitAndPoll({
-  //   model: models.video("lucy-restyle-v2v"),
+  //   model: models.video("lucy-restyle-2"),
   //   reference_image: new Blob([referenceImage]),
   //   data: new Blob([inputVideo]),
   //   onStatusChange: (job) => {

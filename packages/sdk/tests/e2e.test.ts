@@ -65,18 +65,48 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
   }
 
   describe("Process API - Image Models", () => {
-    it("lucy-pro-t2i: text-to-image", async () => {
+    it("lucy-image-2: image-to-image", async () => {
       const result = await client.process({
-        model: models.image("lucy-pro-t2i"),
-        prompt: "A serene Japanese garden with cherry blossoms and a wooden bridge",
-        seed: 222,
-        orientation: "landscape",
+        model: models.image("lucy-image-2"),
+        prompt: "Oil painting in the style of Van Gogh",
+        data: imageBlob,
+        seed: 333,
+        enhance_prompt: false,
       });
 
-      await expectResult(result, "lucy-pro-t2i", ".png");
+      await expectResult(result, "lucy-image-2", ".png");
     });
 
-    it("lucy-pro-i2i: image-to-image", async () => {
+    it("lucy-image-2: image-to-image with reference_image", async () => {
+      const result = await client.process({
+        model: models.image("lucy-image-2"),
+        prompt: "Add the object from the reference image",
+        data: imageBlob,
+        reference_image: imageBlob,
+        seed: 334,
+        enhance_prompt: false,
+      });
+
+      await expectResult(result, "lucy-image-2-reference_image", ".png");
+    });
+  });
+
+  describe("Process API - Image Models (latest aliases)", () => {
+    it("lucy-image-latest: image-to-image", async () => {
+      const result = await client.process({
+        model: models.image("lucy-image-latest"),
+        prompt: "Oil painting in the style of Van Gogh",
+        data: imageBlob,
+        seed: 333,
+        enhance_prompt: false,
+      });
+
+      await expectResult(result, "lucy-image-latest", ".png");
+    });
+  });
+
+  describe("Process API - Image Models (deprecated names)", () => {
+    it("lucy-pro-i2i (deprecated): image-to-image", async () => {
       const result = await client.process({
         model: models.image("lucy-pro-i2i"),
         prompt: "Oil painting in the style of Van Gogh",
@@ -90,43 +120,100 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
   });
 
   describe("Queue API - Video Models", () => {
-    it("lucy-pro-t2v: text-to-video", async () => {
+    it("lucy-clip: video-to-video", async () => {
       const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-pro-t2v"),
-        prompt: "A majestic eagle soaring through mountain peaks at sunset",
+        model: models.video("lucy-clip"),
+        prompt: "Lego World animated style",
+        data: videoBlob,
+        seed: 999,
+        enhance_prompt: true,
+      });
+
+      await expectResult(result, "lucy-clip", ".mp4");
+    });
+
+    it("lucy-restyle-2: video restyling (prompt)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-restyle-2"),
+        prompt: "Cyberpunk neon city style",
+        data: videoBlob,
+        seed: 777,
+      });
+
+      await expectResult(result, "lucy-restyle-2-prompt", ".mp4");
+    });
+
+    it("lucy-restyle-2: video restyling (reference_image)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-restyle-2"),
+        reference_image: imageBlob,
+        data: videoBlob,
+        seed: 777,
+      });
+
+      await expectResult(result, "lucy-restyle-2-reference_image", ".mp4");
+    });
+
+    it("lucy-2: video editing (prompt)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-2"),
+        prompt: "Watercolor painting style with soft brushstrokes",
+        data: videoBlob,
         seed: 42,
-        resolution: "720p",
-        orientation: "landscape",
       });
 
-      await expectResult(result, "lucy-pro-t2v", ".mp4");
+      await expectResult(result, "lucy-2-prompt", ".mp4");
     });
 
-    it("lucy-dev-i2v: image-to-video (dev)", async () => {
+    it("lucy-2: video editing (reference_image)", async () => {
       const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-dev-i2v"),
-        prompt: "The image comes to life with gentle movements",
-        data: imageBlob,
-        seed: 123,
-        resolution: "720p",
+        model: models.video("lucy-2"),
+        prompt: "",
+        reference_image: imageBlob,
+        data: videoBlob,
+        seed: 42,
       });
 
-      await expectResult(result, "lucy-dev-i2v", ".mp4");
+      await expectResult(result, "lucy-2-reference_image", ".mp4");
     });
 
-    it("lucy-pro-i2v: image-to-video (pro)", async () => {
+    it("lucy-2: video editing (prompt + reference_image)", async () => {
       const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-pro-i2v"),
-        prompt: "Transform the image into a dynamic video scene",
-        data: imageBlob,
-        seed: 456,
-        resolution: "720p",
+        model: models.video("lucy-2"),
+        prompt: "Watercolor painting style",
+        reference_image: imageBlob,
+        data: videoBlob,
+        seed: 42,
       });
 
-      await expectResult(result, "lucy-pro-i2v", ".mp4");
+      await expectResult(result, "lucy-2-both", ".mp4");
     });
 
-    it("lucy-pro-v2v: video-to-video", async () => {
+    it("lucy-2.1: video editing (prompt)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-2.1"),
+        prompt: "Watercolor painting style with soft brushstrokes",
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-2.1-prompt", ".mp4");
+    });
+
+    it("lucy-2.1: video editing (reference_image)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-2.1"),
+        prompt: "",
+        reference_image: imageBlob,
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-2.1-reference_image", ".mp4");
+    });
+
+    // Deprecated video model names (aliases)
+    it("lucy-pro-v2v (deprecated): video-to-video", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-pro-v2v"),
         prompt: "Lego World animated style",
@@ -138,18 +225,7 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       await expectResult(result, "lucy-pro-v2v", ".mp4");
     });
 
-    it("lucy-fast-v2v: video-to-video (fast)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-fast-v2v"),
-        prompt: "Watercolor painting style",
-        data: videoBlob,
-        seed: 888,
-      });
-
-      await expectResult(result, "lucy-fast-v2v", ".mp4");
-    });
-
-    it("lucy-restyle-v2v: video restyling (prompt)", async () => {
+    it("lucy-restyle-v2v (deprecated): video restyling", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-restyle-v2v"),
         prompt: "Cyberpunk neon city style",
@@ -157,21 +233,10 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
         seed: 777,
       });
 
-      await expectResult(result, "lucy-restyle-v2v-prompt", ".mp4");
+      await expectResult(result, "lucy-restyle-v2v", ".mp4");
     });
 
-    it("lucy-restyle-v2v: video restyling (reference_image)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-restyle-v2v"),
-        reference_image: imageBlob,
-        data: videoBlob,
-        seed: 777,
-      });
-
-      await expectResult(result, "lucy-restyle-v2v-reference_image", ".mp4");
-    });
-
-    it("lucy-2-v2v: video editing (prompt)", async () => {
+    it("lucy-2-v2v (deprecated): video editing", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-2-v2v"),
         prompt: "Watercolor painting style with soft brushstrokes",
@@ -179,31 +244,57 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
         seed: 42,
       });
 
-      await expectResult(result, "lucy-2-v2v-prompt", ".mp4");
+      await expectResult(result, "lucy-2-v2v", ".mp4");
     });
 
-    it("lucy-2-v2v: video editing (reference_image)", async () => {
+    // Latest aliases (server-side resolution)
+    it("lucy-latest: video editing", async () => {
       const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-2-v2v"),
-        prompt: "",
-        reference_image: imageBlob,
+        model: models.video("lucy-latest"),
+        prompt: "Watercolor painting style with soft brushstrokes",
         data: videoBlob,
         seed: 42,
       });
 
-      await expectResult(result, "lucy-2-v2v-reference_image", ".mp4");
+      await expectResult(result, "lucy-latest", ".mp4");
     });
 
-    it("lucy-2-v2v: video editing (prompt + reference_image)", async () => {
+    it("lucy-restyle-latest: video restyling", async () => {
       const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-2-v2v"),
-        prompt: "Watercolor painting style",
-        reference_image: imageBlob,
+        model: models.video("lucy-restyle-latest"),
+        prompt: "Cyberpunk neon city style",
         data: videoBlob,
-        seed: 42,
+        seed: 777,
       });
 
-      await expectResult(result, "lucy-2-v2v-both", ".mp4");
+      await expectResult(result, "lucy-restyle-latest", ".mp4");
+    });
+
+    it("lucy-clip-latest: video-to-video", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-clip-latest"),
+        prompt: "Lego World animated style",
+        data: videoBlob,
+        seed: 999,
+        enhance_prompt: true,
+      });
+
+      await expectResult(result, "lucy-clip-latest", ".mp4");
+    });
+
+    it("lucy-motion-latest: motion-guided image-to-video", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-motion-latest"),
+        data: imageBlob,
+        trajectory: [
+          { frame: 0, x: 0, y: 0 },
+          { frame: 1, x: 0.1, y: 0.2 },
+          { frame: 2, x: 0.2, y: 0.4 },
+        ],
+        seed: 555,
+      });
+
+      await expectResult(result, "lucy-motion-latest", ".mp4");
     });
 
     it("lucy-motion: motion-guided image-to-video", async () => {

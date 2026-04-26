@@ -3,15 +3,23 @@ import { createDecartClient, models } from "@decartai/sdk";
 import { run } from "../lib/run";
 
 run(async () => {
+  const apiKey = process.env.DECART_API_KEY;
+  if (!apiKey) {
+    throw new Error("DECART_API_KEY environment variable is required");
+  }
+
   const client = createDecartClient({
-    apiKey: process.env.DECART_API_KEY!,
+    apiKey,
   });
 
-  console.log("Generating video from text...");
+  console.log("Editing video with lucy-2.1...");
+
+  const inputVideo = fs.readFileSync("input.mp4");
 
   const result = await client.queue.submitAndPoll({
-    model: models.video("lucy-pro-t2v"),
-    prompt: "An astronaut riding a horse on Mars, cinematic lighting",
+    model: models.video("lucy-2.1"),
+    prompt: "Transform to watercolor painting style with soft brushstrokes",
+    data: new Blob([inputVideo]),
     onStatusChange: (job) => {
       console.log(`Job ${job.job_id}: ${job.status}`);
     },

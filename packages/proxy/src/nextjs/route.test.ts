@@ -98,7 +98,7 @@ describe("Next.js Proxy Adapter", () => {
     describe("Initialization & Configuration", () => {
       it("should return 401 if no API key is provided", async () => {
         const handlers = route({});
-        const request = createNextRequest("/v1/generate/lucy-pro-t2i", { method: "POST" });
+        const request = createNextRequest("/v1/generate/lucy-pro-i2i", { method: "POST" });
 
         const response = await handlers.POST(request);
 
@@ -176,18 +176,18 @@ describe("Next.js Proxy Adapter", () => {
 
         const captureRequest = vi.fn();
         mswServer.use(
-          http.post(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`, async ({ request }) => {
+          http.post(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-i2i`, async ({ request }) => {
             captureRequest(request);
             return HttpResponse.json({});
           }),
         );
 
-        const request = createNextRequest("/v1/generate/lucy-pro-t2i", { method: "POST" });
+        const request = createNextRequest("/v1/generate/lucy-pro-i2i", { method: "POST" });
         await handlers.POST(request);
 
         expect(captureRequest).toHaveBeenCalledTimes(1);
         const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
-        expect(capturedRequest.url).toContain(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`);
+        expect(capturedRequest.url).toContain(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-i2i`);
       });
     });
 
@@ -197,14 +197,14 @@ describe("Next.js Proxy Adapter", () => {
 
         const captureRequest = vi.fn();
         mswServer.use(
-          http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, async ({ request }) => {
+          http.post(`${BASE_URL}/v1/generate/lucy-pro-i2i`, async ({ request }) => {
             captureRequest(request);
             return HttpResponse.json({});
           }),
         );
 
         const testBody = JSON.stringify({ prompt: "A beautiful sunset over the ocean", resolution: "720p" });
-        const request = createNextRequest("/v1/generate/lucy-pro-t2i", {
+        const request = createNextRequest("/v1/generate/lucy-pro-i2i", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: testBody,
@@ -216,7 +216,7 @@ describe("Next.js Proxy Adapter", () => {
         expect(captureRequest).toHaveBeenCalledTimes(1);
         const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(capturedRequest.method).toBe("POST");
-        expect(capturedRequest.url).toContain("/v1/generate/lucy-pro-t2i");
+        expect(capturedRequest.url).toContain("/v1/generate/lucy-pro-i2i");
 
         const body = await capturedRequest.text();
         expect(body).toBe(testBody);
@@ -248,13 +248,13 @@ describe("Next.js Proxy Adapter", () => {
 
         const captureRequest = vi.fn();
         mswServer.use(
-          http.post(`${BASE_URL}/v1/jobs/lucy-pro-t2v`, async ({ request }) => {
+          http.post(`${BASE_URL}/v1/jobs/lucy-pro-v2v`, async ({ request }) => {
             captureRequest(request);
             return HttpResponse.json({});
           }),
         );
 
-        const request = createNextRequest("/v1/jobs/lucy-pro-t2v", {
+        const request = createNextRequest("/v1/jobs/lucy-pro-v2v", {
           method: "POST",
           headers: {
             "User-Agent": "Custom-Agent/1.0",
@@ -278,7 +278,7 @@ describe("Next.js Proxy Adapter", () => {
         const mockResponse = { job_id: "job_abc123", status: "pending" };
 
         mswServer.use(
-          http.post(`${BASE_URL}/v1/jobs/lucy-pro-t2v`, () => {
+          http.post(`${BASE_URL}/v1/jobs/lucy-pro-v2v`, () => {
             return HttpResponse.json(mockResponse, {
               status: 201,
               headers: { "Content-Type": "application/json" },
@@ -286,7 +286,7 @@ describe("Next.js Proxy Adapter", () => {
           }),
         );
 
-        const request = createNextRequest("/v1/jobs/lucy-pro-t2v", { method: "POST" });
+        const request = createNextRequest("/v1/jobs/lucy-pro-v2v", { method: "POST" });
         const response = await handlers.POST(request);
 
         expect(response.status).toBe(201);
@@ -325,7 +325,7 @@ describe("Next.js Proxy Adapter", () => {
         const handlers = route({ apiKey: "test-key" });
 
         mswServer.use(
-          http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, () => {
+          http.post(`${BASE_URL}/v1/generate/lucy-pro-i2i`, () => {
             return HttpResponse.json(
               { error: "Internal Server Error" },
               {
@@ -336,7 +336,7 @@ describe("Next.js Proxy Adapter", () => {
           }),
         );
 
-        const request = createNextRequest("/v1/generate/lucy-pro-t2i", { method: "POST" });
+        const request = createNextRequest("/v1/generate/lucy-pro-i2i", { method: "POST" });
         const response = await handlers.POST(request);
 
         expect(response.status).toBe(500);
@@ -350,12 +350,12 @@ describe("Next.js Proxy Adapter", () => {
         const handlers = route({ apiKey: "test-key" });
 
         mswServer.use(
-          http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, () => {
+          http.post(`${BASE_URL}/v1/generate/lucy-pro-i2i`, () => {
             return HttpResponse.error();
           }),
         );
 
-        const request = createNextRequest("/v1/generate/lucy-pro-t2i", { method: "POST" });
+        const request = createNextRequest("/v1/generate/lucy-pro-i2i", { method: "POST" });
         const response = await handlers.POST(request);
 
         expect(response.status).toBe(500);
@@ -409,7 +409,7 @@ describe("Next.js Proxy Adapter", () => {
     describe("Initialization & Configuration", () => {
       it("should return 401 if no API key is provided", async () => {
         const proxyHandler = handler({});
-        const { req, res, getResponse } = createMockPagesRouter(["v1", "generate", "lucy-pro-t2i"], {
+        const { req, res, getResponse } = createMockPagesRouter(["v1", "generate", "lucy-pro-i2i"], {
           method: "POST",
         });
 
@@ -426,13 +426,13 @@ describe("Next.js Proxy Adapter", () => {
 
         const captureRequest = vi.fn();
         mswServer.use(
-          http.post(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`, async ({ request }) => {
+          http.post(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-i2i`, async ({ request }) => {
             captureRequest(request);
             return HttpResponse.json({});
           }),
         );
 
-        const { req, res } = createMockPagesRouter(["v1", "generate", "lucy-pro-t2i"], {
+        const { req, res } = createMockPagesRouter(["v1", "generate", "lucy-pro-i2i"], {
           method: "POST",
         });
 
@@ -441,7 +441,7 @@ describe("Next.js Proxy Adapter", () => {
 
         expect(captureRequest).toHaveBeenCalledTimes(1);
         const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
-        expect(capturedRequest.url).toContain(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-t2i`);
+        expect(capturedRequest.url).toContain(`${CUSTOM_BASE_URL}/v1/generate/lucy-pro-i2i`);
       });
     });
 
@@ -451,14 +451,14 @@ describe("Next.js Proxy Adapter", () => {
 
         const captureRequest = vi.fn();
         mswServer.use(
-          http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, async ({ request }) => {
+          http.post(`${BASE_URL}/v1/generate/lucy-pro-i2i`, async ({ request }) => {
             captureRequest(request);
             return HttpResponse.json({});
           }),
         );
 
         const testBody = { prompt: "A beautiful sunset over the ocean", resolution: "720p" };
-        const { req, res, getResponse } = createMockPagesRouter(["v1", "generate", "lucy-pro-t2i"], {
+        const { req, res, getResponse } = createMockPagesRouter(["v1", "generate", "lucy-pro-i2i"], {
           method: "POST",
           body: testBody,
           headers: { "content-type": "application/json" },
@@ -472,7 +472,7 @@ describe("Next.js Proxy Adapter", () => {
         expect(captureRequest).toHaveBeenCalledTimes(1);
         const capturedRequest = captureRequest.mock.lastCall?.[0] as Request;
         expect(capturedRequest.method).toBe("POST");
-        expect(capturedRequest.url).toContain("/v1/generate/lucy-pro-t2i");
+        expect(capturedRequest.url).toContain("/v1/generate/lucy-pro-i2i");
 
         const body = await capturedRequest.text();
         expect(body).toBe(JSON.stringify(testBody));
@@ -508,13 +508,13 @@ describe("Next.js Proxy Adapter", () => {
 
         const captureRequest = vi.fn();
         mswServer.use(
-          http.post(`${BASE_URL}/v1/jobs/lucy-pro-t2v`, async ({ request }) => {
+          http.post(`${BASE_URL}/v1/jobs/lucy-pro-v2v`, async ({ request }) => {
             captureRequest(request);
             return HttpResponse.json({});
           }),
         );
 
-        const { req, res } = createMockPagesRouter(["v1", "jobs", "lucy-pro-t2v"], {
+        const { req, res } = createMockPagesRouter(["v1", "jobs", "lucy-pro-v2v"], {
           method: "POST",
           body: { prompt: "A cat playing piano" },
           headers: {
@@ -539,7 +539,7 @@ describe("Next.js Proxy Adapter", () => {
         const mockResponse = { job_id: "job_abc123", status: "pending" };
 
         mswServer.use(
-          http.post(`${BASE_URL}/v1/jobs/lucy-pro-t2v`, () => {
+          http.post(`${BASE_URL}/v1/jobs/lucy-pro-v2v`, () => {
             return HttpResponse.json(mockResponse, {
               status: 201,
               headers: { "Content-Type": "application/json" },
@@ -547,7 +547,7 @@ describe("Next.js Proxy Adapter", () => {
           }),
         );
 
-        const { req, res, getResponse } = createMockPagesRouter(["v1", "jobs", "lucy-pro-t2v"], {
+        const { req, res, getResponse } = createMockPagesRouter(["v1", "jobs", "lucy-pro-v2v"], {
           method: "POST",
         });
 
@@ -595,7 +595,7 @@ describe("Next.js Proxy Adapter", () => {
         const proxyHandler = handler({ apiKey: "test-key" });
 
         mswServer.use(
-          http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, () => {
+          http.post(`${BASE_URL}/v1/generate/lucy-pro-i2i`, () => {
             return HttpResponse.json(
               { error: "Internal Server Error" },
               {
@@ -606,7 +606,7 @@ describe("Next.js Proxy Adapter", () => {
           }),
         );
 
-        const { req, res, getResponse } = createMockPagesRouter(["v1", "generate", "lucy-pro-t2i"], {
+        const { req, res, getResponse } = createMockPagesRouter(["v1", "generate", "lucy-pro-i2i"], {
           method: "POST",
         });
 
@@ -624,12 +624,12 @@ describe("Next.js Proxy Adapter", () => {
         const proxyHandler = handler({ apiKey: "test-key" });
 
         mswServer.use(
-          http.post(`${BASE_URL}/v1/generate/lucy-pro-t2i`, () => {
+          http.post(`${BASE_URL}/v1/generate/lucy-pro-i2i`, () => {
             return HttpResponse.error();
           }),
         );
 
-        const { req, res, getResponse } = createMockPagesRouter(["v1", "generate", "lucy-pro-t2i"], {
+        const { req, res, getResponse } = createMockPagesRouter(["v1", "generate", "lucy-pro-i2i"], {
           method: "POST",
         });
 

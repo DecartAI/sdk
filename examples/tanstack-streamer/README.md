@@ -27,7 +27,7 @@ pnpm dev
 
 ## Features
 
-- Real-time webcam video transformation using `lucy_2_rt`
+- Real-time webcam video transformation using `lucy-2`
 - Producer + subscriber streaming pattern
 - Shareable viewer link via subscribe token
 - Dynamic style prompt updates
@@ -38,7 +38,7 @@ pnpm dev
 
 | Route | Description |
 |-------|-------------|
-| `/` | **Producer** — streams your camera through `lucy_2_rt`, shows styled output, and generates a shareable viewer link |
+| `/` | **Producer** — streams your camera through `lucy-2`, shows styled output, and generates a shareable viewer link |
 | `/watch?token=...` | **Subscriber** — watches the producer's styled stream (receive-only, no camera needed) |
 
 ## How it works
@@ -51,8 +51,8 @@ pnpm dev
 
 ## Models
 
-This example uses `lucy_2_rt` for video editing with reference image support. You can also use:
+This example uses `lucy-2` for video editing with reference image support. You can also use:
 
-- `mirage` - MirageLSD video restyling model (older)
-- `mirage_v2` - MirageLSD v2 for style transformation
-- `lucy_v2v_720p_rt` - Lucy for video editing (add objects, change elements)
+- `lucy-restyle` - MirageLSD video restyling model (older)
+- `lucy-restyle-2` - MirageLSD v2 for style transformation
+- `lucy` - Lucy for video editing (add objects, change elements)

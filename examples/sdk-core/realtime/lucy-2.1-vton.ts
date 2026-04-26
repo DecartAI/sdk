@@ -1,13 +1,13 @@
 /**
  * Browser-only example - requires WebRTC APIs
- * Lucy v2v for realtime video editing (add objects, change elements)
+ * Lucy 2.1 VTON (Virtual Try-On) for realtime garment/outfit transfer
  * See examples/nextjs-realtime or examples/react-vite for runnable demos
  */
 
 import { createDecartClient, models } from "@decartai/sdk";
 
 async function main() {
-  const model = models.realtime("lucy");
+  const model = models.realtime("lucy-2.1-vton");
 
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: true,
@@ -30,15 +30,17 @@ async function main() {
     },
     initialState: {
       prompt: {
-        text: "Add a small dog in the background",
+        text: "Wearing a red leather jacket",
         enhance: true,
       },
     },
   });
 
-  // Apply different edits
-  realtimeClient.setPrompt("Change the person's shirt to red");
-  realtimeClient.setPrompt("Add sunglasses to the person");
+  // Use a reference image of a garment to try on
+  await realtimeClient.set({
+    prompt: "Wearing the outfit from the reference image",
+    image: "https://example.com/outfit-reference.png",
+  });
 
   console.log("Session ID:", realtimeClient.sessionId);
 }
