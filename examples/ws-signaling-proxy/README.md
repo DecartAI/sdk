@@ -1,15 +1,15 @@
-# ws-signaling-proxy
+# ws-control-proxy
 
-Reference implementation of a WebSocket signaling proxy for Decart's realtime models. Sits between end-user clients and Decart's API, forwarding all signaling messages (SDP offers/answers, ICE candidates, prompts, etc.) while keeping your API key server-side.
+Reference implementation of a WebSocket control proxy for Decart's LiveKit-backed realtime models. It sits between end-user clients and Decart's API, forwarding control messages such as `livekit_join`, `livekit_room_info`, prompts, and image updates while keeping your API key server-side.
 
-WebRTC media flows directly between the client and Decart — the proxy only handles the control plane.
+Media flows through the LiveKit room returned by Decart — the proxy only handles the control plane.
 
 ```
-               signaling                   signaling
+                 control                    control
   Client  <----WebSocket---->  Proxy  <----WebSocket---->  Decart
                                  |
-  Client  <----------------WebRTC (direct)-------------->  Decart
-                            audio/video
+  Client  <------------------LiveKit room---------------->  Decart
+                              audio/video
 ```
 
 ## Quick start
@@ -48,8 +48,8 @@ ws://localhost:8080/v1/stream?model=lucy_2_rt
 Each client WebSocket connection creates a `ProxySession` that:
 
 1. Opens an upstream connection to Decart with the server's API key
-2. Forwards all messages bidirectionally
+2. Forwards LiveKit control messages bidirectionally
 3. Buffers client messages until the upstream connection is ready
 4. Propagates close events in both directions
 
-The proxy does not inspect or modify message contents — it's a transparent pipe with structured logging.
+The proxy does not modify message contents — it is a transparent pipe with structured logging for the LiveKit control protocol.

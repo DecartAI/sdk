@@ -13,7 +13,7 @@ if (!DECART_API_KEY) {
 
 const server = createServer((_req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("ws-signaling-proxy");
+  res.end("ws-control-proxy");
 });
 
 const wss = new WebSocketServer({ server });
@@ -37,7 +37,7 @@ wss.on("connection", (clientWs: WebSocket, req) => {
 
 server.listen(PORT, () => {
   console.log(`[proxy] listening on ws://localhost:${PORT}`);
-  console.log(`[proxy] connect with: ws://localhost:${PORT}/?model=lucy_2_rt`);
+  console.log(`[proxy] connect with: ws://localhost:${PORT}/v1/stream?model=lucy_2_rt`);
 });
 
 const shutdown = () => {

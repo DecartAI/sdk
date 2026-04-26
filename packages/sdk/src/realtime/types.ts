@@ -1,22 +1,3 @@
-export type OfferMessage = {
-  type: "offer";
-  sdp: string;
-};
-
-export type AnswerMessage = {
-  type: "answer";
-  sdp: string;
-};
-
-export type IceCandidateMessage = {
-  type: "ice-candidate";
-  candidate: RTCIceCandidateInit | null;
-};
-
-export type ReadyMessage = {
-  type: "ready";
-};
-
 export type PromptMessage = {
   type: "prompt";
   prompt: string;
@@ -88,14 +69,21 @@ export type SessionIdMessage = {
   server_port: number;
 };
 
+export type LiveKitJoinMessage = {
+  type: "livekit_join";
+};
+
+export type LiveKitRoomInfoMessage = {
+  type: "livekit_room_info";
+  livekit_url: string;
+  token: string;
+  room_name: string;
+};
+
 export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
 
 // Incoming message types (from server)
 export type IncomingWebRTCMessage =
-  | ReadyMessage
-  | OfferMessage
-  | AnswerMessage
-  | IceCandidateMessage
   | PromptAckMessage
   | ErrorMessage
   | SetImageAckMessage
@@ -103,14 +91,10 @@ export type IncomingWebRTCMessage =
   | GenerationTickMessage
   | GenerationEndedMessage
   | SessionIdMessage
-  | ServerMetricsMessage;
+  | ServerMetricsMessage
+  | LiveKitRoomInfoMessage;
 
 // Outgoing message types (to server)
-export type OutgoingWebRTCMessage =
-  | OfferMessage
-  | AnswerMessage
-  | IceCandidateMessage
-  | PromptMessage
-  | SetAvatarImageMessage;
+export type OutgoingWebRTCMessage = LiveKitJoinMessage | PromptMessage | SetAvatarImageMessage;
 
 export type OutgoingMessage = PromptMessage | SetAvatarImageMessage;

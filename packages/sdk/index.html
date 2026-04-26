@@ -302,15 +302,12 @@
             </select>
         </div>
         <div class="control-group">
-            <label>Transport:</label>
-            <div style="display:flex">
-                <label style="font-weight:normal;"><input type="radio" name="transport" value="aiortc" checked> aiortc (default)</label>
-                <label style="font-weight:normal;margin-left:16px;"><input type="radio" name="transport" value="livekit"> livekit</label>
-            </div>
-        </div>
-        <div class="control-group">
             <label for="initial-prompt">Initial Prompt (empty = passthrough):</label>
             <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
+        </div>
+        <div class="control-group checkbox-group">
+            <input type="checkbox" id="stream-audio-toggle" checked>
+            <label for="stream-audio-toggle" style="margin: 0; font-weight: normal;">Stream microphone audio</label>
         </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
@@ -436,7 +433,7 @@
     
     <script type="module">
         // Import the Decart SDK (with cache busting timestamp)
-        import { createDecartClient, models, createConsoleLogger } from './dist/index.js';
+        import { createConsoleLogger, createDecartClient, models } from './dist/index.js';
 
         
         // State management
@@ -454,6 +451,7 @@
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             initialPrompt: document.getElementById('initial-prompt'),
+            streamAudioToggle: document.getElementById('stream-audio-toggle'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
             disconnectBtn: document.getElementById('disconnect-btn'),
@@ -588,6 +586,7 @@
                     (navigator.maxTouchPoints > 0 && window.matchMedia('(pointer: coarse)').matches);
                 const camWidth = isMobile ? model.height : model.width;
                 const camHeight = isMobile ? model.width : model.height;
+                const streamAudio = elements.streamAudioToggle.checked;
                 const videoConstraints = isMobile
                     ? {
                         frameRate: { ideal: model.fps, max: 60 },
@@ -605,10 +604,11 @@
                     `Camera: ${isMobile ? "portrait (mobile)" : "landscape (desktop)"} ideal ${camWidth}×${camHeight}`,
                     'info',
                 );
+                addLog(`Microphone audio: ${streamAudio ? 'enabled' : 'disabled'}`, 'info');
                 try {
                     localStream = await navigator.mediaDevices.getUserMedia({
                         video: videoConstraints,
-                        audio: true,
+                        audio: streamAudio,
                     });
                 } catch (err) {
                     if (isMobile) {
@@ -619,7 +619,7 @@
                                 height: { ideal: camHeight },
                                 facingMode: { ideal: 'user' },
                             },
-                            audio: true,
+                            audio: streamAudio,
                         });
                     } else {
                         throw err;
@@ -662,7 +662,7 @@
                     logger: createDemoLogger(),
                 });
                 
-                addLog('Connecting to Decart server...', 'info');
+                addLog('Connecting to Decart server via LiveKit...', 'info');
                 
                 // Build initial prompt from text field (empty / null toggle = passthrough)
                 const initialPromptText = elements.initialPrompt.value.trim();
@@ -681,11 +681,8 @@
                     initialImage = await initialImageResponse.blob();
                 }
 
-                const selectedTransport = document.querySelector('input[name="transport"]:checked')?.value ?? 'aiortc';
-                addLog(`Transport: ${selectedTransport}`, 'info');
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
-                    transport: selectedTransport,
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;

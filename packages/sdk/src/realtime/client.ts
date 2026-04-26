@@ -15,12 +15,7 @@ import {
   type SubscribeOptions,
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
-import type {
-  ConnectionState,
-  GenerationTickMessage,
-  ServerMetricsMessage,
-  SessionIdMessage,
-} from "./types";
+import type { ConnectionState, GenerationTickMessage, ServerMetricsMessage, SessionIdMessage } from "./types";
 import { WebRTCManager } from "./webrtc-manager";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
@@ -97,13 +92,12 @@ const realTimeClientConnectOptionsSchema = z.object({
     message: "onRemoteStream must be a function",
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
+  // Deprecated compatibility no-op. LiveKit owns media negotiation internally,
+  // so the option is accepted but ignored.
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
-  // Opt-in per-session WebRTC transport. Defaults to "aiortc" (current
-  // shipping behavior). Set to "livekit" to join a LiveKit SFU room; the
-  // inference pod must have livekit in TRANSPORTS_ENABLED or the session
-  // will be rejected.
-  transport: z.enum(["aiortc", "livekit"]).optional(),
-  // Client-side livekit publish overrides. Ignored on aiortc.
+  // Realtime always uses the LiveKit transport (SFU). The inference pod must
+  // have livekit in TRANSPORTS_ENABLED.
+  // Client-side LiveKit `publishTrack` options:
   //  - `livekitPublishSimulcast` defaults to true (livekit-client default).
   //  - `livekitPublishMaxBitrateKbps` defaults to 2500. Pass `null` to
   //    opt out of the cap entirely (lets Chrome BWE run unclamped).
@@ -229,13 +223,9 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           logger.error("WebRTC error", { error: error.message });
           emitOrBuffer("error", classifyWebrtcError(error));
         },
-        customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
-        vp8MinBitrate: 300,
-        vp8StartBitrate: 600,
         modelName: options.model.name,
         initialImage,
         initialPrompt,
-        transport: options.transport,
         livekitPublishSimulcast: options.livekitPublishSimulcast,
         livekitPublishMaxBitrateKbps: options.livekitPublishMaxBitrateKbps,
         livekitAdaptiveStream: options.livekitAdaptiveStream,
@@ -307,8 +297,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       };
       manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
 
-      // Opt-in server-side metrics — fans WebRTCConnection + LiveKitConnection
-      // emissions out onto the public RealTimeClient.on("serverMetrics", …).
+      // Opt-in server-side metrics from the control WebSocket.
       const serverMetricsListener = (msg: ServerMetricsMessage) => {
         emitOrBuffer("serverMetrics", msg);
       };
@@ -331,8 +320,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         videoStalled = false;
         stallStartMs = 0;
         statsCollector = new WebRTCStatsCollector();
-        // For aiortc this is the raw RTCPeerConnection; for livekit it's
-        // an aggregator over the Room's tracks. Either way the collector
+        // LiveKit: aggregator over the room's tracks. The collector
         // just calls `.getStats()` and parses the returned report.
         const source = manager.getStatsProvider();
         statsCollectorSource = source;

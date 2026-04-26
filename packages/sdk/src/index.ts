@@ -29,13 +29,8 @@ export type {
   DiagnosticEvent,
   DiagnosticEventName,
   DiagnosticEvents,
-  IceCandidateEvent,
-  IceStateEvent,
-  PeerConnectionStateEvent,
   PhaseTimingEvent,
   ReconnectEvent,
-  SelectedCandidatePairEvent,
-  SignalingStateEvent,
   VideoStallEvent,
 } from "./realtime/diagnostics";
 export type { SetInput } from "./realtime/methods";
@@ -122,6 +117,8 @@ export type DecartClientOptions =
  * @param options.realtimeBaseUrl - Override the default WebSocket base URL for realtime connections.
  * @param options.integration - Optional integration identifier.
  *
+ * Realtime WebRTC uses the LiveKit transport only (inference must enable it in `TRANSPORTS_ENABLED`).
+ *
  * @example
  * ```ts
  * //  (direct API access)Option 1: Explicit API key
@@ -179,7 +176,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
   }
   const { integration } = parsedOptions.data;
   const logger = "logger" in options && options.logger ? options.logger : noopLogger;
-  const telemetryEnabled = "telemetry" in options && options.telemetry === false ? false : true;
+  const telemetryEnabled = !("telemetry" in options && options.telemetry === false);
 
   // Realtime (WebRTC) always requires direct API access with API key
   // Proxy mode is only for HTTP endpoints (process, queue, tokens)

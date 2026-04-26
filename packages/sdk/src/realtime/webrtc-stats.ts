@@ -281,37 +281,21 @@ export class WebRTCStatsCollector {
         const jitterBufferTargetDelay = (r.jitterBufferTargetDelay as number) ?? 0;
         const jitterBufferMinimumDelay = (r.jitterBufferMinimumDelay as number) ?? 0;
 
-        const avgDecodeTimeMs = framesDecoded > 0
-          ? (totalDecodeTime / framesDecoded) * 1000
-          : null;
-        const avgProcessingDelayMs = framesDecoded > 0
-          ? (totalProcessingDelay / framesDecoded) * 1000
-          : null;
-        const avgInterFrameDelayMs = framesDecoded > 0
-          ? (totalInterFrameDelay / framesDecoded) * 1000
-          : null;
+        const avgDecodeTimeMs = framesDecoded > 0 ? (totalDecodeTime / framesDecoded) * 1000 : null;
+        const avgProcessingDelayMs = framesDecoded > 0 ? (totalProcessingDelay / framesDecoded) * 1000 : null;
+        const avgInterFrameDelayMs = framesDecoded > 0 ? (totalInterFrameDelay / framesDecoded) * 1000 : null;
         // Variance σ² = E[X²] - E[X]² ; std-dev = sqrt(σ²). Report std-dev
         // in ms — more actionable than variance for a threshold-based
         // "is the path jittery" check.
         const interFrameDelayVarianceMs =
           framesDecoded > 0
             ? Math.sqrt(
-                Math.max(
-                  0,
-                  totalSquaredInterFrameDelay / framesDecoded -
-                    Math.pow(totalInterFrameDelay / framesDecoded, 2),
-                ),
+                Math.max(0, totalSquaredInterFrameDelay / framesDecoded - (totalInterFrameDelay / framesDecoded) ** 2),
               ) * 1000
             : null;
-        const avgJitterBufferMs = jbEmitted > 0
-          ? (jitterBufferDelay / jbEmitted) * 1000
-          : null;
-        const jitterBufferTargetDelayMs = jbEmitted > 0
-          ? (jitterBufferTargetDelay / jbEmitted) * 1000
-          : null;
-        const jitterBufferMinimumDelayMs = jbEmitted > 0
-          ? (jitterBufferMinimumDelay / jbEmitted) * 1000
-          : null;
+        const avgJitterBufferMs = jbEmitted > 0 ? (jitterBufferDelay / jbEmitted) * 1000 : null;
+        const jitterBufferTargetDelayMs = jbEmitted > 0 ? (jitterBufferTargetDelay / jbEmitted) * 1000 : null;
+        const jitterBufferMinimumDelayMs = jbEmitted > 0 ? (jitterBufferMinimumDelay / jbEmitted) * 1000 : null;
 
         video = {
           framesDecoded,
@@ -379,12 +363,8 @@ export class WebRTCStatsCollector {
         const retransmittedPacketsSent = (r.retransmittedPacketsSent as number) ?? 0;
         const targetBitrate = (r.targetBitrate as number | undefined) ?? null;
 
-        const avgEncodeTimeMs = framesEncoded > 0
-          ? (totalEncodeTime / framesEncoded) * 1000
-          : null;
-        const avgPacketSendDelayMs = packetsSent > 0
-          ? (totalPacketSendDelay / packetsSent) * 1000
-          : null;
+        const avgEncodeTimeMs = framesEncoded > 0 ? (totalEncodeTime / framesEncoded) * 1000 : null;
+        const avgPacketSendDelayMs = packetsSent > 0 ? (totalPacketSendDelay / packetsSent) * 1000 : null;
         const avgQp = framesEncoded > 0 ? qpSum / framesEncoded : null;
 
         if (outboundVideo === null) {
@@ -426,10 +406,8 @@ export class WebRTCStatsCollector {
             outboundVideo.frameHeight = frameHeight;
             outboundVideo.framesPerSecond = (r.framesPerSecond as number) ?? 0;
             outboundVideo.qualityLimitationReason = (r.qualityLimitationReason as string) ?? "none";
-            outboundVideo.qualityLimitationDurations =
-              (r.qualityLimitationDurations as Record<string, number>) ?? {};
-            outboundVideo.targetBitrateKbps =
-              targetBitrate != null ? Math.round(targetBitrate / 1000) : null;
+            outboundVideo.qualityLimitationDurations = (r.qualityLimitationDurations as Record<string, number>) ?? {};
+            outboundVideo.targetBitrateKbps = targetBitrate != null ? Math.round(targetBitrate / 1000) : null;
             outboundVideo.avgEncodeTimeMs = avgEncodeTimeMs;
             outboundVideo.avgPacketSendDelayMs = avgPacketSendDelayMs;
             outboundVideo.avgQp = avgQp;
@@ -484,9 +462,7 @@ export class WebRTCStatsCollector {
     // is O(1) on the spec-compliant Map, so per-pair resolution is cheap.
     if (succeededPairs.length > 0) {
       const toInfo = (id: string): IceCandidateInfo | null => {
-        const c = (rawStats as unknown as Map<string, unknown>).get(id) as
-          | Record<string, unknown>
-          | undefined;
+        const c = (rawStats as unknown as Map<string, unknown>).get(id) as Record<string, unknown> | undefined;
         if (!c) return null;
         return {
           // browsers may report `ip` (older spec) or `address` (newer). Prefer `address`.
@@ -514,8 +490,7 @@ export class WebRTCStatsCollector {
     // only the initial `let outboundVideo = null` and narrows to `never`.
     const ov = outboundVideo as unknown as OutboundVideo | null;
     if (ov !== null) {
-      const outBitrate =
-        elapsed > 0 ? ((ov.bytesSent - this.prevBytesSentVideo) * 8) / elapsed : 0;
+      const outBitrate = elapsed > 0 ? ((ov.bytesSent - this.prevBytesSentVideo) * 8) / elapsed : 0;
       // Clamp to zero: when tracks are added/removed mid-session (new
       // simulcast layer, publisher swap) total bytesSent can transiently
       // drop. Negative bitrate is nonsensical to downstream consumers.

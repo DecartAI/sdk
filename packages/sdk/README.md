@@ -21,6 +21,9 @@ For complete documentation, guides, and examples, visit:
 
 ### Real-time Video Transformation
 
+Realtime connections are LiveKit-backed in the SDK. Existing client usage stays the same: provide a
+camera `MediaStream`, choose a realtime model, and handle the transformed remote stream.
+
 ```typescript
 import { createDecartClient, models } from "@decartai/sdk";
 

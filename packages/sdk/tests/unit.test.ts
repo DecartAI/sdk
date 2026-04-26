@@ -300,6 +300,166 @@ describe("Decart SDK", () => {
       });
     });
   });
+
+  describe("connect startup conditioning", () => {
+    it("sends initial image with the initial prompt after joining the LiveKit room", async () => {
+      const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+      const sentMessages: Array<{ type: string }> = [];
+
+      class FakeWebSocket {
+        static OPEN = 1;
+        static CLOSED = 3;
+        readyState = FakeWebSocket.OPEN;
+        onopen: (() => void) | null = null;
+        onmessage: ((event: { data: string }) => void) | null = null;
+        onerror: (() => void) | null = null;
+        onclose: ((event: { code: number; reason: string }) => void) | null = null;
+
+        constructor(_url: string) {
+          setTimeout(() => this.onopen?.(), 0);
+        }
+
+        send(data: string): void {
+          const msg = JSON.parse(data) as { type: string };
+          sentMessages.push(msg);
+          if (msg.type === "livekit_join") {
+            setTimeout(
+              () =>
+                this.onmessage?.({
+                  data: JSON.stringify({
+                    type: "livekit_room_info",
+                    livekit_url: "wss://livekit.example.com",
+                    token: "token",
+                    room_name: "room",
+                  }),
+                }),
+              0,
+            );
+          }
+        }
+
+        close(): void {
+          this.readyState = FakeWebSocket.CLOSED;
+          this.onclose?.({ code: 1000, reason: "" });
+        }
+      }
+
+      vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+
+      try {
+        const connection = new LiveKitConnection({
+          initialImage: "base64-image",
+          initialPrompt: { text: "Anime", enhance: false },
+        });
+        const internal = connection as unknown as {
+          joinRoom: (info: unknown) => Promise<void>;
+        };
+        const joinSpy = vi.spyOn(internal, "joinRoom").mockResolvedValue(undefined);
+        const imageSpy = vi.spyOn(connection, "setImageBase64").mockResolvedValue(undefined);
+
+        await connection.connect("wss://example.com/v1/stream", {} as MediaStream, 750);
+
+        expect(sentMessages).toContainEqual({ type: "livekit_join" });
+        expect(joinSpy).toHaveBeenCalledWith({
+          type: "livekit_room_info",
+          livekit_url: "wss://livekit.example.com",
+          token: "token",
+          room_name: "room",
+        });
+        expect(imageSpy).toHaveBeenCalledWith("base64-image", { prompt: "Anime", enhance: false });
+        expect(connection.state).toBe("connected");
+
+        joinSpy.mockRestore();
+        imageSpy.mockRestore();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("surfaces server error control messages", async () => {
+      const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+      const onError = vi.fn();
+      const connection = new LiveKitConnection({ onError });
+      const internal = connection as unknown as {
+        handleControlMessage: (msg: { type: "error"; error: string }) => void;
+      };
+
+      internal.handleControlMessage({ type: "error", error: "server unavailable" });
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError.mock.calls[0][0]).toMatchObject({
+        message: "server unavailable",
+        source: "server",
+      });
+    });
+
+    it("aborts connect when a server error arrives during startup conditioning", async () => {
+      const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+
+      class FakeWebSocket {
+        static OPEN = 1;
+        static CLOSED = 3;
+        readyState = FakeWebSocket.OPEN;
+        onopen: (() => void) | null = null;
+        onmessage: ((event: { data: string }) => void) | null = null;
+        onerror: (() => void) | null = null;
+        onclose: ((event: { code: number; reason: string }) => void) | null = null;
+
+        constructor(_url: string) {
+          setTimeout(() => this.onopen?.(), 0);
+        }
+
+        send(data: string): void {
+          const msg = JSON.parse(data) as { type: string };
+          if (msg.type === "livekit_join") {
+            setTimeout(
+              () =>
+                this.onmessage?.({
+                  data: JSON.stringify({
+                    type: "livekit_room_info",
+                    livekit_url: "wss://livekit.example.com",
+                    token: "token",
+                    room_name: "room",
+                  }),
+                }),
+              0,
+            );
+          }
+        }
+
+        close(): void {
+          this.readyState = FakeWebSocket.CLOSED;
+          this.onclose?.({ code: 1000, reason: "" });
+        }
+      }
+
+      vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+
+      try {
+        const onError = vi.fn();
+        const connection = new LiveKitConnection({ initialImage: "base64-image", onError });
+        const internal = connection as unknown as {
+          handleControlMessage: (msg: { type: "error"; error: string }) => void;
+          joinRoom: (info: unknown) => Promise<void>;
+        };
+        const joinSpy = vi.spyOn(internal, "joinRoom").mockResolvedValue(undefined);
+        const imageSpy = vi.spyOn(connection, "setImageBase64").mockReturnValue(new Promise<void>(() => {}));
+
+        const connectPromise = connection.connect("wss://example.com/v1/stream", {} as MediaStream, 750);
+        await vi.waitFor(() => expect(imageSpy).toHaveBeenCalled());
+
+        internal.handleControlMessage({ type: "error", error: "server unavailable" });
+
+        await expect(connectPromise).rejects.toThrow("server unavailable");
+        expect(onError).toHaveBeenCalledTimes(1);
+
+        joinSpy.mockRestore();
+        imageSpy.mockRestore();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
 });
 
 describe("Queue API", () => {
@@ -1020,7 +1180,8 @@ describe("Tokens API", () => {
 
       expect(lastRequest?.headers.get("content-type")).toBe("application/json");
       const body = await lastRequest?.text();
-      expect(JSON.parse(body!)).toEqual({});
+      expect(body).toBeDefined();
+      expect(JSON.parse(body ?? "")).toEqual({});
     });
 
     it("sends expiresIn in request body", async () => {
@@ -1155,18 +1316,18 @@ describe("Lucy 2 realtime", () => {
   });
 });
 
-describe("WebRTCConnection", () => {
+describe("LiveKitConnection", () => {
   describe("setImageBase64", () => {
     it("rejects immediately when WebSocket is not open", async () => {
-      const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-      const connection = new WebRTCConnection();
+      const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+      const connection = new LiveKitConnection();
 
       await expect(connection.setImageBase64("base64data", { timeout: 5000 })).rejects.toThrow("WebSocket is not open");
     });
 
     it("rejects immediately with default timeout when WebSocket is not open", async () => {
-      const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-      const connection = new WebRTCConnection();
+      const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+      const connection = new LiveKitConnection();
 
       await expect(connection.setImageBase64("base64data")).rejects.toThrow("WebSocket is not open");
     });
@@ -1181,8 +1342,8 @@ describe("WebRTCConnection", () => {
       });
 
       it("uses custom timeout when send succeeds but ack is not received", async () => {
-        const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-        const connection = new WebRTCConnection();
+        const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+        const connection = new LiveKitConnection();
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
         const customTimeout = 5000;
@@ -1206,8 +1367,8 @@ describe("WebRTCConnection", () => {
       });
 
       it("uses default timeout (30000ms) when send succeeds but ack is not received", async () => {
-        const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-        const connection = new WebRTCConnection();
+        const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+        const connection = new LiveKitConnection();
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
         let rejected = false;
@@ -1233,8 +1394,8 @@ describe("WebRTCConnection", () => {
     it("sends set_image with null image_data and null prompt for passthrough", async () => {
       vi.useFakeTimers();
       try {
-        const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-        const connection = new WebRTCConnection();
+        const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+        const connection = new LiveKitConnection();
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
         const promise = connection.setImageBase64(null, { prompt: null }).catch(() => {});
@@ -1251,63 +1412,6 @@ describe("WebRTCConnection", () => {
         sendSpy.mockRestore();
       } finally {
         vi.useRealTimers();
-      }
-    });
-  });
-
-  describe("setupNewPeerConnection", () => {
-    it("uses only STUN servers for peer connections", async () => {
-      const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-      const iceServerCounts: number[] = [];
-
-      class FakePeerConnection {
-        connectionState: RTCPeerConnectionState = "new";
-        iceConnectionState: RTCIceConnectionState = "new";
-        ontrack: ((event: RTCTrackEvent) => void) | null = null;
-        onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null;
-        onconnectionstatechange: (() => void) | null = null;
-        oniceconnectionstatechange: (() => void) | null = null;
-
-        constructor(config: RTCConfiguration) {
-          iceServerCounts.push(config.iceServers?.length ?? 0);
-        }
-
-        getSenders(): RTCRtpSender[] {
-          return [];
-        }
-
-        removeTrack(): void {}
-
-        close(): void {}
-
-        addTrack(): RTCRtpSender {
-          return {} as RTCRtpSender;
-        }
-
-        addTransceiver(): RTCRtpTransceiver {
-          return {} as RTCRtpTransceiver;
-        }
-      }
-
-      vi.stubGlobal("RTCPeerConnection", FakePeerConnection as unknown as typeof RTCPeerConnection);
-
-      try {
-        const connection = new WebRTCConnection();
-        const internalConnection = connection as unknown as {
-          handleSignalingMessage: (msg: unknown) => Promise<void>;
-          localStream: { getTracks: () => MediaStreamTrack[] };
-          setupNewPeerConnection: () => Promise<void>;
-        };
-
-        vi.spyOn(internalConnection, "handleSignalingMessage").mockResolvedValue(undefined);
-        internalConnection.localStream = { getTracks: () => [] };
-
-        await internalConnection.setupNewPeerConnection();
-        await internalConnection.setupNewPeerConnection();
-
-        expect(iceServerCounts).toEqual([1, 1]);
-      } finally {
-        vi.unstubAllGlobals();
       }
     });
   });
@@ -1605,60 +1709,6 @@ describe("Subscribe Token", () => {
 });
 
 describe("Subscribe Client", () => {
-  it("subscribe mode sets recvonly transceivers for video and audio when localStream is null", async () => {
-    const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-    const transceiverCalls: Array<{ kind: string; init: RTCRtpTransceiverInit }> = [];
-
-    class FakePeerConnection {
-      connectionState: RTCPeerConnectionState = "new";
-      iceConnectionState: RTCIceConnectionState = "new";
-      ontrack: ((event: RTCTrackEvent) => void) | null = null;
-      onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null;
-      onconnectionstatechange: (() => void) | null = null;
-      oniceconnectionstatechange: (() => void) | null = null;
-
-      getSenders(): RTCRtpSender[] {
-        return [];
-      }
-
-      removeTrack(): void {}
-
-      close(): void {}
-
-      addTrack(): RTCRtpSender {
-        return {} as RTCRtpSender;
-      }
-
-      addTransceiver(kind: string, init: RTCRtpTransceiverInit): RTCRtpTransceiver {
-        transceiverCalls.push({ kind, init });
-        return {} as RTCRtpTransceiver;
-      }
-    }
-
-    vi.stubGlobal("RTCPeerConnection", FakePeerConnection as unknown as typeof RTCPeerConnection);
-
-    try {
-      const connection = new WebRTCConnection();
-      const internal = connection as unknown as {
-        handleSignalingMessage: (msg: unknown) => Promise<void>;
-        localStream: MediaStream | null;
-        setupNewPeerConnection: () => Promise<void>;
-      };
-
-      vi.spyOn(internal, "handleSignalingMessage").mockResolvedValue(undefined);
-      internal.localStream = null;
-
-      await internal.setupNewPeerConnection();
-
-      expect(transceiverCalls).toEqual([
-        { kind: "video", init: { direction: "recvonly" } },
-        { kind: "audio", init: { direction: "recvonly" } },
-      ]);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
   it("subscribe mode allows reconnect with null localStream", async () => {
     const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
 
@@ -1684,6 +1734,49 @@ describe("Subscribe Client", () => {
       expect(reconnectSpy).toHaveBeenCalledTimes(1);
     } finally {
       reconnectSpy.mockRestore();
+    }
+  });
+
+  it("accepts customizeOffer as a deprecated no-op", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+
+    const websocketEmitter = {
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+      const mgr = this as unknown as {
+        config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
+        managerState: import("../src/realtime/types").ConnectionState;
+      };
+      mgr.managerState = "connected";
+      mgr.config.onConnectionStateChange?.("connected");
+      return true;
+    });
+    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const emitterSpy = vi
+      .spyOn(WebRTCManager.prototype, "getWebsocketMessageEmitter")
+      .mockReturnValue(websocketEmitter as never);
+    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+    const customizeOffer = vi.fn(async () => {});
+
+    try {
+      const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "test-key" });
+      const client = await realtime.connect({} as MediaStream, {
+        model: models.realtime("mirage_v2"),
+        onRemoteStream: vi.fn(),
+        customizeOffer,
+      });
+
+      expect(client.isConnected()).toBe(true);
+      expect(customizeOffer).not.toHaveBeenCalled();
+      client.disconnect();
+    } finally {
+      connectSpy.mockRestore();
+      stateSpy.mockRestore();
+      emitterSpy.mockRestore();
+      cleanupSpy.mockRestore();
     }
   });
 
@@ -1920,14 +2013,14 @@ describe("Subscribe Client", () => {
     }
   });
 
-  it("restarts stats collection when peer connection changes after reconnect", async () => {
+  it("restarts stats collection when stats source changes after reconnect (LiveKit)", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
     const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
 
-    const firstPeerConnection = {} as RTCPeerConnection;
-    const secondPeerConnection = {} as RTCPeerConnection;
-    let currentPeerConnection = firstPeerConnection;
+    const firstStatsSource = { getStats: vi.fn() };
+    const secondStatsSource = { getStats: vi.fn() };
+    let currentStatsSource: typeof firstStatsSource = firstStatsSource;
     let onConnectionStateChange: ((state: import("../src/realtime/types").ConnectionState) => void) | undefined;
 
     const startSpy = vi.spyOn(WebRTCStatsCollector.prototype, "start").mockImplementation(() => {});
@@ -1944,9 +2037,9 @@ describe("Subscribe Client", () => {
       return true;
     });
     const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
-    const peerConnectionSpy = vi
-      .spyOn(WebRTCManager.prototype, "getPeerConnection")
-      .mockImplementation(() => currentPeerConnection);
+    const statsProviderSpy = vi
+      .spyOn(WebRTCManager.prototype, "getStatsProvider")
+      .mockImplementation(() => currentStatsSource);
     const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
@@ -1962,13 +2055,13 @@ describe("Subscribe Client", () => {
       });
 
       expect(startSpy).toHaveBeenCalledTimes(1);
-      expect(startSpy.mock.calls[0][0]).toBe(firstPeerConnection);
+      expect(startSpy.mock.calls[0][0]).toBe(firstStatsSource);
 
-      currentPeerConnection = secondPeerConnection;
+      currentStatsSource = secondStatsSource;
       onConnectionStateChange?.("connected");
 
       expect(startSpy).toHaveBeenCalledTimes(2);
-      expect(startSpy.mock.calls[1][0]).toBe(secondPeerConnection);
+      expect(startSpy.mock.calls[1][0]).toBe(secondStatsSource);
 
       client.disconnect();
       expect(stopSpy).toHaveBeenCalled();
@@ -1977,7 +2070,7 @@ describe("Subscribe Client", () => {
       stopSpy.mockRestore();
       connectSpy.mockRestore();
       stateSpy.mockRestore();
-      peerConnectionSpy.mockRestore();
+      statsProviderSpy.mockRestore();
       cleanupSpy.mockRestore();
     }
   });
@@ -2149,7 +2242,7 @@ describe("WebRTC Error Classification", () => {
 
   it("classifies unknown errors as signaling errors", async () => {
     const { classifyWebrtcError, ERROR_CODES } = await import("../src/utils/errors.js");
-    const result = classifyWebrtcError(new Error("SDP offer failed"));
+    const result = classifyWebrtcError(new Error("room join failed"));
     expect(result.code).toBe(ERROR_CODES.WEBRTC_SIGNALING_ERROR);
   });
 
@@ -2758,172 +2851,6 @@ describe("TelemetryReporter", () => {
 });
 
 describe("WebSockets Connection", () => {
-  it("connect resolves when state becomes generating before poll observes connected", async () => {
-    const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-
-    class FakeWebSocket {
-      static OPEN = 1;
-      static CLOSED = 3;
-      readyState = FakeWebSocket.OPEN;
-      onopen: (() => void) | null = null;
-      onmessage: ((event: { data: string }) => void) | null = null;
-      onerror: (() => void) | null = null;
-      onclose: (() => void) | null = null;
-
-      constructor(_url: string) {
-        setTimeout(() => this.onopen?.(), 0);
-      }
-
-      send(data: string): void {
-        // Auto-ack set_image messages so Phase 2 completes
-        const msg = JSON.parse(data);
-        if (msg.type === "set_image") {
-          setTimeout(() => this.onmessage?.({ data: JSON.stringify({ type: "set_image_ack", success: true }) }), 0);
-        }
-      }
-
-      close(): void {
-        this.readyState = FakeWebSocket.CLOSED;
-        this.onclose?.();
-      }
-    }
-
-    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
-
-    try {
-      const connection = new WebRTCConnection();
-      const internal = connection as unknown as {
-        setState: (state: import("../src/realtime/types").ConnectionState) => void;
-        setupNewPeerConnection: () => Promise<void>;
-      };
-
-      vi.spyOn(internal, "setupNewPeerConnection").mockImplementation(async () => {
-        internal.setState("connected");
-        setTimeout(() => internal.setState("generating"), 0);
-      });
-
-      await expect(
-        connection.connect("wss://example.com", { getTracks: () => [] } as MediaStream, 750),
-      ).resolves.toBeUndefined();
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("skips passthrough set_image in subscribe mode (null stream)", async () => {
-    const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-
-    const sentMessages: string[] = [];
-
-    class FakeWebSocket {
-      static OPEN = 1;
-      static CLOSED = 3;
-      readyState = FakeWebSocket.OPEN;
-      onopen: (() => void) | null = null;
-      onmessage: ((event: { data: string }) => void) | null = null;
-      onerror: (() => void) | null = null;
-      onclose: (() => void) | null = null;
-
-      constructor(_url: string) {
-        setTimeout(() => this.onopen?.(), 0);
-      }
-
-      send(data: string): void {
-        sentMessages.push(data);
-        const msg = JSON.parse(data);
-        if (msg.type === "set_image") {
-          setTimeout(() => this.onmessage?.({ data: JSON.stringify({ type: "set_image_ack", success: true }) }), 0);
-        }
-      }
-
-      close(): void {
-        this.readyState = FakeWebSocket.CLOSED;
-        this.onclose?.();
-      }
-    }
-
-    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
-
-    try {
-      const connection = new WebRTCConnection();
-      const internal = connection as unknown as {
-        setState: (state: import("../src/realtime/types").ConnectionState) => void;
-        setupNewPeerConnection: () => Promise<void>;
-      };
-
-      vi.spyOn(internal, "setupNewPeerConnection").mockImplementation(async () => {
-        internal.setState("connected");
-        setTimeout(() => internal.setState("generating"), 0);
-      });
-
-      // Connect with null stream (subscribe mode)
-      await connection.connect("wss://example.com", null, 750);
-
-      // No set_image message should have been sent
-      const setImageMessages = sentMessages.map((m) => JSON.parse(m)).filter((m) => m.type === "set_image");
-      expect(setImageMessages).toHaveLength(0);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("transitions from generating to disconnected when peer connection disconnects", async () => {
-    const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-
-    class FakePeerConnection {
-      connectionState: RTCPeerConnectionState = "new";
-      iceConnectionState: RTCIceConnectionState = "new";
-      ontrack: ((event: RTCTrackEvent) => void) | null = null;
-      onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null;
-      onconnectionstatechange: (() => void) | null = null;
-      oniceconnectionstatechange: (() => void) | null = null;
-
-      getSenders(): RTCRtpSender[] {
-        return [];
-      }
-
-      removeTrack(): void {}
-
-      close(): void {}
-
-      addTrack(): RTCRtpSender {
-        return {} as RTCRtpSender;
-      }
-
-      addTransceiver(): RTCRtpTransceiver {
-        return {} as RTCRtpTransceiver;
-      }
-    }
-
-    vi.stubGlobal("RTCPeerConnection", FakePeerConnection as unknown as typeof RTCPeerConnection);
-
-    try {
-      const connection = new WebRTCConnection();
-      const internal = connection as unknown as {
-        handleSignalingMessage: (msg: unknown) => Promise<void>;
-        localStream: { getTracks: () => MediaStreamTrack[] };
-        setupNewPeerConnection: () => Promise<void>;
-        pc: { connectionState: RTCPeerConnectionState; onconnectionstatechange: (() => void) | null } | null;
-      };
-
-      vi.spyOn(internal, "handleSignalingMessage").mockResolvedValue(undefined);
-      internal.localStream = { getTracks: () => [] };
-      await internal.setupNewPeerConnection();
-
-      connection.state = "generating";
-      if (!internal.pc?.onconnectionstatechange) {
-        throw new Error("Peer connection state callback was not set");
-      }
-
-      internal.pc.connectionState = "disconnected";
-      internal.pc.onconnectionstatechange();
-
-      expect(connection.state).toBe("disconnected");
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
   it("treats generating as an established connection for reconnect decisions", async () => {
     const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
     const manager = new WebRTCManager({
