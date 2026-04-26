@@ -581,58 +581,103 @@
                 addLog('Camera stopped. Please restart camera with new model settings.', 'info');
             }
         });
+
+        function isLikelyMobileDevice() {
+            const userAgent = navigator.userAgent || '';
+            const mobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(userAgent);
+            const hasTouch = navigator.maxTouchPoints > 0;
+            const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+
+            return mobileUserAgent || (hasTouch && coarsePointer);
+        }
+
+        function isPortraitViewport() {
+            return window.matchMedia('(orientation: portrait)').matches || window.innerHeight >= window.innerWidth;
+        }
+
+        async function requestLocalMediaStream({ requestPortrait, streamAudio, camWidth, camHeight, mobileDevice }) {
+            const baseConstraints = {
+                frameRate: { ideal: model.fps, max: 60 },
+                width: { ideal: camWidth },
+                height: { ideal: camHeight },
+            };
+
+            const attempts = [
+                {
+                    label: requestPortrait ? 'portrait-preferred' : 'default',
+                    video: {
+                        ...baseConstraints,
+                        ...(mobileDevice ? { facingMode: { ideal: 'user' } } : {}),
+                        ...(requestPortrait ? { aspectRatio: { ideal: camWidth / camHeight } } : {}),
+                    },
+                },
+            ];
+
+            if (mobileDevice) {
+                attempts.push({
+                    label: 'mobile-loose',
+                    video: {
+                        width: { ideal: camWidth },
+                        height: { ideal: camHeight },
+                        facingMode: { ideal: 'user' },
+                    },
+                });
+            }
+
+            attempts.push({
+                label: 'generic-video-true',
+                video: true,
+            });
+
+            let lastError = null;
+            for (const attempt of attempts) {
+                try {
+                    addLog(`Camera request attempt: ${attempt.label}`, 'info');
+                    return await navigator.mediaDevices.getUserMedia({
+                        video: attempt.video,
+                        audio: streamAudio,
+                    });
+                } catch (error) {
+                    lastError = error;
+                    addLog(`Camera request ${attempt.label} failed: ${error.message}`, 'error');
+
+                    // Permission denial is terminal; retries cannot recover this case.
+                    if (error?.name === 'NotAllowedError') {
+                        throw error;
+                    }
+                }
+            }
+
+            throw lastError ?? new Error('Unable to access camera stream');
+        }
         
         // Start camera
         elements.startCamera.addEventListener('click', async () => {
             try {
+                if (!navigator.mediaDevices?.getUserMedia) {
+                    throw new Error('Camera API is not available in this browser/context');
+                }
+
                 addLog('Requesting camera access...', 'info');
-                // Real mobile signal: CSS breakpoint OR (touch + coarse pointer).
-                // `Math.min(innerWidth, innerHeight) <= 900` is NOT a good heuristic —
-                // laptop viewports are routinely <900 high because of the browser chrome.
-                const isMobile =
-                    window.matchMedia('(max-width: 768px)').matches ||
-                    (navigator.maxTouchPoints > 0 && window.matchMedia('(pointer: coarse)').matches);
-                const camWidth = isMobile ? model.height : model.width;
-                const camHeight = isMobile ? model.width : model.height;
+                const mobileDevice = isLikelyMobileDevice();
+                const portraitViewport = isPortraitViewport();
+                const requestPortrait = mobileDevice && portraitViewport;
+                const camWidth = requestPortrait ? model.height : model.width;
+                const camHeight = requestPortrait ? model.width : model.height;
                 const streamAudio = elements.streamAudioToggle.checked;
-                const videoConstraints = isMobile
-                    ? {
-                        frameRate: { ideal: model.fps, max: 60 },
-                        width: { ideal: camWidth },
-                        height: { ideal: camHeight },
-                        aspectRatio: { ideal: camWidth / camHeight },
-                        facingMode: { ideal: 'user' },
-                    }
-                    : {
-                        frameRate: { ideal: model.fps, max: 60 },
-                        width: { ideal: camWidth },
-                        height: { ideal: camHeight },
-                    };
+
                 addLog(
-                    `Camera: ${isMobile ? "portrait (mobile)" : "landscape (desktop)"} ideal ${camWidth}×${camHeight}`,
+                    `Camera target: ${requestPortrait ? "portrait" : "landscape"} | mobile=${mobileDevice} | viewportPortrait=${portraitViewport} | ideal ${camWidth}×${camHeight}`,
                     'info',
                 );
                 addLog(`Microphone audio: ${streamAudio ? 'enabled' : 'disabled'}`, 'info');
-                try {
-                    localStream = await navigator.mediaDevices.getUserMedia({
-                        video: videoConstraints,
-                        audio: streamAudio,
-                    });
-                } catch (err) {
-                    if (isMobile) {
-                        addLog(`Camera: tight constraints failed (${String(err)}), retrying with looser portrait…`, 'error');
-                        localStream = await navigator.mediaDevices.getUserMedia({
-                            video: {
-                                width: { ideal: camWidth },
-                                height: { ideal: camHeight },
-                                facingMode: { ideal: 'user' },
-                            },
-                            audio: streamAudio,
-                        });
-                    } else {
-                        throw err;
-                    }
-                }
+                localStream = await requestLocalMediaStream({
+                    requestPortrait,
+                    streamAudio,
+                    camWidth,
+                    camHeight,
+                    mobileDevice,
+                });
                 
                 elements.localVideo.srcObject = localStream;
                 elements.startCamera.disabled = true;
