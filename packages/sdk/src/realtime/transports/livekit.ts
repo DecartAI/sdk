@@ -39,6 +39,7 @@ import type {
   ServerMetricsMessage,
   SessionIdMessage,
   SetImageAckMessage,
+  TurnConfigMessage,
 } from "../types";
 
 const AVATAR_SETUP_TIMEOUT_MS = 30_000;
@@ -97,12 +98,18 @@ interface LiveKitCallbacks {
 
 const DEFAULT_PUBLISH_MAX_BITRATE_KBPS = 3500;
 
+// Event shape MUST match WebRTCConnection's WsMessageEvents so the
+// union of both `connection.websocketMessagesEmitter`s in
+// WebRTCManager (TransportConnection union) stays callable. LiveKit
+// never emits `turnConfig` itself (the SFU owns ICE), but the slot
+// has to exist on the type for the union to resolve.
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
   serverMetrics: ServerMetricsMessage;
+  turnConfig: TurnConfigMessage;
 };
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
