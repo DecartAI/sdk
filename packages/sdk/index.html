@@ -312,6 +312,13 @@
             <label for="initial-prompt">Initial Prompt (empty = passthrough):</label>
             <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
         </div>
+        <div class="control-group">
+            <label>Camera Orientation:</label>
+            <div class="inline-controls">
+                <label style="margin: 0; font-weight: normal;"><input type="radio" name="camera-orientation" value="horizontal" checked> Horizontal</label>
+                <label style="margin: 0; font-weight: normal;"><input type="radio" name="camera-orientation" value="vertical"> Vertical</label>
+            </div>
+        </div>
         <div class="control-group checkbox-group">
             <input type="checkbox" id="stream-audio-toggle" checked>
             <label for="stream-audio-toggle" style="margin: 0; font-weight: normal;">Stream microphone audio</label>
@@ -447,8 +454,6 @@
         let decartClient = null;
         let decartRealtime = null;
         let localStream = null;
-        let rawCameraStream = null;
-        let portraitTransform = null; // { stream, stop, portraitWidth, portraitHeight }
         let isConnected = false;
         let processedVideoUrl = null;
         let currentSessionId = null;
@@ -573,8 +578,8 @@
             model = models.realtime(selectedModel);
             addLog(`Selected model: ${selectedModel}`, 'info');
             
-            // If camera is already started, stop it so user can restart with new model settings
-            if (localStream || rawCameraStream || portraitTransform) {
+            // If camera is already started, stop it so user can restart with new model settings.
+            if (localStream) {
                 stopCameraResources();
                 elements.startCamera.disabled = false;
                 elements.connectBtn.disabled = true;
@@ -582,184 +587,27 @@
             }
         });
 
-        function isLikelyMobileDevice() {
-            const userAgent = navigator.userAgent || '';
-            const mobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(userAgent);
-            const hasTouch = navigator.maxTouchPoints > 0;
-            const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
-
-            return mobileUserAgent || (hasTouch && coarsePointer);
-        }
-
-        function isPortraitViewport() {
-            return window.matchMedia('(orientation: portrait)').matches || window.innerHeight >= window.innerWidth;
-        }
-
-        function getVideoTrackSettings(stream) {
-            const [videoTrack] = stream?.getVideoTracks?.() ?? [];
-            if (!videoTrack?.getSettings) {
-                return null;
-            }
-            const settings = videoTrack.getSettings();
-            return {
-                width: settings.width ?? 0,
-                height: settings.height ?? 0,
-                frameRate: settings.frameRate ?? 0,
-            };
-        }
-
-        // Request a raw camera stream WITHOUT any width/height constraints.
-        // Many mobile browsers ignore portrait width/height constraints (and lie in
-        // getSettings() about it), so we let the device deliver its natural frames
-        // and force portrait orientation downstream via a canvas pipeline.
-        async function requestRawCameraStream({ streamAudio, mobileDevice, wantPortrait }) {
-            const constraints = {
-                video: {
-                    frameRate: { ideal: model.fps, max: 30 },
-                    ...(!mobileDevice ? {
-                        width: { ideal: wantPortrait ? 720 : 1280 },
-                        height: { ideal: wantPortrait ? 1280 : 720 },
-                    } : {}),
-                    ...(mobileDevice ? { facingMode: { ideal: 'user' } } : {}),
-                },
-                audio: streamAudio,
-            };
-
-            try {
-                return await navigator.mediaDevices.getUserMedia(constraints);
-            } catch (error) {
-                if (error?.name === 'NotAllowedError') {
-                    throw error;
-                }
-                addLog(`Camera request with frameRate hint failed: ${error.message}; retrying with video:true`, 'error');
-                return await navigator.mediaDevices.getUserMedia({ video: true, audio: streamAudio });
-            }
-        }
-
-        // Probe the *actual* delivered frame dimensions of a stream by attaching it
-        // to a hidden <video> element. getSettings() can lie (especially on Android),
-        // but videoWidth / videoHeight on the element reflect the real frames.
-        async function probeStreamDimensions(stream) {
-            const probe = document.createElement('video');
-            probe.muted = true;
-            probe.playsInline = true;
-            probe.autoplay = true;
-            probe.srcObject = stream;
-            try { await probe.play(); } catch (_) { /* ignored — metadata is what matters */ }
-
-            if (probe.videoWidth > 0 && probe.videoHeight > 0) {
-                return { probe, width: probe.videoWidth, height: probe.videoHeight };
-            }
-
-            await new Promise((resolve) => {
-                let resolved = false;
-                const finish = () => {
-                    if (resolved) return;
-                    resolved = true;
-                    resolve();
-                };
-                probe.addEventListener('loadedmetadata', finish, { once: true });
-                probe.addEventListener('loadeddata', finish, { once: true });
-                setTimeout(finish, 4000);
-            });
-
-            return { probe, width: probe.videoWidth || 0, height: probe.videoHeight || 0 };
-        }
-
-        // Build a portrait MediaStream by center-cropping the source video into a
-        // portrait-sized canvas and capturing that canvas as a stream. This is the
-        // ONLY way to guarantee portrait output on devices/browsers that ignore
-        // portrait getUserMedia constraints.
-        function buildPortraitStream({ sourceStream, probe, srcWidth, srcHeight, fps }) {
-            // Choose a 9:16 portrait frame that fits inside the source dimensions,
-            // so we always have enough pixels to crop without scaling up.
-            const targetAspect = 9 / 16; // width / height
-            let portraitH = srcHeight;
-            let portraitW = Math.round(portraitH * targetAspect);
-            if (portraitW > srcWidth) {
-                portraitW = srcWidth;
-                portraitH = Math.round(portraitW / targetAspect);
-            }
-            // Encoders strongly prefer even dimensions.
-            portraitW = Math.max(2, portraitW - (portraitW % 2));
-            portraitH = Math.max(2, portraitH - (portraitH % 2));
-
-            const canvas = document.createElement('canvas');
-            canvas.width = portraitW;
-            canvas.height = portraitH;
-            const ctx = canvas.getContext('2d', { alpha: false });
-
-            let stopped = false;
-            let rvfcHandle = null;
-            let rafHandle = null;
-            const useRvfc = typeof probe.requestVideoFrameCallback === 'function';
-
-            const draw = () => {
-                if (stopped) return;
-                try {
-                    // Recompute crop on every frame so we adapt if the source flips
-                    // orientation mid-stream (some devices do this).
-                    const w = probe.videoWidth || srcWidth;
-                    const h = probe.videoHeight || srcHeight;
-                    if (w > 0 && h > 0) {
-                        const cw = Math.min(canvas.width, w);
-                        const ch = Math.min(canvas.height, h);
-                        const sx = Math.max(0, Math.floor((w - cw) / 2));
-                        const sy = Math.max(0, Math.floor((h - ch) / 2));
-                        ctx.drawImage(probe, sx, sy, cw, ch, 0, 0, canvas.width, canvas.height);
-                    }
-                } catch (_) {
-                    // intermittent draw errors (e.g. before first frame) are fine
-                }
-                if (stopped) return;
-                if (useRvfc) {
-                    rvfcHandle = probe.requestVideoFrameCallback(draw);
-                } else {
-                    rafHandle = requestAnimationFrame(draw);
-                }
-            };
-            draw();
-
-            const captureFps = Math.min(Math.max(fps || 25, 15), 30);
-            const stream = canvas.captureStream(captureFps);
-
-            // Reuse the original audio tracks so the mic still works.
-            for (const audioTrack of sourceStream.getAudioTracks()) {
-                stream.addTrack(audioTrack);
-            }
+        function getSelectedCameraSettings() {
+            const orientation = document.querySelector('input[name="camera-orientation"]:checked').value;
+            const isVertical = orientation === 'vertical';
+            const shortEdge = 720;
+            const longEdge = 1280;
 
             return {
-                stream,
-                portraitWidth: portraitW,
-                portraitHeight: portraitH,
-                stop: () => {
-                    stopped = true;
-                    if (rvfcHandle != null && typeof probe.cancelVideoFrameCallback === 'function') {
-                        try { probe.cancelVideoFrameCallback(rvfcHandle); } catch (_) {}
-                    }
-                    if (rafHandle != null) {
-                        cancelAnimationFrame(rafHandle);
-                    }
-                    for (const track of stream.getTracks()) {
-                        try { track.stop(); } catch (_) {}
-                    }
-                    probe.srcObject = null;
-                },
+                orientation,
+                width: isVertical ? shortEdge : longEdge,
+                height: isVertical ? longEdge : shortEdge,
+                fps: 30,
             };
         }
 
         function stopCameraResources() {
-            if (portraitTransform) {
-                portraitTransform.stop();
-                portraitTransform = null;
-            }
-            if (rawCameraStream) {
-                rawCameraStream.getTracks().forEach((track) => {
+            if (localStream) {
+                localStream.getTracks().forEach((track) => {
                     try { track.stop(); } catch (_) {}
                 });
-                rawCameraStream = null;
+                localStream = null;
             }
-            localStream = null;
             elements.localVideo.srcObject = null;
         }
         
@@ -771,60 +619,25 @@
                 }
 
                 addLog('Requesting camera access...', 'info');
-                const mobileDevice = isLikelyMobileDevice();
-                const portraitViewport = isPortraitViewport();
-                const wantPortrait = mobileDevice && portraitViewport;
                 const streamAudio = elements.streamAudioToggle.checked;
+                const camera = getSelectedCameraSettings();
+                const constraints = {
+                    video: {
+                        width: { ideal: camera.width },
+                        height: { ideal: camera.height },
+                        frameRate: { ideal: camera.fps },
+                    },
+                    audio: streamAudio
+                        ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+                        : false,
+                };
 
-                addLog(
-                    `Camera target: ${wantPortrait ? 'portrait' : 'landscape'} | mobile=${mobileDevice} | viewportPortrait=${portraitViewport}`,
-                    'info',
-                );
+                addLog(`Camera target: ${camera.orientation}, ${camera.width}×${camera.height} @ ${camera.fps}fps`, 'info');
                 addLog(`Microphone audio: ${streamAudio ? 'enabled' : 'disabled'}`, 'info');
 
-                // Acquire raw camera stream WITHOUT resolution constraints — we
-                // enforce portrait orientation downstream via canvas if needed.
-                rawCameraStream = await requestRawCameraStream({ streamAudio, mobileDevice, wantPortrait });
-
-                const rawSettings = getVideoTrackSettings(rawCameraStream);
-                if (rawSettings) {
-                    addLog(
-                        `Raw camera track (getSettings): ${rawSettings.width}×${rawSettings.height} @ ${Math.round(rawSettings.frameRate || 0)}fps`,
-                        'info',
-                    );
-                }
-
-                let displayStream = rawCameraStream;
-
-                if (wantPortrait) {
-                    // Probe the *real* delivered frame dimensions, then transform
-                    // to portrait via canvas if the source is landscape.
-                    const { probe, width: probedW, height: probedH } = await probeStreamDimensions(rawCameraStream);
-                    addLog(`Actual frame dimensions from <video>: ${probedW}×${probedH}`, 'info');
-
-                    if (probedW > 0 && probedH > 0 && probedW > probedH) {
-                        addLog('Source frames are landscape; converting to portrait via canvas pipeline...', 'info');
-                        portraitTransform = buildPortraitStream({
-                            sourceStream: rawCameraStream,
-                            probe,
-                            srcWidth: probedW,
-                            srcHeight: probedH,
-                            fps: model.fps,
-                        });
-                        displayStream = portraitTransform.stream;
-                        addLog(
-                            `Portrait stream built: ${portraitTransform.portraitWidth}×${portraitTransform.portraitHeight} (canvas-captured)`,
-                            'success',
-                        );
-                    } else {
-                        // Source already portrait (or unknown) — use it directly.
-                        probe.srcObject = null;
-                        addLog('Source frames already portrait; no transform needed.', 'info');
-                    }
-                }
-
-                localStream = displayStream;
+                localStream = await navigator.mediaDevices.getUserMedia(constraints);
                 elements.localVideo.srcObject = localStream;
+                await elements.localVideo.play();
                 elements.startCamera.disabled = true;
                 elements.connectBtn.disabled = false;
 
