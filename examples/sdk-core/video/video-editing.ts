@@ -12,13 +12,13 @@ run(async () => {
     apiKey,
   });
 
-  console.log("Editing video with lucy-2...");
+  console.log("Editing video with lucy-2.1...");
 
   const inputVideo = fs.readFileSync("input.mp4");
 
   // Option 1: Use a text prompt
   const result = await client.queue.submitAndPoll({
-    model: models.video("lucy-2"),
+    model: models.video("lucy-2.1"),
     prompt: "Transform to watercolor painting style with soft brushstrokes",
     data: new Blob([inputVideo]),
     onStatusChange: (job) => {
@@ -29,7 +29,7 @@ run(async () => {
   // Option 2: Use a reference image to guide the edit (with empty prompt)
   // const referenceImage = fs.readFileSync("reference.png");
   // const result = await client.queue.submitAndPoll({
-  //   model: models.video("lucy-2"),
+  //   model: models.video("lucy-2.1"),
   //   prompt: "",
   //   reference_image: new Blob([referenceImage]),
   //   data: new Blob([inputVideo]),
@@ -41,7 +41,7 @@ run(async () => {
   // Option 3: Use both a prompt and a reference image together
   // const referenceImage = fs.readFileSync("reference.png");
   // const result = await client.queue.submitAndPoll({
-  //   model: models.video("lucy-2"),
+  //   model: models.video("lucy-2.1"),
   //   prompt: "Apply the style from the reference image",
   //   reference_image: new Blob([referenceImage]),
   //   data: new Blob([inputVideo]),

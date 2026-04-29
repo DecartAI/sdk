@@ -501,9 +501,9 @@ describe("Queue API", () => {
       ).rejects.toThrow("'enhance_prompt' is only valid when using 'prompt', not 'reference_image'");
     });
 
-    it("submits lucy-2-v2v job with prompt", async () => {
+    it("submits lucy-2.1 job with prompt", async () => {
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-2-v2v", async ({ request }) => {
+        http.post("http://localhost/v1/jobs/lucy-2.1", async ({ request }) => {
           lastRequest = request;
           lastFormData = await request.formData();
           return HttpResponse.json({
@@ -516,7 +516,7 @@ describe("Queue API", () => {
       const testBlob = new Blob(["test-video"], { type: "video/mp4" });
 
       const result = await decart.queue.submit({
-        model: models.video("lucy-2-v2v"),
+        model: models.video("lucy-2.1"),
         prompt: "Transform the scene",
         data: testBlob,
         enhance_prompt: true,
@@ -533,9 +533,9 @@ describe("Queue API", () => {
       expect(dataFile).toBeInstanceOf(File);
     });
 
-    it("submits lucy-2-v2v job with empty prompt and reference_image", async () => {
+    it("submits lucy-2.1 job with empty prompt and reference_image", async () => {
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-2-v2v", async ({ request }) => {
+        http.post("http://localhost/v1/jobs/lucy-2.1", async ({ request }) => {
           lastRequest = request;
           lastFormData = await request.formData();
           return HttpResponse.json({
@@ -549,7 +549,7 @@ describe("Queue API", () => {
       const testImageBlob = new Blob(["test-image"], { type: "image/png" });
 
       const result = await decart.queue.submit({
-        model: models.video("lucy-2-v2v"),
+        model: models.video("lucy-2.1"),
         prompt: "",
         data: testVideoBlob,
         reference_image: testImageBlob,
@@ -566,9 +566,9 @@ describe("Queue API", () => {
       expect(refImageFile).toBeInstanceOf(File);
     });
 
-    it("submits lucy-2-v2v job with reference_image", async () => {
+    it("submits lucy-2.1 job with reference_image", async () => {
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-2-v2v", async ({ request }) => {
+        http.post("http://localhost/v1/jobs/lucy-2.1", async ({ request }) => {
           lastRequest = request;
           lastFormData = await request.formData();
           return HttpResponse.json({
@@ -582,7 +582,7 @@ describe("Queue API", () => {
       const testImageBlob = new Blob(["test-image"], { type: "image/png" });
 
       const result = await decart.queue.submit({
-        model: models.video("lucy-2-v2v"),
+        model: models.video("lucy-2.1"),
         prompt: "Transform the scene",
         data: testVideoBlob,
         reference_image: testImageBlob,
@@ -601,10 +601,10 @@ describe("Queue API", () => {
       expect(refImageFile).toBeInstanceOf(File);
     });
 
-    it("validates required data input for lucy-2-v2v", async () => {
+    it("validates required data input for lucy-2.1", async () => {
       await expect(
         decart.queue.submit({
-          model: models.video("lucy-2-v2v"),
+          model: models.video("lucy-2.1"),
           prompt: "test",
           // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
         } as any),
@@ -1126,31 +1126,31 @@ describe("Tokens API", () => {
   });
 });
 
-describe("Lucy 2 realtime", () => {
+describe("Lucy 2.1 realtime", () => {
   describe("Model Definition", () => {
     it("has correct model name", () => {
-      const lucyModel = models.realtime("lucy_2_rt");
-      expect(lucyModel.name).toBe("lucy_2_rt");
+      const lucyModel = models.realtime("lucy-2.1");
+      expect(lucyModel.name).toBe("lucy-2.1");
     });
 
     it("has correct URL path", () => {
-      const lucyModel = models.realtime("lucy_2_rt");
+      const lucyModel = models.realtime("lucy-2.1");
       expect(lucyModel.urlPath).toBe("/v1/stream");
     });
 
     it("has expected dimensions", () => {
-      const lucyModel = models.realtime("lucy_2_rt");
+      const lucyModel = models.realtime("lucy-2.1");
       expect(lucyModel.width).toBe(1088);
       expect(lucyModel.height).toBe(624);
     });
 
     it("has correct fps", () => {
-      const lucyModel = models.realtime("lucy_2_rt");
+      const lucyModel = models.realtime("lucy-2.1");
       expect(lucyModel.fps).toBe(20);
     });
 
     it("is recognized as a realtime model", () => {
-      expect(models.realtime("lucy_2_rt")).toBeDefined();
+      expect(models.realtime("lucy-2.1")).toBeDefined();
     });
   });
 });
@@ -3415,15 +3415,6 @@ describe("Canonical Model Names", () => {
       expect(model.height).toBe(704);
     });
 
-    it("lucy-2 canonical name works", () => {
-      const model = models.realtime("lucy-2");
-      expect(model.name).toBe("lucy-2");
-      expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(20);
-      expect(model.width).toBe(1088);
-      expect(model.height).toBe(624);
-    });
-
     it("lucy-2.1 canonical name works", () => {
       const model = models.realtime("lucy-2.1");
       expect(model.name).toBe("lucy-2.1");
@@ -3472,19 +3463,12 @@ describe("Canonical Model Names", () => {
       expect(model.fps).toBe(25);
     });
 
-    it("lucy-2 as video model works", () => {
-      const model = models.video("lucy-2");
-      expect(model.name).toBe("lucy-2");
-      expect(model.urlPath).toBe("/v1/generate/lucy-2");
-      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-2");
-      expect(model.fps).toBe(20);
-    });
-
     it("lucy-2.1 as video model works", () => {
       const model = models.video("lucy-2.1");
       expect(model.name).toBe("lucy-2.1");
       expect(model.urlPath).toBe("/v1/generate/lucy-2.1");
       expect(model.queueUrlPath).toBe("/v1/jobs/lucy-2.1");
+      expect(model.fps).toBe(20);
     });
 
     it("lucy-2.1-vton as video model works", () => {
@@ -3625,11 +3609,6 @@ describe("Canonical Model Names", () => {
   });
 
   describe("Dual-surface models", () => {
-    it("lucy-2 is both a realtime and video model", () => {
-      expect(isRealtimeModel("lucy-2")).toBe(true);
-      expect(isVideoModel("lucy-2")).toBe(true);
-    });
-
     it("lucy-2.1 is both a realtime and video model", () => {
       expect(isRealtimeModel("lucy-2.1")).toBe(true);
       expect(isVideoModel("lucy-2.1")).toBe(true);
@@ -3647,11 +3626,6 @@ describe("Canonical Model Names", () => {
   });
 
   describe("Deprecated names still work", () => {
-    it("lucy_2_rt still works as realtime model", () => {
-      const model = models.realtime("lucy_2_rt");
-      expect(model.name).toBe("lucy_2_rt");
-    });
-
     it("mirage_v2 still works as realtime model", () => {
       const model = models.realtime("mirage_v2");
       expect(model.name).toBe("mirage_v2");

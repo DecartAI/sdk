@@ -38,7 +38,7 @@ Image models use the synchronous Process API - they return immediately with a Bl
 Video models use the asynchronous Queue API - jobs are submitted and polled for completion.
 
 - `video/video-to-video.ts` - Transform existing video with a prompt (`lucy-clip`)
-- `video/video-editing.ts` - Edit video with prompt, reference image, or both (`lucy-2`)
+- `video/video-editing.ts` - Edit video with prompt, reference image, or both (`lucy-2.1`)
 - `video/long-form-video-restyle.ts` - Transform existing video with `lucy-restyle-2`
 - `video/manual-polling.ts` - Manual job status polling
 
@@ -50,7 +50,7 @@ See `examples/nextjs-realtime` or `examples/react-vite` for runnable demos.
 - `realtime/mirage-basic.ts` - Basic Mirage connection (style transformation)
 - `realtime/mirage-v2-basic.ts` - Mirage v2 connection (improved style transformation)
 - `realtime/lucy-v2v-720p.ts` - Lucy v2v realtime (video editing - add objects, change elements)
-- `realtime/lucy-2.ts` - Lucy 2 realtime (better quality video editing with reference image support)
+- `realtime/lucy-2.1.ts` - Lucy 2.1 realtime video editing with reference image support
 - `realtime/live-avatar.ts` - Live avatar (audio-driven avatar with playAudio or mic input)
 - `realtime/connection-events.ts` - Handling connection state and errors
 - `realtime/prompt-update.ts` - Updating prompt dynamically

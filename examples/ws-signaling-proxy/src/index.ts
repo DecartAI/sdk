@@ -19,10 +19,10 @@ const server = createServer((_req, res) => {
 const wss = new WebSocketServer({ server });
 
 wss.on("connection", (clientWs: WebSocket, req) => {
-  // Accept Decart-style URLs: /v1/stream?api_key=...&model=lucy_2_rt
+  // Accept Decart-style URLs: /v1/stream?api_key=...&model=lucy-2.1
   // The proxy ignores api_key from the client and uses its own.
   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
-  const model = url.searchParams.get("model") ?? "lucy_2_rt";
+  const model = url.searchParams.get("model") ?? "lucy-2.1";
 
   console.log(`[proxy] client connected from ${req.url} (model=${model})`);
 
@@ -37,7 +37,7 @@ wss.on("connection", (clientWs: WebSocket, req) => {
 
 server.listen(PORT, () => {
   console.log(`[proxy] listening on ws://localhost:${PORT}`);
-  console.log(`[proxy] connect with: ws://localhost:${PORT}/?model=lucy_2_rt`);
+  console.log(`[proxy] connect with: ws://localhost:${PORT}/?model=lucy-2.1`);
 });
 
 const shutdown = () => {
