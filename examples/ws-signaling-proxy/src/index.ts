@@ -13,7 +13,7 @@ if (!DECART_API_KEY) {
 
 const server = createServer((_req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("ws-control-proxy");
+  res.end("ws-signaling-proxy");
 });
 
 const wss = new WebSocketServer({ server });
