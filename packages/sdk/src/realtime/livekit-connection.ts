@@ -141,75 +141,82 @@ export class LiveKitConnection {
         success: true,
       });
 
-      // Phase 2 — join the SFU room and publish local tracks.
-      const roomStart = performance.now();
-      this.logger.debug("LiveKit connection phase started", { phase: "webrtc-handshake" });
-      await Promise.race([this.joinRoom(roomInfo), connectAbort]);
-      this.logger.debug("LiveKit connection phase completed", {
-        phase: "webrtc-handshake",
-        durationMs: performance.now() - roomStart,
-      });
-      this.emitDiagnostic("phaseTiming", {
-        phase: "webrtc-handshake",
-        durationMs: performance.now() - roomStart,
-        success: true,
-      });
+      // Phases 2 + 3 run in parallel: SFU join+publish doesn't depend on
+      // control-plane image/prompt and vice versa. The control WS is open
+      // already, so the inference pod can buffer the image while WebRTC
+      // negotiates.
+      await Promise.race([
+        Promise.all([
+          this.runWebrtcHandshakePhase(roomInfo),
+          this.runStartupConditioningPhase(localStream),
+        ]),
+        connectAbort,
+      ]);
 
-      // Phase 3 — optional startup conditioning over the control WS.
-      if (this.callbacks.initialImage) {
-        const imageStart = performance.now();
-        this.logger.debug("LiveKit connection phase started", { phase: "avatar-image" });
-        await Promise.race([
-          this.setImageBase64(this.callbacks.initialImage, {
-            prompt: this.callbacks.initialPrompt?.text,
-            enhance: this.callbacks.initialPrompt?.enhance,
-          }),
-          connectAbort,
-        ]);
-        this.logger.debug("LiveKit connection phase completed", {
-          phase: "avatar-image",
-          durationMs: performance.now() - imageStart,
-        });
-        this.emitDiagnostic("phaseTiming", {
-          phase: "avatar-image",
-          durationMs: performance.now() - imageStart,
-          success: true,
-        });
-      } else if (this.callbacks.initialPrompt) {
-        const promptStart = performance.now();
-        this.logger.debug("LiveKit connection phase started", { phase: "initial-prompt" });
-        await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
-        this.logger.debug("LiveKit connection phase completed", {
-          phase: "initial-prompt",
-          durationMs: performance.now() - promptStart,
-        });
-        this.emitDiagnostic("phaseTiming", {
-          phase: "initial-prompt",
-          durationMs: performance.now() - promptStart,
-          success: true,
-        });
-      } else if (localStream) {
-        const passthroughStart = performance.now();
-        this.logger.debug("LiveKit connection phase started", { phase: "initial-prompt", mode: "passthrough" });
-        await Promise.race([this.setImageBase64(null, { prompt: null }), connectAbort]);
-        this.logger.debug("LiveKit connection phase completed", {
-          phase: "initial-prompt",
-          mode: "passthrough",
-          durationMs: performance.now() - passthroughStart,
-        });
-        this.emitDiagnostic("phaseTiming", {
-          phase: "initial-prompt",
-          durationMs: performance.now() - passthroughStart,
-          success: true,
-        });
-      }
-
-      this.setState("connected");
+      // Don't downgrade — `generating` already implies a healthy connection
+      // (TrackEvent.VideoPlaybackStarted fired during handshake).
+      if (this.state !== "generating") this.setState("connected");
     } catch (error) {
       this.cleanup();
       throw error;
     } finally {
       this.connectionReject = null;
+    }
+  }
+
+  private async runWebrtcHandshakePhase(roomInfo: LiveKitRoomInfoMessage): Promise<void> {
+    const start = performance.now();
+    this.logger.debug("LiveKit connection phase started", { phase: "webrtc-handshake" });
+    try {
+      await this.joinRoom(roomInfo);
+      const durationMs = performance.now() - start;
+      this.logger.debug("LiveKit connection phase completed", { phase: "webrtc-handshake", durationMs });
+      this.emitDiagnostic("phaseTiming", { phase: "webrtc-handshake", durationMs, success: true });
+    } catch (error) {
+      this.emitDiagnostic("phaseTiming", {
+        phase: "webrtc-handshake",
+        durationMs: performance.now() - start,
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  private async runStartupConditioningPhase(localStream: MediaStream | null): Promise<void> {
+    const { initialImage, initialPrompt } = this.callbacks;
+    if (initialImage) {
+      return this.runConditioningStep("avatar-image", () =>
+        this.setImageBase64(initialImage, { prompt: initialPrompt?.text, enhance: initialPrompt?.enhance }),
+      );
+    }
+    if (initialPrompt) {
+      return this.runConditioningStep("initial-prompt", () => this.sendInitialPrompt(initialPrompt));
+    }
+    if (localStream) {
+      return this.runConditioningStep("initial-prompt", () => this.setImageBase64(null, { prompt: null }));
+    }
+  }
+
+  private async runConditioningStep(
+    phase: "avatar-image" | "initial-prompt",
+    fn: () => Promise<unknown>,
+  ): Promise<void> {
+    const start = performance.now();
+    this.logger.debug("LiveKit connection phase started", { phase });
+    try {
+      await fn();
+      const durationMs = performance.now() - start;
+      this.logger.debug("LiveKit connection phase completed", { phase, durationMs });
+      this.emitDiagnostic("phaseTiming", { phase, durationMs, success: true });
+    } catch (error) {
+      this.emitDiagnostic("phaseTiming", {
+        phase,
+        durationMs: performance.now() - start,
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   }
 
@@ -507,6 +514,7 @@ export class LiveKitConnection {
       if (track.kind === "video" && transport) {
         const publication = await this.room.localParticipant.publishTrack(track, {
           simulcast: false,
+          scalabilityMode: "L1T1",
           source: Track.Source.Camera,
           videoCodec: transport.codec,
           videoEncoding: { maxBitrate: transport.maxBitrateKbps * 1000, maxFramerate },
@@ -568,6 +576,7 @@ export class LiveKitConnection {
   }
 
   private setState(state: ConnectionState): void {
+    if (this.state === "generating" && state === "connected") return;
     if (this.state !== state) {
       this.state = state;
       this.callbacks.onStateChange?.(state);
