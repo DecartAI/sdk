@@ -3,7 +3,6 @@ import { type CustomModelDefinition, type ModelDefinition, modelDefinitionSchema
 import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
-import { AudioStreamManager } from "./audio-stream-manager";
 import type { DiagnosticEvent } from "./diagnostics";
 import { createEventBuffer } from "./event-buffer";
 import { LiveKitManager } from "./livekit-manager";
@@ -133,24 +132,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     const { onRemoteStream, initialState } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
 
-    let inputStream: MediaStream = stream ?? new MediaStream();
-
-    let mirroredStream: MirroredStream | undefined;
-    if (mirror !== false) {
-      try {
-        const firstVideoTrack = inputStream.getVideoTracks?.()[0];
-        if (firstVideoTrack && (mirror === true || shouldMirrorTrack(firstVideoTrack))) {
-          mirroredStream = createMirroredStream(inputStream, { fps: options.model.fps });
-          inputStream = mirroredStream.stream;
-        } else if (mirror === true && !firstVideoTrack) {
-          logger.warn("mirror: true requested but no video track was found on the input stream");
-        }
-      } catch (error) {
-        logger.warn("Failed to mirror input stream; falling back to un-mirrored input", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
+    const inputStream = stream ?? new MediaStream();
 
     let livekitManager: LiveKitManager | undefined;
     let telemetryReporter: ITelemetryReporter = new NullTelemetryReporter();
@@ -343,7 +325,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           telemetryReporter.stop();
           stop();
           manager.cleanup();
-          mirroredStream?.dispose();
         },
         on: eventEmitter.on,
         off: eventEmitter.off,
@@ -370,7 +351,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     } catch (error) {
       telemetryReporter.stop();
       livekitManager?.cleanup();
-      audioStreamManager?.cleanup();
       throw error;
     }
   };
