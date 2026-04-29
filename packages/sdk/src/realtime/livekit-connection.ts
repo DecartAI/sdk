@@ -35,12 +35,13 @@ import type {
   SessionIdMessage,
   SetImageAckMessage,
 } from "./types";
-import type { ResolvedTransport } from "./transport";
 import type { StatsProvider } from "./webrtc-stats";
 
 const AVATAR_SETUP_TIMEOUT_MS = 30_000;
 const ROOM_INFO_TIMEOUT_MS = 15_000;
-const DEFAULT_MAX_FRAMERATE = 30;
+const DEFAULT_VIDEO_CODEC = "h264";
+const DEFAULT_MAX_VIDEO_BITRATE_BPS = 2_500_000;
+const DEFAULT_MAX_VIDEO_BITRATE_KBPS = DEFAULT_MAX_VIDEO_BITRATE_BPS / 1000;
 
 function sanitizeUrl(url: string): string {
   try {
@@ -61,8 +62,6 @@ interface LiveKitCallbacks {
   initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
-  transport?: ResolvedTransport;
-  maxFramerate?: number;
 }
 
 type WsMessageEvents = {
@@ -415,36 +414,33 @@ export class LiveKitConnection {
       dynacast: false,
     });
 
-    this.room.on(
-      RoomEvent.TrackSubscribed,
-      (track: RemoteTrack, pub: RemoteTrackPublication, p: RemoteParticipant) => {
-        if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {
-          track.attach();
-          const mediaStreamTrack = track.mediaStreamTrack;
-          if (mediaStreamTrack) {
-            const settings = mediaStreamTrack.getSettings?.() ?? {};
-            this.logger.debug("LiveKit remote track subscribed", {
-              kind: track.kind,
-              source: track.source,
-              trackSid: track.sid ?? null,
-              participant: p.identity,
-              mimeType: pub.mimeType ?? null,
-              width: settings.width ?? null,
-              height: settings.height ?? null,
-              frameRate: settings.frameRate ?? null,
-            });
-            this.remoteStream ??= new MediaStream();
-            if (!this.remoteStream.getTracks().includes(mediaStreamTrack)) {
-              this.remoteStream.addTrack(mediaStreamTrack);
-            }
-            this.callbacks.onRemoteStream?.(this.remoteStream);
-          }
-          track.on(TrackEvent.VideoPlaybackStarted, () => {
-            this.setState("generating");
+    this.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, pub: RemoteTrackPublication, p: RemoteParticipant) => {
+      if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {
+        track.attach();
+        const mediaStreamTrack = track.mediaStreamTrack;
+        if (mediaStreamTrack) {
+          const settings = mediaStreamTrack.getSettings?.() ?? {};
+          this.logger.debug("LiveKit remote track subscribed", {
+            kind: track.kind,
+            source: track.source,
+            trackSid: track.sid ?? null,
+            participant: p.identity,
+            mimeType: pub.mimeType ?? null,
+            width: settings.width ?? null,
+            height: settings.height ?? null,
+            frameRate: settings.frameRate ?? null,
           });
+          this.remoteStream ??= new MediaStream();
+          if (!this.remoteStream.getTracks().includes(mediaStreamTrack)) {
+            this.remoteStream.addTrack(mediaStreamTrack);
+          }
+          this.callbacks.onRemoteStream?.(this.remoteStream);
         }
-      },
-    );
+        track.on(TrackEvent.VideoPlaybackStarted, () => {
+          this.setState("generating");
+        });
+      }
+    });
 
     this.room.on(RoomEvent.Connected, () => {
       this.logger.info("LiveKit room connected", {
@@ -484,13 +480,9 @@ export class LiveKitConnection {
 
   private async publishLocalTracks(stream: MediaStream): Promise<void> {
     if (!this.room) return;
-    const transport = this.callbacks.transport;
-    const maxFramerate = this.callbacks.maxFramerate ?? DEFAULT_MAX_FRAMERATE;
     this.logger.info("LiveKit client publish config", {
-      codec: transport?.codec ?? null,
-      maxBitrateKbps: transport?.maxBitrateKbps ?? null,
-      maxFramerate,
-      degradationPreference: transport?.degradationPreference ?? null,
+      codec: DEFAULT_VIDEO_CODEC,
+      maxBitrateKbps: DEFAULT_MAX_VIDEO_BITRATE_KBPS,
       trackCount: stream.getTracks().length,
     });
     for (const track of stream.getTracks()) {
@@ -504,22 +496,17 @@ export class LiveKitConnection {
         deviceId: settings.deviceId ?? null,
       });
       const publishStart = performance.now();
-      if (track.kind === "video" && transport) {
+      if (track.kind === "video") {
         const publication = await this.room.localParticipant.publishTrack(track, {
-          simulcast: false,
-          scalabilityMode: "L1T1",
           source: Track.Source.Camera,
-          videoCodec: transport.codec,
-          videoEncoding: { maxBitrate: transport.maxBitrateKbps * 1000, maxFramerate },
-          degradationPreference: transport.degradationPreference,
+          videoCodec: DEFAULT_VIDEO_CODEC,
+          videoEncoding: { maxBitrate: DEFAULT_MAX_VIDEO_BITRATE_BPS },
         });
         this.logger.debug("LiveKit local video track published", {
           trackSid: publication.trackSid ?? null,
           mimeType: publication.mimeType ?? null,
-          requestedCodec: transport.codec,
-          maxBitrateKbps: transport.maxBitrateKbps,
-          maxFramerate,
-          degradationPreference: transport.degradationPreference,
+          requestedCodec: DEFAULT_VIDEO_CODEC,
+          maxBitrateKbps: DEFAULT_MAX_VIDEO_BITRATE_KBPS,
           durationMs: Math.round(performance.now() - publishStart),
         });
       } else {

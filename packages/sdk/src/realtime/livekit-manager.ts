@@ -3,7 +3,6 @@ import pRetry, { AbortError } from "p-retry";
 import type { Logger } from "../utils/logger";
 import type { DiagnosticEmitter } from "./diagnostics";
 import { LiveKitConnection } from "./livekit-connection";
-import type { ResolvedTransport } from "./transport";
 import type { ConnectionState, OutgoingMessage } from "./types";
 import type { StatsProvider } from "./webrtc-stats";
 
@@ -18,8 +17,6 @@ export interface LiveKitConfig {
   modelName?: string;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
-  transport?: ResolvedTransport;
-  maxFramerate?: number;
 }
 
 const PERMANENT_ERRORS = [
@@ -76,14 +73,10 @@ export class LiveKitManager {
       initialPrompt: config.initialPrompt,
       logger: this.logger,
       onDiagnostic: config.onDiagnostic,
-      transport: config.transport,
-      maxFramerate: config.maxFramerate,
     });
     this.logger.info("LiveKit realtime selected", {
       modelName: config.modelName ?? null,
       url: sanitizeUrl(config.url),
-      transport: config.transport ?? null,
-      maxFramerate: config.maxFramerate ?? null,
       hasInitialImage: Boolean(config.initialImage),
       hasInitialPrompt: Boolean(config.initialPrompt),
       integration: config.integration ?? null,
