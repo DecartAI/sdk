@@ -1737,101 +1737,34 @@ describe("Subscribe Client", () => {
     }
   });
 
-  it("resolves desktop transport preset by default in non-browser env", async () => {
-    const { resolveTransport } = await import("../src/realtime/transport.js");
-    const resolved = resolveTransport();
-    expect(resolved.codec).toBe("vp9");
-    expect(resolved.maxBitrateKbps).toBe(4500);
-    expect(resolved.degradationPreference).toBe("balanced");
-  });
-
-  it("resolves the mobile preset when platform is mobile", async () => {
-    const { resolveTransport } = await import("../src/realtime/transport.js");
-    const resolved = resolveTransport({ platform: "mobile" });
-    expect(resolved.codec).toBe("h264");
-    expect(resolved.maxBitrateKbps).toBe(2500);
-    expect(resolved.degradationPreference).toBe("maintain-framerate");
-  });
-
-  it("lets explicit codec and bitrate override the platform preset", async () => {
-    const { resolveTransport } = await import("../src/realtime/transport.js");
-    const resolved = resolveTransport({ platform: "mobile", codec: "av1", maxBitrateKbps: 1200 });
-    expect(resolved.codec).toBe("av1");
-    expect(resolved.maxBitrateKbps).toBe(1200);
-    expect(resolved.degradationPreference).toBe("maintain-framerate");
-  });
-
-  it("forwards the resolved transport down to the LiveKit connection", async () => {
-    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
-
-    const manager = new LiveKitManager({
-      url: "wss://example.com",
-      onRemoteStream: vi.fn(),
-      transport: {
-        codec: "vp9",
-        maxBitrateKbps: 4500,
-        degradationPreference: "balanced",
-      },
-      maxFramerate: 24,
-    });
-    const callbacks = (
-      manager as unknown as {
-        connection: {
-          callbacks: {
-            transport?: { codec: string; maxBitrateKbps: number; degradationPreference: string };
-            maxFramerate?: number;
-          };
-        };
-      }
-    ).connection.callbacks;
-
-    expect(callbacks.transport).toEqual({ codec: "vp9", maxBitrateKbps: 4500, degradationPreference: "balanced" });
-    expect(callbacks.maxFramerate).toBe(24);
-  });
-
-  it("uses the selected model fps for LiveKit publish framerate", async () => {
-    const { createRealTimeClient } = await import("../src/realtime/client.js");
-    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
-
-    let configuredFramerate: number | undefined;
-    const websocketEmitter = {
-      on: vi.fn(),
-      off: vi.fn(),
+  it("publishes video with fixed h264 codec and 2.5Mbps bitrate", async () => {
+    const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
+    const publishTrack = vi.fn().mockResolvedValue({ trackSid: "video-sid", mimeType: "video/H264" });
+    const videoTrack = {
+      kind: "video",
+      label: "camera",
+      getSettings: () => ({ width: 1280, height: 720, frameRate: 22 }),
+    } as unknown as MediaStreamTrack;
+    const stream = { getTracks: () => [videoTrack] } as unknown as MediaStream;
+    const connection = new LiveKitConnection();
+    const internal = connection as unknown as {
+      room: unknown;
+      publishLocalTracks: (stream: MediaStream) => Promise<void>;
     };
-    const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
-      const mgr = this as unknown as {
-        config: {
-          maxFramerate?: number;
-          onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void;
-        };
-        managerState: import("../src/realtime/types").ConnectionState;
-      };
-      configuredFramerate = mgr.config.maxFramerate;
-      mgr.managerState = "connected";
-      mgr.config.onConnectionStateChange?.("connected");
-      return true;
+    internal.room = { localParticipant: { publishTrack } };
+
+    await internal.publishLocalTracks(stream);
+
+    expect(publishTrack).toHaveBeenCalledTimes(1);
+    const options = publishTrack.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(options).toMatchObject({
+      videoCodec: "h264",
+      videoEncoding: { maxBitrate: 2_500_000 },
     });
-    const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockReturnValue("connected");
-    const emitterSpy = vi
-      .spyOn(LiveKitManager.prototype, "getWebsocketMessageEmitter")
-      .mockReturnValue(websocketEmitter as never);
-    const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
-
-    try {
-      const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "test-key" });
-      const client = await realtime.connect({} as MediaStream, {
-        model: models.realtime("lucy_2_rt"),
-        onRemoteStream: vi.fn(),
-      });
-
-      expect(configuredFramerate).toBe(20);
-      client.disconnect();
-    } finally {
-      connectSpy.mockRestore();
-      stateSpy.mockRestore();
-      emitterSpy.mockRestore();
-      cleanupSpy.mockRestore();
-    }
+    expect(options).not.toHaveProperty("simulcast");
+    expect(options).not.toHaveProperty("scalabilityMode");
+    expect(options).not.toHaveProperty("degradationPreference");
+    expect(options.videoEncoding).not.toHaveProperty("maxFramerate");
   });
 
   it("session_id message populates subscribeToken on producer client", async () => {

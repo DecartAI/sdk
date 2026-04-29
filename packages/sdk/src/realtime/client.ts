@@ -16,7 +16,6 @@ import {
   type SubscribeOptions,
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
-import { resolveTransport, type TransportOptions, transportOptionsSchema } from "./transport";
 import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
@@ -88,11 +87,9 @@ const realTimeClientConnectOptionsSchema = z.object({
     message: "onRemoteStream must be a function",
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
-  transport: transportOptionsSchema.optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
-  transport?: TransportOptions;
 };
 
 export type Events = {
@@ -176,8 +173,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
 
-      const transport = resolveTransport(options.transport);
-
       livekitManager = new LiveKitManager({
         url: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
         integration,
@@ -198,8 +193,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         modelName: options.model.name,
         initialImage,
         initialPrompt,
-        transport,
-        maxFramerate: options.model.fps,
       });
 
       const manager = livekitManager;

@@ -39,7 +39,6 @@ export type {
   SubscribeEvents,
   SubscribeOptions,
 } from "./realtime/subscribe-client";
-export type { TransportOptions } from "./realtime/transport";
 export type { ConnectionState } from "./realtime/types";
 export type { WebRTCStats } from "./realtime/webrtc-stats";
 export {

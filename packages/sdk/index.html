@@ -302,13 +302,6 @@
             </select>
         </div>
         <div class="control-group">
-            <label for="codec-select">LiveKit Publish Codec:</label>
-            <select id="codec-select">
-                <option value="vp9" selected>VP9</option>
-                <option value="h264">H264</option>
-            </select>
-        </div>
-        <div class="control-group">
             <label for="initial-prompt">Initial Prompt (empty = passthrough):</label>
             <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
         </div>
@@ -463,7 +456,6 @@
         const elements = {
             apiKey: document.getElementById('api-key'),
             modelSelect: document.getElementById('model-select'),
-            codecSelect: document.getElementById('codec-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             initialPrompt: document.getElementById('initial-prompt'),
             streamAudioToggle: document.getElementById('stream-audio-toggle'),
@@ -675,8 +667,6 @@
                 });
                 
                 addLog('Connecting to Decart server via LiveKit...', 'info');
-                const codec = elements.codecSelect.value;
-                addLog(`Transport codec: ${codec.toUpperCase()}`, 'info');
                 
                 // Build initial prompt from text field (empty / null toggle = passthrough)
                 const initialPromptText = elements.initialPrompt.value.trim();
@@ -705,7 +695,6 @@
                         ...(promptValue && { prompt: promptValue }),
                         ...(initialImage && { image: initialImage }),
                     },
-                    transport: { codec },
                 });
                 
                 // Check connection status
