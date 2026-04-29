@@ -29,19 +29,9 @@ export type SetImageAckMessage = {
   error: null | string;
 };
 
-export type GenerationStartedMessage = {
-  type: "generation_started";
-};
-
 export type GenerationTickMessage = {
   type: "generation_tick";
   seconds: number;
-};
-
-export type GenerationEndedMessage = {
-  type: "generation_ended";
-  seconds: number;
-  reason: string;
 };
 
 /**
@@ -82,18 +72,16 @@ export type LiveKitRoomInfoMessage = {
 export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
 
 // Incoming message types (from server)
-export type IncomingWebRTCMessage =
+export type IncomingRealtimeMessage =
   | PromptAckMessage
   | ErrorMessage
   | SetImageAckMessage
-  | GenerationStartedMessage
   | GenerationTickMessage
-  | GenerationEndedMessage
   | SessionIdMessage
   | ServerMetricsMessage
   | LiveKitRoomInfoMessage;
 
 // Outgoing message types (to server)
-export type OutgoingWebRTCMessage = LiveKitJoinMessage | PromptMessage | SetAvatarImageMessage;
+export type OutgoingRealtimeMessage = LiveKitJoinMessage | PromptMessage | SetAvatarImageMessage;
 
 export type OutgoingMessage = PromptMessage | SetAvatarImageMessage;

@@ -5,6 +5,7 @@ import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import type { Logger } from "../utils/logger";
 import type { DiagnosticEvent } from "./diagnostics";
 import { createEventBuffer } from "./event-buffer";
+import { LiveKitManager } from "./livekit-manager";
 import { realtimeMethods, type SetInput } from "./methods";
 import { createMirroredStream, type MirroredStream, shouldMirrorTrack } from "./mirror-stream";
 import {
@@ -16,7 +17,6 @@ import {
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import type { ConnectionState, GenerationTickMessage, ServerMetricsMessage, SessionIdMessage } from "./types";
-import { WebRTCManager } from "./webrtc-manager";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -95,11 +95,11 @@ const realTimeClientConnectOptionsSchema = z.object({
   // Deprecated compatibility no-op. LiveKit owns media negotiation internally,
   // so the option is accepted but ignored.
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
-  // Realtime always uses the LiveKit transport (SFU). The inference pod must
+  // Realtime always uses LiveKit (SFU). The inference pod must
   // have livekit in TRANSPORTS_ENABLED.
   // Client-side LiveKit `publishTrack` options:
   //  - `livekitPublishSimulcast` defaults to true (livekit-client default).
-  //  - `livekitPublishMaxBitrateKbps` defaults to 2500. Pass `null` to
+  //  - `livekitPublishMaxBitrateKbps` defaults to 3500. Pass `null` to
   //    opt out of the cap entirely (lets Chrome BWE run unclamped).
   //  - `livekitAdaptiveStream` / `livekitDynacast` default to `false`
   //    (matches historical shipped behavior). Exposed for the bench tool.
@@ -181,7 +181,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       }
     }
 
-    let webrtcManager: WebRTCManager | undefined;
+    let livekitManager: LiveKitManager | undefined;
     let telemetryReporter: ITelemetryReporter = new NullTelemetryReporter();
     let handleConnectionStateChange: ((state: ConnectionState) => void) | null = null;
 
@@ -189,7 +189,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       // Prepare initial image base64 before connection
       const initialImage = initialState?.image ? await imageToBase64(initialState.image) : undefined;
 
-      // Prepare initial prompt to send via WebSocket before WebRTC handshake
+      // Prepare initial prompt to send over the control WebSocket before joining LiveKit.
       const initialPrompt = initialState?.prompt
         ? {
             text: initialState.prompt.text,
@@ -211,8 +211,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
 
-      webrtcManager = new WebRTCManager({
-        webrtcUrl: `${url}?${extraQueryPrefix}api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+      livekitManager = new LiveKitManager({
+        url: `${url}?${extraQueryPrefix}api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
         integration,
         logger,
         onDiagnostic: (name, data) => {
@@ -225,7 +225,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           handleConnectionStateChange?.(state);
         },
         onError: (error) => {
-          logger.error("WebRTC error", { error: error.message });
+          logger.error("Realtime error", { error: error.message });
           emitOrBuffer("error", classifyWebrtcError(error));
         },
         modelName: options.model.name,
@@ -240,7 +240,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         livekitDegradationPreference: options.livekitDegradationPreference,
       });
 
-      const manager = webrtcManager;
+      const manager = livekitManager;
 
       let sessionId: string | null = null;
       let subscribeToken: string | null = null;
@@ -414,8 +414,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       return client;
     } catch (error) {
       telemetryReporter.stop();
-      webrtcManager?.cleanup();
-      mirroredStream?.dispose();
+      livekitManager?.cleanup();
+      audioStreamManager?.cleanup();
       throw error;
     }
   };
@@ -433,11 +433,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
     const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
 
-    let webrtcManager: WebRTCManager | undefined;
+    let livekitManager: LiveKitManager | undefined;
 
     try {
-      webrtcManager = new WebRTCManager({
-        webrtcUrl: subscribeUrl,
+      livekitManager = new LiveKitManager({
+        url: subscribeUrl,
         integration,
         logger,
         onDiagnostic: (name, data) => {
@@ -448,12 +448,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           emitOrBuffer("connectionChange", state);
         },
         onError: (error) => {
-          logger.error("WebRTC subscribe error", { error: error.message });
+          logger.error("Realtime subscribe error", { error: error.message });
           emitOrBuffer("error", classifyWebrtcError(error));
         },
       });
 
-      const manager = webrtcManager;
+      const manager = livekitManager;
       await manager.connect(null);
 
       const client: RealTimeSubscribeClient = {
@@ -470,7 +470,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       flush();
       return client;
     } catch (error) {
-      webrtcManager?.cleanup();
+      livekitManager?.cleanup();
       throw error;
     }
   };

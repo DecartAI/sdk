@@ -2,12 +2,12 @@ import pRetry, { AbortError } from "p-retry";
 
 import type { Logger } from "../utils/logger";
 import type { DiagnosticEmitter } from "./diagnostics";
-import { LiveKitConnection } from "./transports/livekit";
+import { LiveKitConnection } from "./livekit-connection";
 import type { ConnectionState, OutgoingMessage } from "./types";
 import type { StatsProvider } from "./webrtc-stats";
 
-export interface WebRTCConfig {
-  webrtcUrl: string;
+export interface LiveKitConfig {
+  url: string;
   integration?: string;
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
@@ -59,9 +59,9 @@ const RETRY_OPTIONS = {
   maxTimeout: 10000,
 } as const;
 
-export class WebRTCManager {
+export class LiveKitManager {
   private connection: LiveKitConnection;
-  private config: WebRTCConfig;
+  private config: LiveKitConfig;
   private logger: Logger;
   private localStream: MediaStream | null = null;
   private subscribeMode = false;
@@ -71,7 +71,7 @@ export class WebRTCManager {
   private intentionalDisconnect = false;
   private reconnectGeneration = 0;
 
-  constructor(config: WebRTCConfig) {
+  constructor(config: LiveKitConfig) {
     this.config = config;
     this.logger = config.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
     this.connection = new LiveKitConnection({
@@ -91,7 +91,7 @@ export class WebRTCManager {
       publishMaxFramerate: config.livekitPublishMaxFramerate,
       degradationPreference: config.livekitDegradationPreference,
     });
-    this.logger.info("WebRTC transport selected", { transport: "livekit" as const, modelName: config.modelName });
+    this.logger.info("LiveKit realtime selected", { modelName: config.modelName });
   }
 
   private emitState(state: ConnectionState): void {
@@ -152,12 +152,7 @@ export class WebRTCManager {
           }
 
           this.connection.cleanup();
-          await this.connection.connect(
-            this.config.webrtcUrl,
-            this.localStream,
-            CONNECTION_TIMEOUT,
-            this.config.integration,
-          );
+          await this.connection.connect(this.config.url, this.localStream, CONNECTION_TIMEOUT, this.config.integration);
 
           if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
             this.connection.cleanup();
@@ -220,7 +215,7 @@ export class WebRTCManager {
         if (this.intentionalDisconnect) {
           throw new AbortError("Connect cancelled");
         }
-        await this.connection.connect(this.config.webrtcUrl, localStream, CONNECTION_TIMEOUT, this.config.integration);
+        await this.connection.connect(this.config.url, localStream, CONNECTION_TIMEOUT, this.config.integration);
         return true;
       },
       {
@@ -261,12 +256,8 @@ export class WebRTCManager {
     return this.managerState;
   }
 
-  getPeerConnection(): RTCPeerConnection | null {
-    return this.connection.getPeerConnection();
-  }
-
   /**
-   * Stats source for WebRTCStatsCollector. LiveKit: aggregator over room tracks.
+   * Stats source for telemetry. Aggregates LiveKit room track reports.
    */
   getStatsProvider(): StatsProvider | null {
     return this.connection.getStatsProvider();

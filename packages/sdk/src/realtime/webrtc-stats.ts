@@ -150,10 +150,9 @@ export type StatsOptions = {
 };
 
 /**
- * Transport-agnostic source of `RTCStatsReport`. `RTCPeerConnection` already
- * satisfies it (its `getStats()` returns `Promise<RTCStatsReport>`); the
- * LiveKit transport provides a custom adapter that aggregates per-track stats
- * from the room. See `transports/livekit.ts` for the livekit impl.
+ * Source of `RTCStatsReport`-shaped samples for telemetry. LiveKit provides a
+ * custom adapter that aggregates per-track stats from the room. See
+ * `livekit-connection.ts` for the implementation.
  */
 export interface StatsProvider {
   getStats(): Promise<RTCStatsReport>;
@@ -183,7 +182,7 @@ export class WebRTCStatsCollector {
     this.intervalMs = Math.max(options.intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS);
   }
 
-  /** Attach to a stats provider (RTCPeerConnection or equivalent) and start polling. */
+  /** Attach to a stats provider and start polling. */
   start(source: StatsProvider, onStats: (stats: WebRTCStats) => void): void {
     this.stop();
     this.source = source;

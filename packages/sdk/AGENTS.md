@@ -23,8 +23,8 @@
   - `types.ts` - TypeScript types for queue operations
 - **src/realtime/** - LiveKit-backed real-time video streaming logic
   - `client.ts` - Real-time client implementation and public event surface
-  - `webrtc-manager.ts` - Realtime connection lifecycle and retry management
-  - `transports/livekit.ts` - LiveKit room connection and control WebSocket handling
+  - `livekit-manager.ts` - LiveKit connection lifecycle and retry management
+  - `livekit-connection.ts` - LiveKit room connection and control WebSocket handling
   - `methods.ts` - Realtime method implementations
   - `types.ts` - TypeScript types for realtime control messages and events
 - **src/shared/** - Shared model definitions and types
