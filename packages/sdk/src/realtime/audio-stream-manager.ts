@@ -27,7 +27,7 @@ export class AudioStreamManager {
   }
 
   /**
-   * Get the MediaStream to pass to WebRTC.
+   * Get the MediaStream to publish through LiveKit.
    * This stream outputs silence when no audio is playing.
    */
   getStream(): MediaStream {

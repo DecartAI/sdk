@@ -1,5 +1,5 @@
 /**
- * LiveKit transport for the realtime SDK.
+ * LiveKit connection for the realtime SDK.
  *
  * Control messages (prompt, set_image, session_id, generation_tick, acks)
  * flow over the Decart WebSocket; media is carried by a LiveKit room:
@@ -22,21 +22,21 @@ import {
 } from "livekit-client";
 import mitt from "mitt";
 
-import type { Logger } from "../../utils/logger";
-import { buildUserAgent } from "../../utils/user-agent";
-import type { DiagnosticEmitter } from "../diagnostics";
+import type { Logger } from "../utils/logger";
+import { buildUserAgent } from "../utils/user-agent";
+import type { DiagnosticEmitter } from "./diagnostics";
 import type {
   ConnectionState,
   GenerationTickMessage,
-  IncomingWebRTCMessage,
+  IncomingRealtimeMessage,
   LiveKitRoomInfoMessage,
-  OutgoingWebRTCMessage,
+  OutgoingRealtimeMessage,
   PromptAckMessage,
   ServerMetricsMessage,
   SessionIdMessage,
   SetImageAckMessage,
-} from "../types";
-import type { StatsProvider } from "../webrtc-stats";
+} from "./types";
+import type { StatsProvider } from "./webrtc-stats";
 
 const AVATAR_SETUP_TIMEOUT_MS = 30_000;
 const ROOM_INFO_TIMEOUT_MS = 15_000;
@@ -121,16 +121,8 @@ export class LiveKitConnection {
     this.emitDiagnostic = callbacks.onDiagnostic ?? noopDiagnostic;
   }
 
-  getPeerConnection(): RTCPeerConnection | null {
-    // No raw PC for the LiveKit transport — the SFU hides the PCs behind
-    // a Room abstraction. Callers that need stats should use
-    // getStatsProvider() instead; it aggregates per-track `getRTCStatsReport()`
-    // results into an RTCStatsReport-shaped object.
-    return null;
-  }
-
   /**
-   * Stats provider for the livekit transport. Aggregates
+   * Stats provider for the LiveKit connection. Aggregates
    * `track.getRTCStatsReport()` from every local (outbound) and remote
    * (inbound) track in the room into a single RTCStatsReport-compatible
    * Map. That's the minimum surface WebRTCStatsCollector.parse() needs —
@@ -217,7 +209,7 @@ export class LiveKitConnection {
     }
   }
 
-  send(message: OutgoingWebRTCMessage): boolean {
+  send(message: OutgoingRealtimeMessage): boolean {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
       return true;
@@ -326,7 +318,7 @@ export class LiveKitConnection {
         reject(new Error(`livekit_room_info timeout (${ROOM_INFO_TIMEOUT_MS}ms)`));
       }, ROOM_INFO_TIMEOUT_MS);
 
-      const handler = (msg: IncomingWebRTCMessage) => {
+      const handler = (msg: IncomingRealtimeMessage) => {
         if (msg.type === "livekit_room_info") {
           cleanup();
           resolve(msg);
@@ -343,9 +335,9 @@ export class LiveKitConnection {
     });
   }
 
-  private pendingRoomInfoResolvers: Array<(msg: IncomingWebRTCMessage) => void> = [];
+  private pendingRoomInfoResolvers: Array<(msg: IncomingRealtimeMessage) => void> = [];
 
-  private handleControlMessage(msg: IncomingWebRTCMessage): void {
+  private handleControlMessage(msg: IncomingRealtimeMessage): void {
     // First give pending livekit_room_info awaiters a chance.
     for (const resolver of [...this.pendingRoomInfoResolvers]) {
       resolver(msg);
@@ -432,7 +424,7 @@ export class LiveKitConnection {
     if (this.localStream) {
       const publishSimulcast = this.callbacks.publishSimulcast ?? true;
       // Three-state resolution for the bitrate cap:
-      //   undefined → apply the SDK default (2500 kbps)
+      //   undefined → apply the SDK default (3500 kbps)
       //   null      → explicit opt-out, no cap (Chrome BWE runs unclamped)
       //   number    → explicit kbps value
       const configuredBitrateKbps = this.callbacks.publishMaxBitrateKbps;
@@ -487,7 +479,7 @@ export class LiveKitConnection {
       };
       this.websocketMessagesEmitter.on("promptAck", listener);
 
-      const message: OutgoingWebRTCMessage = {
+      const message: OutgoingRealtimeMessage = {
         type: "prompt",
         prompt: prompt.text,
         enhance_prompt: prompt.enhance ?? true,
@@ -511,7 +503,7 @@ export class LiveKitConnection {
 
 /**
  * Build a StatsProvider that aggregates `track.getRTCStatsReport()` across
- * every local and remote track in a livekit Room into a single
+ * every local and remote track in a LiveKit Room into a single
  * RTCStatsReport-shaped Map.
  *
  * Why this shape: `WebRTCStatsCollector.parse()` expects to call

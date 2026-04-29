@@ -303,7 +303,7 @@ describe("Decart SDK", () => {
 
   describe("connect startup conditioning", () => {
     it("sends initial image with the initial prompt after joining the LiveKit room", async () => {
-      const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+      const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
       const sentMessages: Array<{ type: string }> = [];
 
       class FakeWebSocket {
@@ -377,7 +377,7 @@ describe("Decart SDK", () => {
     });
 
     it("surfaces server error control messages", async () => {
-      const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+      const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
       const onError = vi.fn();
       const connection = new LiveKitConnection({ onError });
       const internal = connection as unknown as {
@@ -394,7 +394,7 @@ describe("Decart SDK", () => {
     });
 
     it("aborts connect when a server error arrives during startup conditioning", async () => {
-      const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+      const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
 
       class FakeWebSocket {
         static OPEN = 1;
@@ -1319,14 +1319,14 @@ describe("Lucy 2 realtime", () => {
 describe("LiveKitConnection", () => {
   describe("setImageBase64", () => {
     it("rejects immediately when WebSocket is not open", async () => {
-      const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+      const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
       const connection = new LiveKitConnection();
 
       await expect(connection.setImageBase64("base64data", { timeout: 5000 })).rejects.toThrow("WebSocket is not open");
     });
 
     it("rejects immediately with default timeout when WebSocket is not open", async () => {
-      const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+      const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
       const connection = new LiveKitConnection();
 
       await expect(connection.setImageBase64("base64data")).rejects.toThrow("WebSocket is not open");
@@ -1342,7 +1342,7 @@ describe("LiveKitConnection", () => {
       });
 
       it("uses custom timeout when send succeeds but ack is not received", async () => {
-        const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+        const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
         const connection = new LiveKitConnection();
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
@@ -1367,7 +1367,7 @@ describe("LiveKitConnection", () => {
       });
 
       it("uses default timeout (30000ms) when send succeeds but ack is not received", async () => {
-        const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+        const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
         const connection = new LiveKitConnection();
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
@@ -1394,7 +1394,7 @@ describe("LiveKitConnection", () => {
     it("sends set_image with null image_data and null prompt for passthrough", async () => {
       vi.useFakeTimers();
       try {
-        const { LiveKitConnection } = await import("../src/realtime/transports/livekit.js");
+        const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
         const connection = new LiveKitConnection();
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
@@ -1710,10 +1710,10 @@ describe("Subscribe Token", () => {
 
 describe("Subscribe Client", () => {
   it("subscribe mode allows reconnect with null localStream", async () => {
-    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
 
-    const manager = new WebRTCManager({
-      webrtcUrl: "wss://example.com",
+    const manager = new LiveKitManager({
+      url: "wss://example.com",
       onRemoteStream: vi.fn(),
       onError: vi.fn(),
     });
@@ -1737,15 +1737,86 @@ describe("Subscribe Client", () => {
     }
   });
 
+  it("leaves LiveKit publish options unset when callers omit them", async () => {
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
+
+    const manager = new LiveKitManager({
+      url: "wss://example.com",
+      onRemoteStream: vi.fn(),
+    });
+    const callbacks = (
+      manager as unknown as {
+        connection: {
+          callbacks: {
+            publishSimulcast?: boolean;
+            publishMaxBitrateKbps?: number | null;
+            adaptiveStream?: boolean;
+            dynacast?: boolean;
+            publishCodec?: string;
+            publishMaxFramerate?: number;
+            degradationPreference?: string;
+          };
+        };
+      }
+    ).connection.callbacks;
+
+    expect(callbacks.publishSimulcast).toBeUndefined();
+    expect(callbacks.publishMaxBitrateKbps).toBeUndefined();
+    expect(callbacks.adaptiveStream).toBeUndefined();
+    expect(callbacks.dynacast).toBeUndefined();
+    expect(callbacks.publishCodec).toBeUndefined();
+    expect(callbacks.publishMaxFramerate).toBeUndefined();
+    expect(callbacks.degradationPreference).toBeUndefined();
+  });
+
+  it("forwards explicit LiveKit publish options as additive config", async () => {
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
+
+    const manager = new LiveKitManager({
+      url: "wss://example.com",
+      onRemoteStream: vi.fn(),
+      livekitPublishSimulcast: false,
+      livekitPublishMaxBitrateKbps: 1200,
+      livekitAdaptiveStream: true,
+      livekitDynacast: true,
+      livekitPublishCodec: "vp9",
+      livekitPublishMaxFramerate: 24,
+      livekitDegradationPreference: "maintain-framerate",
+    });
+    const callbacks = (
+      manager as unknown as {
+        connection: {
+          callbacks: {
+            publishSimulcast?: boolean;
+            publishMaxBitrateKbps?: number | null;
+            adaptiveStream?: boolean;
+            dynacast?: boolean;
+            publishCodec?: string;
+            publishMaxFramerate?: number;
+            degradationPreference?: string;
+          };
+        };
+      }
+    ).connection.callbacks;
+
+    expect(callbacks.publishSimulcast).toBe(false);
+    expect(callbacks.publishMaxBitrateKbps).toBe(1200);
+    expect(callbacks.adaptiveStream).toBe(true);
+    expect(callbacks.dynacast).toBe(true);
+    expect(callbacks.publishCodec).toBe("vp9");
+    expect(callbacks.publishMaxFramerate).toBe(24);
+    expect(callbacks.degradationPreference).toBe("maintain-framerate");
+  });
+
   it("accepts customizeOffer as a deprecated no-op", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
-    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
 
     const websocketEmitter = {
       on: vi.fn(),
       off: vi.fn(),
     };
-    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+    const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
       const mgr = this as unknown as {
         config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
         managerState: import("../src/realtime/types").ConnectionState;
@@ -1754,11 +1825,11 @@ describe("Subscribe Client", () => {
       mgr.config.onConnectionStateChange?.("connected");
       return true;
     });
-    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockReturnValue("connected");
     const emitterSpy = vi
-      .spyOn(WebRTCManager.prototype, "getWebsocketMessageEmitter")
+      .spyOn(LiveKitManager.prototype, "getWebsocketMessageEmitter")
       .mockReturnValue(websocketEmitter as never);
-    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+    const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
     const customizeOffer = vi.fn(async () => {});
 
     try {
@@ -1782,7 +1853,7 @@ describe("Subscribe Client", () => {
 
   it("session_id message populates subscribeToken on producer client", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
-    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
     const { decodeSubscribeToken } = await import("../src/realtime/subscribe-client.js");
 
     const sessionIdListeners = new Set<(msg: import("../src/realtime/types").SessionIdMessage) => void>();
@@ -1795,7 +1866,7 @@ describe("Subscribe Client", () => {
       },
     };
 
-    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+    const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
       const mgr = this as unknown as {
         config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
         managerState: import("../src/realtime/types").ConnectionState;
@@ -1804,12 +1875,12 @@ describe("Subscribe Client", () => {
       mgr.config.onConnectionStateChange?.("connected");
       return true;
     });
-    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockReturnValue("connected");
     const emitterSpy = vi
-      .spyOn(WebRTCManager.prototype, "getWebsocketMessageEmitter")
+      .spyOn(LiveKitManager.prototype, "getWebsocketMessageEmitter")
       .mockReturnValue(websocketEmitter as never);
-    const sendSpy = vi.spyOn(WebRTCManager.prototype, "sendMessage").mockReturnValue(true);
-    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+    const sendSpy = vi.spyOn(LiveKitManager.prototype, "sendMessage").mockReturnValue(true);
+    const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
       const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "test-key" });
@@ -1847,7 +1918,7 @@ describe("Subscribe Client", () => {
 
   it("buffers pre-session telemetry diagnostics and flushes them after session_id", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
-    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -1862,7 +1933,7 @@ describe("Subscribe Client", () => {
       },
     };
 
-    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+    const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
       const mgr = this as unknown as {
         config: {
           onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void;
@@ -1881,11 +1952,11 @@ describe("Subscribe Client", () => {
       mgr.config.onConnectionStateChange?.("connected");
       return true;
     });
-    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockReturnValue("connected");
     const emitterSpy = vi
-      .spyOn(WebRTCManager.prototype, "getWebsocketMessageEmitter")
+      .spyOn(LiveKitManager.prototype, "getWebsocketMessageEmitter")
       .mockReturnValue(websocketEmitter as never);
-    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+    const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
       const realtime = createRealTimeClient({
@@ -1932,7 +2003,7 @@ describe("Subscribe Client", () => {
 
   it("stops previous telemetry reporter when session_id changes", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
-    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
 
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
@@ -1951,7 +2022,7 @@ describe("Subscribe Client", () => {
       },
     };
 
-    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+    const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
       const mgr = this as unknown as {
         config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
         managerState: import("../src/realtime/types").ConnectionState;
@@ -1960,12 +2031,11 @@ describe("Subscribe Client", () => {
       mgr.config.onConnectionStateChange?.("connected");
       return true;
     });
-    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockReturnValue("connected");
     const emitterSpy = vi
-      .spyOn(WebRTCManager.prototype, "getWebsocketMessageEmitter")
+      .spyOn(LiveKitManager.prototype, "getWebsocketMessageEmitter")
       .mockReturnValue(websocketEmitter as never);
-    const peerConnectionSpy = vi.spyOn(WebRTCManager.prototype, "getPeerConnection").mockReturnValue(null);
-    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+    const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
       const realtime = createRealTimeClient({
@@ -2004,7 +2074,6 @@ describe("Subscribe Client", () => {
       connectSpy.mockRestore();
       stateSpy.mockRestore();
       emitterSpy.mockRestore();
-      peerConnectionSpy.mockRestore();
       cleanupSpy.mockRestore();
       setIntervalSpy.mockRestore();
       clearIntervalSpy.mockRestore();
@@ -2015,7 +2084,7 @@ describe("Subscribe Client", () => {
 
   it("restarts stats collection when stats source changes after reconnect (LiveKit)", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
-    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
     const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
 
     const firstStatsSource = { getStats: vi.fn() };
@@ -2026,7 +2095,7 @@ describe("Subscribe Client", () => {
     const startSpy = vi.spyOn(WebRTCStatsCollector.prototype, "start").mockImplementation(() => {});
     const stopSpy = vi.spyOn(WebRTCStatsCollector.prototype, "stop").mockImplementation(() => {});
 
-    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+    const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
       const mgr = this as unknown as {
         config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
         managerState: import("../src/realtime/types").ConnectionState;
@@ -2036,11 +2105,11 @@ describe("Subscribe Client", () => {
       mgr.config.onConnectionStateChange?.("connected");
       return true;
     });
-    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockReturnValue("connected");
     const statsProviderSpy = vi
-      .spyOn(WebRTCManager.prototype, "getStatsProvider")
+      .spyOn(LiveKitManager.prototype, "getStatsProvider")
       .mockImplementation(() => currentStatsSource);
-    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+    const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
       const realtime = createRealTimeClient({
@@ -2078,9 +2147,9 @@ describe("Subscribe Client", () => {
   it("subscribe client buffers events until returned", async () => {
     const { encodeSubscribeToken } = await import("../src/realtime/subscribe-client.js");
     const { createRealTimeClient } = await import("../src/realtime/client.js");
-    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
 
-    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+    const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
       const mgr = this as unknown as {
         config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
         managerState: import("../src/realtime/types").ConnectionState;
@@ -2089,8 +2158,8 @@ describe("Subscribe Client", () => {
       mgr.config.onConnectionStateChange?.("connected");
       return true;
     });
-    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
-    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+    const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
       const token = encodeSubscribeToken("sess-123", "10.0.0.1", 8080);
@@ -2852,9 +2921,9 @@ describe("TelemetryReporter", () => {
 
 describe("WebSockets Connection", () => {
   it("treats generating as an established connection for reconnect decisions", async () => {
-    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
-    const manager = new WebRTCManager({
-      webrtcUrl: "wss://example.com",
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
+    const manager = new LiveKitManager({
+      url: "wss://example.com",
       onRemoteStream: vi.fn(),
       onError: vi.fn(),
     });
@@ -2876,7 +2945,7 @@ describe("WebSockets Connection", () => {
 
   it("replays connection events emitted during connect before returning client", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
-    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
 
     const promptAckListeners = new Set<(msg: import("../src/realtime/types").PromptAckMessage) => void>();
     const websocketEmitter = {
@@ -2888,7 +2957,7 @@ describe("WebSockets Connection", () => {
       },
     };
 
-    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+    const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
       const manager = this as unknown as {
         config: {
           onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void;
@@ -2908,14 +2977,14 @@ describe("WebSockets Connection", () => {
 
       return true;
     });
-    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockImplementation(function () {
+    const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockImplementation(function () {
       const manager = this as unknown as { managerState: import("../src/realtime/types").ConnectionState };
       return manager.managerState ?? "connected";
     });
     const emitterSpy = vi
-      .spyOn(WebRTCManager.prototype, "getWebsocketMessageEmitter")
+      .spyOn(LiveKitManager.prototype, "getWebsocketMessageEmitter")
       .mockReturnValue(websocketEmitter as never);
-    const sendSpy = vi.spyOn(WebRTCManager.prototype, "sendMessage").mockImplementation(function (message) {
+    const sendSpy = vi.spyOn(LiveKitManager.prototype, "sendMessage").mockImplementation(function (message) {
       if (message.type === "prompt") {
         setTimeout(() => {
           const manager = this as unknown as {
@@ -2936,7 +3005,7 @@ describe("WebSockets Connection", () => {
       }
       return true;
     });
-    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+    const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
       const realtime = createRealTimeClient({ baseUrl: "wss://example.com", apiKey: "test-key" });

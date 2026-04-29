@@ -117,7 +117,7 @@ export type DecartClientOptions =
  * @param options.realtimeBaseUrl - Override the default WebSocket base URL for realtime connections.
  * @param options.integration - Optional integration identifier.
  *
- * Realtime WebRTC uses the LiveKit transport only (inference must enable it in `TRANSPORTS_ENABLED`).
+ * Realtime media uses LiveKit only (inference must enable it in `TRANSPORTS_ENABLED`).
  *
  * @example
  * ```ts
