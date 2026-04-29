@@ -3,6 +3,7 @@ import pRetry, { AbortError } from "p-retry";
 import type { Logger } from "../utils/logger";
 import type { DiagnosticEmitter } from "./diagnostics";
 import { LiveKitConnection } from "./livekit-connection";
+import type { ResolvedTransport } from "./transport";
 import type { ConnectionState, OutgoingMessage } from "./types";
 import type { StatsProvider } from "./webrtc-stats";
 
@@ -17,28 +18,8 @@ export interface LiveKitConfig {
   modelName?: string;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
-  /**
-   * Client-side publish options. Forwarded to
-   * `LocalParticipant.publishTrack(...)` in the LiveKit transport.
-   *
-   * `livekitPublishMaxBitrateKbps`: undefined → SDK default; `null` →
-   * explicit opt-out of the cap (Chrome BWE unclamped);
-   * a positive number → explicit kbps value.
-   */
-  livekitPublishSimulcast?: boolean;
-  livekitPublishMaxBitrateKbps?: number | null;
-  /**
-   * livekit-client `Room` options. Both default to `false`. Enabling
-   * either changes quality/bandwidth trade-offs.
-   */
-  livekitAdaptiveStream?: boolean;
-  livekitDynacast?: boolean;
-  /**
-   * Client-side `publishTrack` knobs for benchmarking and transport tuning.
-   */
-  livekitPublishCodec?: "vp8" | "vp9" | "h264" | "av1";
-  livekitPublishMaxFramerate?: number;
-  livekitDegradationPreference?: "balanced" | "maintain-framerate" | "maintain-resolution";
+  transport?: ResolvedTransport;
+  maxFramerate?: number;
 }
 
 const PERMANENT_ERRORS = [
@@ -58,6 +39,18 @@ const RETRY_OPTIONS = {
   minTimeout: 1000,
   maxTimeout: 10000,
 } as const;
+
+const MAX_ATTEMPTS = RETRY_OPTIONS.retries + 1;
+
+function sanitizeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.searchParams.has("api_key")) u.searchParams.set("api_key", "***");
+    return u.toString();
+  } catch {
+    return url.replace(/api_key=[^&]*/g, "api_key=***");
+  }
+}
 
 export class LiveKitManager {
   private connection: LiveKitConnection;
@@ -83,19 +76,30 @@ export class LiveKitManager {
       initialPrompt: config.initialPrompt,
       logger: this.logger,
       onDiagnostic: config.onDiagnostic,
-      publishSimulcast: config.livekitPublishSimulcast,
-      publishMaxBitrateKbps: config.livekitPublishMaxBitrateKbps,
-      adaptiveStream: config.livekitAdaptiveStream,
-      dynacast: config.livekitDynacast,
-      publishCodec: config.livekitPublishCodec,
-      publishMaxFramerate: config.livekitPublishMaxFramerate,
-      degradationPreference: config.livekitDegradationPreference,
+      transport: config.transport,
+      maxFramerate: config.maxFramerate,
     });
-    this.logger.info("LiveKit realtime selected", { modelName: config.modelName });
+    this.logger.info("LiveKit realtime selected", {
+      modelName: config.modelName ?? null,
+      url: sanitizeUrl(config.url),
+      transport: config.transport ?? null,
+      maxFramerate: config.maxFramerate ?? null,
+      hasInitialImage: Boolean(config.initialImage),
+      hasInitialPrompt: Boolean(config.initialPrompt),
+      integration: config.integration ?? null,
+    });
   }
 
   private emitState(state: ConnectionState): void {
     if (this.managerState !== state) {
+      this.logger.debug("LiveKit manager state changed", {
+        previousState: this.managerState,
+        state,
+        modelName: this.config.modelName ?? null,
+        subscribeMode: this.subscribeMode,
+        hasConnected: this.hasConnected,
+        isReconnecting: this.isReconnecting,
+      });
       this.managerState = state;
       if (state === "connected" || state === "generating") this.hasConnected = true;
       this.config.onConnectionStateChange?.(state);
@@ -120,6 +124,10 @@ export class LiveKitManager {
     // Unexpected disconnect after having been connected → trigger auto-reconnect
     // hasConnected guards against triggering during initial connect (which has its own retry loop)
     if (state === "disconnected" && !this.intentionalDisconnect && this.hasConnected) {
+      this.logger.debug("LiveKit manager starting reconnect after unexpected disconnect", {
+        modelName: this.config.modelName ?? null,
+        subscribeMode: this.subscribeMode,
+      });
       this.reconnect();
       return;
     }
@@ -135,6 +143,12 @@ export class LiveKitManager {
     this.isReconnecting = true;
     this.emitState("reconnecting");
     const reconnectStart = performance.now();
+    this.logger.debug("LiveKit reconnect started", {
+      generation: reconnectGeneration,
+      maxAttempts: MAX_ATTEMPTS,
+      modelName: this.config.modelName ?? null,
+      subscribeMode: this.subscribeMode,
+    });
 
     try {
       let attemptCount = 0;
@@ -142,6 +156,10 @@ export class LiveKitManager {
       await pRetry(
         async () => {
           attemptCount++;
+          this.logger.debug("LiveKit reconnect attempt started", {
+            attempt: attemptCount,
+            maxAttempts: MAX_ATTEMPTS,
+          });
 
           if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
             throw new AbortError("Reconnect cancelled");
@@ -165,10 +183,16 @@ export class LiveKitManager {
             if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
               return;
             }
-            this.logger.warn("Reconnect attempt failed", { error: error.message, attempt: error.attemptNumber });
+            this.logger.warn("Reconnect attempt failed", {
+              error: error.message,
+              attempt: error.attemptNumber,
+              maxAttempts: MAX_ATTEMPTS,
+              retriesLeft: error.retriesLeft,
+              elapsedMs: Math.round(performance.now() - reconnectStart),
+            });
             this.config.onDiagnostic?.("reconnect", {
               attempt: error.attemptNumber,
-              maxAttempts: RETRY_OPTIONS.retries + 1,
+              maxAttempts: MAX_ATTEMPTS,
               durationMs: performance.now() - reconnectStart,
               success: false,
               error: error.message,
@@ -186,9 +210,15 @@ export class LiveKitManager {
       );
       this.config.onDiagnostic?.("reconnect", {
         attempt: attemptCount,
-        maxAttempts: RETRY_OPTIONS.retries + 1,
+        maxAttempts: MAX_ATTEMPTS,
         durationMs: performance.now() - reconnectStart,
         success: true,
+      });
+      this.logger.info("LiveKit reconnect completed", {
+        attempts: attemptCount,
+        maxAttempts: MAX_ATTEMPTS,
+        durationMs: Math.round(performance.now() - reconnectStart),
+        generation: reconnectGeneration,
       });
       // "connected" state is emitted by handleConnectionStateChange
     } catch (error) {
@@ -209,6 +239,14 @@ export class LiveKitManager {
     this.isReconnecting = false;
     this.reconnectGeneration += 1;
     this.emitState("connecting");
+    const connectStart = performance.now();
+    this.logger.debug("LiveKit initial connect started", {
+      url: sanitizeUrl(this.config.url),
+      subscribeMode: this.subscribeMode,
+      maxAttempts: MAX_ATTEMPTS,
+      timeoutMs: CONNECTION_TIMEOUT,
+      modelName: this.config.modelName ?? null,
+    });
 
     return pRetry(
       async () => {
@@ -216,12 +254,22 @@ export class LiveKitManager {
           throw new AbortError("Connect cancelled");
         }
         await this.connection.connect(this.config.url, localStream, CONNECTION_TIMEOUT, this.config.integration);
+        this.logger.info("LiveKit initial connect succeeded", {
+          modelName: this.config.modelName ?? null,
+          durationMs: Math.round(performance.now() - connectStart),
+        });
         return true;
       },
       {
         ...RETRY_OPTIONS,
         onFailedAttempt: (error) => {
-          this.logger.warn("Connection attempt failed", { error: error.message, attempt: error.attemptNumber });
+          this.logger.warn("Connection attempt failed", {
+            error: error.message,
+            attempt: error.attemptNumber,
+            maxAttempts: MAX_ATTEMPTS,
+            retriesLeft: error.retriesLeft,
+            elapsedMs: Math.round(performance.now() - connectStart),
+          });
           this.connection.cleanup();
         },
         shouldRetry: (error) => {
