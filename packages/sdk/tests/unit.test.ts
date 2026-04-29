@@ -1417,116 +1417,37 @@ describe("LiveKitConnection", () => {
   });
 });
 
-describe("RealTimeClient cleanup", () => {
-  it("cleans up AudioStreamManager when initial image fetch fails before WebRTC connect", async () => {
-    class FakeAudioContext {
-      createMediaStreamDestination() {
-        return { stream: {} };
-      }
-      createOscillator() {
-        return { connect: vi.fn(), start: vi.fn(), stop: vi.fn() };
-      }
-      createGain() {
-        return { gain: { value: 0 }, connect: vi.fn() };
-      }
-      close() {
-        return Promise.resolve();
-      }
-    }
+describe("Realtime Image Message Types", () => {
+  it("SetImageMessage has correct structure", () => {
+    const message: import("../src/realtime/types").SetImageMessage = {
+      type: "set_image",
+      image_data: "base64encodeddata",
+    };
 
-    vi.stubGlobal("AudioContext", FakeAudioContext);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 404,
-        statusText: "Not Found",
-      }),
-    );
-
-    const { AudioStreamManager } = await import("../src/realtime/audio-stream-manager.js");
-    const cleanupSpy = vi.spyOn(AudioStreamManager.prototype, "cleanup");
-
-    try {
-      const { createRealTimeClient } = await import("../src/realtime/client.js");
-      const realtime = createRealTimeClient({ baseUrl: "wss://example.com", apiKey: "test-key" });
-
-      await expect(
-        realtime.connect(null, {
-          model: models.realtime("live_avatar"),
-          onRemoteStream: vi.fn(),
-          initialState: { image: "https://example.com/avatar.png" },
-        }),
-      ).rejects.toThrow("Failed to fetch image: 404 Not Found");
-
-      expect(cleanupSpy).toHaveBeenCalledTimes(1);
-    } finally {
-      cleanupSpy.mockRestore();
-      vi.unstubAllGlobals();
-    }
-  });
-});
-
-describe("live_avatar Model", () => {
-  describe("Model Definition", () => {
-    it("has correct model name", () => {
-      const avatarModel = models.realtime("live_avatar");
-      expect(avatarModel.name).toBe("live_avatar");
-    });
-
-    it("has correct URL path for live_avatar", () => {
-      const avatarModel = models.realtime("live_avatar");
-      expect(avatarModel.urlPath).toBe("/v1/stream");
-    });
-
-    it("has expected dimensions", () => {
-      const avatarModel = models.realtime("live_avatar");
-      expect(avatarModel.width).toBe(1280);
-      expect(avatarModel.height).toBe(720);
-    });
-
-    it("has correct fps", () => {
-      const avatarModel = models.realtime("live_avatar");
-      expect(avatarModel.fps).toBe(25);
-    });
-
-    it("is recognized as a realtime model", () => {
-      expect(models.realtime("live_avatar")).toBeDefined();
-    });
+    expect(message.type).toBe("set_image");
+    expect(message.image_data).toBe("base64encodeddata");
   });
 
-  describe("Live_Avatar Message Types", () => {
-    it("SetAvatarImageMessage has correct structure", () => {
-      const message: import("../src/realtime/types").SetAvatarImageMessage = {
-        type: "set_image",
-        image_data: "base64encodeddata",
-      };
+  it("SetImageAckMessage has correct structure", () => {
+    const successMessage: import("../src/realtime/types").SetImageAckMessage = {
+      type: "set_image_ack",
+      success: true,
+      error: null,
+    };
 
-      expect(message.type).toBe("set_image");
-      expect(message.image_data).toBe("base64encodeddata");
-    });
+    expect(successMessage.type).toBe("set_image_ack");
+    expect(successMessage.success).toBe(true);
+    expect(successMessage.error).toBeNull();
 
-    it("SetImageAckMessage has correct structure", () => {
-      const successMessage: import("../src/realtime/types").SetImageAckMessage = {
-        type: "set_image_ack",
-        success: true,
-        error: null,
-      };
+    const failureMessage: import("../src/realtime/types").SetImageAckMessage = {
+      type: "set_image_ack",
+      success: false,
+      error: "invalid image",
+    };
 
-      expect(successMessage.type).toBe("set_image_ack");
-      expect(successMessage.success).toBe(true);
-      expect(successMessage.error).toBeNull();
-
-      const failureMessage: import("../src/realtime/types").SetImageAckMessage = {
-        type: "set_image_ack",
-        success: false,
-        error: "invalid image",
-      };
-
-      expect(failureMessage.type).toBe("set_image_ack");
-      expect(failureMessage.success).toBe(false);
-      expect(failureMessage.error).toBe("invalid image");
-    });
+    expect(failureMessage.type).toBe("set_image_ack");
+    expect(failureMessage.success).toBe(false);
+    expect(failureMessage.error).toBe("invalid image");
   });
 });
 
@@ -3365,14 +3286,6 @@ describe("Canonical Model Names", () => {
       expect(model.name).toBe("lucy-restyle-2");
       expect(model.fps).toBe(22);
     });
-
-    it("live-avatar canonical name works", () => {
-      const model = models.realtime("live-avatar");
-      expect(model.name).toBe("live-avatar");
-      expect(model.fps).toBe(25);
-      expect(model.width).toBe(1280);
-      expect(model.height).toBe(720);
-    });
   });
 
   describe("Video canonical models", () => {
@@ -3567,11 +3480,6 @@ describe("Canonical Model Names", () => {
     it("mirage_v2 still works as realtime model", () => {
       const model = models.realtime("mirage_v2");
       expect(model.name).toBe("mirage_v2");
-    });
-
-    it("live_avatar still works as realtime model", () => {
-      const model = models.realtime("live_avatar");
-      expect(model.name).toBe("live_avatar");
     });
 
     it("lucy-pro-v2v still works as video model", () => {

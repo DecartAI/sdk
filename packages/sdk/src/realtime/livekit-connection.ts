@@ -37,7 +37,7 @@ import type {
 } from "./types";
 import type { StatsProvider } from "./webrtc-stats";
 
-const AVATAR_SETUP_TIMEOUT_MS = 30_000;
+const SETUP_TIMEOUT_MS = 30_000;
 const ROOM_INFO_TIMEOUT_MS = 15_000;
 const DEFAULT_VIDEO_CODEC = "h264";
 const DEFAULT_MAX_VIDEO_BITRATE_BPS = 2_500_000;
@@ -157,7 +157,7 @@ export class LiveKitConnection {
       // Phase 3 — optional startup conditioning over the control WS.
       if (this.callbacks.initialImage) {
         const imageStart = performance.now();
-        this.logger.debug("LiveKit connection phase started", { phase: "avatar-image" });
+        this.logger.debug("LiveKit connection phase started", { phase: "initial-image" });
         await Promise.race([
           this.setImageBase64(this.callbacks.initialImage, {
             prompt: this.callbacks.initialPrompt?.text,
@@ -166,11 +166,11 @@ export class LiveKitConnection {
           connectAbort,
         ]);
         this.logger.debug("LiveKit connection phase completed", {
-          phase: "avatar-image",
+          phase: "initial-image",
           durationMs: performance.now() - imageStart,
         });
         this.emitDiagnostic("phaseTiming", {
-          phase: "avatar-image",
+          phase: "initial-image",
           durationMs: performance.now() - imageStart,
           success: true,
         });
@@ -232,7 +232,7 @@ export class LiveKitConnection {
       const timeoutId = setTimeout(() => {
         this.websocketMessagesEmitter.off("setImageAck", listener);
         reject(new Error("Image send timed out"));
-      }, options?.timeout ?? AVATAR_SETUP_TIMEOUT_MS);
+      }, options?.timeout ?? SETUP_TIMEOUT_MS);
 
       const listener = (msg: SetImageAckMessage) => {
         clearTimeout(timeoutId);
@@ -526,7 +526,7 @@ export class LiveKitConnection {
       const timeoutId = setTimeout(() => {
         this.websocketMessagesEmitter.off("promptAck", listener);
         reject(new Error("Prompt send timed out"));
-      }, AVATAR_SETUP_TIMEOUT_MS);
+      }, SETUP_TIMEOUT_MS);
 
       const listener = (msg: PromptAckMessage) => {
         if (msg.prompt === prompt.text) {

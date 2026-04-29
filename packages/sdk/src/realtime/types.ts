@@ -16,12 +16,11 @@ export type ErrorMessage = {
   error: string;
 };
 
-// Avatar Live message types
-export type SetAvatarImageMessage = {
+export type SetImageMessage = {
   type: "set_image";
-  image_data: string | null; // Base64-encoded image data, or null to clear/use placeholder
-  prompt?: string | null; // Optional prompt to send with the image, null for passthrough
-  enhance_prompt?: boolean; // Optional flag to enhance the prompt
+  image_data: string | null;
+  prompt?: string | null;
+  enhance_prompt?: boolean;
 };
 
 export type SetImageAckMessage = {
@@ -65,6 +64,6 @@ export type IncomingRealtimeMessage =
   | LiveKitRoomInfoMessage;
 
 // Outgoing message types (to server)
-export type OutgoingRealtimeMessage = LiveKitJoinMessage | PromptMessage | SetAvatarImageMessage;
+export type OutgoingRealtimeMessage = LiveKitJoinMessage | PromptMessage | SetImageMessage;
 
-export type OutgoingMessage = PromptMessage | SetAvatarImageMessage;
+export type OutgoingMessage = PromptMessage | SetImageMessage;
