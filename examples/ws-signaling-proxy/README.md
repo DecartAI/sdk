@@ -23,7 +23,7 @@ pnpm dev               # starts proxy on ws://localhost:8080
 Clients connect to:
 
 ```
-ws://localhost:8080/v1/stream?model=lucy_2_rt
+ws://localhost:8080/v1/stream?model=lucy-2.1
 ```
 
 ## Environment variables

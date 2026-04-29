@@ -66,13 +66,13 @@
 - `mirage` - Real-time video restyling model
 - `mirage_v2` - Real-time video restyling model (v2)
 - `lucy_v2v_720p_rt` - Real-time video editing model
-- `lucy_2_rt` - Real-time video editing model (supports reference image)
+- `lucy-2.1` - Real-time video editing model (supports reference image)
 
 ### Video Models (Queue API)
 - `lucy-pro-v2v` - video-to-video (Pro quality)
 - `lucy-motion` - motion-based image-to-video (trajectory-guided animation)
 - `lucy-restyle-v2v` - video restyling (video-to-video)
-- `lucy-2-v2v` - video-to-video editing (long-form, 720p)
+- `lucy-2.1` - video-to-video editing (long-form, 720p)
 
 ### Image Models (Process API)
 - `lucy-pro-i2i` - image-to-image (Pro quality)

@@ -154,41 +154,6 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       await expectResult(result, "lucy-restyle-2-reference_image", ".mp4");
     });
 
-    it("lucy-2: video editing (prompt)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-2"),
-        prompt: "Watercolor painting style with soft brushstrokes",
-        data: videoBlob,
-        seed: 42,
-      });
-
-      await expectResult(result, "lucy-2-prompt", ".mp4");
-    });
-
-    it("lucy-2: video editing (reference_image)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-2"),
-        prompt: "",
-        reference_image: imageBlob,
-        data: videoBlob,
-        seed: 42,
-      });
-
-      await expectResult(result, "lucy-2-reference_image", ".mp4");
-    });
-
-    it("lucy-2: video editing (prompt + reference_image)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-2"),
-        prompt: "Watercolor painting style",
-        reference_image: imageBlob,
-        data: videoBlob,
-        seed: 42,
-      });
-
-      await expectResult(result, "lucy-2-both", ".mp4");
-    });
-
     it("lucy-2.1: video editing (prompt)", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-2.1"),
@@ -257,17 +222,6 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       });
 
       await expectResult(result, "lucy-restyle-v2v", ".mp4");
-    });
-
-    it("lucy-2-v2v (deprecated): video editing", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-2-v2v"),
-        prompt: "Watercolor painting style with soft brushstrokes",
-        data: videoBlob,
-        seed: 42,
-      });
-
-      await expectResult(result, "lucy-2-v2v", ".mp4");
     });
 
     // Latest aliases (server-side resolution)
