@@ -192,22 +192,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           }
         : undefined;
 
-      // Preserve any query string already present on baseUrl (e.g. the
-      // webrtc-bench tool appends opt-in flags like ?emit_server_metrics=1)
-      // by splitting it off before prepending the model path, then merging
-      // with the SDK's own params. Without this the final URL ended up as
-      // `baseUrl?X=Y/v1/stream?api_key=...` — two `?` separators, which
-      // every WS server rejects with 404.
-      const baseQueryIdx = baseUrl.indexOf("?");
-      const baseOrigin = baseQueryIdx === -1 ? baseUrl : baseUrl.slice(0, baseQueryIdx);
-      const baseExtraQuery = baseQueryIdx === -1 ? "" : baseUrl.slice(baseQueryIdx + 1);
-      const url = `${baseOrigin}${options.model.urlPath}`;
-      const extraQueryPrefix = baseExtraQuery ? `${baseExtraQuery}&` : "";
+      const url = `${baseUrl}${options.model.urlPath}`;
 
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
 
       livekitManager = new LiveKitManager({
-        url: `${url}?${extraQueryPrefix}api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+        url: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
         integration,
         logger,
         onDiagnostic: (name, data) => {
@@ -423,14 +413,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
   const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
     const { sid, ip, port } = decodeSubscribeToken(options.token);
-    // Same baseUrl-with-query handling as the connect() path above — split
-    // existing query off before appending the /subscribe/ path so we end up
-    // with a single `?` separator.
-    const subQueryIdx = baseUrl.indexOf("?");
-    const subBaseOrigin = subQueryIdx === -1 ? baseUrl : baseUrl.slice(0, subQueryIdx);
-    const subBaseExtraQuery = subQueryIdx === -1 ? "" : baseUrl.slice(subQueryIdx + 1);
-    const subExtraQueryPrefix = subBaseExtraQuery ? `${subBaseExtraQuery}&` : "";
-    const subscribeUrl = `${subBaseOrigin}/subscribe/${encodeURIComponent(sid)}?${subExtraQueryPrefix}IP=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}&api_key=${encodeURIComponent(apiKey)}`;
+    const subscribeUrl = `${baseUrl}/subscribe/${encodeURIComponent(sid)}?IP=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}&api_key=${encodeURIComponent(apiKey)}`;
 
     const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
 
