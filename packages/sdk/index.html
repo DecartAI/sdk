@@ -320,7 +320,7 @@
             </div>
         </div>
         <div class="control-group checkbox-group">
-            <input type="checkbox" id="stream-audio-toggle" checked>
+            <input type="checkbox" id="stream-audio-toggle" unchecked>
             <label for="stream-audio-toggle" style="margin: 0; font-weight: normal;">Stream microphone audio</label>
         </div>
         <div class="inline-controls">
@@ -539,7 +539,7 @@
                     label === "error" ? "error" : "info",
                 );
             };
-            const c = createConsoleLogger("info");
+            const c = createConsoleLogger("debug");
             return {
                 debug: (msg, data) => {
                     c.debug(msg, data);
@@ -675,8 +675,8 @@
                 });
                 
                 addLog('Connecting to Decart server via LiveKit...', 'info');
-                const livekitPublishCodec = elements.codecSelect.value;
-                addLog(`LiveKit publish codec: ${livekitPublishCodec.toUpperCase()}`, 'info');
+                const codec = elements.codecSelect.value;
+                addLog(`Transport codec: ${codec.toUpperCase()}`, 'info');
                 
                 // Build initial prompt from text field (empty / null toggle = passthrough)
                 const initialPromptText = elements.initialPrompt.value.trim();
@@ -705,7 +705,7 @@
                         ...(promptValue && { prompt: promptValue }),
                         ...(initialImage && { image: initialImage }),
                     },
-                    livekitPublishCodec,
+                    transport: { codec },
                 });
                 
                 // Check connection status

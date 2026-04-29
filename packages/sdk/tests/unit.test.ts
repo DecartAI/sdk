@@ -1737,90 +1737,76 @@ describe("Subscribe Client", () => {
     }
   });
 
-  it("leaves LiveKit publish options unset when callers omit them", async () => {
+  it("resolves desktop transport preset by default in non-browser env", async () => {
+    const { resolveTransport } = await import("../src/realtime/transport.js");
+    const resolved = resolveTransport();
+    expect(resolved.codec).toBe("vp9");
+    expect(resolved.maxBitrateKbps).toBe(4500);
+    expect(resolved.degradationPreference).toBe("balanced");
+  });
+
+  it("resolves the mobile preset when platform is mobile", async () => {
+    const { resolveTransport } = await import("../src/realtime/transport.js");
+    const resolved = resolveTransport({ platform: "mobile" });
+    expect(resolved.codec).toBe("h264");
+    expect(resolved.maxBitrateKbps).toBe(2500);
+    expect(resolved.degradationPreference).toBe("maintain-framerate");
+  });
+
+  it("lets explicit codec and bitrate override the platform preset", async () => {
+    const { resolveTransport } = await import("../src/realtime/transport.js");
+    const resolved = resolveTransport({ platform: "mobile", codec: "av1", maxBitrateKbps: 1200 });
+    expect(resolved.codec).toBe("av1");
+    expect(resolved.maxBitrateKbps).toBe(1200);
+    expect(resolved.degradationPreference).toBe("maintain-framerate");
+  });
+
+  it("forwards the resolved transport down to the LiveKit connection", async () => {
     const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
 
     const manager = new LiveKitManager({
       url: "wss://example.com",
       onRemoteStream: vi.fn(),
+      transport: {
+        codec: "vp9",
+        maxBitrateKbps: 4500,
+        degradationPreference: "balanced",
+      },
+      maxFramerate: 24,
     });
     const callbacks = (
       manager as unknown as {
         connection: {
           callbacks: {
-            publishSimulcast?: boolean;
-            publishMaxBitrateKbps?: number | null;
-            adaptiveStream?: boolean;
-            dynacast?: boolean;
-            publishCodec?: string;
-            publishMaxFramerate?: number;
-            degradationPreference?: string;
+            transport?: { codec: string; maxBitrateKbps: number; degradationPreference: string };
+            maxFramerate?: number;
           };
         };
       }
     ).connection.callbacks;
 
-    expect(callbacks.publishSimulcast).toBeUndefined();
-    expect(callbacks.publishMaxBitrateKbps).toBeUndefined();
-    expect(callbacks.adaptiveStream).toBeUndefined();
-    expect(callbacks.dynacast).toBeUndefined();
-    expect(callbacks.publishCodec).toBeUndefined();
-    expect(callbacks.publishMaxFramerate).toBeUndefined();
-    expect(callbacks.degradationPreference).toBeUndefined();
+    expect(callbacks.transport).toEqual({ codec: "vp9", maxBitrateKbps: 4500, degradationPreference: "balanced" });
+    expect(callbacks.maxFramerate).toBe(24);
   });
 
-  it("forwards explicit LiveKit publish options as additive config", async () => {
-    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
-
-    const manager = new LiveKitManager({
-      url: "wss://example.com",
-      onRemoteStream: vi.fn(),
-      livekitPublishSimulcast: false,
-      livekitPublishMaxBitrateKbps: 1200,
-      livekitAdaptiveStream: true,
-      livekitDynacast: true,
-      livekitPublishCodec: "vp9",
-      livekitPublishMaxFramerate: 24,
-      livekitDegradationPreference: "maintain-framerate",
-    });
-    const callbacks = (
-      manager as unknown as {
-        connection: {
-          callbacks: {
-            publishSimulcast?: boolean;
-            publishMaxBitrateKbps?: number | null;
-            adaptiveStream?: boolean;
-            dynacast?: boolean;
-            publishCodec?: string;
-            publishMaxFramerate?: number;
-            degradationPreference?: string;
-          };
-        };
-      }
-    ).connection.callbacks;
-
-    expect(callbacks.publishSimulcast).toBe(false);
-    expect(callbacks.publishMaxBitrateKbps).toBe(1200);
-    expect(callbacks.adaptiveStream).toBe(true);
-    expect(callbacks.dynacast).toBe(true);
-    expect(callbacks.publishCodec).toBe("vp9");
-    expect(callbacks.publishMaxFramerate).toBe(24);
-    expect(callbacks.degradationPreference).toBe("maintain-framerate");
-  });
-
-  it("accepts customizeOffer as a deprecated no-op", async () => {
+  it("uses the selected model fps for LiveKit publish framerate", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
 
+    let configuredFramerate: number | undefined;
     const websocketEmitter = {
       on: vi.fn(),
       off: vi.fn(),
     };
     const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
       const mgr = this as unknown as {
-        config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
+        config: {
+          maxFramerate?: number;
+          onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void;
+        };
         managerState: import("../src/realtime/types").ConnectionState;
       };
+      configuredFramerate = mgr.config.maxFramerate;
       mgr.managerState = "connected";
       mgr.config.onConnectionStateChange?.("connected");
       return true;
@@ -1830,18 +1816,15 @@ describe("Subscribe Client", () => {
       .spyOn(LiveKitManager.prototype, "getWebsocketMessageEmitter")
       .mockReturnValue(websocketEmitter as never);
     const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
-    const customizeOffer = vi.fn(async () => {});
 
     try {
       const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "test-key" });
       const client = await realtime.connect({} as MediaStream, {
-        model: models.realtime("mirage_v2"),
+        model: models.realtime("lucy_2_rt"),
         onRemoteStream: vi.fn(),
-        customizeOffer,
       });
 
-      expect(client.isConnected()).toBe(true);
-      expect(customizeOffer).not.toHaveBeenCalled();
+      expect(configuredFramerate).toBe(20);
       client.disconnect();
     } finally {
       connectSpy.mockRestore();

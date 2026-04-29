@@ -32,14 +32,25 @@ import type {
   LiveKitRoomInfoMessage,
   OutgoingRealtimeMessage,
   PromptAckMessage,
-  ServerMetricsMessage,
   SessionIdMessage,
   SetImageAckMessage,
 } from "./types";
+import type { ResolvedTransport } from "./transport";
 import type { StatsProvider } from "./webrtc-stats";
 
 const AVATAR_SETUP_TIMEOUT_MS = 30_000;
 const ROOM_INFO_TIMEOUT_MS = 15_000;
+const DEFAULT_MAX_FRAMERATE = 30;
+
+function sanitizeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.searchParams.has("api_key")) u.searchParams.set("api_key", "***");
+    return u.toString();
+  } catch {
+    return url.replace(/api_key=[^&]*/g, "api_key=***");
+  }
+}
 
 interface LiveKitCallbacks {
   onRemoteStream?: (stream: MediaStream) => void;
@@ -50,56 +61,15 @@ interface LiveKitCallbacks {
   initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
-  /** Override livekit-client `publishTrack` simulcast option. Defaults to true. */
-  publishSimulcast?: boolean;
-  /**
-   * Client-side uplink cap in kbps. Defaults to 3500 to match the
-   * server-side publish cap (see inference_server/rt/livekit/conn.py).
-   * Pass `null` explicitly to omit the cap entirely and let Chrome BWE
-   * run uncapped.
-   */
-  publishMaxBitrateKbps?: number | null;
-  /**
-   * livekit-client `Room` options. Both default to `false` — matches the
-   * current shipped behavior. Exposed primarily so the webrtc-bench tool
-   * can sweep these without forking the SDK. Enabling either in production
-   * changes quality/bandwidth trade-offs, so leave them off unless you
-   * know what you're doing.
-   */
-  adaptiveStream?: boolean;
-  dynacast?: boolean;
-  /**
-   * `publishTrack({ videoCodec })`. Undefined = let livekit-client pick
-   * (browser-negotiated, usually VP8 or VP9). Set to pin an explicit
-   * codec — useful when testing symmetric codec paths (when
-   * combined with a matching server-side TrackPublishOptions.video_codec).
-   */
-  publishCodec?: "vp8" | "vp9" | "h264" | "av1";
-  /**
-   * `publishTrack({ videoEncoding.maxFramerate })`. Default: 30 when a
-   * bitrate cap is set. Exposed as a separate knob so the bench can
-   * match server-side `serverMaxFramerate`.
-   */
-  publishMaxFramerate?: number;
-  /**
-   * `publishTrack({ degradationPreference })`. When bandwidth is
-   * constrained, livekit-client picks what to sacrifice: smoother
-   * motion (lower resolution) vs sharper image (lower framerate).
-   * Defaults to "balanced" (livekit-client default). For interactive
-   * video, "maintain-framerate" is usually better — frozen sharp
-   * pictures feel worse than blurry motion.
-   */
-  degradationPreference?: "balanced" | "maintain-framerate" | "maintain-resolution";
+  transport?: ResolvedTransport;
+  maxFramerate?: number;
 }
-
-const DEFAULT_PUBLISH_MAX_BITRATE_KBPS = 3500;
 
 type WsMessageEvents = {
   promptAck: PromptAckMessage;
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
-  serverMetrics: ServerMetricsMessage;
 };
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
@@ -113,6 +83,7 @@ export class LiveKitConnection {
   private emitDiagnostic: DiagnosticEmitter;
   private statsProvider: StatsProvider | null = null;
   private remoteStream: MediaStream | null = null;
+  private wsOpenedAt: number | null = null;
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
 
@@ -140,6 +111,13 @@ export class LiveKitConnection {
     const separator = url.includes("?") ? "&" : "?";
     const wsUrl = `${url}${separator}user_agent=${userAgent}`;
 
+    this.logger.debug("LiveKit connection.connect()", {
+      url: sanitizeUrl(wsUrl),
+      timeoutMs: timeout,
+      mode: localStream ? "publish" : "subscribe",
+      tracks: localStream?.getTracks?.().map((t) => t.kind) ?? [],
+    });
+
     let rejectConnect!: (error: Error) => void;
     const connectAbort = new Promise<never>((_, reject) => {
       rejectConnect = reject;
@@ -150,8 +128,13 @@ export class LiveKitConnection {
     try {
       // Phase 1 — control WS + livekit_join/livekit_room_info handshake.
       const roomInfoStart = performance.now();
+      this.logger.debug("LiveKit connection phase started", { phase: "websocket" });
       await Promise.race([this.openControlWs(wsUrl, timeout), connectAbort]);
       const roomInfo = await Promise.race([this.requestRoomInfo(), connectAbort]);
+      this.logger.debug("LiveKit connection phase completed", {
+        phase: "websocket",
+        durationMs: performance.now() - roomInfoStart,
+      });
       this.emitDiagnostic("phaseTiming", {
         phase: "websocket",
         durationMs: performance.now() - roomInfoStart,
@@ -160,7 +143,12 @@ export class LiveKitConnection {
 
       // Phase 2 — join the SFU room and publish local tracks.
       const roomStart = performance.now();
+      this.logger.debug("LiveKit connection phase started", { phase: "webrtc-handshake" });
       await Promise.race([this.joinRoom(roomInfo), connectAbort]);
+      this.logger.debug("LiveKit connection phase completed", {
+        phase: "webrtc-handshake",
+        durationMs: performance.now() - roomStart,
+      });
       this.emitDiagnostic("phaseTiming", {
         phase: "webrtc-handshake",
         durationMs: performance.now() - roomStart,
@@ -170,6 +158,7 @@ export class LiveKitConnection {
       // Phase 3 — optional startup conditioning over the control WS.
       if (this.callbacks.initialImage) {
         const imageStart = performance.now();
+        this.logger.debug("LiveKit connection phase started", { phase: "avatar-image" });
         await Promise.race([
           this.setImageBase64(this.callbacks.initialImage, {
             prompt: this.callbacks.initialPrompt?.text,
@@ -177,6 +166,10 @@ export class LiveKitConnection {
           }),
           connectAbort,
         ]);
+        this.logger.debug("LiveKit connection phase completed", {
+          phase: "avatar-image",
+          durationMs: performance.now() - imageStart,
+        });
         this.emitDiagnostic("phaseTiming", {
           phase: "avatar-image",
           durationMs: performance.now() - imageStart,
@@ -184,7 +177,12 @@ export class LiveKitConnection {
         });
       } else if (this.callbacks.initialPrompt) {
         const promptStart = performance.now();
+        this.logger.debug("LiveKit connection phase started", { phase: "initial-prompt" });
         await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
+        this.logger.debug("LiveKit connection phase completed", {
+          phase: "initial-prompt",
+          durationMs: performance.now() - promptStart,
+        });
         this.emitDiagnostic("phaseTiming", {
           phase: "initial-prompt",
           durationMs: performance.now() - promptStart,
@@ -192,7 +190,13 @@ export class LiveKitConnection {
         });
       } else if (localStream) {
         const passthroughStart = performance.now();
+        this.logger.debug("LiveKit connection phase started", { phase: "initial-prompt", mode: "passthrough" });
         await Promise.race([this.setImageBase64(null, { prompt: null }), connectAbort]);
+        this.logger.debug("LiveKit connection phase completed", {
+          phase: "initial-prompt",
+          mode: "passthrough",
+          durationMs: performance.now() - passthroughStart,
+        });
         this.emitDiagnostic("phaseTiming", {
           phase: "initial-prompt",
           durationMs: performance.now() - passthroughStart,
@@ -214,7 +218,10 @@ export class LiveKitConnection {
       this.ws.send(JSON.stringify(message));
       return true;
     }
-    this.logger.warn("Message dropped: WebSocket is not open");
+    this.logger.warn("Message dropped: WebSocket is not open", {
+      messageType: message.type,
+      readyState: this.ws?.readyState ?? null,
+    });
     return false;
   }
 
@@ -283,14 +290,28 @@ export class LiveKitConnection {
 
   private async openControlWs(wsUrl: string, timeout: number): Promise<void> {
     await new Promise<void>((resolve, reject) => {
+      const openStart = performance.now();
       const timer = setTimeout(() => reject(new Error("WebSocket timeout")), timeout);
+      this.logger.debug("Opening LiveKit control WebSocket", {
+        url: sanitizeUrl(wsUrl),
+        timeoutMs: timeout,
+      });
       this.ws = new WebSocket(wsUrl);
+      this.wsOpenedAt = openStart;
       this.ws.onopen = () => {
         clearTimeout(timer);
+        this.logger.debug("LiveKit control WebSocket opened", {
+          handshakeMs: Math.round(performance.now() - openStart),
+        });
         resolve();
       };
       this.ws.onclose = (e) => {
-        this.logger.info("LiveKit control WS closed", { code: e.code, reason: e.reason });
+        this.logger.info("LiveKit control WS closed", {
+          code: e.code,
+          reason: e.reason || "(none)",
+          wasClean: e.wasClean,
+          uptimeMs: this.wsOpenedAt ? Math.round(performance.now() - this.wsOpenedAt) : null,
+        });
         // If the room is still connecting this also aborts the connect flow.
         this.connectionReject?.(new Error(`WebSocket closed: ${e.code} ${e.reason}`));
         if (!this.room || this.room.state !== LKConnectionState.Connected) {
@@ -304,13 +325,18 @@ export class LiveKitConnection {
         try {
           this.handleControlMessage(JSON.parse(e.data));
         } catch (error) {
-          this.logger.error("LiveKit control WS message parse error", { error: String(error) });
+          this.logger.error("LiveKit control WS message parse error", {
+            error: String(error),
+            preview: typeof e.data === "string" ? e.data.slice(0, 200) : "(non-string)",
+          });
         }
       };
     });
   }
 
   private async requestRoomInfo(): Promise<LiveKitRoomInfoMessage> {
+    const askedAt = performance.now();
+    this.logger.debug("Requesting LiveKit room info", { timeoutMs: ROOM_INFO_TIMEOUT_MS });
     this.send({ type: "livekit_join" });
     return await new Promise<LiveKitRoomInfoMessage>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -321,6 +347,12 @@ export class LiveKitConnection {
       const handler = (msg: IncomingRealtimeMessage) => {
         if (msg.type === "livekit_room_info") {
           cleanup();
+          this.logger.debug("Received LiveKit room info", {
+            roomName: msg.room_name,
+            sfuUrl: msg.livekit_url,
+            tokenBytes: msg.token.length,
+            waitMs: Math.round(performance.now() - askedAt),
+          });
           resolve(msg);
         } else if (msg.type === "error") {
           cleanup();
@@ -357,10 +389,6 @@ export class LiveKitConnection {
       case "generation_tick":
         this.websocketMessagesEmitter.emit("generationTick", msg);
         break;
-      case "server_metrics":
-        // Opt-in server-side stats for the webrtc-bench tool.
-        this.websocketMessagesEmitter.emit("serverMetrics", msg);
-        break;
       case "error": {
         const error = new Error(msg.error) as Error & { source?: string };
         error.source = "server";
@@ -376,21 +404,35 @@ export class LiveKitConnection {
   // -------------------------------------------------------------------------
 
   private async joinRoom(info: LiveKitRoomInfoMessage): Promise<void> {
+    this.logger.debug("Joining LiveKit room", {
+      roomName: info.room_name,
+      sfuUrl: info.livekit_url,
+      adaptiveStream: false,
+      dynacast: false,
+    });
     this.room = new Room({
-      adaptiveStream: this.callbacks.adaptiveStream ?? false,
-      dynacast: this.callbacks.dynacast ?? false,
+      adaptiveStream: false,
+      dynacast: false,
     });
 
     this.room.on(
       RoomEvent.TrackSubscribed,
-      (track: RemoteTrack, _pub: RemoteTrackPublication, _p: RemoteParticipant) => {
+      (track: RemoteTrack, pub: RemoteTrackPublication, p: RemoteParticipant) => {
         if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {
-          // Compose a MediaStream for the SDK consumer. We attach the track
-          // element so downstream TrackEvent.VideoPlaybackStarted fires and
-          // the browser actually starts decoding — the element isn't kept.
           track.attach();
           const mediaStreamTrack = track.mediaStreamTrack;
           if (mediaStreamTrack) {
+            const settings = mediaStreamTrack.getSettings?.() ?? {};
+            this.logger.debug("LiveKit remote track subscribed", {
+              kind: track.kind,
+              source: track.source,
+              trackSid: track.sid ?? null,
+              participant: p.identity,
+              mimeType: pub.mimeType ?? null,
+              width: settings.width ?? null,
+              height: settings.height ?? null,
+              frameRate: settings.frameRate ?? null,
+            });
             this.remoteStream ??= new MediaStream();
             if (!this.remoteStream.getTracks().includes(mediaStreamTrack)) {
               this.remoteStream.addTrack(mediaStreamTrack);
@@ -405,14 +447,29 @@ export class LiveKitConnection {
     );
 
     this.room.on(RoomEvent.Connected, () => {
-      this.logger.info("LiveKit room connected");
+      this.logger.info("LiveKit room connected", {
+        roomName: this.room?.name ?? null,
+        participantIdentity: this.room?.localParticipant?.identity ?? null,
+        participantSid: this.room?.localParticipant?.sid ?? null,
+        remoteParticipants: this.room?.numParticipants ?? null,
+      });
     });
     this.room.on(RoomEvent.Disconnected, (reason?: unknown) => {
-      this.logger.info("LiveKit room disconnected", { reason: String(reason) });
+      this.logger.info("LiveKit room disconnected", {
+        roomName: this.room?.name ?? null,
+        reason: String(reason),
+      });
       this.setState("disconnected");
     });
 
+    const roomConnectStart = performance.now();
     await this.room.connect(info.livekit_url, info.token);
+    this.logger.debug("LiveKit room connect resolved", {
+      roomName: info.room_name,
+      sfuUrl: info.livekit_url,
+      participantSid: this.room?.localParticipant?.sid ?? null,
+      durationMs: Math.round(performance.now() - roomConnectStart),
+    });
 
     // Wire up the stats provider now that the room has local+remote
     // participant objects available. Held by reference here so the SDK
@@ -420,41 +477,58 @@ export class LiveKitConnection {
     // stable provider for this room.
     this.statsProvider = createLiveKitStatsProvider(this.room);
 
-    // Publish local tracks. Inference server expects a video track; audio is optional.
     if (this.localStream) {
-      const publishSimulcast = this.callbacks.publishSimulcast ?? true;
-      // Three-state resolution for the bitrate cap:
-      //   undefined → apply the SDK default (3500 kbps)
-      //   null      → explicit opt-out, no cap (Chrome BWE runs unclamped)
-      //   number    → explicit kbps value
-      const configuredBitrateKbps = this.callbacks.publishMaxBitrateKbps;
-      const maxBitrate =
-        configuredBitrateKbps === null ? undefined : (configuredBitrateKbps ?? DEFAULT_PUBLISH_MAX_BITRATE_KBPS) * 1000;
-      const publishCodec = this.callbacks.publishCodec;
-      const publishMaxFramerate = this.callbacks.publishMaxFramerate ?? 30;
-      const degradationPreference = this.callbacks.degradationPreference;
-      this.logger.info("LiveKit client publish config", {
-        simulcast: publishSimulcast,
-        maxBitrate,
-        maxFramerate: publishMaxFramerate,
-        codec: publishCodec ?? "(negotiated)",
-        degradationPreference: degradationPreference ?? "(balanced)",
-        adaptiveStream: this.callbacks.adaptiveStream ?? false,
-        dynacast: this.callbacks.dynacast ?? false,
+      await this.publishLocalTracks(this.localStream);
+    }
+  }
+
+  private async publishLocalTracks(stream: MediaStream): Promise<void> {
+    if (!this.room) return;
+    const transport = this.callbacks.transport;
+    const maxFramerate = this.callbacks.maxFramerate ?? DEFAULT_MAX_FRAMERATE;
+    this.logger.info("LiveKit client publish config", {
+      codec: transport?.codec ?? null,
+      maxBitrateKbps: transport?.maxBitrateKbps ?? null,
+      maxFramerate,
+      degradationPreference: transport?.degradationPreference ?? null,
+      trackCount: stream.getTracks().length,
+    });
+    for (const track of stream.getTracks()) {
+      const settings = track.getSettings?.() ?? {};
+      this.logger.debug("Publishing local track to LiveKit", {
+        kind: track.kind,
+        label: track.label || null,
+        width: settings.width ?? null,
+        height: settings.height ?? null,
+        frameRate: settings.frameRate ?? null,
+        deviceId: settings.deviceId ?? null,
       });
-      for (const track of this.localStream.getTracks()) {
-        if (track.kind === "video") {
-          const videoEncoding = maxBitrate != null ? { maxBitrate, maxFramerate: publishMaxFramerate } : undefined;
-          await this.room.localParticipant.publishTrack(track, {
-            simulcast: publishSimulcast,
-            source: Track.Source.Camera,
-            ...(publishCodec ? { videoCodec: publishCodec } : {}),
-            ...(videoEncoding ? { videoEncoding } : {}),
-            ...(degradationPreference ? { degradationPreference } : {}),
-          });
-        } else {
-          await this.room.localParticipant.publishTrack(track);
-        }
+      const publishStart = performance.now();
+      if (track.kind === "video" && transport) {
+        const publication = await this.room.localParticipant.publishTrack(track, {
+          simulcast: false,
+          source: Track.Source.Camera,
+          videoCodec: transport.codec,
+          videoEncoding: { maxBitrate: transport.maxBitrateKbps * 1000, maxFramerate },
+          degradationPreference: transport.degradationPreference,
+        });
+        this.logger.debug("LiveKit local video track published", {
+          trackSid: publication.trackSid ?? null,
+          mimeType: publication.mimeType ?? null,
+          requestedCodec: transport.codec,
+          maxBitrateKbps: transport.maxBitrateKbps,
+          maxFramerate,
+          degradationPreference: transport.degradationPreference,
+          durationMs: Math.round(performance.now() - publishStart),
+        });
+      } else {
+        const publication = await this.room.localParticipant.publishTrack(track);
+        this.logger.debug("LiveKit local track published", {
+          kind: track.kind,
+          trackSid: publication.trackSid ?? null,
+          mimeType: publication.mimeType ?? null,
+          durationMs: Math.round(performance.now() - publishStart),
+        });
       }
     }
   }

@@ -5,7 +5,7 @@ import { createRealTimeClient } from "./realtime/client";
 import { createTokensClient } from "./tokens/client";
 import { readEnv } from "./utils/env";
 import { createInvalidApiKeyError, createInvalidBaseUrlError } from "./utils/errors";
-import { type Logger, noopLogger } from "./utils/logger";
+import { createConsoleLogger, type Logger } from "./utils/logger";
 
 export type { ProcessClient } from "./process/client";
 export type { FileInput, ProcessOptions, ReactNativeFile } from "./process/types";
@@ -39,6 +39,7 @@ export type {
   SubscribeEvents,
   SubscribeOptions,
 } from "./realtime/subscribe-client";
+export type { TransportOptions } from "./realtime/transport";
 export type { ConnectionState } from "./realtime/types";
 export type { WebRTCStats } from "./realtime/webrtc-stats";
 export {
@@ -175,7 +176,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     baseUrl = parsedOptions.data.baseUrl || "https://api.decart.ai";
   }
   const { integration } = parsedOptions.data;
-  const logger = "logger" in options && options.logger ? options.logger : noopLogger;
+  const logger = "logger" in options && options.logger ? options.logger : createConsoleLogger("debug");
   const telemetryEnabled = !("telemetry" in options && options.telemetry === false);
 
   // Realtime (WebRTC) always requires direct API access with API key

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { type CustomModelDefinition, type ModelDefinition, modelDefinitionSchema } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
-import type { Logger } from "../utils/logger";
+import { createConsoleLogger, type Logger } from "../utils/logger";
 import { AudioStreamManager } from "./audio-stream-manager";
 import type { DiagnosticEvent } from "./diagnostics";
 import { createEventBuffer } from "./event-buffer";
@@ -16,7 +16,8 @@ import {
   type SubscribeOptions,
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
-import type { ConnectionState, GenerationTickMessage, ServerMetricsMessage, SessionIdMessage } from "./types";
+import { resolveTransport, type TransportOptions, transportOptionsSchema } from "./transport";
+import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -81,40 +82,17 @@ const realTimeClientInitialStateSchema = modelStateSchema;
 type OnRemoteStreamFn = (stream: MediaStream) => void;
 export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialStateSchema>;
 
-// ugly workaround to add an optional function to the schema
-// https://github.com/colinhacks/zod/issues/4143#issuecomment-2845134912
-const createAsyncFunctionSchema = <T extends z.core.$ZodFunction>(schema: T) =>
-  z.custom<Parameters<T["implementAsync"]>[0]>((fn) => schema.implementAsync(fn as Parameters<T["implementAsync"]>[0]));
-
 const realTimeClientConnectOptionsSchema = z.object({
   model: modelDefinitionSchema,
   onRemoteStream: z.custom<OnRemoteStreamFn>((val) => typeof val === "function", {
     message: "onRemoteStream must be a function",
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
-  // Deprecated compatibility no-op. LiveKit owns media negotiation internally,
-  // so the option is accepted but ignored.
-  customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
-  // Realtime always uses LiveKit (SFU). The inference pod must
-  // have livekit in TRANSPORTS_ENABLED.
-  // Client-side LiveKit `publishTrack` options:
-  //  - `livekitPublishSimulcast` defaults to true (livekit-client default).
-  //  - `livekitPublishMaxBitrateKbps` defaults to 3500. Pass `null` to
-  //    opt out of the cap entirely (lets Chrome BWE run unclamped).
-  //  - `livekitAdaptiveStream` / `livekitDynacast` default to `false`
-  //    (matches historical shipped behavior). Exposed for the bench tool.
-  livekitPublishSimulcast: z.boolean().optional(),
-  livekitPublishMaxBitrateKbps: z.union([z.number().positive(), z.null()]).optional(),
-  livekitAdaptiveStream: z.boolean().optional(),
-  livekitDynacast: z.boolean().optional(),
-  // Client-side publishTrack knobs: pin a codec (symmetric with
-  // server), override the 30 fps default, choose degradation behavior.
-  livekitPublishCodec: z.enum(["vp8", "vp9", "h264", "av1"]).optional(),
-  livekitPublishMaxFramerate: z.number().positive().optional(),
-  livekitDegradationPreference: z.enum(["balanced", "maintain-framerate", "maintain-resolution"]).optional(),
+  transport: transportOptionsSchema.optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
+  transport?: TransportOptions;
 };
 
 export type Events = {
@@ -123,12 +101,6 @@ export type Events = {
   generationTick: { seconds: number };
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
-  /**
-   * Optional server-side per-session metrics. Emitted only when the client
-   * connects with `?emit_server_metrics=1` on the realtime URL (consumed by
-   * the webrtc-bench tool). Normal SDK consumers can ignore this event.
-   */
-  serverMetrics: ServerMetricsMessage;
 };
 
 export type RealTimeClient = {
@@ -149,7 +121,8 @@ export type RealTimeClient = {
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
-  const { baseUrl, apiKey, integration, logger } = opts;
+  const { baseUrl, apiKey, integration } = opts;
+  const logger = opts.logger ?? createConsoleLogger("debug");
 
   const connect = async (
     stream: MediaStream | null,
@@ -193,8 +166,17 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
+      logger.debug("Realtime connect requested", {
+        modelName: options.model.name,
+        modelFps: options.model.fps,
+        hasLocalStream: Boolean(inputStream),
+        hasInitialImage: Boolean(initialImage),
+        hasInitialPrompt: Boolean(initialPrompt),
+      });
 
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
+
+      const transport = resolveTransport(options.transport);
 
       livekitManager = new LiveKitManager({
         url: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
@@ -216,13 +198,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         modelName: options.model.name,
         initialImage,
         initialPrompt,
-        livekitPublishSimulcast: options.livekitPublishSimulcast,
-        livekitPublishMaxBitrateKbps: options.livekitPublishMaxBitrateKbps,
-        livekitAdaptiveStream: options.livekitAdaptiveStream,
-        livekitDynacast: options.livekitDynacast,
-        livekitPublishCodec: options.livekitPublishCodec,
-        livekitPublishMaxFramerate: options.livekitPublishMaxFramerate,
-        livekitDegradationPreference: options.livekitDegradationPreference,
+        transport,
+        maxFramerate: options.model.fps,
       });
 
       const manager = livekitManager;
@@ -286,12 +263,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         emitOrBuffer("generationTick", { seconds: msg.seconds });
       };
       manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
-
-      // Opt-in server-side metrics from the control WebSocket.
-      const serverMetricsListener = (msg: ServerMetricsMessage) => {
-        emitOrBuffer("serverMetrics", msg);
-      };
-      manager.getWebsocketMessageEmitter().on("serverMetrics", serverMetricsListener);
 
       await manager.connect(inputStream);
 
