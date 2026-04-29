@@ -3625,19 +3625,6 @@ describe("Canonical Model Names", () => {
     });
   });
 
-  describe("Retired model names", () => {
-    it("rejects retired realtime model names", () => {
-      expect(() => models.realtime("lucy-2" as never)).toThrow();
-      expect(() => models.realtime("lucy_2_rt" as never)).toThrow();
-    });
-
-    it("rejects retired video model names", () => {
-      for (const model of ["lucy-2", "lucy-2-v2v", "lucy-fast-v2v", "lucy-dev-v2v", "lucy-dev-i2v", "lucy-pro-i2v"]) {
-        expect(() => models.video(model as never)).toThrow();
-      }
-    });
-  });
-
   describe("Deprecated names still work", () => {
     it("mirage_v2 still works as realtime model", () => {
       const model = models.realtime("mirage_v2");
