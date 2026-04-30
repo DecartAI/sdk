@@ -40,6 +40,10 @@ import type {
 import type { StatsProvider } from "./webrtc-stats";
 
 const SETUP_TIMEOUT_MS = 30_000;
+// Initial bouncer-responsiveness check only. Once the first `status` or
+// `queue_position` message arrives we cancel this timer entirely — queue
+// waits are intentionally unbounded (could be minutes or hours), and WS
+// `onclose` is what catches a dead bouncer from there on.
 const ROOM_INFO_TIMEOUT_MS = 15_000;
 const DEFAULT_VIDEO_CODEC = "h264";
 const DEFAULT_MAX_VIDEO_BITRATE_BPS = 2_500_000;
@@ -342,18 +346,20 @@ export class LiveKitConnection {
     this.logger.debug("Requesting LiveKit room info", { timeoutMs: ROOM_INFO_TIMEOUT_MS });
     this.send({ type: "livekit_join" });
     return await new Promise<LiveKitRoomInfoMessage>((resolve, reject) => {
-      // Sliding window: each `status` / `queue_position` update resets the
-      // timer, so the deadline measures *server silence* — not total queue
-      // wait. A client sitting in queue with steady updates can wait
-      // indefinitely without timing out.
-      let timer = setTimeout(onTimeout, ROOM_INFO_TIMEOUT_MS);
-      function onTimeout() {
+      // The 15s timer is only an initial bouncer-responsiveness check.
+      // The first `status` or `queue_position` proves the bouncer is alive
+      // and that we're queued, so we cancel it — queue waits are unbounded
+      // (could be minutes or hours), and WS `onclose` catches a dead
+      // bouncer from then on.
+      let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
         cleanup();
         reject(new Error(`livekit_room_info timeout (${ROOM_INFO_TIMEOUT_MS}ms)`));
-      }
-      const resetTimer = () => {
-        clearTimeout(timer);
-        timer = setTimeout(onTimeout, ROOM_INFO_TIMEOUT_MS);
+      }, ROOM_INFO_TIMEOUT_MS);
+      const cancelTimer = () => {
+        if (timer !== null) {
+          clearTimeout(timer);
+          timer = null;
+        }
       };
 
       const handler = (msg: IncomingRealtimeMessage) => {
@@ -370,11 +376,16 @@ export class LiveKitConnection {
           cleanup();
           reject(new Error(msg.error));
         } else if (msg.type === "status" || msg.type === "queue_position") {
-          resetTimer();
+          if (timer !== null) {
+            this.logger.debug("LiveKit queue detected; disabling room-info timer", {
+              waitedMs: Math.round(performance.now() - askedAt),
+            });
+            cancelTimer();
+          }
         }
       };
       const cleanup = () => {
-        clearTimeout(timer);
+        cancelTimer();
         this.pendingRoomInfoResolvers = this.pendingRoomInfoResolvers.filter((h) => h !== handler);
       };
       this.pendingRoomInfoResolvers.push(handler);

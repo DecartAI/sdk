@@ -1884,7 +1884,7 @@ describe("Subscribe Client", () => {
     }
   });
 
-  it("requestRoomInfo waits indefinitely while queue updates keep arriving", async () => {
+  it("requestRoomInfo waits indefinitely once a queue update has arrived", async () => {
     const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
 
     vi.useFakeTimers();
@@ -1904,16 +1904,16 @@ describe("Subscribe Client", () => {
         (e) => settled("rejected:" + (e as Error).message),
       );
 
-      // Sit in queue for 4× the timeout, with a queue update every 10s
-      // (well within the 15s window). The timer should keep resetting.
-      for (let i = 0; i < 6; i++) {
-        await vi.advanceTimersByTimeAsync(10_000);
-        internal.handleControlMessage({ type: "queue_position", position: 5 - i, queue_size: 10 });
-      }
-      // 60s elapsed total — original fixed 15s deadline would have rejected.
+      // First queue_position arrives within the initial 15s window —
+      // this should disable the deadline entirely.
+      await vi.advanceTimersByTimeAsync(5_000);
+      internal.handleControlMessage({ type: "queue_position", position: 5, queue_size: 10 });
+
+      // Sit silent for an hour; the deadline must NOT fire.
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
       expect(settled).not.toHaveBeenCalled();
 
-      // Now resolve cleanly with the real room info.
+      // Resolve cleanly with the real room info.
       internal.handleControlMessage({
         type: "livekit_room_info",
         livekit_url: "wss://livekit.example.com",
@@ -1927,7 +1927,7 @@ describe("Subscribe Client", () => {
     }
   });
 
-  it("requestRoomInfo times out after silence longer than the sliding window", async () => {
+  it("requestRoomInfo times out if the bouncer is silent within the initial window", async () => {
     const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
 
     vi.useFakeTimers();
@@ -1945,9 +1945,7 @@ describe("Subscribe Client", () => {
       // during `advanceTimersByTimeAsync`.
       const promise = internal.requestRoomInfo();
       const settled = promise.catch((e: Error) => e);
-      // Send one queue update, then go silent past the 15s window.
-      await vi.advanceTimersByTimeAsync(5_000);
-      internal.handleControlMessage({ type: "queue_position", position: 3, queue_size: 9 });
+      // No queue/status message ever arrives. Initial 15s window expires.
       await vi.advanceTimersByTimeAsync(15_001);
 
       const error = await settled;
