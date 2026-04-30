@@ -9,11 +9,14 @@ run(async () => {
 
   console.log("Creating client token...");
 
-  const token = await serverClient.tokens.create();
+  const token = await serverClient.tokens.create({
+    allowedOrigins: ["https://example.com"],
+  });
 
   console.log("Token created successfully:");
   console.log(`  API Key: ${token.apiKey.slice(0, 10)}...`);
   console.log(`  Expires At: ${token.expiresAt}`);
+  console.log(`  Allowed Origins: ${token.permissions?.origins?.join(", ") ?? "(any)"}`);
 
   // Client-side: Use the client token
   // In a real app, you would send token.apiKey to the frontend

@@ -15,6 +15,13 @@ export type CreateTokenOptions = {
   expiresIn?: number;
   /** Restrict which models this token can access (max 20 items). */
   allowedModels?: (Model | (string & {}))[];
+  /**
+   * Restrict which web origins this token can be used from (max 20 items).
+   * Each entry must be a full origin including scheme, e.g. `https://example.com`.
+   * Enforced on realtime sessions by matching the WebSocket `Origin` header
+   * verbatim. Defense-in-depth — only effective for browser-based clients.
+   */
+  allowedOrigins?: string[];
   /** Operational limits for the token. */
   constraints?: { realtime?: { maxSessionDuration?: number } };
 };
@@ -22,8 +29,11 @@ export type CreateTokenOptions = {
 export type CreateTokenResponse = {
   apiKey: string;
   expiresAt: string;
-  /** Present when `allowedModels` was set on the request. */
-  permissions?: { models: (Model | (string & {}))[] } | null;
+  /** Present when `allowedModels` and/or `allowedOrigins` were set on the request. */
+  permissions?: {
+    models?: (Model | (string & {}))[];
+    origins?: string[];
+  } | null;
   /** Present when `constraints` was set on the request. */
   constraints?: { realtime?: { maxSessionDuration?: number } } | null;
 };
@@ -43,10 +53,11 @@ export type TokensClient = {
    * // With metadata:
    * const token = await client.tokens.create({ metadata: { role: "viewer" } });
    *
-   * // With expiry, model restrictions, and constraints:
+   * // With expiry, model restrictions, origin restrictions, and constraints:
    * const token = await client.tokens.create({
    *   expiresIn: 300,
    *   allowedModels: ["lucy-pro-v2v", "lucy-restyle-v2v"],
+   *   allowedOrigins: ["https://example.com"],
    *   constraints: { realtime: { maxSessionDuration: 120 } },
    * });
    * ```

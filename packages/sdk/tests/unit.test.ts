@@ -1074,6 +1074,23 @@ describe("Tokens API", () => {
       expect(body).toEqual({ constraints: { realtime: { maxSessionDuration: 120 } } });
     });
 
+    it("sends allowedOrigins in request body", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", async ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({
+            apiKey: "ek_test123",
+            expiresAt: "2024-12-15T12:10:00Z",
+          });
+        }),
+      );
+
+      await decart.tokens.create({ allowedOrigins: ["https://example.com", "https://app.example.com"] });
+
+      const body = await lastRequest?.json();
+      expect(body).toEqual({ allowedOrigins: ["https://example.com", "https://app.example.com"] });
+    });
+
     it("sends all options together", async () => {
       server.use(
         http.post("http://localhost/v1/client/tokens", async ({ request }) => {
@@ -1089,6 +1106,7 @@ describe("Tokens API", () => {
         metadata: { role: "viewer" },
         expiresIn: 300,
         allowedModels: ["lucy-pro-v2v"],
+        allowedOrigins: ["https://example.com"],
         constraints: { realtime: { maxSessionDuration: 60 } },
       });
 
@@ -1097,6 +1115,7 @@ describe("Tokens API", () => {
         metadata: { role: "viewer" },
         expiresIn: 300,
         allowedModels: ["lucy-pro-v2v"],
+        allowedOrigins: ["https://example.com"],
         constraints: { realtime: { maxSessionDuration: 60 } },
       });
     });
@@ -1108,7 +1127,10 @@ describe("Tokens API", () => {
           return HttpResponse.json({
             apiKey: "ek_test123",
             expiresAt: "2024-12-15T12:15:00Z",
-            permissions: { models: ["lucy-pro-v2v", "lucy-restyle-v2v"] },
+            permissions: {
+              models: ["lucy-pro-v2v", "lucy-restyle-v2v"],
+              origins: ["https://example.com"],
+            },
             constraints: { realtime: { maxSessionDuration: 120 } },
           });
         }),
@@ -1116,11 +1138,15 @@ describe("Tokens API", () => {
 
       const result = await decart.tokens.create({
         allowedModels: ["lucy-pro-v2v", "lucy-restyle-v2v"],
+        allowedOrigins: ["https://example.com"],
         constraints: { realtime: { maxSessionDuration: 120 } },
       });
 
       expect(result.apiKey).toBe("ek_test123");
-      expect(result.permissions).toEqual({ models: ["lucy-pro-v2v", "lucy-restyle-v2v"] });
+      expect(result.permissions).toEqual({
+        models: ["lucy-pro-v2v", "lucy-restyle-v2v"],
+        origins: ["https://example.com"],
+      });
       expect(result.constraints).toEqual({ realtime: { maxSessionDuration: 120 } });
     });
   });
