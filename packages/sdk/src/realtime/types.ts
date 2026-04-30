@@ -29,6 +29,17 @@ export type SetImageAckMessage = {
   error: null | string;
 };
 
+export type StatusMessage = {
+  type: "status";
+  status: string;
+};
+
+export type QueuePositionMessage = {
+  type: "queue_position";
+  position: number;
+  queue_size: number;
+};
+
 export type GenerationTickMessage = {
   type: "generation_tick";
   seconds: number;
@@ -61,7 +72,9 @@ export type IncomingRealtimeMessage =
   | SetImageAckMessage
   | GenerationTickMessage
   | SessionIdMessage
-  | LiveKitRoomInfoMessage;
+  | LiveKitRoomInfoMessage
+  | StatusMessage
+  | QueuePositionMessage;
 
 // Outgoing message types (to server)
 export type OutgoingRealtimeMessage = LiveKitJoinMessage | PromptMessage | SetImageMessage;

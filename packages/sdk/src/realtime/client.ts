@@ -15,7 +15,13 @@ import {
   type SubscribeOptions,
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
-import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
+import type {
+  ConnectionState,
+  GenerationTickMessage,
+  QueuePositionMessage,
+  SessionIdMessage,
+  StatusMessage,
+} from "./types";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -78,6 +84,8 @@ export type RealTimeClientOptions = {
 
 const realTimeClientInitialStateSchema = modelStateSchema;
 type OnRemoteStreamFn = (stream: MediaStream) => void;
+type OnStatusFn = (status: string) => void;
+type OnQueuePositionFn = (data: { position: number; queueSize: number }) => void;
 export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialStateSchema>;
 
 const realTimeClientConnectOptionsSchema = z.object({
@@ -86,6 +94,16 @@ const realTimeClientConnectOptionsSchema = z.object({
     message: "onRemoteStream must be a function",
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
+  onStatus: z
+    .custom<OnStatusFn>((val) => typeof val === "function", {
+      message: "onStatus must be a function",
+    })
+    .optional(),
+  onQueuePosition: z
+    .custom<OnQueuePositionFn>((val) => typeof val === "function", {
+      message: "onQueuePosition must be a function",
+    })
+    .optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -95,6 +113,8 @@ export type Events = {
   connectionChange: ConnectionState;
   error: DecartSDKError;
   generationTick: { seconds: number };
+  status: string;
+  queuePosition: { position: number; queueSize: number };
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
 };
@@ -128,7 +148,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       throw parsedOptions.error;
     }
 
-    const { onRemoteStream, initialState } = parsedOptions.data;
+    const { onRemoteStream, initialState, onStatus, onQueuePosition } = parsedOptions.data;
 
     const inputStream = stream ?? new MediaStream();
 
@@ -242,6 +262,25 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         emitOrBuffer("generationTick", { seconds: msg.seconds });
       };
       manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
+
+      // Queue events: register before awaiting connect so messages that
+      // arrive while the user is queued (before the LiveKit room is up)
+      // aren't missed. We fire the connect-time callback synchronously so
+      // queue progress is visible while connect() is still pending; the
+      // emitter path also runs so post-connect .on() listeners receive
+      // subsequent updates (e.g. requeue mid-session).
+      const statusListener = (msg: StatusMessage) => {
+        onStatus?.(msg.status);
+        emitOrBuffer("status", msg.status);
+      };
+      manager.getWebsocketMessageEmitter().on("status", statusListener);
+
+      const queuePositionListener = (msg: QueuePositionMessage) => {
+        const data = { position: msg.position, queueSize: msg.queue_size };
+        onQueuePosition?.(data);
+        emitOrBuffer("queuePosition", data);
+      };
+      manager.getWebsocketMessageEmitter().on("queuePosition", queuePositionListener);
 
       await manager.connect(inputStream);
 

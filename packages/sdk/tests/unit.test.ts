@@ -1753,6 +1753,211 @@ describe("Subscribe Client", () => {
     }
   });
 
+  it("exposes status and queue_position websocket messages as realtime client events", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
+
+    type QueueMsg =
+      | { type: "status"; status: string }
+      | { type: "queue_position"; position: number; queue_size: number };
+    const statusListeners = new Set<(msg: QueueMsg) => void>();
+    const queuePositionListeners = new Set<(msg: QueueMsg) => void>();
+    const websocketEmitter = {
+      on: (event: string, listener: (msg: QueueMsg) => void) => {
+        if (event === "status") statusListeners.add(listener);
+        if (event === "queuePosition") queuePositionListeners.add(listener);
+      },
+      off: (event: string, listener: (msg: QueueMsg) => void) => {
+        if (event === "status") statusListeners.delete(listener);
+        if (event === "queuePosition") queuePositionListeners.delete(listener);
+      },
+    };
+
+    const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
+      const mgr = this as unknown as {
+        config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
+        managerState: import("../src/realtime/types").ConnectionState;
+      };
+      mgr.managerState = "connected";
+      mgr.config.onConnectionStateChange?.("connected");
+      return true;
+    });
+    const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const emitterSpy = vi
+      .spyOn(LiveKitManager.prototype, "getWebsocketMessageEmitter")
+      .mockReturnValue(websocketEmitter as never);
+    const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
+
+    try {
+      const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "test-key" });
+      const client = await realtime.connect({} as MediaStream, {
+        model: models.realtime("mirage_v2"),
+        onRemoteStream: vi.fn(),
+      });
+
+      const statusEvents: string[] = [];
+      const queueEvents: Array<{ position: number; queueSize: number }> = [];
+
+      client.on("status", (status) => statusEvents.push(status));
+      client.on("queuePosition", (data) => queueEvents.push(data));
+
+      for (const listener of statusListeners) {
+        listener({ type: "status", status: "queued" });
+      }
+      for (const listener of queuePositionListeners) {
+        listener({ type: "queue_position", position: 2, queue_size: 11 });
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(statusEvents).toEqual(["queued"]);
+      expect(queueEvents).toEqual([{ position: 2, queueSize: 11 }]);
+    } finally {
+      connectSpy.mockRestore();
+      stateSpy.mockRestore();
+      emitterSpy.mockRestore();
+      cleanupSpy.mockRestore();
+    }
+  });
+
+  it("calls onStatus and onQueuePosition callbacks when websocket updates arrive", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
+
+    type QueueMsg =
+      | { type: "status"; status: string }
+      | { type: "queue_position"; position: number; queue_size: number };
+    const statusListeners = new Set<(msg: QueueMsg) => void>();
+    const queuePositionListeners = new Set<(msg: QueueMsg) => void>();
+    const websocketEmitter = {
+      on: (event: string, listener: (msg: QueueMsg) => void) => {
+        if (event === "status") statusListeners.add(listener);
+        if (event === "queuePosition") queuePositionListeners.add(listener);
+      },
+      off: (event: string, listener: (msg: QueueMsg) => void) => {
+        if (event === "status") statusListeners.delete(listener);
+        if (event === "queuePosition") queuePositionListeners.delete(listener);
+      },
+    };
+
+    const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
+      const mgr = this as unknown as {
+        config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
+        managerState: import("../src/realtime/types").ConnectionState;
+      };
+      mgr.managerState = "connected";
+      mgr.config.onConnectionStateChange?.("connected");
+      return true;
+    });
+    const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const emitterSpy = vi
+      .spyOn(LiveKitManager.prototype, "getWebsocketMessageEmitter")
+      .mockReturnValue(websocketEmitter as never);
+    const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
+
+    try {
+      const onStatus = vi.fn();
+      const onQueuePosition = vi.fn();
+
+      const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "test-key" });
+      await realtime.connect({} as MediaStream, {
+        model: models.realtime("mirage_v2"),
+        onRemoteStream: vi.fn(),
+        onStatus,
+        onQueuePosition,
+      });
+
+      for (const listener of statusListeners) {
+        listener({ type: "status", status: "initializing" });
+      }
+      for (const listener of queuePositionListeners) {
+        listener({ type: "queue_position", position: 4, queue_size: 19 });
+      }
+
+      expect(onStatus).toHaveBeenCalledWith("initializing");
+      expect(onQueuePosition).toHaveBeenCalledWith({ position: 4, queueSize: 19 });
+    } finally {
+      connectSpy.mockRestore();
+      stateSpy.mockRestore();
+      emitterSpy.mockRestore();
+      cleanupSpy.mockRestore();
+    }
+  });
+
+  it("requestRoomInfo waits indefinitely while queue updates keep arriving", async () => {
+    const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
+
+    vi.useFakeTimers();
+    try {
+      const connection = new LiveKitConnection();
+      const internal = connection as unknown as {
+        send: (msg: unknown) => boolean;
+        requestRoomInfo: () => Promise<unknown>;
+        handleControlMessage: (msg: unknown) => void;
+      };
+      // Stub send so requestRoomInfo doesn't try to use a real WebSocket.
+      internal.send = () => true;
+
+      const settled = vi.fn();
+      const promise = internal.requestRoomInfo().then(
+        (v) => settled("resolved" + JSON.stringify(v)),
+        (e) => settled("rejected:" + (e as Error).message),
+      );
+
+      // Sit in queue for 4× the timeout, with a queue update every 10s
+      // (well within the 15s window). The timer should keep resetting.
+      for (let i = 0; i < 6; i++) {
+        await vi.advanceTimersByTimeAsync(10_000);
+        internal.handleControlMessage({ type: "queue_position", position: 5 - i, queue_size: 10 });
+      }
+      // 60s elapsed total — original fixed 15s deadline would have rejected.
+      expect(settled).not.toHaveBeenCalled();
+
+      // Now resolve cleanly with the real room info.
+      internal.handleControlMessage({
+        type: "livekit_room_info",
+        livekit_url: "wss://livekit.example.com",
+        token: "tk",
+        room_name: "room",
+      });
+      await promise;
+      expect(settled).toHaveBeenCalledWith(expect.stringMatching(/^resolved/));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("requestRoomInfo times out after silence longer than the sliding window", async () => {
+    const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
+
+    vi.useFakeTimers();
+    try {
+      const connection = new LiveKitConnection();
+      const internal = connection as unknown as {
+        send: (msg: unknown) => boolean;
+        requestRoomInfo: () => Promise<unknown>;
+        handleControlMessage: (msg: unknown) => void;
+      };
+      internal.send = () => true;
+
+      // Attach the rejection handler eagerly so the test's microtask
+      // queue doesn't see an unhandled rejection when the timer fires
+      // during `advanceTimersByTimeAsync`.
+      const promise = internal.requestRoomInfo();
+      const settled = promise.catch((e: Error) => e);
+      // Send one queue update, then go silent past the 15s window.
+      await vi.advanceTimersByTimeAsync(5_000);
+      internal.handleControlMessage({ type: "queue_position", position: 3, queue_size: 9 });
+      await vi.advanceTimersByTimeAsync(15_001);
+
+      const error = await settled;
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toMatch(/livekit_room_info timeout/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("buffers pre-session telemetry diagnostics and flushes them after session_id", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");

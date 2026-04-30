@@ -32,8 +32,10 @@ import type {
   LiveKitRoomInfoMessage,
   OutgoingRealtimeMessage,
   PromptAckMessage,
+  QueuePositionMessage,
   SessionIdMessage,
   SetImageAckMessage,
+  StatusMessage,
 } from "./types";
 import type { StatsProvider } from "./webrtc-stats";
 
@@ -69,6 +71,8 @@ type WsMessageEvents = {
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
+  status: StatusMessage;
+  queuePosition: QueuePositionMessage;
 };
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
@@ -338,10 +342,19 @@ export class LiveKitConnection {
     this.logger.debug("Requesting LiveKit room info", { timeoutMs: ROOM_INFO_TIMEOUT_MS });
     this.send({ type: "livekit_join" });
     return await new Promise<LiveKitRoomInfoMessage>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      // Sliding window: each `status` / `queue_position` update resets the
+      // timer, so the deadline measures *server silence* — not total queue
+      // wait. A client sitting in queue with steady updates can wait
+      // indefinitely without timing out.
+      let timer = setTimeout(onTimeout, ROOM_INFO_TIMEOUT_MS);
+      function onTimeout() {
         cleanup();
         reject(new Error(`livekit_room_info timeout (${ROOM_INFO_TIMEOUT_MS}ms)`));
-      }, ROOM_INFO_TIMEOUT_MS);
+      }
+      const resetTimer = () => {
+        clearTimeout(timer);
+        timer = setTimeout(onTimeout, ROOM_INFO_TIMEOUT_MS);
+      };
 
       const handler = (msg: IncomingRealtimeMessage) => {
         if (msg.type === "livekit_room_info") {
@@ -356,6 +369,8 @@ export class LiveKitConnection {
         } else if (msg.type === "error") {
           cleanup();
           reject(new Error(msg.error));
+        } else if (msg.type === "status" || msg.type === "queue_position") {
+          resetTimer();
         }
       };
       const cleanup = () => {
@@ -387,6 +402,12 @@ export class LiveKitConnection {
         break;
       case "generation_tick":
         this.websocketMessagesEmitter.emit("generationTick", msg);
+        break;
+      case "status":
+        this.websocketMessagesEmitter.emit("status", msg);
+        break;
+      case "queue_position":
+        this.websocketMessagesEmitter.emit("queuePosition", msg);
         break;
       case "error": {
         const error = new Error(msg.error) as Error & { source?: string };
