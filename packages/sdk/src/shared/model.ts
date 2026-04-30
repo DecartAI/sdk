@@ -295,7 +295,7 @@ export const modelDefinitionSchema = z.object({
   fps: z.number().min(1),
   width: z.number().min(1),
   height: z.number().min(1),
-  inputSchema: z.any(),
+  inputSchema: z.any().optional(),
 });
 
 const _models = {
