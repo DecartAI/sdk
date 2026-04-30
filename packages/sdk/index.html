@@ -235,10 +235,24 @@
         <div class="control-group">
             <label for="model-select">Model:</label>
             <select id="model-select">
-                <option value="mirage">Mirage</option>
-                <option value="mirage_v2" selected>Mirage v2</option>
-                <option value="lucy_v2v_720p_rt">Lucy v2v 720p RT</option>
-                <option value="lucy-2.1">Lucy 2.1 RT</option>
+                <optgroup label="Latest (server-resolved)">
+                    <option value="lucy-latest">Lucy (latest)</option>
+                    <option value="lucy-vton-latest">Lucy VTON (latest)</option>
+                    <option value="lucy-restyle-latest">Lucy Restyle (latest)</option>
+                </optgroup>
+                <optgroup label="Canonical">
+                    <option value="lucy">Lucy</option>
+                    <option value="lucy-2.1" selected>Lucy 2.1</option>
+                    <option value="lucy-2.1-vton">Lucy 2.1 VTON</option>
+                    <option value="lucy-restyle">Lucy Restyle</option>
+                    <option value="lucy-restyle-2">Lucy Restyle 2</option>
+                    <option value="live-avatar">Live Avatar</option>
+                </optgroup>
+                <optgroup label="Deprecated aliases">
+                    <option value="mirage">Mirage</option>
+                    <option value="mirage_v2">Mirage v2</option>
+                    <option value="lucy_v2v_720p_rt">Lucy v2v 720p RT</option>
+                </optgroup>
             </select>
         </div>
         <div class="control-group">
@@ -371,7 +385,7 @@
         let isConnected = false;
         let processedVideoUrl = null;
         let currentSessionId = null;
-        let model = models.realtime("mirage_v2");
+        let model = models.realtime("lucy-2.1");
         
         // DOM elements
         const elements = {
