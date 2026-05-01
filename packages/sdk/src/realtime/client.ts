@@ -86,6 +86,7 @@ const realTimeClientConnectOptionsSchema = z.object({
     message: "onRemoteStream must be a function",
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
+  queryParams: z.record(z.string(), z.string()).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -158,9 +159,14 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       });
 
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
+      const queryParams = new URLSearchParams({
+        ...(options.queryParams ?? {}),
+        api_key: apiKey,
+        model: options.model.name,
+      });
 
       livekitManager = new LiveKitManager({
-        url: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+        url: `${url}?${queryParams.toString()}`,
         integration,
         logger,
         onDiagnostic: (name, data) => {

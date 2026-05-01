@@ -36,6 +36,9 @@ async function main() {
       case "connecting":
         console.log("Connecting to server...");
         break;
+      case "pending":
+        console.log("Waiting in queue for an available realtime worker...");
+        break;
       case "connected":
         console.log("Connected! Streaming active.");
         break;
