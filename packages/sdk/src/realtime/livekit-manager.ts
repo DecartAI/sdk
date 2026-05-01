@@ -39,6 +39,13 @@ const RETRY_OPTIONS = {
 
 const MAX_ATTEMPTS = RETRY_OPTIONS.retries + 1;
 
+type ConnectionStatus =
+  | { status: "idle" }
+  | { status: "connecting"; queued: boolean }
+  | { status: "connected" }
+  | { status: "reconnecting"; generation: number; queued: boolean }
+  | { status: "disposed" };
+
 function sanitizeUrl(url: string): string {
   try {
     const u = new URL(url);
@@ -56,10 +63,8 @@ export class LiveKitManager {
   private localStream: MediaStream | null = null;
   private subscribeMode = false;
   private managerState: ConnectionState = "disconnected";
-  private hasConnected = false;
-  private isReconnecting = false;
-  private intentionalDisconnect = false;
-  private reconnectGeneration = 0;
+  private connectionStatus: ConnectionStatus = { status: "idle" };
+  private reconnectGenerationCounter = 0;
 
   constructor(config: LiveKitConfig) {
     this.config = config;
@@ -90,33 +95,34 @@ export class LiveKitManager {
         state,
         modelName: this.config.modelName ?? null,
         subscribeMode: this.subscribeMode,
-        hasConnected: this.hasConnected,
-        isReconnecting: this.isReconnecting,
+        connectionStatus: this.connectionStatus.status,
       });
       this.managerState = state;
-      if (state === "connected" || state === "generating") this.hasConnected = true;
       this.config.onConnectionStateChange?.(state);
     }
   }
 
   private handleConnectionStateChange(state: ConnectionState): void {
-    if (this.intentionalDisconnect) {
+    if (this.connectionStatus.status === "disposed") {
       this.emitState("disconnected");
       return;
     }
 
-    // During reconnection, intercept state changes from the connection layer
-    if (this.isReconnecting) {
-      if (state === "connected" || state === "generating") {
-        this.isReconnecting = false;
+    if (
+      state === "pending" &&
+      (this.connectionStatus.status === "connecting" || this.connectionStatus.status === "reconnecting")
+    ) {
+      this.connectionStatus.queued = true;
+    }
+
+    if (this.connectionStatus.status === "reconnecting") {
+      if (state === "connected" || state === "generating" || state === "pending") {
         this.emitState(state);
       }
       return;
     }
 
-    // Unexpected disconnect after having been connected → trigger auto-reconnect
-    // hasConnected guards against triggering during initial connect (which has its own retry loop)
-    if (state === "disconnected" && !this.intentionalDisconnect && this.hasConnected) {
+    if (state === "disconnected" && this.isConnected()) {
       this.logger.debug("LiveKit manager starting reconnect after unexpected disconnect", {
         modelName: this.config.modelName ?? null,
         subscribeMode: this.subscribeMode,
@@ -129,15 +135,16 @@ export class LiveKitManager {
   }
 
   private async reconnect(): Promise<void> {
-    if (this.isReconnecting || this.intentionalDisconnect) return;
+    if (this.connectionStatus.status === "reconnecting" || this.connectionStatus.status === "disposed") return;
     if (!this.subscribeMode && !this.localStream) return;
 
-    const reconnectGeneration = ++this.reconnectGeneration;
-    this.isReconnecting = true;
+    const generation = ++this.reconnectGenerationCounter;
+    const myStatus = { status: "reconnecting" as const, generation, queued: false };
+    this.connectionStatus = myStatus;
     this.emitState("reconnecting");
     const reconnectStart = performance.now();
     this.logger.debug("LiveKit reconnect started", {
-      generation: reconnectGeneration,
+      generation,
       maxAttempts: MAX_ATTEMPTS,
       modelName: this.config.modelName ?? null,
       subscribeMode: this.subscribeMode,
@@ -149,14 +156,14 @@ export class LiveKitManager {
       await pRetry(
         async () => {
           attemptCount++;
+          if (this.connectionStatus !== myStatus) {
+            throw new AbortError("Reconnect cancelled");
+          }
+          myStatus.queued = false;
           this.logger.debug("LiveKit reconnect attempt started", {
             attempt: attemptCount,
             maxAttempts: MAX_ATTEMPTS,
           });
-
-          if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
-            throw new AbortError("Reconnect cancelled");
-          }
 
           if (!this.subscribeMode && !this.localStream) {
             throw new AbortError("Reconnect cancelled: no local stream");
@@ -165,7 +172,7 @@ export class LiveKitManager {
           this.connection.cleanup();
           await this.connection.connect(this.config.url, this.localStream, CONNECTION_TIMEOUT, this.config.integration);
 
-          if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
+          if (this.connectionStatus !== myStatus) {
             this.connection.cleanup();
             throw new AbortError("Reconnect cancelled");
           }
@@ -173,9 +180,7 @@ export class LiveKitManager {
         {
           ...RETRY_OPTIONS,
           onFailedAttempt: (error) => {
-            if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
-              return;
-            }
+            if (this.connectionStatus !== myStatus) return;
             this.logger.warn("Reconnect attempt failed", {
               error: error.message,
               attempt: error.attemptNumber,
@@ -193,14 +198,15 @@ export class LiveKitManager {
             this.connection.cleanup();
           },
           shouldRetry: (error) => {
-            if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
-              return false;
-            }
+            if (this.connectionStatus !== myStatus || myStatus.queued) return false;
             const msg = error.message.toLowerCase();
             return !PERMANENT_ERRORS.some((err) => msg.includes(err));
           },
         },
       );
+      if (this.connectionStatus === myStatus) {
+        this.connectionStatus = { status: "connected" };
+      }
       this.config.onDiagnostic?.("reconnect", {
         attempt: attemptCount,
         maxAttempts: MAX_ATTEMPTS,
@@ -211,14 +217,11 @@ export class LiveKitManager {
         attempts: attemptCount,
         maxAttempts: MAX_ATTEMPTS,
         durationMs: Math.round(performance.now() - reconnectStart),
-        generation: reconnectGeneration,
+        generation,
       });
-      // "connected" state is emitted by handleConnectionStateChange
     } catch (error) {
-      this.isReconnecting = false;
-      if (this.intentionalDisconnect || reconnectGeneration !== this.reconnectGeneration) {
-        return;
-      }
+      if (this.connectionStatus !== myStatus) return;
+      this.connectionStatus = { status: "idle" };
       this.emitState("disconnected");
       this.config.onError?.(error instanceof Error ? error : new Error(String(error)));
     }
@@ -227,10 +230,8 @@ export class LiveKitManager {
   async connect(localStream: MediaStream | null): Promise<boolean> {
     this.localStream = localStream;
     this.subscribeMode = localStream === null;
-    this.intentionalDisconnect = false;
-    this.hasConnected = false;
-    this.isReconnecting = false;
-    this.reconnectGeneration += 1;
+    const myStatus = { status: "connecting" as const, queued: false };
+    this.connectionStatus = myStatus;
     this.emitState("connecting");
     const connectStart = performance.now();
     this.logger.debug("LiveKit initial connect started", {
@@ -241,39 +242,49 @@ export class LiveKitManager {
       modelName: this.config.modelName ?? null,
     });
 
-    return pRetry(
-      async () => {
-        if (this.intentionalDisconnect) {
-          throw new AbortError("Connect cancelled");
-        }
-        await this.connection.connect(this.config.url, localStream, CONNECTION_TIMEOUT, this.config.integration);
-        this.logger.info("LiveKit initial connect succeeded", {
-          modelName: this.config.modelName ?? null,
-          durationMs: Math.round(performance.now() - connectStart),
-        });
-        return true;
-      },
-      {
-        ...RETRY_OPTIONS,
-        onFailedAttempt: (error) => {
-          this.logger.warn("Connection attempt failed", {
-            error: error.message,
-            attempt: error.attemptNumber,
-            maxAttempts: MAX_ATTEMPTS,
-            retriesLeft: error.retriesLeft,
-            elapsedMs: Math.round(performance.now() - connectStart),
-          });
-          this.connection.cleanup();
-        },
-        shouldRetry: (error) => {
-          if (this.intentionalDisconnect) {
-            return false;
+    try {
+      const result = await pRetry(
+        async () => {
+          if (this.connectionStatus !== myStatus) {
+            throw new AbortError("Connect cancelled");
           }
-          const msg = error.message.toLowerCase();
-          return !PERMANENT_ERRORS.some((err) => msg.includes(err));
+          myStatus.queued = false;
+          await this.connection.connect(this.config.url, localStream, CONNECTION_TIMEOUT, this.config.integration);
+          this.logger.info("LiveKit initial connect succeeded", {
+            modelName: this.config.modelName ?? null,
+            durationMs: Math.round(performance.now() - connectStart),
+          });
+          return true;
         },
-      },
-    );
+        {
+          ...RETRY_OPTIONS,
+          onFailedAttempt: (error) => {
+            this.logger.warn("Connection attempt failed", {
+              error: error.message,
+              attempt: error.attemptNumber,
+              maxAttempts: MAX_ATTEMPTS,
+              retriesLeft: error.retriesLeft,
+              elapsedMs: Math.round(performance.now() - connectStart),
+            });
+            this.connection.cleanup();
+          },
+          shouldRetry: (error) => {
+            if (this.connectionStatus !== myStatus || myStatus.queued) return false;
+            const msg = error.message.toLowerCase();
+            return !PERMANENT_ERRORS.some((err) => msg.includes(err));
+          },
+        },
+      );
+      if (this.connectionStatus === myStatus) {
+        this.connectionStatus = { status: "connected" };
+      }
+      return result;
+    } catch (error) {
+      if (this.connectionStatus === myStatus) {
+        this.connectionStatus = { status: "idle" };
+      }
+      throw error;
+    }
   }
 
   sendMessage(message: OutgoingMessage): boolean {
@@ -281,9 +292,7 @@ export class LiveKitManager {
   }
 
   cleanup(): void {
-    this.intentionalDisconnect = true;
-    this.isReconnecting = false;
-    this.reconnectGeneration += 1;
+    this.connectionStatus = { status: "disposed" };
     this.connection.cleanup();
     this.localStream = null;
     this.emitState("disconnected");

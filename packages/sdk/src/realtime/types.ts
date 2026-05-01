@@ -52,7 +52,13 @@ export type LiveKitRoomInfoMessage = {
   room_name: string;
 };
 
-export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
+export type QueuePositionMessage = {
+  type: "queue_position";
+  position: number;
+  queue_size: number;
+};
+
+export type ConnectionState = "connecting" | "pending" | "connected" | "generating" | "disconnected" | "reconnecting";
 
 // Incoming message types (from server)
 export type IncomingRealtimeMessage =
@@ -61,7 +67,8 @@ export type IncomingRealtimeMessage =
   | SetImageAckMessage
   | GenerationTickMessage
   | SessionIdMessage
-  | LiveKitRoomInfoMessage;
+  | LiveKitRoomInfoMessage
+  | QueuePositionMessage;
 
 // Outgoing message types (to server)
 export type OutgoingRealtimeMessage = LiveKitJoinMessage | PromptMessage | SetImageMessage;

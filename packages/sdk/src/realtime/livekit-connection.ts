@@ -353,6 +353,14 @@ export class LiveKitConnection {
             waitMs: Math.round(performance.now() - askedAt),
           });
           resolve(msg);
+        } else if (msg.type === "queue_position") {
+          clearTimeout(timer);
+          this.logger.info("LiveKit join queued", {
+            position: msg.position,
+            queueSize: msg.queue_size,
+            waitMs: Math.round(performance.now() - askedAt),
+          });
+          this.setState("pending");
         } else if (msg.type === "error") {
           cleanup();
           reject(new Error(msg.error));
