@@ -37,7 +37,7 @@ wss.on("connection", (clientWs: WebSocket, req) => {
 
 server.listen(PORT, () => {
   console.log(`[proxy] listening on ws://localhost:${PORT}`);
-  console.log(`[proxy] connect with: ws://localhost:${PORT}/?model=lucy-2.1`);
+  console.log(`[proxy] connect with: ws://localhost:${PORT}/v1/stream?model=lucy-2.1`);
 });
 
 const shutdown = () => {

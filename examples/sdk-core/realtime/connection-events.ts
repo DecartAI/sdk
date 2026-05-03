@@ -23,6 +23,12 @@ async function main() {
 
   const realtimeClient = await client.realtime.connect(stream, {
     model,
+    onConnectionChange: (state) => {
+      console.log("Connection state:", state);
+    },
+    onQueuePosition: ({ position, queueSize }) => {
+      console.log(`Waiting in queue: position ${position} of ${queueSize}`);
+    },
     onRemoteStream: (transformedStream) => {
       console.log("Received transformed stream");
       const video = document.getElementById("output") as HTMLVideoElement;
@@ -35,6 +41,9 @@ async function main() {
     switch (state) {
       case "connecting":
         console.log("Connecting to server...");
+        break;
+      case "pending":
+        console.log("Waiting in queue for an available realtime worker...");
         break;
       case "connected":
         console.log("Connected! Streaming active.");

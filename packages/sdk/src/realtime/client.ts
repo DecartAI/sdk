@@ -2,10 +2,10 @@ import { z } from "zod";
 import { type CustomModelDefinition, type ModelDefinition, modelDefinitionSchema } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
-import type { Logger } from "../utils/logger";
-import { AudioStreamManager } from "./audio-stream-manager";
+import { createConsoleLogger, type Logger } from "../utils/logger";
 import type { DiagnosticEvent } from "./diagnostics";
 import { createEventBuffer } from "./event-buffer";
+import { LiveKitManager } from "./livekit-manager";
 import { realtimeMethods, type SetInput } from "./methods";
 import {
   decodeSubscribeToken,
@@ -15,9 +15,15 @@ import {
   type SubscribeOptions,
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
-import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
-import { WebRTCManager } from "./webrtc-manager";
-import { type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
+import type {
+  ConnectionChangeDetails,
+  ConnectionState,
+  GenerationEndedMessage,
+  GenerationTickMessage,
+  QueuePosition,
+  SessionIdMessage,
+} from "./types";
+import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -79,20 +85,27 @@ export type RealTimeClientOptions = {
 
 const realTimeClientInitialStateSchema = modelStateSchema;
 type OnRemoteStreamFn = (stream: MediaStream) => void;
+type OnConnectionChangeFn = (state: ConnectionState, details?: ConnectionChangeDetails) => void;
+type OnQueuePositionFn = (queuePosition: QueuePosition) => void;
 export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialStateSchema>;
-
-// ugly workaround to add an optional function to the schema
-// https://github.com/colinhacks/zod/issues/4143#issuecomment-2845134912
-const createAsyncFunctionSchema = <T extends z.core.$ZodFunction>(schema: T) =>
-  z.custom<Parameters<T["implementAsync"]>[0]>((fn) => schema.implementAsync(fn as Parameters<T["implementAsync"]>[0]));
 
 const realTimeClientConnectOptionsSchema = z.object({
   model: modelDefinitionSchema,
   onRemoteStream: z.custom<OnRemoteStreamFn>((val) => typeof val === "function", {
     message: "onRemoteStream must be a function",
   }),
+  onConnectionChange: z
+    .custom<OnConnectionChangeFn>((val) => typeof val === "function", {
+      message: "onConnectionChange must be a function",
+    })
+    .optional(),
+  onQueuePosition: z
+    .custom<OnQueuePositionFn>((val) => typeof val === "function", {
+      message: "onQueuePosition must be a function",
+    })
+    .optional(),
   initialState: realTimeClientInitialStateSchema.optional(),
-  customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
+  queryParams: z.record(z.string(), z.string()).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -100,8 +113,11 @@ export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientCon
 
 export type Events = {
   connectionChange: ConnectionState;
+  pending: QueuePosition;
+  queuePosition: QueuePosition;
   error: DecartSDKError;
   generationTick: { seconds: number };
+  generationEnded: { seconds: number; reason: string };
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
 };
@@ -120,11 +136,11 @@ export type RealTimeClient = {
     image: Blob | File | string | null,
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
   ) => Promise<void>;
-  playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
-  const { baseUrl, apiKey, integration, logger } = opts;
+  const { baseUrl, apiKey, integration } = opts;
+  const logger = opts.logger ?? createConsoleLogger("debug");
 
   const connect = async (
     stream: MediaStream | null,
@@ -135,23 +151,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       throw parsedOptions.error;
     }
 
-    const isAvatarLive = options.model.name === "live_avatar" || options.model.name === "live-avatar";
+    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState } = parsedOptions.data;
 
-    const { onRemoteStream, initialState } = parsedOptions.data;
+    const inputStream = stream ?? new MediaStream();
 
-    // For live_avatar without user-provided stream: create AudioStreamManager for continuous silent stream with audio injection
-    // If user provides their own stream (e.g., mic input), use it directly
-    let audioStreamManager: AudioStreamManager | undefined;
-    let inputStream: MediaStream;
-
-    if (isAvatarLive && !stream) {
-      audioStreamManager = new AudioStreamManager();
-      inputStream = audioStreamManager.getStream();
-    } else {
-      inputStream = stream ?? new MediaStream();
-    }
-
-    let webrtcManager: WebRTCManager | undefined;
+    let livekitManager: LiveKitManager | undefined;
     let telemetryReporter: ITelemetryReporter = new NullTelemetryReporter();
     let handleConnectionStateChange: ((state: ConnectionState) => void) | null = null;
 
@@ -159,7 +163,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       // Prepare initial image base64 before connection
       const initialImage = initialState?.image ? await imageToBase64(initialState.image) : undefined;
 
-      // Prepare initial prompt to send via WebSocket before WebRTC handshake
+      // Prepare initial prompt to send over the control WebSocket before joining LiveKit.
       const initialPrompt = initialState?.prompt
         ? {
             text: initialState.prompt.text,
@@ -168,11 +172,23 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
+      logger.debug("Realtime connect requested", {
+        modelName: options.model.name,
+        modelFps: options.model.fps,
+        hasLocalStream: Boolean(inputStream),
+        hasInitialImage: Boolean(initialImage),
+        hasInitialPrompt: Boolean(initialPrompt),
+      });
 
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
+      const queryParams = new URLSearchParams({
+        ...(options.queryParams ?? {}),
+        api_key: apiKey,
+        model: options.model.name,
+      });
 
-      webrtcManager = new WebRTCManager({
-        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+      livekitManager = new LiveKitManager({
+        url: `${url}?${queryParams.toString()}`,
         integration,
         logger,
         onDiagnostic: (name, data) => {
@@ -180,23 +196,28 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           addTelemetryDiagnostic(name, data);
         },
         onRemoteStream,
-        onConnectionStateChange: (state) => {
+        onConnectionStateChange: (state, details) => {
           emitOrBuffer("connectionChange", state);
+          if (state === "pending" && details?.queuePosition) {
+            emitOrBuffer("pending", details.queuePosition);
+          }
+          onConnectionChange?.(state, details);
           handleConnectionStateChange?.(state);
         },
+        onQueuePosition: (queuePosition) => {
+          emitOrBuffer("queuePosition", queuePosition);
+          onQueuePosition?.(queuePosition);
+        },
         onError: (error) => {
-          logger.error("WebRTC error", { error: error.message });
+          logger.error("Realtime error", { error: error.message });
           emitOrBuffer("error", classifyWebrtcError(error));
         },
-        customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
-        vp8MinBitrate: 300,
-        vp8StartBitrate: 600,
         modelName: options.model.name,
         initialImage,
         initialPrompt,
       });
 
-      const manager = webrtcManager;
+      const manager = livekitManager;
 
       let sessionId: string | null = null;
       let subscribeToken: string | null = null;
@@ -258,12 +279,17 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       };
       manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
 
+      const generationEndedListener = (msg: GenerationEndedMessage) => {
+        emitOrBuffer("generationEnded", { seconds: msg.seconds, reason: msg.reason });
+      };
+      manager.getWebsocketMessageEmitter().on("generationEnded", generationEndedListener);
+
       await manager.connect(inputStream);
 
       const methods = realtimeMethods(manager, imageToBase64);
 
       let statsCollector: WebRTCStatsCollector | null = null;
-      let statsCollectorPeerConnection: RTCPeerConnection | null = null;
+      let statsCollectorSource: StatsProvider | null = null;
 
       // Video stall detection state (Twilio pattern: fps < 0.5 = stalled)
       const STALL_FPS_THRESHOLD = 0.5;
@@ -275,10 +301,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         videoStalled = false;
         stallStartMs = 0;
         statsCollector = new WebRTCStatsCollector();
-        const pc = manager.getPeerConnection();
-        statsCollectorPeerConnection = pc;
-        if (pc) {
-          statsCollector.start(pc, (stats) => {
+        // LiveKit: aggregator over the room's tracks. The collector
+        // just calls `.getStats()` and parses the returned report.
+        const source = manager.getStatsProvider();
+        statsCollectorSource = source;
+        if (source) {
+          statsCollector.start(source, (stats) => {
             emitOrBuffer("stats", stats);
             telemetryReporter.addStats(stats);
 
@@ -300,7 +328,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         return () => {
           statsCollector?.stop();
           statsCollector = null;
-          statsCollectorPeerConnection = null;
+          statsCollectorSource = null;
         };
       };
 
@@ -313,8 +341,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           return;
         }
 
-        const peerConnection = manager.getPeerConnection();
-        if (!peerConnection || peerConnection === statsCollectorPeerConnection) {
+        const source = manager.getStatsProvider();
+        if (!source || source === statsCollectorSource) {
           return;
         }
 
@@ -336,7 +364,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           telemetryReporter.stop();
           stop();
           manager.cleanup();
-          audioStreamManager?.cleanup();
         },
         on: eventEmitter.on,
         off: eventEmitter.off,
@@ -358,18 +385,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         },
       };
 
-      // Add live_avatar specific audio method (only when using internal AudioStreamManager)
-      if (isAvatarLive && audioStreamManager) {
-        const manager = audioStreamManager; // Capture for closures
-        client.playAudio = (audio: Blob | File | ArrayBuffer) => manager.playAudio(audio);
-      }
-
       flush();
       return client;
     } catch (error) {
       telemetryReporter.stop();
-      webrtcManager?.cleanup();
-      audioStreamManager?.cleanup();
+      livekitManager?.cleanup();
       throw error;
     }
   };
@@ -380,27 +400,35 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
     const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
 
-    let webrtcManager: WebRTCManager | undefined;
+    let livekitManager: LiveKitManager | undefined;
 
     try {
-      webrtcManager = new WebRTCManager({
-        webrtcUrl: subscribeUrl,
+      livekitManager = new LiveKitManager({
+        url: subscribeUrl,
         integration,
         logger,
         onDiagnostic: (name, data) => {
           emitOrBuffer("diagnostic", { name, data } as SubscribeEvents["diagnostic"]);
         },
         onRemoteStream: options.onRemoteStream,
-        onConnectionStateChange: (state) => {
+        onConnectionStateChange: (state, details) => {
           emitOrBuffer("connectionChange", state);
+          if (state === "pending" && details?.queuePosition) {
+            emitOrBuffer("pending", details.queuePosition);
+          }
+          options.onConnectionChange?.(state, details);
+        },
+        onQueuePosition: (queuePosition) => {
+          emitOrBuffer("queuePosition", queuePosition);
+          options.onQueuePosition?.(queuePosition);
         },
         onError: (error) => {
-          logger.error("WebRTC subscribe error", { error: error.message });
+          logger.error("Realtime subscribe error", { error: error.message });
           emitOrBuffer("error", classifyWebrtcError(error));
         },
       });
 
-      const manager = webrtcManager;
+      const manager = livekitManager;
       await manager.connect(null);
 
       const client: RealTimeSubscribeClient = {
@@ -417,7 +445,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       flush();
       return client;
     } catch (error) {
-      webrtcManager?.cleanup();
+      livekitManager?.cleanup();
       throw error;
     }
   };

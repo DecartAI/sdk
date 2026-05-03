@@ -9,7 +9,6 @@ const MODEL_ALIASES: Record<string, string> = {
   mirage: "lucy-restyle",
   mirage_v2: "lucy-restyle-2",
   lucy_v2v_720p_rt: "lucy",
-  live_avatar: "live-avatar",
   "lucy-pro-v2v": "lucy-clip",
   "lucy-restyle-v2v": "lucy-restyle-2",
   "lucy-pro-i2i": "lucy-image-2",
@@ -39,7 +38,6 @@ export const realtimeModels = z.union([
   z.literal("lucy-2.1-vton"),
   z.literal("lucy-restyle"),
   z.literal("lucy-restyle-2"),
-  z.literal("live-avatar"),
   // Latest aliases (server-side resolution)
   z.literal("lucy-latest"),
   z.literal("lucy-vton-latest"),
@@ -48,7 +46,6 @@ export const realtimeModels = z.union([
   z.literal("mirage"),
   z.literal("mirage_v2"),
   z.literal("lucy_v2v_720p_rt"),
-  z.literal("live_avatar"),
 ]);
 export const videoModels = z.union([
   // Canonical names
@@ -341,14 +338,6 @@ const _models = {
       height: 704,
       inputSchema: z.object({}),
     },
-    "live-avatar": {
-      urlPath: "/v1/stream",
-      name: "live-avatar" as const,
-      fps: 25,
-      width: 1280,
-      height: 720,
-      inputSchema: z.object({}),
-    },
     // Latest aliases (server-side resolution)
     "lucy-latest": {
       urlPath: "/v1/stream",
@@ -397,14 +386,6 @@ const _models = {
       fps: 25,
       width: 1280,
       height: 704,
-      inputSchema: z.object({}),
-    },
-    live_avatar: {
-      urlPath: "/v1/stream",
-      name: "live_avatar" as const,
-      fps: 25,
-      width: 1280,
-      height: 720,
       inputSchema: z.object({}),
     },
   },
@@ -565,7 +546,6 @@ export const models = {
    *   - `"lucy-restyle-2"` - Realtime video restyling
    *   - `"lucy-restyle"` - Legacy realtime restyling
    *   - `"lucy"` - Legacy Lucy realtime
-   *   - `"live-avatar"` - Live avatar
    */
   realtime: <T extends RealTimeModels>(model: T): ModelDefinition<T> => {
     warnDeprecated(model);

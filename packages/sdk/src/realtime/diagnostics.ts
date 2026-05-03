@@ -1,52 +1,11 @@
 /** Connection phase names for timing events. */
-export type ConnectionPhase = "websocket" | "avatar-image" | "initial-prompt" | "webrtc-handshake" | "total";
+export type ConnectionPhase = "websocket" | "initial-image" | "initial-prompt" | "webrtc-handshake" | "total";
 
 export type PhaseTimingEvent = {
   phase: ConnectionPhase;
   durationMs: number;
   success: boolean;
   error?: string;
-};
-
-export type IceCandidateEvent = {
-  source: "local" | "remote";
-  candidateType: "host" | "srflx" | "prflx" | "relay" | "unknown";
-  protocol: "udp" | "tcp" | "unknown";
-  address?: string;
-  port?: number;
-};
-
-export type IceStateEvent = {
-  state: string;
-  previousState: string;
-  timestampMs: number;
-};
-
-export type PeerConnectionStateEvent = {
-  state: string;
-  previousState: string;
-  timestampMs: number;
-};
-
-export type SignalingStateEvent = {
-  state: string;
-  previousState: string;
-  timestampMs: number;
-};
-
-export type SelectedCandidatePairEvent = {
-  local: {
-    candidateType: string;
-    protocol: string;
-    address?: string;
-    port?: number;
-  };
-  remote: {
-    candidateType: string;
-    protocol: string;
-    address?: string;
-    port?: number;
-  };
 };
 
 export type ReconnectEvent = {
@@ -67,11 +26,6 @@ export type VideoStallEvent = {
 /** All diagnostic event types keyed by name. */
 export type DiagnosticEvents = {
   phaseTiming: PhaseTimingEvent;
-  iceCandidate: IceCandidateEvent;
-  iceStateChange: IceStateEvent;
-  peerConnectionStateChange: PeerConnectionStateEvent;
-  signalingStateChange: SignalingStateEvent;
-  selectedCandidatePair: SelectedCandidatePairEvent;
   reconnect: ReconnectEvent;
   videoStall: VideoStallEvent;
 };
