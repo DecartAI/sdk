@@ -15,14 +15,12 @@ const REALTIME_MODELS: RealTimeModels[] = [
   "lucy-restyle",
   "lucy-restyle-2",
   "lucy",
-  "lucy-2",
   "lucy-2.1",
   "lucy-2.1-vton",
   // Deprecated names
   "mirage",
   "mirage_v2",
   "lucy_v2v_720p_rt",
-  "lucy_2_rt",
 ];
 
 const TIMEOUT = 1 * 60 * 1000; // 1 minute

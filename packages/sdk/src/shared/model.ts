@@ -9,10 +9,8 @@ const MODEL_ALIASES: Record<string, string> = {
   mirage: "lucy-restyle",
   mirage_v2: "lucy-restyle-2",
   lucy_v2v_720p_rt: "lucy",
-  lucy_2_rt: "lucy-2",
   "lucy-pro-v2v": "lucy-clip",
   "lucy-restyle-v2v": "lucy-restyle-2",
-  "lucy-2-v2v": "lucy-2",
   "lucy-pro-i2i": "lucy-image-2",
 };
 
@@ -36,7 +34,6 @@ function warnDeprecated(model: string): void {
 export const realtimeModels = z.union([
   // Canonical names
   z.literal("lucy"),
-  z.literal("lucy-2"),
   z.literal("lucy-2.1"),
   z.literal("lucy-2.1-vton"),
   z.literal("lucy-restyle"),
@@ -49,12 +46,10 @@ export const realtimeModels = z.union([
   z.literal("mirage"),
   z.literal("mirage_v2"),
   z.literal("lucy_v2v_720p_rt"),
-  z.literal("lucy_2_rt"),
 ]);
 export const videoModels = z.union([
   // Canonical names
   z.literal("lucy-clip"),
-  z.literal("lucy-2"),
   z.literal("lucy-2.1"),
   z.literal("lucy-2.1-vton"),
   z.literal("lucy-restyle-2"),
@@ -68,7 +63,6 @@ export const videoModels = z.union([
   // Deprecated names (use canonical names above instead)
   z.literal("lucy-pro-v2v"),
   z.literal("lucy-restyle-v2v"),
-  z.literal("lucy-2-v2v"),
 ]);
 export const imageModels = z.union([
   // Canonical name
@@ -206,7 +200,6 @@ export const modelInputSchemas = {
   "lucy-clip": videoEditSchema,
   "lucy-image-2": imageEditSchema,
   "lucy-restyle-2": restyleSchema,
-  "lucy-2": videoEdit2Schema,
   "lucy-2.1": videoEdit2Schema,
   "lucy-2.1-vton": videoEdit2Schema,
   "lucy-motion": z.object({
@@ -255,7 +248,6 @@ export const modelInputSchemas = {
   "lucy-pro-v2v": videoEditSchema,
   "lucy-pro-i2i": imageEditSchema,
   "lucy-restyle-v2v": restyleSchema,
-  "lucy-2-v2v": videoEdit2Schema,
 } as const;
 
 export type ModelInputSchemas = typeof modelInputSchemas;
@@ -300,7 +292,7 @@ export const modelDefinitionSchema = z.object({
   fps: z.number().min(1),
   width: z.number().min(1),
   height: z.number().min(1),
-  inputSchema: z.any(),
+  inputSchema: z.any().optional(),
 });
 
 const _models = {
@@ -312,14 +304,6 @@ const _models = {
       fps: 25,
       width: 1280,
       height: 704,
-      inputSchema: z.object({}),
-    },
-    "lucy-2": {
-      urlPath: "/v1/stream",
-      name: "lucy-2" as const,
-      fps: 20,
-      width: 1088,
-      height: 624,
       inputSchema: z.object({}),
     },
     "lucy-2.1": {
@@ -404,14 +388,6 @@ const _models = {
       height: 704,
       inputSchema: z.object({}),
     },
-    lucy_2_rt: {
-      urlPath: "/v1/stream",
-      name: "lucy_2_rt" as const,
-      fps: 20,
-      width: 1088,
-      height: 624,
-      inputSchema: z.object({}),
-    },
   },
   image: {
     // Canonical name
@@ -455,15 +431,6 @@ const _models = {
       width: 1280,
       height: 704,
       inputSchema: modelInputSchemas["lucy-clip"],
-    },
-    "lucy-2": {
-      urlPath: "/v1/generate/lucy-2",
-      queueUrlPath: "/v1/jobs/lucy-2",
-      name: "lucy-2" as const,
-      fps: 20,
-      width: 1280,
-      height: 720,
-      inputSchema: modelInputSchemas["lucy-2"],
     },
     "lucy-2.1": {
       urlPath: "/v1/generate/lucy-2.1",
@@ -566,15 +533,6 @@ const _models = {
       height: 704,
       inputSchema: modelInputSchemas["lucy-restyle-v2v"],
     },
-    "lucy-2-v2v": {
-      urlPath: "/v1/generate/lucy-2-v2v",
-      queueUrlPath: "/v1/jobs/lucy-2-v2v",
-      name: "lucy-2-v2v" as const,
-      fps: 20,
-      width: 1280,
-      height: 720,
-      inputSchema: modelInputSchemas["lucy-2-v2v"],
-    },
   },
 } as const;
 
@@ -583,7 +541,6 @@ export const models = {
    * Get a realtime streaming model identifier.
    *
    * Available options:
-   *   - `"lucy-2"` - Lucy 2 realtime video editing (720p)
    *   - `"lucy-2.1"` - Lucy 2.1 realtime video editing
    *   - `"lucy-2.1-vton"` - Lucy 2.1 virtual try-on
    *   - `"lucy-restyle-2"` - Realtime video restyling
@@ -603,7 +560,6 @@ export const models = {
    *
    * Available options:
    *   - `"lucy-clip"` - Video-to-video editing
-   *   - `"lucy-2"` - Long-form video editing (720p)
    *   - `"lucy-2.1"` - Long-form video editing (Lucy 2.1)
    *   - `"lucy-2.1-vton"` - Virtual try-on video editing
    *   - `"lucy-restyle-2"` - Video restyling

@@ -37,7 +37,7 @@ test("e2e: LiveKit control flow through proxy", { timeout: 30_000 }, async (t) =
   });
 
   // Connect client
-  const ws = new WebSocket(`ws://localhost:${port}/v1/stream?model=lucy_2_rt`);
+  const ws = new WebSocket(`ws://localhost:${port}/v1/stream?model=lucy-2.1`);
   await new Promise<void>((r, e) => {
     ws.on("open", r);
     ws.on("error", e);
