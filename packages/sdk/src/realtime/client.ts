@@ -15,9 +15,14 @@ import {
   type SubscribeOptions,
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
-import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
+import type {
+  ConnectionState,
+  GenerationTickMessage,
+  ServerMetricsMessage,
+  SessionIdMessage,
+} from "./types";
 import { WebRTCManager } from "./webrtc-manager";
-import { type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
+import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -93,6 +98,26 @@ const realTimeClientConnectOptionsSchema = z.object({
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
+  // Opt-in per-session WebRTC transport. Defaults to "aiortc" (current
+  // shipping behavior). Set to "livekit" to join a LiveKit SFU room; the
+  // inference pod must have livekit in TRANSPORTS_ENABLED or the session
+  // will be rejected.
+  transport: z.enum(["aiortc", "livekit"]).optional(),
+  // Client-side livekit publish overrides. Ignored on aiortc.
+  //  - `livekitPublishSimulcast` defaults to true (livekit-client default).
+  //  - `livekitPublishMaxBitrateKbps` defaults to 2500. Pass `null` to
+  //    opt out of the cap entirely (lets Chrome BWE run unclamped).
+  //  - `livekitAdaptiveStream` / `livekitDynacast` default to `false`
+  //    (matches historical shipped behavior). Exposed for the bench tool.
+  livekitPublishSimulcast: z.boolean().optional(),
+  livekitPublishMaxBitrateKbps: z.union([z.number().positive(), z.null()]).optional(),
+  livekitAdaptiveStream: z.boolean().optional(),
+  livekitDynacast: z.boolean().optional(),
+  // Client-side publishTrack knobs: pin a codec (symmetric with
+  // server), override the 30 fps default, choose degradation behavior.
+  livekitPublishCodec: z.enum(["vp8", "vp9", "h264", "av1"]).optional(),
+  livekitPublishMaxFramerate: z.number().positive().optional(),
+  livekitDegradationPreference: z.enum(["balanced", "maintain-framerate", "maintain-resolution"]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -104,6 +129,12 @@ export type Events = {
   generationTick: { seconds: number };
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
+  /**
+   * Optional server-side per-session metrics. Emitted only when the client
+   * connects with `?emit_server_metrics=1` on the realtime URL (consumed by
+   * the webrtc-bench tool). Normal SDK consumers can ignore this event.
+   */
+  serverMetrics: ServerMetricsMessage;
 };
 
 export type RealTimeClient = {
@@ -167,12 +198,22 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           }
         : undefined;
 
-      const url = `${baseUrl}${options.model.urlPath}`;
+      // Preserve any query string already present on baseUrl (e.g. the
+      // webrtc-bench tool appends opt-in flags like ?emit_server_metrics=1)
+      // by splitting it off before prepending the model path, then merging
+      // with the SDK's own params. Without this the final URL ended up as
+      // `baseUrl?X=Y/v1/stream?api_key=...` — two `?` separators, which
+      // every WS server rejects with 404.
+      const baseQueryIdx = baseUrl.indexOf("?");
+      const baseOrigin = baseQueryIdx === -1 ? baseUrl : baseUrl.slice(0, baseQueryIdx);
+      const baseExtraQuery = baseQueryIdx === -1 ? "" : baseUrl.slice(baseQueryIdx + 1);
+      const url = `${baseOrigin}${options.model.urlPath}`;
+      const extraQueryPrefix = baseExtraQuery ? `${baseExtraQuery}&` : "";
 
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
 
       webrtcManager = new WebRTCManager({
-        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+        webrtcUrl: `${url}?${extraQueryPrefix}api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
         integration,
         logger,
         onDiagnostic: (name, data) => {
@@ -194,6 +235,14 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         modelName: options.model.name,
         initialImage,
         initialPrompt,
+        transport: options.transport,
+        livekitPublishSimulcast: options.livekitPublishSimulcast,
+        livekitPublishMaxBitrateKbps: options.livekitPublishMaxBitrateKbps,
+        livekitAdaptiveStream: options.livekitAdaptiveStream,
+        livekitDynacast: options.livekitDynacast,
+        livekitPublishCodec: options.livekitPublishCodec,
+        livekitPublishMaxFramerate: options.livekitPublishMaxFramerate,
+        livekitDegradationPreference: options.livekitDegradationPreference,
       });
 
       const manager = webrtcManager;
@@ -258,12 +307,19 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       };
       manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
 
+      // Opt-in server-side metrics — fans WebRTCConnection + LiveKitConnection
+      // emissions out onto the public RealTimeClient.on("serverMetrics", …).
+      const serverMetricsListener = (msg: ServerMetricsMessage) => {
+        emitOrBuffer("serverMetrics", msg);
+      };
+      manager.getWebsocketMessageEmitter().on("serverMetrics", serverMetricsListener);
+
       await manager.connect(inputStream);
 
       const methods = realtimeMethods(manager, imageToBase64);
 
       let statsCollector: WebRTCStatsCollector | null = null;
-      let statsCollectorPeerConnection: RTCPeerConnection | null = null;
+      let statsCollectorSource: StatsProvider | null = null;
 
       // Video stall detection state (Twilio pattern: fps < 0.5 = stalled)
       const STALL_FPS_THRESHOLD = 0.5;
@@ -275,10 +331,13 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         videoStalled = false;
         stallStartMs = 0;
         statsCollector = new WebRTCStatsCollector();
-        const pc = manager.getPeerConnection();
-        statsCollectorPeerConnection = pc;
-        if (pc) {
-          statsCollector.start(pc, (stats) => {
+        // For aiortc this is the raw RTCPeerConnection; for livekit it's
+        // an aggregator over the Room's tracks. Either way the collector
+        // just calls `.getStats()` and parses the returned report.
+        const source = manager.getStatsProvider();
+        statsCollectorSource = source;
+        if (source) {
+          statsCollector.start(source, (stats) => {
             emitOrBuffer("stats", stats);
             telemetryReporter.addStats(stats);
 
@@ -300,7 +359,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         return () => {
           statsCollector?.stop();
           statsCollector = null;
-          statsCollectorPeerConnection = null;
+          statsCollectorSource = null;
         };
       };
 
@@ -313,8 +372,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           return;
         }
 
-        const peerConnection = manager.getPeerConnection();
-        if (!peerConnection || peerConnection === statsCollectorPeerConnection) {
+        const source = manager.getStatsProvider();
+        if (!source || source === statsCollectorSource) {
           return;
         }
 
@@ -376,7 +435,14 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
   const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
     const { sid, ip, port } = decodeSubscribeToken(options.token);
-    const subscribeUrl = `${baseUrl}/subscribe/${encodeURIComponent(sid)}?IP=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}&api_key=${encodeURIComponent(apiKey)}`;
+    // Same baseUrl-with-query handling as the connect() path above — split
+    // existing query off before appending the /subscribe/ path so we end up
+    // with a single `?` separator.
+    const subQueryIdx = baseUrl.indexOf("?");
+    const subBaseOrigin = subQueryIdx === -1 ? baseUrl : baseUrl.slice(0, subQueryIdx);
+    const subBaseExtraQuery = subQueryIdx === -1 ? "" : baseUrl.slice(subQueryIdx + 1);
+    const subExtraQueryPrefix = subBaseExtraQuery ? `${subBaseExtraQuery}&` : "";
+    const subscribeUrl = `${subBaseOrigin}/subscribe/${encodeURIComponent(sid)}?${subExtraQueryPrefix}IP=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}&api_key=${encodeURIComponent(apiKey)}`;
 
     const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
 

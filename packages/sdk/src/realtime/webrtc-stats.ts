@@ -3,6 +3,8 @@ export type WebRTCStats = {
   video: {
     framesDecoded: number;
     framesDropped: number;
+    framesReceived: number;
+    keyFramesDecoded: number;
     framesPerSecond: number;
     frameWidth: number;
     frameHeight: number;
@@ -22,6 +24,39 @@ export type WebRTCStats = {
     freezeCountDelta: number;
     /** Delta: freeze duration (seconds) since previous sample. */
     freezeDurationDelta: number;
+    /** NACKs sent to the sender (requesting packet retransmission). */
+    nackCount: number;
+    nackCountDelta: number;
+    /** PLIs sent to the sender (full frame retransmission request). */
+    pliCount: number;
+    /** FIRs sent to the sender (forced intra-refresh request). */
+    firCount: number;
+    /**
+     * Average decode time (ms/frame), cumulative since stream start.
+     * Derived from totalDecodeTime/framesDecoded. `null` if the browser
+     * hasn't produced the underlying counters yet.
+     */
+    avgDecodeTimeMs: number | null;
+    /** Average jitter-buffer time (ms/frame emitted). Cumulative. */
+    avgJitterBufferMs: number | null;
+    /**
+     * Average total processing delay (ms/frame decoded) — from network
+     * receive to decoder output. Cumulative.
+     */
+    avgProcessingDelayMs: number | null;
+    /** Average inter-frame delay at the decoder (ms). */
+    avgInterFrameDelayMs: number | null;
+    /**
+     * Std-dev of inter-frame delay (ms), computed from
+     * totalInterFrameDelay + totalSquaredInterFrameDelay.
+     */
+    interFrameDelayVarianceMs: number | null;
+    /** Current target delay of the jitter buffer (ms). */
+    jitterBufferTargetDelayMs: number | null;
+    /** Current minimum delay of the jitter buffer (ms). */
+    jitterBufferMinimumDelayMs: number | null;
+    /** Which decoder the browser picked (e.g. "libvpx", "ExternalDecoder"). */
+    decoderImplementation: string;
   } | null;
   audio: {
     bytesReceived: number;
@@ -46,13 +81,67 @@ export type WebRTCStats = {
     frameHeight: number;
     /** Estimated outbound bitrate in bits/sec, computed from bytesSent delta. */
     bitrate: number;
+    /** Encoder's current target bitrate in kbps (BWE output). */
+    targetBitrateKbps: number | null;
+    /** Average encode time per frame (ms), cumulative. */
+    avgEncodeTimeMs: number | null;
+    /** Average packet send delay (ms), cumulative. */
+    avgPacketSendDelayMs: number | null;
+    /** Average quantization parameter across encoded frames (lower is better). */
+    avgQp: number | null;
+    /** NACKs received from receiver (retransmission requests). */
+    nackCount: number;
+    /** PLIs received from receiver. */
+    pliCount: number;
+    /** FIRs received from receiver. */
+    firCount: number;
+    retransmittedBytesSent: number;
+    retransmittedPacketsSent: number;
+    /** Which encoder the browser picked (e.g. "libvpx", "SimulcastEncoderAdapter"). */
+    encoderImplementation: string;
+  } | null;
+  /**
+   * Remote-inbound stats — what the far end reports *about its reception
+   * of our outbound stream*. Answers "does the server think we're lossy?"
+   * independently of what we see locally. Populated from
+   * `remote-inbound-rtp` reports.
+   */
+  remoteInbound: {
+    fractionLost: number | null;
+    /** In seconds. */
+    jitter: number | null;
+    /** In seconds. Often more accurate than connection.currentRoundTripTime. */
+    roundTripTime: number | null;
   } | null;
   connection: {
     /** Current round-trip time in seconds, or null if unavailable. */
     currentRoundTripTime: number | null;
     /** Available outgoing bitrate estimate in bits/sec, or null if unavailable. */
     availableOutgoingBitrate: number | null;
+    /**
+     * Selected ICE candidate pairs (usually one per PC). Populated from
+     * the `candidate-pair` report with state="succeeded" plus the matching
+     * `local-candidate` / `remote-candidate` lookups. Lets diagnostic tools
+     * tell direct-UDP sessions from TURN-relayed ones — the path affects
+     * jitter and failure modes, so this is essential signal for
+     * benchmarking and incident triage.
+     */
+    selectedCandidatePairs: Array<{
+      local: IceCandidateInfo;
+      remote: IceCandidateInfo;
+    }>;
   };
+};
+
+/** One side of an ICE candidate pair (sender or receiver). */
+export type IceCandidateInfo = {
+  /** "host" | "srflx" | "prflx" | "relay" */
+  candidateType: string;
+  /** IP (v4 or v6). May be `""` for mDNS-obfuscated host candidates. */
+  address: string;
+  port: number;
+  /** "udp" | "tcp" */
+  protocol: string;
 };
 
 export type StatsOptions = {
@@ -60,11 +149,21 @@ export type StatsOptions = {
   intervalMs?: number;
 };
 
+/**
+ * Transport-agnostic source of `RTCStatsReport`. `RTCPeerConnection` already
+ * satisfies it (its `getStats()` returns `Promise<RTCStatsReport>`); the
+ * LiveKit transport provides a custom adapter that aggregates per-track stats
+ * from the room. See `transports/livekit.ts` for the livekit impl.
+ */
+export interface StatsProvider {
+  getStats(): Promise<RTCStatsReport>;
+}
+
 const DEFAULT_INTERVAL_MS = 1000;
 const MIN_INTERVAL_MS = 500;
 
 export class WebRTCStatsCollector {
-  private pc: RTCPeerConnection | null = null;
+  private source: StatsProvider | null = null;
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private prevBytesVideo = 0;
   private prevBytesAudio = 0;
@@ -76,6 +175,7 @@ export class WebRTCStatsCollector {
   private prevFreezeCount = 0;
   private prevFreezeDuration = 0;
   private prevPacketsLostAudio = 0;
+  private prevNackCountInbound = 0;
   private onStats: ((stats: WebRTCStats) => void) | null = null;
   private intervalMs: number;
 
@@ -83,10 +183,10 @@ export class WebRTCStatsCollector {
     this.intervalMs = Math.max(options.intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS);
   }
 
-  /** Attach to a peer connection and start polling. */
-  start(pc: RTCPeerConnection, onStats: (stats: WebRTCStats) => void): void {
+  /** Attach to a stats provider (RTCPeerConnection or equivalent) and start polling. */
+  start(source: StatsProvider, onStats: (stats: WebRTCStats) => void): void {
     this.stop();
-    this.pc = pc;
+    this.source = source;
     this.onStats = onStats;
     this.prevBytesVideo = 0;
     this.prevBytesAudio = 0;
@@ -97,6 +197,7 @@ export class WebRTCStatsCollector {
     this.prevFreezeCount = 0;
     this.prevFreezeDuration = 0;
     this.prevPacketsLostAudio = 0;
+    this.prevNackCountInbound = 0;
     this.intervalId = setInterval(() => this.collect(), this.intervalMs);
   }
 
@@ -106,7 +207,7 @@ export class WebRTCStatsCollector {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    this.pc = null;
+    this.source = null;
     this.onStats = null;
   }
 
@@ -115,14 +216,14 @@ export class WebRTCStatsCollector {
   }
 
   private async collect(): Promise<void> {
-    if (!this.pc || !this.onStats) return;
+    if (!this.source || !this.onStats) return;
 
     try {
-      const rawStats = await this.pc.getStats();
+      const rawStats = await this.source.getStats();
       const stats = this.parse(rawStats);
       this.onStats(stats);
     } catch {
-      // PC might be closed; stop silently
+      // Source might be closed; stop silently
       this.stop();
     }
   }
@@ -131,13 +232,26 @@ export class WebRTCStatsCollector {
     const now = performance.now();
     const elapsed = this.prevTimestamp > 0 ? (now - this.prevTimestamp) / 1000 : 0;
 
+    // Explicit NonNullable aliases so TypeScript can track field
+    // mutations inside the `forEach` closure below — otherwise it narrows
+    // the `| null` union to `never` after the first assignment.
+    type OutboundVideo = NonNullable<WebRTCStats["outboundVideo"]>;
     let video: WebRTCStats["video"] = null;
     let audio: WebRTCStats["audio"] = null;
-    let outboundVideo: WebRTCStats["outboundVideo"] = null;
+    let outboundVideo: OutboundVideo | null = null;
+    let remoteInbound: WebRTCStats["remoteInbound"] = null;
     const connection: WebRTCStats["connection"] = {
       currentRoundTripTime: null,
       availableOutgoingBitrate: null,
+      selectedCandidatePairs: [],
     };
+
+    // First pass — collect succeeded candidate-pair IDs. Resolving them
+    // into local/remote candidate objects happens after the main forEach
+    // so we have access to every report (ordering of rawStats is not
+    // guaranteed: a succeeded pair's local-candidate may appear before
+    // or after it).
+    const succeededPairs: Array<{ localId: string; remoteId: string }> = [];
 
     rawStats.forEach((report) => {
       if (report.type === "inbound-rtp" && report.kind === "video") {
@@ -150,10 +264,60 @@ export class WebRTCStatsCollector {
         const framesDropped = (r.framesDropped as number) ?? 0;
         const freezeCount = (r.freezeCount as number) ?? 0;
         const freezeDuration = (r.totalFreezesDuration as number) ?? 0;
+        const framesDecoded = (r.framesDecoded as number) ?? 0;
+        const nackCount = (r.nackCount as number) ?? 0;
+
+        // Browser cumulative counters — averages below are
+        // (cumulativeTotal / denominator). `jitterBufferEmittedCount` is
+        // the canonical denominator per the WebRTC stats spec for the
+        // `jitterBuffer*` averages; `framesDecoded` for decode/processing
+        // averages.
+        const jbEmitted = (r.jitterBufferEmittedCount as number) ?? 0;
+        const totalDecodeTime = (r.totalDecodeTime as number) ?? 0;
+        const totalProcessingDelay = (r.totalProcessingDelay as number) ?? 0;
+        const totalInterFrameDelay = (r.totalInterFrameDelay as number) ?? 0;
+        const totalSquaredInterFrameDelay = (r.totalSquaredInterFrameDelay as number) ?? 0;
+        const jitterBufferDelay = (r.jitterBufferDelay as number) ?? 0;
+        const jitterBufferTargetDelay = (r.jitterBufferTargetDelay as number) ?? 0;
+        const jitterBufferMinimumDelay = (r.jitterBufferMinimumDelay as number) ?? 0;
+
+        const avgDecodeTimeMs = framesDecoded > 0
+          ? (totalDecodeTime / framesDecoded) * 1000
+          : null;
+        const avgProcessingDelayMs = framesDecoded > 0
+          ? (totalProcessingDelay / framesDecoded) * 1000
+          : null;
+        const avgInterFrameDelayMs = framesDecoded > 0
+          ? (totalInterFrameDelay / framesDecoded) * 1000
+          : null;
+        // Variance σ² = E[X²] - E[X]² ; std-dev = sqrt(σ²). Report std-dev
+        // in ms — more actionable than variance for a threshold-based
+        // "is the path jittery" check.
+        const interFrameDelayVarianceMs =
+          framesDecoded > 0
+            ? Math.sqrt(
+                Math.max(
+                  0,
+                  totalSquaredInterFrameDelay / framesDecoded -
+                    Math.pow(totalInterFrameDelay / framesDecoded, 2),
+                ),
+              ) * 1000
+            : null;
+        const avgJitterBufferMs = jbEmitted > 0
+          ? (jitterBufferDelay / jbEmitted) * 1000
+          : null;
+        const jitterBufferTargetDelayMs = jbEmitted > 0
+          ? (jitterBufferTargetDelay / jbEmitted) * 1000
+          : null;
+        const jitterBufferMinimumDelayMs = jbEmitted > 0
+          ? (jitterBufferMinimumDelay / jbEmitted) * 1000
+          : null;
 
         video = {
-          framesDecoded: (r.framesDecoded as number) ?? 0,
+          framesDecoded,
           framesDropped,
+          framesReceived: (r.framesReceived as number) ?? 0,
+          keyFramesDecoded: (r.keyFramesDecoded as number) ?? 0,
           framesPerSecond: (r.framesPerSecond as number) ?? 0,
           frameWidth: (r.frameWidth as number) ?? 0,
           frameHeight: (r.frameHeight as number) ?? 0,
@@ -168,28 +332,118 @@ export class WebRTCStatsCollector {
           framesDroppedDelta: Math.max(0, framesDropped - this.prevFramesDropped),
           freezeCountDelta: Math.max(0, freezeCount - this.prevFreezeCount),
           freezeDurationDelta: Math.max(0, freezeDuration - this.prevFreezeDuration),
+          nackCount,
+          nackCountDelta: Math.max(0, nackCount - this.prevNackCountInbound),
+          pliCount: (r.pliCount as number) ?? 0,
+          firCount: (r.firCount as number) ?? 0,
+          avgDecodeTimeMs,
+          avgJitterBufferMs,
+          avgProcessingDelayMs,
+          avgInterFrameDelayMs,
+          interFrameDelayVarianceMs,
+          jitterBufferTargetDelayMs,
+          jitterBufferMinimumDelayMs,
+          decoderImplementation: (r.decoderImplementation as string) ?? "",
         };
         this.prevPacketsLostVideo = packetsLost;
         this.prevFramesDropped = framesDropped;
         this.prevFreezeCount = freezeCount;
         this.prevFreezeDuration = freezeDuration;
+        this.prevNackCountInbound = nackCount;
       }
 
       if (report.type === "outbound-rtp" && report.kind === "video") {
+        // Simulcast produces one outbound-rtp report per spatial layer
+        // (3 layers is common). Earlier versions picked whichever layer
+        // `forEach` visited last, which (a) underreports total outbound
+        // traffic and (b) causes bitrate to go violently negative across
+        // ticks because layer byte counters are independent and the "last
+        // visited" layer alternates. Accumulate byte/packet totals across
+        // every layer; pick scalar fields (resolution, fps, quality-
+        // limitation reason) from the highest-resolution layer so the
+        // reported frame size matches what's actually on the wire.
         const r = report as Record<string, unknown>;
         const bytesSent = (r.bytesSent as number) ?? 0;
-        const outBitrate = elapsed > 0 ? ((bytesSent - this.prevBytesSentVideo) * 8) / elapsed : 0;
-        this.prevBytesSentVideo = bytesSent;
+        const packetsSent = (r.packetsSent as number) ?? 0;
+        const frameWidth = (r.frameWidth as number) ?? 0;
+        const frameHeight = (r.frameHeight as number) ?? 0;
+        const pixels = frameWidth * frameHeight;
+        const framesEncoded = (r.framesEncoded as number) ?? 0;
+        const totalEncodeTime = (r.totalEncodeTime as number) ?? 0;
+        const totalPacketSendDelay = (r.totalPacketSendDelay as number) ?? 0;
+        const qpSum = (r.qpSum as number) ?? 0;
+        const nackCount = (r.nackCount as number) ?? 0;
+        const pliCount = (r.pliCount as number) ?? 0;
+        const firCount = (r.firCount as number) ?? 0;
+        const retransmittedBytesSent = (r.retransmittedBytesSent as number) ?? 0;
+        const retransmittedPacketsSent = (r.retransmittedPacketsSent as number) ?? 0;
+        const targetBitrate = (r.targetBitrate as number | undefined) ?? null;
 
-        outboundVideo = {
-          qualityLimitationReason: (r.qualityLimitationReason as string) ?? "none",
-          qualityLimitationDurations: (r.qualityLimitationDurations as Record<string, number>) ?? {},
-          bytesSent,
-          packetsSent: (r.packetsSent as number) ?? 0,
-          framesPerSecond: (r.framesPerSecond as number) ?? 0,
-          frameWidth: (r.frameWidth as number) ?? 0,
-          frameHeight: (r.frameHeight as number) ?? 0,
-          bitrate: Math.round(outBitrate),
+        const avgEncodeTimeMs = framesEncoded > 0
+          ? (totalEncodeTime / framesEncoded) * 1000
+          : null;
+        const avgPacketSendDelayMs = packetsSent > 0
+          ? (totalPacketSendDelay / packetsSent) * 1000
+          : null;
+        const avgQp = framesEncoded > 0 ? qpSum / framesEncoded : null;
+
+        if (outboundVideo === null) {
+          outboundVideo = {
+            qualityLimitationReason: (r.qualityLimitationReason as string) ?? "none",
+            qualityLimitationDurations: (r.qualityLimitationDurations as Record<string, number>) ?? {},
+            bytesSent,
+            packetsSent,
+            framesPerSecond: (r.framesPerSecond as number) ?? 0,
+            frameWidth,
+            frameHeight,
+            bitrate: 0,
+            targetBitrateKbps: targetBitrate != null ? Math.round(targetBitrate / 1000) : null,
+            avgEncodeTimeMs,
+            avgPacketSendDelayMs,
+            avgQp,
+            nackCount,
+            pliCount,
+            firCount,
+            retransmittedBytesSent,
+            retransmittedPacketsSent,
+            encoderImplementation: (r.encoderImplementation as string) ?? "",
+          };
+        } else {
+          outboundVideo.bytesSent += bytesSent;
+          outboundVideo.packetsSent += packetsSent;
+          outboundVideo.nackCount += nackCount;
+          outboundVideo.pliCount += pliCount;
+          outboundVideo.firCount += firCount;
+          outboundVideo.retransmittedBytesSent += retransmittedBytesSent;
+          outboundVideo.retransmittedPacketsSent += retransmittedPacketsSent;
+          // Promote scalar fields whenever a higher-resolution layer
+          // appears — we want reported resolution to match the largest
+          // active layer, not the lowest. avgEncodeTime / targetBitrate /
+          // encoderImplementation are also most representative of the
+          // primary layer.
+          if (pixels > outboundVideo.frameWidth * outboundVideo.frameHeight) {
+            outboundVideo.frameWidth = frameWidth;
+            outboundVideo.frameHeight = frameHeight;
+            outboundVideo.framesPerSecond = (r.framesPerSecond as number) ?? 0;
+            outboundVideo.qualityLimitationReason = (r.qualityLimitationReason as string) ?? "none";
+            outboundVideo.qualityLimitationDurations =
+              (r.qualityLimitationDurations as Record<string, number>) ?? {};
+            outboundVideo.targetBitrateKbps =
+              targetBitrate != null ? Math.round(targetBitrate / 1000) : null;
+            outboundVideo.avgEncodeTimeMs = avgEncodeTimeMs;
+            outboundVideo.avgPacketSendDelayMs = avgPacketSendDelayMs;
+            outboundVideo.avgQp = avgQp;
+            outboundVideo.encoderImplementation = (r.encoderImplementation as string) ?? "";
+          }
+        }
+      }
+
+      if (report.type === "remote-inbound-rtp" && report.kind === "video") {
+        const r = report as Record<string, unknown>;
+        remoteInbound = {
+          fractionLost: (r.fractionLost as number | undefined) ?? null,
+          jitter: (r.jitter as number | undefined) ?? null,
+          roundTripTime: (r.roundTripTime as number | undefined) ?? null,
         };
       }
 
@@ -216,9 +470,58 @@ export class WebRTCStatsCollector {
         if (r.state === "succeeded") {
           connection.currentRoundTripTime = (r.currentRoundTripTime as number) ?? null;
           connection.availableOutgoingBitrate = (r.availableOutgoingBitrate as number) ?? null;
+          const localId = r.localCandidateId as string | undefined;
+          const remoteId = r.remoteCandidateId as string | undefined;
+          if (localId && remoteId) {
+            succeededPairs.push({ localId, remoteId });
+          }
         }
       }
     });
+
+    // Resolve candidate IDs to their local/remote-candidate reports now
+    // that we've seen every entry in the rawStats map. `rawStats.get()`
+    // is O(1) on the spec-compliant Map, so per-pair resolution is cheap.
+    if (succeededPairs.length > 0) {
+      const toInfo = (id: string): IceCandidateInfo | null => {
+        const c = (rawStats as unknown as Map<string, unknown>).get(id) as
+          | Record<string, unknown>
+          | undefined;
+        if (!c) return null;
+        return {
+          // browsers may report `ip` (older spec) or `address` (newer). Prefer `address`.
+          candidateType: (c.candidateType as string) ?? "",
+          address: ((c.address as string) ?? (c.ip as string) ?? "") as string,
+          port: (c.port as number) ?? 0,
+          protocol: (c.protocol as string) ?? "",
+        };
+      };
+      for (const { localId, remoteId } of succeededPairs) {
+        const local = toInfo(localId);
+        const remote = toInfo(remoteId);
+        if (local && remote) {
+          connection.selectedCandidatePairs.push({ local, remote });
+        }
+      }
+    }
+
+    // Compute outbound video bitrate after the loop, now that we know
+    // the summed bytesSent across all simulcast layers. Doing it per-
+    // report would misattribute deltas to whichever layer came last.
+    //
+    // Cast via `unknown` because TypeScript can't track the non-null
+    // assignment inside the forEach closure above — flow analysis sees
+    // only the initial `let outboundVideo = null` and narrows to `never`.
+    const ov = outboundVideo as unknown as OutboundVideo | null;
+    if (ov !== null) {
+      const outBitrate =
+        elapsed > 0 ? ((ov.bytesSent - this.prevBytesSentVideo) * 8) / elapsed : 0;
+      // Clamp to zero: when tracks are added/removed mid-session (new
+      // simulcast layer, publisher swap) total bytesSent can transiently
+      // drop. Negative bitrate is nonsensical to downstream consumers.
+      ov.bitrate = Math.max(0, Math.round(outBitrate));
+      this.prevBytesSentVideo = ov.bytesSent;
+    }
 
     this.prevTimestamp = now;
 
@@ -228,6 +531,7 @@ export class WebRTCStatsCollector {
       audio,
       outboundVideo,
       connection,
+      remoteInbound,
     };
   }
 }

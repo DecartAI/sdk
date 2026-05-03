@@ -2,8 +2,15 @@ import pRetry, { AbortError } from "p-retry";
 
 import type { Logger } from "../utils/logger";
 import type { DiagnosticEmitter } from "./diagnostics";
+import { LiveKitConnection } from "./transports/livekit";
+import type { TransportKind } from "./transports";
 import type { ConnectionState, OutgoingMessage } from "./types";
 import { WebRTCConnection } from "./webrtc-connection";
+import type { StatsProvider } from "./webrtc-stats";
+
+// Shared shape both connection types expose — narrows the union for
+// WebRTCManager so both transports can be driven uniformly.
+type TransportConnection = WebRTCConnection | LiveKitConnection;
 
 export interface WebRTCConfig {
   webrtcUrl: string;
@@ -19,6 +26,42 @@ export interface WebRTCConfig {
   modelName?: string;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
+  /**
+   * Client-side publish options for the livekit transport. Ignored on
+   * aiortc. Forwarded to `LocalParticipant.publishTrack(...)` in the
+   * livekit transport. Useful for diagnostic/benchmark tooling — lets
+   * callers cap the client's uplink encoder or toggle simulcast without
+   * modifying SDK internals.
+   *
+   * `livekitPublishMaxBitrateKbps`: undefined → SDK default (2500 kbps);
+   * `null` → explicit opt-out, no cap (let Chrome BWE run unclamped);
+   * a positive number → explicit kbps value.
+   */
+  livekitPublishSimulcast?: boolean;
+  livekitPublishMaxBitrateKbps?: number | null;
+  /**
+   * livekit-client `Room` options. Both default to `false`. Exposed for
+   * the bench tool; enabling either changes quality/bandwidth
+   * trade-offs, so leave them off in production unless you've verified
+   * the behavior end-to-end.
+   */
+  livekitAdaptiveStream?: boolean;
+  livekitDynacast?: boolean;
+  /**
+   * Client-side `publishTrack` knobs. Let the bench pin a codec to
+   * match server-side, override the 30-fps default, or choose how
+   * livekit-client degrades under bandwidth pressure.
+   */
+  livekitPublishCodec?: "vp8" | "vp9" | "h264" | "av1";
+  livekitPublishMaxFramerate?: number;
+  livekitDegradationPreference?: "balanced" | "maintain-framerate" | "maintain-resolution";
+  /**
+   * Selects the underlying WebRTC transport. Default is "aiortc" for
+   * back-compat with existing deployments. Set to "livekit" to join a
+   * LiveKit SFU room (requires the inference pod to enable it in
+   * TRANSPORTS_ENABLED).
+   */
+  transport?: TransportKind;
 }
 
 const PERMANENT_ERRORS = [
@@ -40,7 +83,7 @@ const RETRY_OPTIONS = {
 } as const;
 
 export class WebRTCManager {
-  private connection: WebRTCConnection;
+  private connection: TransportConnection;
   private config: WebRTCConfig;
   private logger: Logger;
   private localStream: MediaStream | null = null;
@@ -54,18 +97,41 @@ export class WebRTCManager {
   constructor(config: WebRTCConfig) {
     this.config = config;
     this.logger = config.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
-    this.connection = new WebRTCConnection({
+    const transport: TransportKind = config.transport ?? "aiortc";
+    const sharedOpts = {
       onRemoteStream: config.onRemoteStream,
-      onStateChange: (state) => this.handleConnectionStateChange(state),
+      onStateChange: (state: ConnectionState) => this.handleConnectionStateChange(state),
       onError: config.onError,
-      customizeOffer: config.customizeOffer,
-      vp8MinBitrate: config.vp8MinBitrate,
-      vp8StartBitrate: config.vp8StartBitrate,
       modelName: config.modelName,
       initialImage: config.initialImage,
       initialPrompt: config.initialPrompt,
       logger: this.logger,
       onDiagnostic: config.onDiagnostic,
+    };
+    if (transport === "livekit") {
+      this.connection = new LiveKitConnection({
+        ...sharedOpts,
+        publishSimulcast: config.livekitPublishSimulcast,
+        publishMaxBitrateKbps: config.livekitPublishMaxBitrateKbps,
+        adaptiveStream: config.livekitAdaptiveStream,
+        dynacast: config.livekitDynacast,
+        publishCodec: config.livekitPublishCodec,
+        publishMaxFramerate: config.livekitPublishMaxFramerate,
+        degradationPreference: config.livekitDegradationPreference,
+      });
+    } else {
+      this.connection = new WebRTCConnection({
+        ...sharedOpts,
+        customizeOffer: config.customizeOffer,
+        vp8MinBitrate: config.vp8MinBitrate,
+        vp8StartBitrate: config.vp8StartBitrate,
+      });
+    }
+    // Unconditional log so SDK consumers can verify the logger pipeline is wired
+    // up regardless of transport or handshake outcome.
+    this.logger.info("|||||||||||||||||||||||||||||||WebRTC transport selected", {
+      transport,
+      modelName: config.modelName,
     });
   }
 
@@ -238,6 +304,14 @@ export class WebRTCManager {
 
   getPeerConnection(): RTCPeerConnection | null {
     return this.connection.getPeerConnection();
+  }
+
+  /**
+   * Stats source for WebRTCStatsCollector. For aiortc this is the raw
+   * RTCPeerConnection; for livekit it's an aggregator over room tracks.
+   */
+  getStatsProvider(): StatsProvider | null {
+    return this.connection.getStatsProvider();
   }
 
   getWebsocketMessageEmitter() {
