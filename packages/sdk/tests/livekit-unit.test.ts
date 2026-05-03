@@ -443,7 +443,7 @@ describe("LiveKitConnection", () => {
       });
     });
 
-    it("publishes video with VP9, H264 backup codec, and 2.5Mbps bitrate", async () => {
+    it("publishes video with VP9, H264 backup codec, and 3.5Mbps bitrate", async () => {
       const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
       const publishTrack = vi.fn().mockResolvedValue({ trackSid: "video-sid", mimeType: "video/VP9" });
       const videoTrack = {
@@ -467,9 +467,9 @@ describe("LiveKitConnection", () => {
         videoCodec: "vp9",
         backupCodec: {
           codec: "h264",
-          encoding: { maxBitrate: 2_500_000 },
+          encoding: { maxBitrate: 3_500_000 },
         },
-        videoEncoding: { maxBitrate: 2_500_000 },
+        videoEncoding: { maxBitrate: 3_500_000 },
       });
       const options = publishTrack.mock.calls[0]?.[1] as Record<string, unknown>;
       expect(options).not.toHaveProperty("simulcast");
@@ -489,7 +489,7 @@ describe("LiveKitConnection", () => {
       ).toEqual({
         source: "camera",
         videoCodec: "h264",
-        videoEncoding: { maxBitrate: 2_500_000 },
+        videoEncoding: { maxBitrate: 3_500_000 },
       });
     });
 
