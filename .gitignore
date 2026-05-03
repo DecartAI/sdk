@@ -4,3 +4,4 @@ dist
 .DS_Store
 packages/sdk/tests/e2e-output
 .env
+deploy-to-staging.md

@@ -134,6 +134,7 @@ export class LiveKitConnection {
   private statsProvider: StatsProvider | null = null;
   private remoteStream: MediaStream | null = null;
   private wsOpenedAt: number | null = null;
+  private lastServerError: string | null = null;
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
 
@@ -347,6 +348,7 @@ export class LiveKitConnection {
         url: sanitizeUrl(wsUrl),
         timeoutMs: timeout,
       });
+      this.lastServerError = null;
       this.ws = new WebSocket(wsUrl);
       this.wsOpenedAt = openStart;
       this.ws.onopen = () => {
@@ -359,8 +361,9 @@ export class LiveKitConnection {
       this.ws.onclose = (e) => {
         this.logger.info("LiveKit control WS closed", {
           code: e.code,
-          reason: e.reason || "(none)",
+          reason: e.reason || this.lastServerError || "(none)",
           wasClean: e.wasClean,
+          serverError: this.lastServerError,
           uptimeMs: this.wsOpenedAt ? Math.round(performance.now() - this.wsOpenedAt) : null,
         });
         // If the room is still connecting this also aborts the connect flow.
@@ -454,9 +457,13 @@ export class LiveKitConnection {
         this.websocketMessagesEmitter.emit("generationTick", msg);
         break;
       case "generation_ended":
+        if (msg.reason && msg.reason !== "disconnect") {
+          this.lastServerError = msg.reason;
+        }
         this.websocketMessagesEmitter.emit("generationEnded", msg);
         break;
       case "error": {
+        this.lastServerError = msg.error ?? null;
         const error = new Error(msg.error) as Error & { source?: string };
         error.source = "server";
         this.callbacks.onError?.(error);
