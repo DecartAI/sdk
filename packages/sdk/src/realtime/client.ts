@@ -16,7 +16,13 @@ import {
   type SubscribeOptions,
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
-import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
+import type {
+  ConnectionState,
+  GenerationEndedMessage,
+  GenerationTickMessage,
+  QueuePosition,
+  SessionIdMessage,
+} from "./types";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -79,6 +85,8 @@ export type RealTimeClientOptions = {
 
 const realTimeClientInitialStateSchema = modelStateSchema;
 type OnRemoteStreamFn = (stream: MediaStream) => void;
+type OnConnectionChangeFn = (state: ConnectionState) => void;
+type OnQueuePositionFn = (queuePosition: QueuePosition) => void;
 export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialStateSchema>;
 
 const realTimeClientConnectOptionsSchema = z.object({
@@ -86,6 +94,16 @@ const realTimeClientConnectOptionsSchema = z.object({
   onRemoteStream: z.custom<OnRemoteStreamFn>((val) => typeof val === "function", {
     message: "onRemoteStream must be a function",
   }),
+  onConnectionChange: z
+    .custom<OnConnectionChangeFn>((val) => typeof val === "function", {
+      message: "onConnectionChange must be a function",
+    })
+    .optional(),
+  onQueuePosition: z
+    .custom<OnQueuePositionFn>((val) => typeof val === "function", {
+      message: "onQueuePosition must be a function",
+    })
+    .optional(),
   initialState: realTimeClientInitialStateSchema.optional(),
   queryParams: z.record(z.string(), z.string()).optional(),
 });
@@ -95,8 +113,10 @@ export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientCon
 
 export type Events = {
   connectionChange: ConnectionState;
+  queuePosition: QueuePosition;
   error: DecartSDKError;
   generationTick: { seconds: number };
+  generationEnded: { seconds: number; reason: string };
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
 };
@@ -130,8 +150,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       throw parsedOptions.error;
     }
 
-    const { onRemoteStream, initialState } = parsedOptions.data;
-    const mirror = parsedOptions.data.mirror ?? false;
+    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState } = parsedOptions.data;
 
     const inputStream = stream ?? new MediaStream();
 
@@ -178,7 +197,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         onRemoteStream,
         onConnectionStateChange: (state) => {
           emitOrBuffer("connectionChange", state);
+          onConnectionChange?.(state);
           handleConnectionStateChange?.(state);
+        },
+        onQueuePosition: (queuePosition) => {
+          emitOrBuffer("queuePosition", queuePosition);
+          onQueuePosition?.(queuePosition);
         },
         onError: (error) => {
           logger.error("Realtime error", { error: error.message });
@@ -250,6 +274,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         emitOrBuffer("generationTick", { seconds: msg.seconds });
       };
       manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
+
+      const generationEndedListener = (msg: GenerationEndedMessage) => {
+        emitOrBuffer("generationEnded", { seconds: msg.seconds, reason: msg.reason });
+      };
+      manager.getWebsocketMessageEmitter().on("generationEnded", generationEndedListener);
 
       await manager.connect(inputStream);
 
@@ -380,6 +409,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         onRemoteStream: options.onRemoteStream,
         onConnectionStateChange: (state) => {
           emitOrBuffer("connectionChange", state);
+          options.onConnectionChange?.(state);
+        },
+        onQueuePosition: (queuePosition) => {
+          emitOrBuffer("queuePosition", queuePosition);
+          options.onQueuePosition?.(queuePosition);
         },
         onError: (error) => {
           logger.error("Realtime subscribe error", { error: error.message });

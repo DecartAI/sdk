@@ -27,11 +27,13 @@ import { buildUserAgent } from "../utils/user-agent";
 import type { DiagnosticEmitter } from "./diagnostics";
 import type {
   ConnectionState,
+  GenerationEndedMessage,
   GenerationTickMessage,
   IncomingRealtimeMessage,
   LiveKitRoomInfoMessage,
   OutgoingRealtimeMessage,
   PromptAckMessage,
+  QueuePosition,
   SessionIdMessage,
   SetImageAckMessage,
 } from "./types";
@@ -42,6 +44,10 @@ const ROOM_INFO_TIMEOUT_MS = 15_000;
 const DEFAULT_VIDEO_CODEC = "h264";
 const DEFAULT_MAX_VIDEO_BITRATE_BPS = 2_500_000;
 const DEFAULT_MAX_VIDEO_BITRATE_KBPS = DEFAULT_MAX_VIDEO_BITRATE_BPS / 1000;
+export const LIVEKIT_ROOM_OPTIONS = {
+  adaptiveStream: true,
+  dynacast: true,
+} as const;
 
 function sanitizeUrl(url: string): string {
   try {
@@ -56,6 +62,7 @@ function sanitizeUrl(url: string): string {
 interface LiveKitCallbacks {
   onRemoteStream?: (stream: MediaStream) => void;
   onStateChange?: (state: ConnectionState) => void;
+  onQueuePosition?: (queuePosition: QueuePosition) => void;
   onError?: (error: Error) => void;
   modelName?: string;
   initialImage?: string;
@@ -69,6 +76,7 @@ type WsMessageEvents = {
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
   generationTick: GenerationTickMessage;
+  generationEnded: GenerationEndedMessage;
 };
 
 const noopDiagnostic: DiagnosticEmitter = () => {};
@@ -355,12 +363,17 @@ export class LiveKitConnection {
           resolve(msg);
         } else if (msg.type === "queue_position") {
           clearTimeout(timer);
-          this.logger.info("LiveKit join queued", {
+          const queuePosition = {
             position: msg.position,
             queueSize: msg.queue_size,
+          };
+          this.logger.info("LiveKit join queued", {
+            position: queuePosition.position,
+            queueSize: queuePosition.queueSize,
             waitMs: Math.round(performance.now() - askedAt),
           });
           this.setState("pending");
+          this.callbacks.onQueuePosition?.(queuePosition);
         } else if (msg.type === "error") {
           cleanup();
           reject(new Error(msg.error));
@@ -396,6 +409,9 @@ export class LiveKitConnection {
       case "generation_tick":
         this.websocketMessagesEmitter.emit("generationTick", msg);
         break;
+      case "generation_ended":
+        this.websocketMessagesEmitter.emit("generationEnded", msg);
+        break;
       case "error": {
         const error = new Error(msg.error) as Error & { source?: string };
         error.source = "server";
@@ -414,13 +430,10 @@ export class LiveKitConnection {
     this.logger.debug("Joining LiveKit room", {
       roomName: info.room_name,
       sfuUrl: info.livekit_url,
-      adaptiveStream: false,
-      dynacast: false,
+      adaptiveStream: LIVEKIT_ROOM_OPTIONS.adaptiveStream,
+      dynacast: LIVEKIT_ROOM_OPTIONS.dynacast,
     });
-    this.room = new Room({
-      adaptiveStream: false,
-      dynacast: false,
-    });
+    this.room = new Room(LIVEKIT_ROOM_OPTIONS);
 
     this.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, pub: RemoteTrackPublication, p: RemoteParticipant) => {
       if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {

@@ -3,7 +3,7 @@ import pRetry, { AbortError } from "p-retry";
 import type { Logger } from "../utils/logger";
 import type { DiagnosticEmitter } from "./diagnostics";
 import { LiveKitConnection } from "./livekit-connection";
-import type { ConnectionState, OutgoingMessage } from "./types";
+import type { ConnectionState, OutgoingMessage, QueuePosition } from "./types";
 import type { StatsProvider } from "./webrtc-stats";
 
 export interface LiveKitConfig {
@@ -13,6 +13,7 @@ export interface LiveKitConfig {
   onDiagnostic?: DiagnosticEmitter;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionStateChange?: (state: ConnectionState) => void;
+  onQueuePosition?: (queuePosition: QueuePosition) => void;
   onError?: (error: Error) => void;
   modelName?: string;
   initialImage?: string;
@@ -72,6 +73,7 @@ export class LiveKitManager {
     this.connection = new LiveKitConnection({
       onRemoteStream: config.onRemoteStream,
       onStateChange: (state: ConnectionState) => this.handleConnectionStateChange(state),
+      onQueuePosition: config.onQueuePosition,
       onError: config.onError,
       modelName: config.modelName,
       initialImage: config.initialImage,
