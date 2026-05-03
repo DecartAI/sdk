@@ -46,8 +46,8 @@ const DEFAULT_VIDEO_CODEC = "h264";
 const DEFAULT_MAX_VIDEO_BITRATE_BPS = 2_500_000;
 const DEFAULT_MAX_VIDEO_BITRATE_KBPS = DEFAULT_MAX_VIDEO_BITRATE_BPS / 1000;
 export const LIVEKIT_ROOM_OPTIONS = {
-  adaptiveStream: true,
-  dynacast: true,
+  adaptiveStream: false,
+  dynacast: false,
 } as const;
 
 function sanitizeUrl(url: string): string {

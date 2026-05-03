@@ -434,12 +434,12 @@ describe("LiveKitConnection", () => {
   });
 
   describe("publishLocalTracks", () => {
-    it("uses LiveKit adaptive stream and dynacast room options", async () => {
+    it("disables LiveKit adaptive stream and dynacast room options", async () => {
       const { LIVEKIT_ROOM_OPTIONS } = await import("../src/realtime/livekit-connection.js");
 
       expect(LIVEKIT_ROOM_OPTIONS).toEqual({
-        adaptiveStream: true,
-        dynacast: true,
+        adaptiveStream: false,
+        dynacast: false,
       });
     });
 
