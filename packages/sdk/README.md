@@ -86,8 +86,6 @@ Options:
 
 For video generation jobs, use the queue API to submit jobs and poll for results:
 
-
-
 ```typescript
 import { createDecartClient, models } from "@decartai/sdk";
 
