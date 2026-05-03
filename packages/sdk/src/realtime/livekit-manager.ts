@@ -3,7 +3,7 @@ import pRetry, { AbortError } from "p-retry";
 import type { Logger } from "../utils/logger";
 import type { DiagnosticEmitter } from "./diagnostics";
 import { LiveKitConnection } from "./livekit-connection";
-import type { ConnectionState, OutgoingMessage, QueuePosition } from "./types";
+import type { ConnectionChangeDetails, ConnectionState, OutgoingMessage, QueuePosition } from "./types";
 import type { StatsProvider } from "./webrtc-stats";
 
 export interface LiveKitConfig {
@@ -12,7 +12,7 @@ export interface LiveKitConfig {
   logger?: Logger;
   onDiagnostic?: DiagnosticEmitter;
   onRemoteStream: (stream: MediaStream) => void;
-  onConnectionStateChange?: (state: ConnectionState) => void;
+  onConnectionStateChange?: (state: ConnectionState, details?: ConnectionChangeDetails) => void;
   onQueuePosition?: (queuePosition: QueuePosition) => void;
   onError?: (error: Error) => void;
   modelName?: string;
@@ -72,7 +72,8 @@ export class LiveKitManager {
     this.logger = config.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
     this.connection = new LiveKitConnection({
       onRemoteStream: config.onRemoteStream,
-      onStateChange: (state: ConnectionState) => this.handleConnectionStateChange(state),
+      onStateChange: (state: ConnectionState, details?: ConnectionChangeDetails) =>
+        this.handleConnectionStateChange(state, details),
       onQueuePosition: config.onQueuePosition,
       onError: config.onError,
       modelName: config.modelName,
@@ -90,8 +91,9 @@ export class LiveKitManager {
     });
   }
 
-  private emitState(state: ConnectionState): void {
-    if (this.managerState !== state) {
+  private emitState(state: ConnectionState, details?: ConnectionChangeDetails): void {
+    const shouldEmit = this.managerState !== state || (state === "pending" && details?.queuePosition !== undefined);
+    if (shouldEmit) {
       this.logger.debug("LiveKit manager state changed", {
         previousState: this.managerState,
         state,
@@ -100,11 +102,11 @@ export class LiveKitManager {
         connectionStatus: this.connectionStatus.status,
       });
       this.managerState = state;
-      this.config.onConnectionStateChange?.(state);
+      this.config.onConnectionStateChange?.(state, details);
     }
   }
 
-  private handleConnectionStateChange(state: ConnectionState): void {
+  private handleConnectionStateChange(state: ConnectionState, details?: ConnectionChangeDetails): void {
     if (this.connectionStatus.status === "disposed") {
       this.emitState("disconnected");
       return;
@@ -119,7 +121,7 @@ export class LiveKitManager {
 
     if (this.connectionStatus.status === "reconnecting") {
       if (state === "connected" || state === "generating" || state === "pending") {
-        this.emitState(state);
+        this.emitState(state, details);
       }
       return;
     }
@@ -133,7 +135,7 @@ export class LiveKitManager {
       return;
     }
 
-    this.emitState(state);
+    this.emitState(state, details);
   }
 
   private async reconnect(): Promise<void> {

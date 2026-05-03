@@ -26,6 +26,7 @@ import type { Logger } from "../utils/logger";
 import { buildUserAgent } from "../utils/user-agent";
 import type { DiagnosticEmitter } from "./diagnostics";
 import type {
+  ConnectionChangeDetails,
   ConnectionState,
   GenerationEndedMessage,
   GenerationTickMessage,
@@ -61,7 +62,7 @@ function sanitizeUrl(url: string): string {
 
 interface LiveKitCallbacks {
   onRemoteStream?: (stream: MediaStream) => void;
-  onStateChange?: (state: ConnectionState) => void;
+  onStateChange?: (state: ConnectionState, details?: ConnectionChangeDetails) => void;
   onQueuePosition?: (queuePosition: QueuePosition) => void;
   onError?: (error: Error) => void;
   modelName?: string;
@@ -372,7 +373,7 @@ export class LiveKitConnection {
             queueSize: queuePosition.queueSize,
             waitMs: Math.round(performance.now() - askedAt),
           });
-          this.setState("pending");
+          this.setState("pending", { queuePosition });
           this.callbacks.onQueuePosition?.(queuePosition);
         } else if (msg.type === "error") {
           cleanup();
@@ -576,10 +577,11 @@ export class LiveKitConnection {
     });
   }
 
-  private setState(state: ConnectionState): void {
-    if (this.state !== state) {
+  private setState(state: ConnectionState, details?: ConnectionChangeDetails): void {
+    const shouldEmit = this.state !== state || (state === "pending" && details?.queuePosition !== undefined);
+    if (shouldEmit) {
       this.state = state;
-      this.callbacks.onStateChange?.(state);
+      this.callbacks.onStateChange?.(state, details);
     }
   }
 }
