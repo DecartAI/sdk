@@ -19,6 +19,7 @@ import {
   RoomEvent,
   Track,
   TrackEvent,
+  type TrackPublishOptions,
 } from "livekit-client";
 import mitt from "mitt";
 
@@ -42,13 +43,54 @@ import type { StatsProvider } from "./webrtc-stats";
 
 const SETUP_TIMEOUT_MS = 30_000;
 const ROOM_INFO_TIMEOUT_MS = 15_000;
-const DEFAULT_VIDEO_CODEC = "h264";
+const DEFAULT_VIDEO_CODEC = "vp9" as const;
+const LOW_END_VIDEO_CODEC = "h264" as const;
+const BACKUP_VIDEO_CODEC = "h264" as const;
 const DEFAULT_MAX_VIDEO_BITRATE_BPS = 2_500_000;
 const DEFAULT_MAX_VIDEO_BITRATE_KBPS = DEFAULT_MAX_VIDEO_BITRATE_BPS / 1000;
 export const LIVEKIT_ROOM_OPTIONS = {
   adaptiveStream: false,
   dynacast: false,
 } as const;
+
+type CodecSelectionRuntime = {
+  window?: unknown;
+  navigator?: {
+    hardwareConcurrency?: number;
+    deviceMemory?: number;
+  };
+};
+
+function isLowEndBrowserDevice(runtime: CodecSelectionRuntime = globalThis): boolean {
+  if (!runtime.window) return false;
+
+  const { hardwareConcurrency, deviceMemory } = runtime.navigator ?? {};
+  return (
+    (typeof hardwareConcurrency === "number" && hardwareConcurrency <= 4) ||
+    (typeof deviceMemory === "number" && deviceMemory <= 4)
+  );
+}
+
+export function getDefaultVideoPublishOptions(runtime: CodecSelectionRuntime = globalThis): TrackPublishOptions {
+  const videoEncoding = { maxBitrate: DEFAULT_MAX_VIDEO_BITRATE_BPS };
+  if (isLowEndBrowserDevice(runtime)) {
+    return {
+      source: Track.Source.Camera,
+      videoCodec: LOW_END_VIDEO_CODEC,
+      videoEncoding,
+    };
+  }
+
+  return {
+    source: Track.Source.Camera,
+    videoCodec: DEFAULT_VIDEO_CODEC,
+    backupCodec: {
+      codec: BACKUP_VIDEO_CODEC,
+      encoding: videoEncoding,
+    },
+    videoEncoding,
+  };
+}
 
 function sanitizeUrl(url: string): string {
   try {
@@ -139,6 +181,7 @@ export class LiveKitConnection {
       this.logger.debug("LiveKit connection phase started", { phase: "websocket" });
       await Promise.race([this.openControlWs(wsUrl, timeout), connectAbort]);
       const roomInfo = await Promise.race([this.requestRoomInfo(), connectAbort]);
+      this.setState("connecting");
       this.logger.debug("LiveKit connection phase completed", {
         phase: "websocket",
         durationMs: performance.now() - roomInfoStart,
@@ -504,6 +547,8 @@ export class LiveKitConnection {
     if (!this.room) return;
     this.logger.info("LiveKit client publish config", {
       codec: DEFAULT_VIDEO_CODEC,
+      backupCodec: BACKUP_VIDEO_CODEC,
+      lowEndCodec: LOW_END_VIDEO_CODEC,
       maxBitrateKbps: DEFAULT_MAX_VIDEO_BITRATE_KBPS,
       trackCount: stream.getTracks().length,
     });
@@ -519,15 +564,14 @@ export class LiveKitConnection {
       });
       const publishStart = performance.now();
       if (track.kind === "video") {
-        const publication = await this.room.localParticipant.publishTrack(track, {
-          source: Track.Source.Camera,
-          videoCodec: DEFAULT_VIDEO_CODEC,
-          videoEncoding: { maxBitrate: DEFAULT_MAX_VIDEO_BITRATE_BPS },
-        });
+        const publishOptions = getDefaultVideoPublishOptions();
+        const publication = await this.room.localParticipant.publishTrack(track, publishOptions);
+        const backupCodec = typeof publishOptions.backupCodec === "object" ? publishOptions.backupCodec.codec : null;
         this.logger.debug("LiveKit local video track published", {
           trackSid: publication.trackSid ?? null,
           mimeType: publication.mimeType ?? null,
-          requestedCodec: DEFAULT_VIDEO_CODEC,
+          requestedCodec: publishOptions.videoCodec,
+          backupCodec,
           maxBitrateKbps: DEFAULT_MAX_VIDEO_BITRATE_KBPS,
           durationMs: Math.round(performance.now() - publishStart),
         });
