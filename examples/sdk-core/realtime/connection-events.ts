@@ -23,6 +23,12 @@ async function main() {
 
   const realtimeClient = await client.realtime.connect(stream, {
     model,
+    onConnectionChange: (state) => {
+      console.log("Connection state:", state);
+    },
+    onQueuePosition: ({ position, queueSize }) => {
+      console.log(`Waiting in queue: position ${position} of ${queueSize}`);
+    },
     onRemoteStream: (transformedStream) => {
       console.log("Received transformed stream");
       const video = document.getElementById("output") as HTMLVideoElement;

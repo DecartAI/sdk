@@ -169,6 +169,7 @@ describe("LiveKitConnection", () => {
       vi.useFakeTimers();
       const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
       const states: ConnectionState[] = [];
+      const queuePositions: Array<{ position: number; queueSize: number }> = [];
       const { sentMessages } = installFakeWebSocket((ws, message) => {
         if (message.type === "livekit_join") {
           setTimeout(() => ws.emitMessage({ type: "queue_position", position: 4, queue_size: 4 }), 0);
@@ -188,6 +189,7 @@ describe("LiveKitConnection", () => {
       try {
         const connection = new LiveKitConnection({
           onStateChange: (state) => states.push(state),
+          onQueuePosition: (queuePosition) => queuePositions.push(queuePosition),
         });
         const internal = connection as unknown as {
           joinRoom: (info: unknown) => Promise<void>;
@@ -204,6 +206,7 @@ describe("LiveKitConnection", () => {
 
         expect(sentMessages).toContainEqual({ type: "livekit_join" });
         expect(states).toContain("pending");
+        expect(queuePositions).toEqual([{ position: 4, queueSize: 4 }]);
 
         await vi.advanceTimersByTimeAsync(15_001);
 
@@ -424,6 +427,15 @@ describe("LiveKitConnection", () => {
   });
 
   describe("publishLocalTracks", () => {
+    it("uses LiveKit adaptive stream and dynacast room options", async () => {
+      const { LIVEKIT_ROOM_OPTIONS } = await import("../src/realtime/livekit-connection.js");
+
+      expect(LIVEKIT_ROOM_OPTIONS).toEqual({
+        adaptiveStream: true,
+        dynacast: true,
+      });
+    });
+
     it("publishes video with camera source, fixed h264 codec, and 2.5Mbps bitrate", async () => {
       const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
       const publishTrack = vi.fn().mockResolvedValue({ trackSid: "video-sid", mimeType: "video/H264" });
@@ -637,6 +649,129 @@ describe("LiveKitManager", () => {
 });
 
 describe("LiveKit realtime client integration", () => {
+  it("publishes pending state and queue position through connect callbacks before connect resolves", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
+    let resolveConnect: (() => void) | undefined;
+
+    const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
+      const manager = this as unknown as {
+        config: {
+          onConnectionStateChange?: (state: ConnectionState) => void;
+          onQueuePosition?: (queuePosition: { position: number; queueSize: number }) => void;
+        };
+        managerState: ConnectionState;
+      };
+
+      manager.managerState = "connecting";
+      manager.config.onConnectionStateChange?.("connecting");
+      manager.managerState = "pending";
+      manager.config.onConnectionStateChange?.("pending");
+      manager.config.onQueuePosition?.({ position: 2, queueSize: 5 });
+
+      await new Promise<void>((resolve) => {
+        resolveConnect = resolve;
+      });
+
+      manager.managerState = "connected";
+      manager.config.onConnectionStateChange?.("connected");
+      return true;
+    });
+    const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockImplementation(function () {
+      const manager = this as unknown as { managerState: ConnectionState };
+      return manager.managerState ?? "connected";
+    });
+    const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
+
+    try {
+      const realtime = createRealTimeClient({ baseUrl: "wss://example.com", apiKey: "test-key" });
+      const connectionStates: ConnectionState[] = [];
+      const queuePositions: Array<{ position: number; queueSize: number }> = [];
+
+      const connectPromise = realtime.connect({} as MediaStream, {
+        model: models.realtime("lucy-latest"),
+        onRemoteStream: vi.fn(),
+        onConnectionChange: (state) => connectionStates.push(state),
+        onQueuePosition: (queuePosition) => queuePositions.push(queuePosition),
+      });
+
+      await vi.waitFor(() => {
+        expect(connectionStates).toEqual(["connecting", "pending"]);
+        expect(queuePositions).toEqual([{ position: 2, queueSize: 5 }]);
+      });
+
+      resolveConnect?.();
+      const client = await connectPromise;
+
+      expect(client.getConnectionState()).toBe("connected");
+      expect(connectionStates).toEqual(["connecting", "pending", "connected"]);
+    } finally {
+      connectSpy.mockRestore();
+      stateSpy.mockRestore();
+      cleanupSpy.mockRestore();
+    }
+  });
+
+  it("emits generationEnded with the server-provided reason", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
+
+    const generationEndedListeners = new Set<
+      (msg: import("../src/realtime/types.js").GenerationEndedMessage) => void
+    >();
+    const websocketEmitter = {
+      on: (event: string, listener: (msg: import("../src/realtime/types.js").GenerationEndedMessage) => void) => {
+        if (event === "generationEnded") generationEndedListeners.add(listener);
+      },
+      off: (event: string, listener: (msg: import("../src/realtime/types.js").GenerationEndedMessage) => void) => {
+        if (event === "generationEnded") generationEndedListeners.delete(listener);
+      },
+    };
+
+    const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
+      const manager = this as unknown as {
+        config: { onConnectionStateChange?: (state: ConnectionState) => void };
+        managerState: ConnectionState;
+      };
+      manager.managerState = "connected";
+      manager.config.onConnectionStateChange?.("connected");
+      return true;
+    });
+    const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const emitterSpy = vi
+      .spyOn(LiveKitManager.prototype, "getWebsocketMessageEmitter")
+      .mockReturnValue(websocketEmitter as never);
+    const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
+
+    try {
+      const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "test-key" });
+      const client = await realtime.connect({} as MediaStream, {
+        model: models.realtime("lucy-latest"),
+        onRemoteStream: vi.fn(),
+      });
+
+      const endedEvents: Array<{ seconds: number; reason: string }> = [];
+      client.on("generationEnded", (event) => endedEvents.push(event));
+
+      for (const listener of generationEndedListeners) {
+        listener({
+          type: "generation_ended",
+          seconds: 42,
+          reason: "insufficient credits",
+        });
+      }
+
+      await vi.waitFor(() => {
+        expect(endedEvents).toEqual([{ seconds: 42, reason: "insufficient credits" }]);
+      });
+    } finally {
+      connectSpy.mockRestore();
+      stateSpy.mockRestore();
+      emitterSpy.mockRestore();
+      cleanupSpy.mockRestore();
+    }
+  });
+
   it("replays connection events emitted during connect before returning client", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");

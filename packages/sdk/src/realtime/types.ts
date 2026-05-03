@@ -34,6 +34,12 @@ export type GenerationTickMessage = {
   seconds: number;
 };
 
+export type GenerationEndedMessage = {
+  type: "generation_ended";
+  seconds: number;
+  reason: string;
+};
+
 export type SessionIdMessage = {
   type: "session_id";
   session_id: string;
@@ -58,6 +64,11 @@ export type QueuePositionMessage = {
   queue_size: number;
 };
 
+export type QueuePosition = {
+  position: number;
+  queueSize: number;
+};
+
 export type ConnectionState = "connecting" | "pending" | "connected" | "generating" | "disconnected" | "reconnecting";
 
 // Incoming message types (from server)
@@ -66,6 +77,7 @@ export type IncomingRealtimeMessage =
   | ErrorMessage
   | SetImageAckMessage
   | GenerationTickMessage
+  | GenerationEndedMessage
   | SessionIdMessage
   | LiveKitRoomInfoMessage
   | QueuePositionMessage;

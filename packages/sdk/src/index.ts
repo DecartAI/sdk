@@ -39,7 +39,7 @@ export type {
   SubscribeEvents,
   SubscribeOptions,
 } from "./realtime/subscribe-client";
-export type { ConnectionState } from "./realtime/types";
+export type { ConnectionState, GenerationEndedMessage, QueuePosition, QueuePositionMessage } from "./realtime/types";
 export type { WebRTCStats } from "./realtime/webrtc-stats";
 export {
   type CustomModelDefinition,
