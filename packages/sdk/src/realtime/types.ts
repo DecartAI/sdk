@@ -71,6 +71,10 @@ export type QueuePosition = {
 
 export type ConnectionState = "connecting" | "pending" | "connected" | "generating" | "disconnected" | "reconnecting";
 
+export type ConnectionChangeDetails = {
+  queuePosition?: QueuePosition;
+};
+
 // Incoming message types (from server)
 export type IncomingRealtimeMessage =
   | PromptAckMessage

@@ -169,6 +169,7 @@ describe("LiveKitConnection", () => {
       vi.useFakeTimers();
       const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
       const states: ConnectionState[] = [];
+      const stateDetails: Array<import("../src/realtime/types.js").ConnectionChangeDetails | undefined> = [];
       const queuePositions: Array<{ position: number; queueSize: number }> = [];
       const { sentMessages } = installFakeWebSocket((ws, message) => {
         if (message.type === "livekit_join") {
@@ -188,7 +189,10 @@ describe("LiveKitConnection", () => {
 
       try {
         const connection = new LiveKitConnection({
-          onStateChange: (state) => states.push(state),
+          onStateChange: (state, details) => {
+            states.push(state);
+            stateDetails.push(details);
+          },
           onQueuePosition: (queuePosition) => queuePositions.push(queuePosition),
         });
         const internal = connection as unknown as {
@@ -206,6 +210,9 @@ describe("LiveKitConnection", () => {
 
         expect(sentMessages).toContainEqual({ type: "livekit_join" });
         expect(states).toContain("pending");
+        expect(stateDetails[states.indexOf("pending")]).toEqual({
+          queuePosition: { position: 4, queueSize: 4 },
+        });
         expect(queuePositions).toEqual([{ position: 4, queueSize: 4 }]);
 
         await vi.advanceTimersByTimeAsync(15_001);
@@ -657,7 +664,10 @@ describe("LiveKit realtime client integration", () => {
     const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
       const manager = this as unknown as {
         config: {
-          onConnectionStateChange?: (state: ConnectionState) => void;
+          onConnectionStateChange?: (
+            state: ConnectionState,
+            details?: import("../src/realtime/types.js").ConnectionChangeDetails,
+          ) => void;
           onQueuePosition?: (queuePosition: { position: number; queueSize: number }) => void;
         };
         managerState: ConnectionState;
@@ -666,7 +676,7 @@ describe("LiveKit realtime client integration", () => {
       manager.managerState = "connecting";
       manager.config.onConnectionStateChange?.("connecting");
       manager.managerState = "pending";
-      manager.config.onConnectionStateChange?.("pending");
+      manager.config.onConnectionStateChange?.("pending", { queuePosition: { position: 2, queueSize: 5 } });
       manager.config.onQueuePosition?.({ position: 2, queueSize: 5 });
 
       await new Promise<void>((resolve) => {
@@ -686,25 +696,35 @@ describe("LiveKit realtime client integration", () => {
     try {
       const realtime = createRealTimeClient({ baseUrl: "wss://example.com", apiKey: "test-key" });
       const connectionStates: ConnectionState[] = [];
+      const connectionDetails: Array<import("../src/realtime/types.js").ConnectionChangeDetails | undefined> = [];
       const queuePositions: Array<{ position: number; queueSize: number }> = [];
 
       const connectPromise = realtime.connect({} as MediaStream, {
         model: models.realtime("lucy-latest"),
         onRemoteStream: vi.fn(),
-        onConnectionChange: (state) => connectionStates.push(state),
+        onConnectionChange: (state, details) => {
+          connectionStates.push(state);
+          connectionDetails.push(details);
+        },
         onQueuePosition: (queuePosition) => queuePositions.push(queuePosition),
       });
 
       await vi.waitFor(() => {
         expect(connectionStates).toEqual(["connecting", "pending"]);
+        expect(connectionDetails[1]).toEqual({ queuePosition: { position: 2, queueSize: 5 } });
         expect(queuePositions).toEqual([{ position: 2, queueSize: 5 }]);
       });
 
       resolveConnect?.();
       const client = await connectPromise;
+      const pendingEvents: Array<{ position: number; queueSize: number }> = [];
+      client.on("pending", (queuePosition) => pendingEvents.push(queuePosition));
 
       expect(client.getConnectionState()).toBe("connected");
       expect(connectionStates).toEqual(["connecting", "pending", "connected"]);
+      await vi.waitFor(() => {
+        expect(pendingEvents).toEqual([{ position: 2, queueSize: 5 }]);
+      });
     } finally {
       connectSpy.mockRestore();
       stateSpy.mockRestore();

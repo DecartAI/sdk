@@ -1,6 +1,6 @@
 import type { DecartSDKError } from "../utils/errors";
 import type { DiagnosticEvent } from "./diagnostics";
-import type { ConnectionState, QueuePosition } from "./types";
+import type { ConnectionChangeDetails, ConnectionState, QueuePosition } from "./types";
 
 type TokenPayload = {
   sid: string;
@@ -26,6 +26,7 @@ export function decodeSubscribeToken(token: string): TokenPayload {
 
 export type SubscribeEvents = {
   connectionChange: ConnectionState;
+  pending: QueuePosition;
   queuePosition: QueuePosition;
   error: DecartSDKError;
   diagnostic: DiagnosticEvent;
@@ -42,6 +43,6 @@ export type RealTimeSubscribeClient = {
 export type SubscribeOptions = {
   token: string;
   onRemoteStream: (stream: MediaStream) => void;
-  onConnectionChange?: (state: ConnectionState) => void;
+  onConnectionChange?: (state: ConnectionState, details?: ConnectionChangeDetails) => void;
   onQueuePosition?: (queuePosition: QueuePosition) => void;
 };

@@ -17,6 +17,7 @@ import {
 } from "./subscribe-client";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import type {
+  ConnectionChangeDetails,
   ConnectionState,
   GenerationEndedMessage,
   GenerationTickMessage,
@@ -85,7 +86,7 @@ export type RealTimeClientOptions = {
 
 const realTimeClientInitialStateSchema = modelStateSchema;
 type OnRemoteStreamFn = (stream: MediaStream) => void;
-type OnConnectionChangeFn = (state: ConnectionState) => void;
+type OnConnectionChangeFn = (state: ConnectionState, details?: ConnectionChangeDetails) => void;
 type OnQueuePositionFn = (queuePosition: QueuePosition) => void;
 export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialStateSchema>;
 
@@ -113,6 +114,7 @@ export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientCon
 
 export type Events = {
   connectionChange: ConnectionState;
+  pending: QueuePosition;
   queuePosition: QueuePosition;
   error: DecartSDKError;
   generationTick: { seconds: number };
@@ -195,9 +197,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           addTelemetryDiagnostic(name, data);
         },
         onRemoteStream,
-        onConnectionStateChange: (state) => {
+        onConnectionStateChange: (state, details) => {
           emitOrBuffer("connectionChange", state);
-          onConnectionChange?.(state);
+          if (state === "pending" && details?.queuePosition) {
+            emitOrBuffer("pending", details.queuePosition);
+          }
+          onConnectionChange?.(state, details);
           handleConnectionStateChange?.(state);
         },
         onQueuePosition: (queuePosition) => {
@@ -407,9 +412,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           emitOrBuffer("diagnostic", { name, data } as SubscribeEvents["diagnostic"]);
         },
         onRemoteStream: options.onRemoteStream,
-        onConnectionStateChange: (state) => {
+        onConnectionStateChange: (state, details) => {
           emitOrBuffer("connectionChange", state);
-          options.onConnectionChange?.(state);
+          if (state === "pending" && details?.queuePosition) {
+            emitOrBuffer("pending", details.queuePosition);
+          }
+          options.onConnectionChange?.(state, details);
         },
         onQueuePosition: (queuePosition) => {
           emitOrBuffer("queuePosition", queuePosition);
