@@ -117,6 +117,11 @@ export class LiveKitManager {
       (this.connectionStatus.status === "connecting" || this.connectionStatus.status === "reconnecting")
     ) {
       this.connectionStatus.queued = true;
+    } else if (
+      state === "connecting" &&
+      (this.connectionStatus.status === "connecting" || this.connectionStatus.status === "reconnecting")
+    ) {
+      this.connectionStatus.queued = false;
     }
 
     if (this.connectionStatus.status === "reconnecting") {

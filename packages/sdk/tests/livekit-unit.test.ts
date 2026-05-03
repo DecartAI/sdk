@@ -443,9 +443,9 @@ describe("LiveKitConnection", () => {
       });
     });
 
-    it("publishes video with camera source, fixed h264 codec, and 2.5Mbps bitrate", async () => {
+    it("publishes video with VP9, H264 backup codec, and 2.5Mbps bitrate", async () => {
       const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
-      const publishTrack = vi.fn().mockResolvedValue({ trackSid: "video-sid", mimeType: "video/H264" });
+      const publishTrack = vi.fn().mockResolvedValue({ trackSid: "video-sid", mimeType: "video/VP9" });
       const videoTrack = {
         kind: "video",
         label: "camera",
@@ -464,7 +464,11 @@ describe("LiveKitConnection", () => {
       expect(publishTrack).toHaveBeenCalledTimes(1);
       expect(publishTrack).toHaveBeenCalledWith(videoTrack, {
         source: "camera",
-        videoCodec: "h264",
+        videoCodec: "vp9",
+        backupCodec: {
+          codec: "h264",
+          encoding: { maxBitrate: 2_500_000 },
+        },
         videoEncoding: { maxBitrate: 2_500_000 },
       });
       const options = publishTrack.mock.calls[0]?.[1] as Record<string, unknown>;
@@ -472,6 +476,21 @@ describe("LiveKitConnection", () => {
       expect(options).not.toHaveProperty("scalabilityMode");
       expect(options).not.toHaveProperty("degradationPreference");
       expect(options.videoEncoding).not.toHaveProperty("maxFramerate");
+    });
+
+    it("uses H264 as the primary codec on low-end browser devices", async () => {
+      const { getDefaultVideoPublishOptions } = await import("../src/realtime/livekit-connection.js");
+
+      expect(
+        getDefaultVideoPublishOptions({
+          window: {},
+          navigator: { hardwareConcurrency: 2, deviceMemory: 2 },
+        }),
+      ).toEqual({
+        source: "camera",
+        videoCodec: "h264",
+        videoEncoding: { maxBitrate: 2_500_000 },
+      });
     });
 
     it("publishes audio tracks without video encoding options", async () => {
@@ -515,7 +534,7 @@ describe("LiveKitConnection", () => {
       expect(publishTrack).toHaveBeenNthCalledWith(
         1,
         videoTrack,
-        expect.objectContaining({ source: "camera", videoCodec: "h264" }),
+        expect.objectContaining({ source: "camera", videoCodec: "vp9" }),
       );
       expect(publishTrack).toHaveBeenNthCalledWith(2, audioTrack);
     });
@@ -648,6 +667,54 @@ describe("LiveKitManager", () => {
 
       expect(connectSpy).toHaveBeenCalledTimes(1);
       await expect(connectPromise).resolves.toMatchObject({ message: "WebSocket closed: 1006" });
+    } finally {
+      connectSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries initial connect when the attempt fails after leaving pending", async () => {
+    vi.useFakeTimers();
+    const { LiveKitConnection } = await import("../src/realtime/livekit-connection.js");
+    const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
+    const stream = { getTracks: () => [] } as unknown as MediaStream;
+    let attempts = 0;
+
+    const connectSpy = vi.spyOn(LiveKitConnection.prototype, "connect").mockImplementation(async function () {
+      attempts++;
+      const connection = this as unknown as {
+        callbacks: {
+          onStateChange?: (
+            state: ConnectionState,
+            details?: import("../src/realtime/types.js").ConnectionChangeDetails,
+          ) => void;
+        };
+      };
+
+      if (attempts === 1) {
+        connection.callbacks.onStateChange?.("pending", { queuePosition: { position: 1, queueSize: 1 } });
+        connection.callbacks.onStateChange?.("connecting");
+        throw new Error("LiveKit room connect failed");
+      }
+
+      connection.callbacks.onStateChange?.("connected");
+    });
+
+    try {
+      const manager = new LiveKitManager({
+        url: "wss://example.com",
+        onRemoteStream: vi.fn(),
+        onError: vi.fn(),
+      });
+
+      const connectPromise = manager.connect(stream);
+
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      await expect(connectPromise).resolves.toBe(true);
+      expect(connectSpy).toHaveBeenCalledTimes(2);
+      expect(manager.getConnectionState()).toBe("connected");
     } finally {
       connectSpy.mockRestore();
       vi.useRealTimers();
