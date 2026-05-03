@@ -79,6 +79,8 @@ export type RealTimeClientOptions = {
 
 const realTimeClientInitialStateSchema = modelStateSchema;
 type OnRemoteStreamFn = (stream: MediaStream) => void;
+type OnStatusFn = (status: string) => void;
+type OnQueuePositionFn = (data: { position: number; queueSize: number }) => void;
 export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialStateSchema>;
 
 // ugly workaround to add an optional function to the schema
@@ -93,6 +95,16 @@ const realTimeClientConnectOptionsSchema = z.object({
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
+  onStatus: z
+    .custom<OnStatusFn>((val) => typeof val === "function", {
+      message: "onStatus must be a function",
+    })
+    .optional(),
+  onQueuePosition: z
+    .custom<OnQueuePositionFn>((val) => typeof val === "function", {
+      message: "onQueuePosition must be a function",
+    })
+    .optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -102,6 +114,8 @@ export type Events = {
   connectionChange: ConnectionState;
   error: DecartSDKError;
   generationTick: { seconds: number };
+  status: string;
+  queuePosition: { position: number; queueSize: number };
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
 };
@@ -137,7 +151,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
     const isAvatarLive = options.model.name === "live_avatar" || options.model.name === "live-avatar";
 
-    const { onRemoteStream, initialState } = parsedOptions.data;
+    const { onRemoteStream, initialState, onStatus, onQueuePosition } = parsedOptions.data;
 
     // For live_avatar without user-provided stream: create AudioStreamManager for continuous silent stream with audio injection
     // If user provides their own stream (e.g., mic input), use it directly
@@ -257,6 +271,17 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         emitOrBuffer("generationTick", { seconds: msg.seconds });
       };
       manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
+
+      const wsEmitter = manager.getWebsocketMessageEmitter();
+      wsEmitter.on("status", (msg) => {
+        emitOrBuffer("status", msg.status);
+        onStatus?.(msg.status);
+      });
+      wsEmitter.on("queuePosition", (msg) => {
+        const data = { position: msg.position, queueSize: msg.queue_size };
+        emitOrBuffer("queuePosition", data);
+        onQueuePosition?.(data);
+      });
 
       await manager.connect(inputStream);
 
