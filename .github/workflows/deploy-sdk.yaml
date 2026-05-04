@@ -155,8 +155,28 @@ jobs:
           application_id: ${{ secrets.GITOPS_APP_ID }}
           application_private_key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
 
-      - name: Construct GitOps payload
+      - name: Check API GitOps support
         if: github.event_name != 'workflow_dispatch' || inputs.deploy_to_gitops
+        id: api-support
+        env:
+          GITOPS_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          status="$(curl -sS -o /tmp/api-sdk-support.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${GITOPS_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${API_REPOSITORY}/contents/dev-env/SDK_DEPLOYMENT.md?ref=main")"
+
+          if [[ "$status" == "200" ]]; then
+            echo "supported=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Skipping GitOps dispatch because ${API_REPOSITORY}@main does not have SDK deploy support yet (HTTP ${status})"
+            echo "supported=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Construct GitOps payload
+        if: (github.event_name != 'workflow_dispatch' || inputs.deploy_to_gitops) && steps.api-support.outputs.supported == 'true'
         id: payload
         run: |
           payload="$(jq -nc \
@@ -168,7 +188,7 @@ jobs:
           echo "payload=$payload" >> "$GITHUB_OUTPUT"
 
       - name: Trigger API GitOps deploy
-        if: github.event_name != 'workflow_dispatch' || inputs.deploy_to_gitops
+        if: (github.event_name != 'workflow_dispatch' || inputs.deploy_to_gitops) && steps.api-support.outputs.supported == 'true'
         uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # v3.0.0
         with:
           token: ${{ steps.app-token.outputs.token }}
