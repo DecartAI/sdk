@@ -91,6 +91,11 @@
             font-size: 14px;
             box-sizing: border-box;
         }
+
+        input[readonly] {
+            background: #f8f9fa;
+            color: #555;
+        }
         
         input[type="text"]:focus, input[type="password"]:focus, select:focus {
             outline: none;
@@ -224,6 +229,13 @@
             align-items: center;
             gap: 6px;
         }
+
+        .token-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: center;
+        }
         
         input[type="checkbox"] {
             width: 16px;
@@ -260,6 +272,10 @@
                 justify-content: center;
             }
 
+            .token-row {
+                grid-template-columns: 1fr;
+            }
+
             .video-frame {
                 aspect-ratio: 10 / 16;
             }
@@ -278,6 +294,13 @@
         </div>
         <div id="session-info" style="display: none; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 14px;">
             <strong>Session ID:</strong> <span id="session-id-text">-</span>
+        </div>
+        <div id="publisher-token-info" style="display: none; margin-top: 10px;">
+            <label for="publisher-subscribe-token">Publisher Subscribe Token:</label>
+            <div class="token-row">
+                <input type="text" id="publisher-subscribe-token" readonly placeholder="Connect as publisher to generate a token">
+                <button id="copy-subscribe-token" class="secondary" disabled>Copy Subscribe Token</button>
+            </div>
         </div>
     </div>
     
@@ -332,6 +355,18 @@
             <button id="start-camera">Start Camera</button>
             <button id="connect-btn" disabled>Connect to Decart</button>
             <button id="disconnect-btn" disabled>Disconnect</button>
+        </div>
+    </div>
+
+    <!-- Subscribe / Viewer Mode -->
+    <div class="controls">
+        <h3>Subscribe / Viewer Mode</h3>
+        <div class="control-group">
+            <label for="subscribe-token-input">Subscribe Token:</label>
+            <input type="text" id="subscribe-token-input" placeholder="Paste token from publisher tab">
+        </div>
+        <div class="inline-controls">
+            <button id="subscribe-btn" class="secondary">Subscribe to Stream</button>
         </div>
     </div>
     
@@ -460,8 +495,10 @@
         let decartRealtime = null;
         let localStream = null;
         let isConnected = false;
+        let activeConnectionMode = null;
         let processedVideoUrl = null;
         let currentSessionId = null;
+        let currentSubscribeToken = null;
         let model = models.realtime("lucy-2.1");
         
         // DOM elements
@@ -489,6 +526,11 @@
             statusText: document.getElementById('status-text'),
             sessionInfo: document.getElementById('session-info'),
             sessionIdText: document.getElementById('session-id-text'),
+            publisherTokenInfo: document.getElementById('publisher-token-info'),
+            publisherSubscribeToken: document.getElementById('publisher-subscribe-token'),
+            copySubscribeToken: document.getElementById('copy-subscribe-token'),
+            subscribeTokenInput: document.getElementById('subscribe-token-input'),
+            subscribeBtn: document.getElementById('subscribe-btn'),
             logsContainer: document.getElementById('logs-container'),
             // Image reference elements
             referenceImage: document.getElementById('reference-image'),
@@ -568,12 +610,48 @@
         function updateStatus(status) {
             const statusClass = {
                 'connected': 'status-connected',
+                'generating': 'status-connected',
                 'connecting': 'status-connecting',
+                'pending': 'status-connecting',
+                'reconnecting': 'status-connecting',
                 'disconnected': 'status-disconnected'
             };
             
-            elements.statusIndicator.className = `status-indicator ${statusClass[status]}`;
+            elements.statusIndicator.className = `status-indicator ${statusClass[status] || statusClass.disconnected}`;
             elements.statusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
+
+        function syncPublisherSubscribeToken() {
+            if (activeConnectionMode !== 'publisher' || !decartRealtime?.getSubscribeToken) {
+                return null;
+            }
+
+            currentSessionId = decartRealtime.sessionId;
+            elements.sessionIdText.textContent = currentSessionId || '-';
+
+            const previousSubscribeToken = currentSubscribeToken;
+            currentSubscribeToken = decartRealtime.getSubscribeToken();
+            elements.publisherSubscribeToken.value = currentSubscribeToken || '';
+            elements.copySubscribeToken.disabled = !currentSubscribeToken;
+            elements.publisherTokenInfo.style.display = 'block';
+
+            if (!previousSubscribeToken && currentSubscribeToken) {
+                addLog('Subscribe token ready. Copy it into another tab to test viewer mode.', 'success');
+            }
+
+            return currentSubscribeToken;
+        }
+
+        function waitForPublisherSubscribeToken(attemptsRemaining = 20) {
+            const token = syncPublisherSubscribeToken();
+            if (token || attemptsRemaining <= 0 || activeConnectionMode !== 'publisher') {
+                if (!token && activeConnectionMode === 'publisher') {
+                    addLog('Subscribe token is not available yet', 'info');
+                }
+                return;
+            }
+
+            setTimeout(() => waitForPublisherSubscribeToken(attemptsRemaining - 1), 250);
         }
         
         // Model selection handler
@@ -664,10 +742,17 @@
                 addLog('Please start camera first', 'error');
                 return;
             }
+
+            if (isConnected) {
+                addLog('Already connected. Disconnect before starting another mode.', 'error');
+                return;
+            }
             
             try {
                 updateStatus('connecting');
                 elements.connectBtn.disabled = true;
+                elements.subscribeBtn.disabled = true;
+                activeConnectionMode = 'publisher';
                 
                 addLog('Initializing Decart client...', 'info');
                 
@@ -703,6 +788,18 @@
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
                     },
+                    onConnectionChange: (state, details) => {
+                        updateStatus(state);
+                        if (details?.queuePosition) {
+                            addLog(`Queue position: ${details.queuePosition.position}/${details.queuePosition.queueSize}`, 'info');
+                        }
+                        if (state === 'connected' || state === 'generating') {
+                            syncPublisherSubscribeToken();
+                        }
+                    },
+                    onQueuePosition: (queuePosition) => {
+                        addLog(`Queue position: ${queuePosition.position}/${queuePosition.queueSize}`, 'info');
+                    },
                     initialState: {
                         ...(promptValue && { prompt: promptValue }),
                         ...(initialImage && { image: initialImage }),
@@ -719,14 +816,15 @@
                     elements.promisePromptInput.disabled = false;
                     elements.sendPromisePrompt.disabled = false;
                     elements.referenceImage.disabled = false;
+                    elements.subscribeBtn.disabled = true;
 
                     // Show session ID
-                    currentSessionId = decartRealtime.sessionId;
-                    elements.sessionIdText.textContent = currentSessionId;
+                    syncPublisherSubscribeToken();
+                    waitForPublisherSubscribeToken();
                     elements.sessionInfo.style.display = 'block';
                     
                     addLog('Successfully connected to Decart!', 'success');
-                    addLog(`Session ID: ${currentSessionId}`, 'success');
+                    addLog(`Session ID: ${currentSessionId || '(pending)'}`, 'success');
                 } else {
                     throw new Error('Connection established but not in connected state');
                 }
@@ -737,8 +835,109 @@
                 elements.connectBtn.disabled = false;
                 decartClient = null;
                 isConnected = false;
+                activeConnectionMode = null;
                 currentSessionId = null;
+                currentSubscribeToken = null;
                 elements.sessionInfo.style.display = 'none';
+                elements.publisherTokenInfo.style.display = 'none';
+                elements.subscribeBtn.disabled = false;
+            }
+        });
+
+        elements.copySubscribeToken.addEventListener('click', async () => {
+            const token = syncPublisherSubscribeToken();
+            if (!token) {
+                addLog('No subscribe token available to copy yet', 'error');
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(token);
+                addLog('Subscribe token copied to clipboard', 'success');
+            } catch {
+                elements.publisherSubscribeToken.select();
+                document.execCommand('copy');
+                addLog('Subscribe token copied using fallback selection', 'success');
+            }
+        });
+
+        elements.subscribeBtn.addEventListener('click', async () => {
+            const apiKey = elements.apiKey.value.trim();
+            if (!apiKey) {
+                addLog('Please enter an API key', 'error');
+                return;
+            }
+
+            const token = elements.subscribeTokenInput.value.trim();
+            if (!token) {
+                addLog('Please paste a subscribe token', 'error');
+                return;
+            }
+
+            if (isConnected) {
+                addLog('Already connected. Disconnect before starting another mode.', 'error');
+                return;
+            }
+
+            try {
+                updateStatus('connecting');
+                activeConnectionMode = 'subscriber';
+                elements.subscribeBtn.disabled = true;
+                elements.startCamera.disabled = true;
+                elements.connectBtn.disabled = true;
+                stopCameraResources();
+
+                const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
+                decartClient = createDecartClient({
+                    apiKey,
+                    ...(realtimeBaseUrl && { realtimeBaseUrl }),
+                    logger: createDemoLogger(),
+                });
+
+                addLog('Subscribing to Decart stream via LiveKit...', 'info');
+
+                decartRealtime = await decartClient.realtime.subscribe({
+                    token,
+                    onRemoteStream: (stream) => {
+                        addLog('Received subscribed stream from Decart', 'success');
+                        elements.remoteVideo.srcObject = stream;
+                    },
+                    onConnectionChange: (state, details) => {
+                        updateStatus(state);
+                        if (details?.queuePosition) {
+                            addLog(`Queue position: ${details.queuePosition.position}/${details.queuePosition.queueSize}`, 'info');
+                        }
+                    },
+                    onQueuePosition: (queuePosition) => {
+                        addLog(`Queue position: ${queuePosition.position}/${queuePosition.queueSize}`, 'info');
+                    },
+                });
+
+                if (decartRealtime.isConnected()) {
+                    isConnected = true;
+                    updateStatus('connected');
+                    elements.disconnectBtn.disabled = false;
+                    elements.promptInput.disabled = true;
+                    elements.sendPrompt.disabled = true;
+                    elements.promisePromptInput.disabled = true;
+                    elements.sendPromisePrompt.disabled = true;
+                    elements.referenceImage.disabled = true;
+                    elements.setImage.disabled = true;
+                    elements.sessionInfo.style.display = 'none';
+                    elements.publisherTokenInfo.style.display = 'none';
+                    addLog('Successfully subscribed to stream. No local media was requested or published.', 'success');
+                } else {
+                    throw new Error('Subscribe established but not in connected state');
+                }
+            } catch (error) {
+                addLog(`Failed to subscribe: ${error.message}`, 'error');
+                updateStatus('disconnected');
+                decartRealtime = null;
+                decartClient = null;
+                isConnected = false;
+                activeConnectionMode = null;
+                elements.subscribeBtn.disabled = false;
+                elements.startCamera.disabled = false;
             }
         });
         
@@ -758,10 +957,13 @@
             isConnected = false;
             updateStatus('disconnected');
             currentSessionId = null;
+            currentSubscribeToken = null;
+            activeConnectionMode = null;
             
             // Reset UI
             elements.startCamera.disabled = false;
             elements.connectBtn.disabled = true;
+            elements.subscribeBtn.disabled = false;
             elements.disconnectBtn.disabled = true;
             elements.promptInput.disabled = true;
             elements.sendPrompt.disabled = true;
@@ -771,6 +973,9 @@
             elements.promisePromptInput.value = '';
             elements.promiseStatus.style.display = 'none';
             elements.sessionInfo.style.display = 'none';
+            elements.publisherTokenInfo.style.display = 'none';
+            elements.publisherSubscribeToken.value = '';
+            elements.copySubscribeToken.disabled = true;
             elements.referenceImage.disabled = true;
             elements.setImage.disabled = true;
             elements.referenceImage.value = '';
@@ -788,8 +993,8 @@
                 return;
             }
             
-            if (!decartRealtime || !isConnected) {
-                addLog('Not connected to Decart', 'error');
+            if (!decartRealtime || !isConnected || activeConnectionMode !== 'publisher') {
+                addLog('Not connected to Decart as a publisher', 'error');
                 return;
             }
             
@@ -822,8 +1027,8 @@
                 return;
             }
             
-            if (!decartRealtime || !isConnected) {
-                addLog('Not connected to Decart', 'error');
+            if (!decartRealtime || !isConnected || activeConnectionMode !== 'publisher') {
+                addLog('Not connected to Decart as a publisher', 'error');
                 return;
             }
             
@@ -892,8 +1097,8 @@
                 return;
             }
 
-            if (!decartRealtime || !isConnected) {
-                addLog('Not connected to Decart', 'error');
+            if (!decartRealtime || !isConnected || activeConnectionMode !== 'publisher') {
+                addLog('Not connected to Decart as a publisher', 'error');
                 return;
             }
 
