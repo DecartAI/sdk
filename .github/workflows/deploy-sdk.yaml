@@ -1,0 +1,197 @@
+name: Deploy SDK
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - .github/workflows/deploy-sdk.yaml
+      - biome.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - examples/**
+      - packages/**
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      api_domain:
+        description: "API domain baked into the SDK example realtime default"
+        required: false
+        default: "api.stage-decart.com"
+        type: string
+      image_tag:
+        description: "Optional image tag override. Defaults to the source commit SHA."
+        required: false
+        type: string
+      deploy_to_gitops:
+        description: "Dispatch DecartAI/api GitOps deployment after pushing the image"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  API_REPOSITORY: DecartAI/api
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: sdk
+
+jobs:
+  build-check:
+    name: Docker build check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          build-args: |
+            API_DOMAIN=api.stage-decart.com
+          cache-from: type=gha,scope=sdk
+
+  deploy:
+    name: Build, push, and deploy
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Resolve build inputs
+        id: vars
+        env:
+          DISPATCH_API_DOMAIN: ${{ github.event.inputs.api_domain }}
+          DISPATCH_IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          source_sha="${WORKFLOW_RUN_SHA:-$GITHUB_SHA}"
+          api_domain="${DISPATCH_API_DOMAIN:-api.stage-decart.com}"
+          image_tag="${DISPATCH_IMAGE_TAG:-$source_sha}"
+
+          if ! [[ "$image_tag" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::image_tag contains disallowed characters (allowed: [A-Za-z0-9._-])"
+            exit 1
+          fi
+          if [[ ${#image_tag} -gt 128 ]]; then
+            echo "::error::image_tag too long (max 128)"
+            exit 1
+          fi
+          if ! [[ "$api_domain" =~ ^[A-Za-z0-9.-]+$ ]]; then
+            echo "::error::api_domain must be a hostname without scheme or path"
+            exit 1
+          fi
+
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "api_domain=$api_domain" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.vars.outputs.source_sha }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME_STAGING }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Ensure ECR repository
+        run: |
+          aws ecr describe-repositories --repository-names "${ECR_REPOSITORY}" >/dev/null 2>&1 \
+            || aws ecr create-repository --repository-name "${ECR_REPOSITORY}" >/dev/null
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          build-args: |
+            API_DOMAIN=${{ steps.vars.outputs.api_domain }}
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.vars.outputs.image_tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.vars.outputs.source_sha }}
+          cache-from: type=gha,scope=sdk
+          cache-to: type=gha,scope=sdk,mode=max
+
+      - name: Build summary
+        run: |
+          echo "### SDK image" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image:** \`${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.vars.outputs.image_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Source:** \`${{ github.repository }}@${{ steps.vars.outputs.source_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **API domain:** \`${{ steps.vars.outputs.api_domain }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Get GitOps app token
+        if: github.event_name != 'workflow_dispatch' || inputs.deploy_to_gitops
+        id: app-token
+        uses: peter-murray/workflow-application-token-action@baa1ef2638c3d9e5967b7c8b86219f8fc919e1bb # v3.0.0
+        with:
+          application_id: ${{ secrets.GITOPS_APP_ID }}
+          application_private_key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+
+      - name: Check API GitOps support
+        if: github.event_name != 'workflow_dispatch' || inputs.deploy_to_gitops
+        id: api-support
+        env:
+          GITOPS_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          status="$(curl -sS -o /tmp/api-sdk-support.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${GITOPS_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${API_REPOSITORY}/contents/dev-env/SDK_DEPLOYMENT.md?ref=main")"
+
+          if [[ "$status" == "200" ]]; then
+            echo "supported=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Skipping GitOps dispatch because ${API_REPOSITORY}@main does not have SDK deploy support yet (HTTP ${status})"
+            echo "supported=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Construct GitOps payload
+        if: (github.event_name != 'workflow_dispatch' || inputs.deploy_to_gitops) && steps.api-support.outputs.supported == 'true'
+        id: payload
+        run: |
+          payload="$(jq -nc \
+            --arg service_name "sdk" \
+            --arg image_tag "${{ steps.vars.outputs.image_tag }}" \
+            --arg source_repo "${{ github.repository }}" \
+            --arg source_sha "${{ steps.vars.outputs.source_sha }}" \
+            '{service_name: $service_name, image_tag: $image_tag, source_repo: $source_repo, source_sha: $source_sha}')"
+          echo "payload=$payload" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger API GitOps deploy
+        if: (github.event_name != 'workflow_dispatch' || inputs.deploy_to_gitops) && steps.api-support.outputs.supported == 'true'
+        uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # v3.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          repository: ${{ env.API_REPOSITORY }}
+          event-type: gitops-deploy
+          client-payload: ${{ steps.payload.outputs.payload }}

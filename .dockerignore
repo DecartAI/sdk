@@ -1,0 +1,8 @@
+.git
+.github
+.vscode
+node_modules
+**/node_modules
+packages/*/dist
+.DS_Store
+test-lucy2-api.html
