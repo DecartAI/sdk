@@ -132,6 +132,7 @@ export type RealTimeClient = {
   off: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   sessionId: string | null;
   subscribeToken: string | null;
+  getSubscribeToken: () => string | null;
   setImage: (
     image: Blob | File | string | null,
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
@@ -373,6 +374,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         get subscribeToken() {
           return subscribeToken;
         },
+        getSubscribeToken: () => subscribeToken,
         setImage: async (
           image: Blob | File | string | null,
           options?: { prompt?: string; enhance?: boolean; timeout?: number },

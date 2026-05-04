@@ -1025,6 +1025,7 @@ describe("LiveKit realtime client integration", () => {
       });
 
       expect(client.subscribeToken).toBeNull();
+      expect(client.getSubscribeToken()).toBeNull();
 
       for (const listener of sessionIdListeners) {
         listener({
@@ -1042,6 +1043,7 @@ describe("LiveKit realtime client integration", () => {
       expect(decoded.sid).toBe("sess-abc");
       expect(decoded.ip).toBe("10.0.0.5");
       expect(decoded.port).toBe(9090);
+      expect(client.getSubscribeToken()).toBe(token);
     } finally {
       connectSpy.mockRestore();
       stateSpy.mockRestore();
