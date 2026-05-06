@@ -20,6 +20,7 @@ import type {
   ConnectionState,
   GenerationEndedMessage,
   GenerationTickMessage,
+  LiveKitRoomInfoMessage,
   QueuePosition,
   SessionIdMessage,
 } from "./types";
@@ -247,7 +248,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       };
 
       const sessionIdListener = (msg: SessionIdMessage) => {
-        subscribeToken = encodeSubscribeToken(msg.session_id, msg.server_ip, msg.server_port);
         sessionId = msg.session_id;
 
         // Start telemetry reporter now that we have a session ID
@@ -274,6 +274,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         }
       };
       manager.getWebsocketMessageEmitter().on("sessionId", sessionIdListener);
+
+      const roomInfoListener = (msg: LiveKitRoomInfoMessage) => {
+        subscribeToken = encodeSubscribeToken(msg.room_name);
+      };
+      manager.getWebsocketMessageEmitter().on("roomInfo", roomInfoListener);
 
       const tickListener = (msg: GenerationTickMessage) => {
         emitOrBuffer("generationTick", { seconds: msg.seconds });
@@ -397,8 +402,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
   };
 
   const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
-    const { sid, ip, port } = decodeSubscribeToken(options.token);
-    const subscribeUrl = `${baseUrl}/subscribe/${encodeURIComponent(sid)}?IP=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}&api_key=${encodeURIComponent(apiKey)}`;
+    const { room_name: roomName } = decodeSubscribeToken(options.token);
+    const subscribeUrl = `${baseUrl}/subscribe/${encodeURIComponent(roomName)}?api_key=${encodeURIComponent(apiKey)}`;
 
     const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
 

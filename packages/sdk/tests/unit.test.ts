@@ -1374,12 +1374,13 @@ describe("set()", () => {
 describe("Subscribe Token", () => {
   it("encodes and decodes a subscribe token round-trip", async () => {
     const { encodeSubscribeToken, decodeSubscribeToken } = await import("../src/realtime/subscribe-client.js");
-    const token = encodeSubscribeToken("sess-123", "10.0.0.1", 8080);
+    const token = encodeSubscribeToken("session-abc123");
     const decoded = decodeSubscribeToken(token);
 
-    expect(decoded.sid).toBe("sess-123");
-    expect(decoded.ip).toBe("10.0.0.1");
-    expect(decoded.port).toBe(8080);
+    expect(decoded).toEqual({ room_name: "session-abc123" });
+    expect(decoded).not.toHaveProperty("sid");
+    expect(decoded).not.toHaveProperty("ip");
+    expect(decoded).not.toHaveProperty("port");
   });
 
   it("throws on invalid base64 token", async () => {

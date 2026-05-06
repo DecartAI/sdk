@@ -118,6 +118,7 @@ type WsMessageEvents = {
   promptAck: PromptAckMessage;
   setImageAck: SetImageAckMessage;
   sessionId: SessionIdMessage;
+  roomInfo: LiveKitRoomInfoMessage;
   generationTick: GenerationTickMessage;
   generationEnded: GenerationEndedMessage;
 };
@@ -452,6 +453,9 @@ export class LiveKitConnection {
         break;
       case "session_id":
         this.websocketMessagesEmitter.emit("sessionId", msg);
+        break;
+      case "livekit_room_info":
+        this.websocketMessagesEmitter.emit("roomInfo", msg);
         break;
       case "generation_tick":
         this.websocketMessagesEmitter.emit("generationTick", msg);
