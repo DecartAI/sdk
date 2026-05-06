@@ -3,22 +3,20 @@ import type { DiagnosticEvent } from "./diagnostics";
 import type { ConnectionChangeDetails, ConnectionState, QueuePosition } from "./types";
 
 type TokenPayload = {
-  sid: string;
-  ip: string;
-  port: number;
+  room_name: string;
 };
 
-export function encodeSubscribeToken(sessionId: string, serverIp: string, serverPort: number): string {
-  return btoa(JSON.stringify({ sid: sessionId, ip: serverIp, port: serverPort }));
+export function encodeSubscribeToken(roomName: string): string {
+  return btoa(JSON.stringify({ room_name: roomName }));
 }
 
 export function decodeSubscribeToken(token: string): TokenPayload {
   try {
-    const payload = JSON.parse(atob(token)) as TokenPayload;
-    if (!payload.sid || !payload.ip || !payload.port) {
+    const payload = JSON.parse(atob(token)) as Partial<TokenPayload>;
+    if (!payload.room_name || typeof payload.room_name !== "string") {
       throw new Error("Invalid subscribe token format");
     }
-    return payload;
+    return { room_name: payload.room_name };
   } catch {
     throw new Error("Invalid subscribe token");
   }

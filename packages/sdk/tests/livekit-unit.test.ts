@@ -986,18 +986,31 @@ describe("LiveKit realtime client integration", () => {
     }
   });
 
-  it("session_id message populates subscribeToken on producer client", async () => {
+  it("livekit_room_info message populates subscribeToken on producer client", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
     const { decodeSubscribeToken } = await import("../src/realtime/subscribe-client.js");
 
     const sessionIdListeners = new Set<(msg: import("../src/realtime/types.js").SessionIdMessage) => void>();
+    const roomInfoListeners = new Set<(msg: import("../src/realtime/types.js").LiveKitRoomInfoMessage) => void>();
     const websocketEmitter = {
-      on: (event: string, listener: (msg: import("../src/realtime/types.js").SessionIdMessage) => void) => {
-        if (event === "sessionId") sessionIdListeners.add(listener);
+      on: (event: string, listener: unknown) => {
+        if (event === "sessionId") {
+          sessionIdListeners.add(listener as (msg: import("../src/realtime/types.js").SessionIdMessage) => void);
+        }
+        if (event === "roomInfo") {
+          roomInfoListeners.add(listener as (msg: import("../src/realtime/types.js").LiveKitRoomInfoMessage) => void);
+        }
       },
-      off: (event: string, listener: (msg: import("../src/realtime/types.js").SessionIdMessage) => void) => {
-        if (event === "sessionId") sessionIdListeners.delete(listener);
+      off: (event: string, listener: unknown) => {
+        if (event === "sessionId") {
+          sessionIdListeners.delete(listener as (msg: import("../src/realtime/types.js").SessionIdMessage) => void);
+        }
+        if (event === "roomInfo") {
+          roomInfoListeners.delete(
+            listener as (msg: import("../src/realtime/types.js").LiveKitRoomInfoMessage) => void,
+          );
+        }
       },
     };
 
@@ -1036,13 +1049,27 @@ describe("LiveKit realtime client integration", () => {
         });
       }
 
+      expect(client.sessionId).toBe("sess-abc");
+      expect(client.subscribeToken).toBeNull();
+      expect(client.getSubscribeToken()).toBeNull();
+
+      for (const listener of roomInfoListeners) {
+        listener({
+          type: "livekit_room_info",
+          livekit_url: "wss://livekit.example.com",
+          token: "publisher-token",
+          room_name: "room-from-server",
+        });
+      }
+
       const token = client.subscribeToken;
       expect(token).not.toBeNull();
       // biome-ignore lint/style/noNonNullAssertion: guarded by assertion above
       const decoded = decodeSubscribeToken(token!);
-      expect(decoded.sid).toBe("sess-abc");
-      expect(decoded.ip).toBe("10.0.0.5");
-      expect(decoded.port).toBe(9090);
+      expect(decoded).toEqual({ room_name: "room-from-server" });
+      expect(decoded).not.toHaveProperty("sid");
+      expect(decoded).not.toHaveProperty("ip");
+      expect(decoded).not.toHaveProperty("port");
       expect(client.getSubscribeToken()).toBe(token);
     } finally {
       connectSpy.mockRestore();
@@ -1286,11 +1313,13 @@ describe("LiveKit realtime client integration", () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
 
+    let managerUrl: string | null = null;
     const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
       const mgr = this as unknown as {
-        config: { onConnectionStateChange?: (state: ConnectionState) => void };
+        config: { url: string; onConnectionStateChange?: (state: ConnectionState) => void };
         managerState: ConnectionState;
       };
+      managerUrl = mgr.config.url;
       mgr.managerState = "connected";
       mgr.config.onConnectionStateChange?.("connected");
       return true;
@@ -1299,7 +1328,8 @@ describe("LiveKit realtime client integration", () => {
     const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
-      const token = encodeSubscribeToken("sess-123", "10.0.0.1", 8080);
+      const roomName = "room/name with spaces";
+      const token = encodeSubscribeToken(roomName);
       const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "sub-key" });
       const client = await realtime.subscribe({
         token,
@@ -1311,6 +1341,11 @@ describe("LiveKit realtime client integration", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(states).toEqual(["connected"]);
+      expect(managerUrl).toBe(`wss://api3.decart.ai/subscribe/${encodeURIComponent(roomName)}?api_key=sub-key`);
+      expect(managerUrl).not.toContain("IP=");
+      expect(managerUrl).not.toContain("port=");
+      expect(managerUrl).not.toContain("sid=");
+      expect(managerUrl).not.toContain("v=");
 
       client.disconnect();
     } finally {
