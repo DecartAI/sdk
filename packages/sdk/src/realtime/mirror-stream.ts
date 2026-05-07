@@ -72,16 +72,26 @@ function createWithTrackProcessor(sourceVideo: MediaStreamTrack, audioTracks: Me
         ctx = canvas.getContext("2d");
       }
       if (!ctx) {
+        // Pass-through: ownership of frame transfers to the consumer.
         controller.enqueue(frame);
         return;
       }
-      ctx.save();
-      ctx.setTransform(-1, 0, 0, 1, w, 0);
-      ctx.drawImage(frame, 0, 0, w, h);
-      ctx.restore();
-      const flipped = new VideoFrame(canvas, { timestamp: frame.timestamp, alpha: "discard" });
-      frame.close();
-      controller.enqueue(flipped);
+
+      // VideoFrames hold GPU buffers; close them deterministically even if
+      // VideoFrame construction or enqueue throws.
+      let flipped: VideoFrame | undefined;
+      try {
+        ctx.save();
+        ctx.setTransform(-1, 0, 0, 1, w, 0);
+        ctx.drawImage(frame, 0, 0, w, h);
+        ctx.restore();
+        flipped = new VideoFrame(canvas, { timestamp: frame.timestamp, alpha: "discard" });
+        controller.enqueue(flipped);
+        flipped = undefined;
+      } finally {
+        flipped?.close();
+        frame.close();
+      }
     },
   });
 
