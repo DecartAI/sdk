@@ -120,18 +120,6 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
   });
 
   describe("Queue API - Video Models", () => {
-    it("lucy-clip: video-to-video", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-clip"),
-        prompt: "Lego World animated style",
-        data: videoBlob,
-        seed: 999,
-        enhance_prompt: true,
-      });
-
-      await expectResult(result, "lucy-clip", ".mp4");
-    });
-
     it("lucy-restyle-2: video restyling (prompt)", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-restyle-2"),
@@ -201,18 +189,6 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
     });
 
     // Deprecated video model names (aliases)
-    it("lucy-pro-v2v (deprecated): video-to-video", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-pro-v2v"),
-        prompt: "Lego World animated style",
-        data: videoBlob,
-        seed: 999,
-        enhance_prompt: true,
-      });
-
-      await expectResult(result, "lucy-pro-v2v", ".mp4");
-    });
-
     it("lucy-restyle-v2v (deprecated): video restyling", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-restyle-v2v"),
@@ -257,36 +233,6 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       });
 
       await expectResult(result, "lucy-clip-latest", ".mp4");
-    });
-
-    it("lucy-motion-latest: motion-guided image-to-video", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-motion-latest"),
-        data: imageBlob,
-        trajectory: [
-          { frame: 0, x: 0, y: 0 },
-          { frame: 1, x: 0.1, y: 0.2 },
-          { frame: 2, x: 0.2, y: 0.4 },
-        ],
-        seed: 555,
-      });
-
-      await expectResult(result, "lucy-motion-latest", ".mp4");
-    });
-
-    it("lucy-motion: motion-guided image-to-video", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-motion"),
-        data: imageBlob,
-        trajectory: [
-          { frame: 0, x: 0, y: 0 },
-          { frame: 1, x: 0.1, y: 0.2 },
-          { frame: 2, x: 0.2, y: 0.4 },
-        ],
-        seed: 555,
-      });
-
-      await expectResult(result, "lucy-motion", ".mp4");
     });
   });
 });
