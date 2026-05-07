@@ -530,7 +530,7 @@ describe("LiveKitConnection", () => {
       expect(publishTrack).toHaveBeenNthCalledWith(
         1,
         videoTrack,
-        expect.objectContaining({ source: "camera", videoCodec: "vp9" }),
+        expect.objectContaining({ source: "camera", videoCodec: "h264" }),
       );
       expect(publishTrack).toHaveBeenNthCalledWith(2, audioTrack);
     });
