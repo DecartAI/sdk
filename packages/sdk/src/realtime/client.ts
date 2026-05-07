@@ -7,6 +7,7 @@ import { AudioStreamManager } from "./audio-stream-manager";
 import type { DiagnosticEvent } from "./diagnostics";
 import { createEventBuffer } from "./event-buffer";
 import { realtimeMethods, type SetInput } from "./methods";
+import { createMirroredStream, type MirroredStream, shouldMirrorTrack } from "./mirror-stream";
 import {
   decodeSubscribeToken,
   encodeSubscribeToken,
@@ -93,6 +94,13 @@ const realTimeClientConnectOptionsSchema = z.object({
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
+  /**
+   * Pre-flip input video.
+   * - false (default): never mirror.
+   * - "auto": mirror when `facingMode === "user"`.
+   * - true: always mirror.
+   */
+  mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -138,6 +146,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     const isAvatarLive = options.model.name === "live_avatar" || options.model.name === "live-avatar";
 
     const { onRemoteStream, initialState } = parsedOptions.data;
+    const mirror = parsedOptions.data.mirror ?? false;
 
     // For live_avatar without user-provided stream: create AudioStreamManager for continuous silent stream with audio injection
     // If user provides their own stream (e.g., mic input), use it directly
@@ -149,6 +158,21 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       inputStream = audioStreamManager.getStream();
     } else {
       inputStream = stream ?? new MediaStream();
+    }
+
+    let mirroredStream: MirroredStream | undefined;
+    if (mirror !== false) {
+      try {
+        const firstVideoTrack = inputStream.getVideoTracks?.()[0];
+        if (firstVideoTrack && (mirror === true || shouldMirrorTrack(firstVideoTrack))) {
+          mirroredStream = createMirroredStream(inputStream, { fps: options.model.fps });
+          inputStream = mirroredStream.stream;
+        }
+      } catch (error) {
+        logger.warn("Failed to mirror input stream; falling back to un-mirrored input", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     let webrtcManager: WebRTCManager | undefined;
@@ -337,6 +361,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           stop();
           manager.cleanup();
           audioStreamManager?.cleanup();
+          mirroredStream?.dispose();
         },
         on: eventEmitter.on,
         off: eventEmitter.off,
@@ -370,6 +395,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       telemetryReporter.stop();
       webrtcManager?.cleanup();
       audioStreamManager?.cleanup();
+      mirroredStream?.dispose();
       throw error;
     }
   };
