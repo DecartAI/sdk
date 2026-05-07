@@ -72,7 +72,7 @@ function isLowEndBrowserDevice(runtime: CodecSelectionRuntime = globalThis): boo
 }
 
 export function getDefaultVideoPublishOptions(runtime: CodecSelectionRuntime = globalThis): TrackPublishOptions {
-  const videoEncoding = { maxBitrate: DEFAULT_MAX_VIDEO_BITRATE_BPS };
+  const videoEncoding = { maxBitrate: DEFAULT_MAX_VIDEO_BITRATE_BPS, maxFps: 20};
   if (isLowEndBrowserDevice(runtime)) {
     return {
       source: Track.Source.Camera,
