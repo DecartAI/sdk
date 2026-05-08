@@ -120,10 +120,39 @@ export class LiveKitConnection {
   private lastServerError: string | null = null;
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
+  private startupMarks: Map<string, number> = new Map();
+  private startupEmitted = false;
 
   constructor(private callbacks: LiveKitCallbacks = {}) {
     this.logger = callbacks.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
     this.emitDiagnostic = callbacks.onDiagnostic ?? noopDiagnostic;
+  }
+
+  private startupMark(name: string): void {
+    if (this.startupEmitted || this.startupMarks.has(name)) return;
+    this.startupMarks.set(name, performance.now());
+  }
+
+  private emitStartupBreakdown(): void {
+    if (this.startupEmitted) return;
+    this.startupEmitted = true;
+    const m = this.startupMarks;
+    const delta = (a: string, b: string): number | null => {
+      const ta = m.get(a);
+      const tb = m.get(b);
+      if (ta === undefined || tb === undefined) return null;
+      return Math.round((tb - ta) * 100) / 100;
+    };
+    this.logger.info("livekit_client_startup_breakdown", {
+      ws_open_ms: delta("connect_start", "ws_open"),
+      room_info_ms: delta("ws_open", "room_info_received"),
+      prepare_connection_ms: delta("room_info_received", "prepare_connection_done"),
+      room_connect_ms: delta("room_info_received", "room_connect_done"),
+      publish_local_track_ms: delta("room_connect_done", "publish_local_track_done"),
+      remote_track_announced_ms: delta("room_connect_done", "first_remote_track_subscribed"),
+      first_frame_after_remote_track_ms: delta("first_remote_track_subscribed", "first_frame_received"),
+      total_perceived_ttff_ms: delta("connect_start", "first_frame_received"),
+    });
   }
 
   /**
@@ -153,10 +182,13 @@ export class LiveKitConnection {
     this.connectionReject = (error) => rejectConnect(error);
 
     try {
+      this.startupMark("connect_start");
       // Phase 1 — control WS + livekit_join/livekit_room_info handshake.
       const roomInfoStart = performance.now();
       await Promise.race([this.openControlWs(wsUrl, timeout), connectAbort]);
+      this.startupMark("ws_open");
       const roomInfo = await Promise.race([this.requestRoomInfo(), connectAbort]);
+      this.startupMark("room_info_received");
       this.setState("connecting");
       this.emitDiagnostic("phaseTiming", {
         phase: "websocket",
@@ -167,7 +199,10 @@ export class LiveKitConnection {
       // Phase 2 — join the SFU room and publish local tracks.
       const roomStart = performance.now();
       this.room = new Room(LIVEKIT_ROOM_OPTIONS);
-      this.room.prepareConnection(roomInfo.livekit_url, roomInfo.token).catch(() => {});
+      this.room
+        .prepareConnection(roomInfo.livekit_url, roomInfo.token)
+        .then(() => this.startupMark("prepare_connection_done"))
+        .catch(() => {});
       await Promise.race([this.joinRoom(roomInfo), connectAbort]);
       this.emitDiagnostic("phaseTiming", {
         phase: "webrtc-handshake",
@@ -422,6 +457,9 @@ export class LiveKitConnection {
 
     this.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
       if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {
+        if (track.kind === Track.Kind.Video) {
+          this.startupMark("first_remote_track_subscribed");
+        }
         track.attach();
         const mediaStreamTrack = track.mediaStreamTrack;
         if (mediaStreamTrack) {
@@ -432,6 +470,8 @@ export class LiveKitConnection {
           this.callbacks.onRemoteStream?.(this.remoteStream);
         }
         track.on(TrackEvent.VideoPlaybackStarted, () => {
+          this.startupMark("first_frame_received");
+          this.emitStartupBreakdown();
           this.setState("generating");
         });
       }
@@ -442,6 +482,7 @@ export class LiveKitConnection {
     });
 
     await this.room.connect(info.livekit_url, info.token);
+    this.startupMark("room_connect_done");
 
     // Wire up the stats provider now that the room has local+remote
     // participant objects available. Held by reference here so the SDK
@@ -451,6 +492,7 @@ export class LiveKitConnection {
 
     if (this.localStream) {
       await this.publishLocalTracks(this.localStream);
+      this.startupMark("publish_local_track_done");
     }
   }
 
