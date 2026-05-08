@@ -82,6 +82,53 @@ Options:
 - `"auto"` — mirror when the input track reports `facingMode: "user"` (mobile front cameras).
 - `true` — always mirror (e.g. desktop webcams).
 
+### Watch a Stream
+
+A connected realtime session exposes `subscribeToken` once it reaches a connected
+state. Share that token (e.g. as a URL search param) and let viewers attach to
+the same styled output stream — receive-only, no camera required.
+
+**Producer** — capture the token from the active session:
+
+```typescript
+const realtimeClient = await client.realtime.connect(stream, {
+  model,
+  onRemoteStream: (transformedStream) => {
+    videoElement.srcObject = transformedStream;
+  },
+});
+
+realtimeClient.on("connectionChange", (state) => {
+  if ((state === "connected" || state === "generating") && realtimeClient.subscribeToken) {
+    const url = new URL("/watch", window.location.origin);
+    url.searchParams.set("token", realtimeClient.subscribeToken);
+    setShareUrl(url.toString());
+  }
+});
+```
+
+**Viewer** — attach to the producer's stream with the token:
+
+```typescript
+import { createDecartClient, type RealTimeSubscribeClient } from "@decartai/sdk";
+
+const client = createDecartClient({ apiKey: "your-api-key-here" });
+
+const subscriber: RealTimeSubscribeClient = await client.realtime.subscribe({
+  token,
+  onRemoteStream: (stream) => {
+    videoElement.srcObject = stream;
+  },
+});
+
+subscriber.on("connectionChange", (state) => {
+  console.log(`Viewer state: ${state}`);
+});
+
+// Disconnect when done
+subscriber.disconnect();
+```
+
 ### Async Processing (Queue API)
 
 For video generation jobs, use the queue API to submit jobs and poll for results:
