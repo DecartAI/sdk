@@ -116,6 +116,7 @@ export class LiveKitConnection {
   private emitDiagnostic: DiagnosticEmitter;
   private statsProvider: StatsProvider | null = null;
   private remoteStream: MediaStream | null = null;
+  private wsOpenedAt: number | null = null;
   private lastServerError: string | null = null;
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
@@ -324,9 +325,11 @@ export class LiveKitConnection {
 
   private async openControlWs(wsUrl: string, timeout: number): Promise<void> {
     await new Promise<void>((resolve, reject) => {
+      const openStart = performance.now();
       const timer = setTimeout(() => reject(new Error("WebSocket timeout")), timeout);
       this.lastServerError = null;
       this.ws = new WebSocket(wsUrl);
+      this.wsOpenedAt = openStart;
       this.ws.onopen = () => {
         clearTimeout(timer);
         resolve();
@@ -337,6 +340,7 @@ export class LiveKitConnection {
           reason: e.reason || this.lastServerError || "(none)",
           wasClean: e.wasClean,
           serverError: this.lastServerError,
+          uptimeMs: this.wsOpenedAt ? Math.round(performance.now() - this.wsOpenedAt) : null,
         };
         if (this.state !== "disconnected" || this.lastServerError) {
           this.logger.warn("LiveKit control WS closed unexpectedly", details);
@@ -364,6 +368,7 @@ export class LiveKitConnection {
   }
 
   private async requestRoomInfo(): Promise<LiveKitRoomInfoMessage> {
+    const askedAt = performance.now();
     this.send({ type: "livekit_join" });
     return await new Promise<LiveKitRoomInfoMessage>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -384,6 +389,7 @@ export class LiveKitConnection {
           this.logger.info("LiveKit join queued", {
             position: queuePosition.position,
             queueSize: queuePosition.queueSize,
+            waitMs: Math.round(performance.now() - askedAt),
           });
           this.setState("pending", { queuePosition });
           this.callbacks.onQueuePosition?.(queuePosition);
@@ -461,13 +467,11 @@ export class LiveKitConnection {
           if (!this.remoteStream.getTracks().includes(mediaStreamTrack)) {
             this.remoteStream.addTrack(mediaStreamTrack);
           }
+          this.callbacks.onRemoteStream?.(this.remoteStream);
         }
         track.on(TrackEvent.VideoPlaybackStarted, () => {
           this.startupMark("first_frame_received");
           this.emitStartupBreakdown();
-          if (this.remoteStream) {
-            this.callbacks.onRemoteStream?.(this.remoteStream);
-          }
           this.setState("generating");
         });
       }
