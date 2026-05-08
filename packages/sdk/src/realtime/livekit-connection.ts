@@ -454,7 +454,7 @@ export class LiveKitConnection {
         if (track.kind === Track.Kind.Video) {
           this.startupMark("first_remote_track_subscribed");
         }
-        track.attach();
+        const attachedElement = track.attach();
         const mediaStreamTrack = track.mediaStreamTrack;
         if (mediaStreamTrack) {
           this.remoteStream ??= new MediaStream();
@@ -462,14 +462,29 @@ export class LiveKitConnection {
             this.remoteStream.addTrack(mediaStreamTrack);
           }
         }
-        track.on(TrackEvent.VideoPlaybackStarted, () => {
+
+        let fired = false;
+        const fireFirstFrame = () => {
+          if (fired) return;
+          fired = true;
           this.startupMark("first_frame_received");
           this.emitStartupBreakdown();
           if (this.remoteStream) {
             this.callbacks.onRemoteStream?.(this.remoteStream);
           }
           this.setState("generating");
-        });
+        };
+
+        const isVideoElement =
+          track.kind === Track.Kind.Video &&
+          typeof HTMLVideoElement !== "undefined" &&
+          attachedElement instanceof HTMLVideoElement;
+        if (isVideoElement && "requestVideoFrameCallback" in attachedElement) {
+          (attachedElement as HTMLVideoElement).requestVideoFrameCallback(() => fireFirstFrame());
+          setTimeout(fireFirstFrame, 5000);
+        } else {
+          track.on(TrackEvent.VideoPlaybackStarted, fireFirstFrame);
+        }
       }
     });
 
