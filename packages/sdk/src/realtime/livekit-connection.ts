@@ -12,9 +12,7 @@
 import {
   ConnectionState as LKConnectionState,
   type LocalTrack,
-  type RemoteParticipant,
   type RemoteTrack,
-  type RemoteTrackPublication,
   Room,
   RoomEvent,
   Track,
@@ -46,7 +44,6 @@ const ROOM_INFO_TIMEOUT_MS = 15_000;
 const DEFAULT_VIDEO_CODEC = "h264" as const;
 const LOW_END_VIDEO_CODEC = "h264" as const;
 const DEFAULT_MAX_VIDEO_BITRATE_BPS = 3_500_000;
-const DEFAULT_MAX_VIDEO_BITRATE_KBPS = DEFAULT_MAX_VIDEO_BITRATE_BPS / 1000;
 export const LIVEKIT_ROOM_OPTIONS = {
   adaptiveStream: false,
   dynacast: false,
@@ -85,16 +82,6 @@ export function getDefaultVideoPublishOptions(runtime: CodecSelectionRuntime = g
     videoCodec: DEFAULT_VIDEO_CODEC,
     videoEncoding,
   };
-}
-
-function sanitizeUrl(url: string): string {
-  try {
-    const u = new URL(url);
-    if (u.searchParams.has("api_key")) u.searchParams.set("api_key", "***");
-    return u.toString();
-  } catch {
-    return url.replace(/api_key=[^&]*/g, "api_key=***");
-  }
 }
 
 interface LiveKitCallbacks {
@@ -158,13 +145,6 @@ export class LiveKitConnection {
     const separator = url.includes("?") ? "&" : "?";
     const wsUrl = `${url}${separator}user_agent=${userAgent}`;
 
-    this.logger.debug("LiveKit connection.connect()", {
-      url: sanitizeUrl(wsUrl),
-      timeoutMs: timeout,
-      mode: localStream ? "publish" : "subscribe",
-      tracks: localStream?.getTracks?.().map((t) => t.kind) ?? [],
-    });
-
     let rejectConnect!: (error: Error) => void;
     const connectAbort = new Promise<never>((_, reject) => {
       rejectConnect = reject;
@@ -175,14 +155,9 @@ export class LiveKitConnection {
     try {
       // Phase 1 — control WS + livekit_join/livekit_room_info handshake.
       const roomInfoStart = performance.now();
-      this.logger.debug("LiveKit connection phase started", { phase: "websocket" });
       await Promise.race([this.openControlWs(wsUrl, timeout), connectAbort]);
       const roomInfo = await Promise.race([this.requestRoomInfo(), connectAbort]);
       this.setState("connecting");
-      this.logger.debug("LiveKit connection phase completed", {
-        phase: "websocket",
-        durationMs: performance.now() - roomInfoStart,
-      });
       this.emitDiagnostic("phaseTiming", {
         phase: "websocket",
         durationMs: performance.now() - roomInfoStart,
@@ -191,12 +166,7 @@ export class LiveKitConnection {
 
       // Phase 2 — join the SFU room and publish local tracks.
       const roomStart = performance.now();
-      this.logger.debug("LiveKit connection phase started", { phase: "webrtc-handshake" });
       await Promise.race([this.joinRoom(roomInfo), connectAbort]);
-      this.logger.debug("LiveKit connection phase completed", {
-        phase: "webrtc-handshake",
-        durationMs: performance.now() - roomStart,
-      });
       this.emitDiagnostic("phaseTiming", {
         phase: "webrtc-handshake",
         durationMs: performance.now() - roomStart,
@@ -206,7 +176,6 @@ export class LiveKitConnection {
       // Phase 3 — optional startup conditioning over the control WS.
       if (this.callbacks.initialImage) {
         const imageStart = performance.now();
-        this.logger.debug("LiveKit connection phase started", { phase: "initial-image" });
         await Promise.race([
           this.setImageBase64(this.callbacks.initialImage, {
             prompt: this.callbacks.initialPrompt?.text,
@@ -214,10 +183,6 @@ export class LiveKitConnection {
           }),
           connectAbort,
         ]);
-        this.logger.debug("LiveKit connection phase completed", {
-          phase: "initial-image",
-          durationMs: performance.now() - imageStart,
-        });
         this.emitDiagnostic("phaseTiming", {
           phase: "initial-image",
           durationMs: performance.now() - imageStart,
@@ -225,12 +190,7 @@ export class LiveKitConnection {
         });
       } else if (this.callbacks.initialPrompt) {
         const promptStart = performance.now();
-        this.logger.debug("LiveKit connection phase started", { phase: "initial-prompt" });
         await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
-        this.logger.debug("LiveKit connection phase completed", {
-          phase: "initial-prompt",
-          durationMs: performance.now() - promptStart,
-        });
         this.emitDiagnostic("phaseTiming", {
           phase: "initial-prompt",
           durationMs: performance.now() - promptStart,
@@ -238,13 +198,7 @@ export class LiveKitConnection {
         });
       } else if (localStream) {
         const passthroughStart = performance.now();
-        this.logger.debug("LiveKit connection phase started", { phase: "initial-prompt", mode: "passthrough" });
         await Promise.race([this.setImageBase64(null, { prompt: null }), connectAbort]);
-        this.logger.debug("LiveKit connection phase completed", {
-          phase: "initial-prompt",
-          mode: "passthrough",
-          durationMs: performance.now() - passthroughStart,
-        });
         this.emitDiagnostic("phaseTiming", {
           phase: "initial-prompt",
           durationMs: performance.now() - passthroughStart,
@@ -266,10 +220,6 @@ export class LiveKitConnection {
       this.ws.send(JSON.stringify(message));
       return true;
     }
-    this.logger.warn("Message dropped: WebSocket is not open", {
-      messageType: message.type,
-      readyState: this.ws?.readyState ?? null,
-    });
     return false;
   }
 
@@ -340,28 +290,24 @@ export class LiveKitConnection {
     await new Promise<void>((resolve, reject) => {
       const openStart = performance.now();
       const timer = setTimeout(() => reject(new Error("WebSocket timeout")), timeout);
-      this.logger.debug("Opening LiveKit control WebSocket", {
-        url: sanitizeUrl(wsUrl),
-        timeoutMs: timeout,
-      });
       this.lastServerError = null;
       this.ws = new WebSocket(wsUrl);
       this.wsOpenedAt = openStart;
       this.ws.onopen = () => {
         clearTimeout(timer);
-        this.logger.debug("LiveKit control WebSocket opened", {
-          handshakeMs: Math.round(performance.now() - openStart),
-        });
         resolve();
       };
       this.ws.onclose = (e) => {
-        this.logger.info("LiveKit control WS closed", {
+        const details = {
           code: e.code,
           reason: e.reason || this.lastServerError || "(none)",
           wasClean: e.wasClean,
           serverError: this.lastServerError,
           uptimeMs: this.wsOpenedAt ? Math.round(performance.now() - this.wsOpenedAt) : null,
-        });
+        };
+        if (this.state !== "disconnected" || this.lastServerError) {
+          this.logger.warn("LiveKit control WS closed unexpectedly", details);
+        }
         // If the room is still connecting this also aborts the connect flow.
         this.connectionReject?.(new Error(`WebSocket closed: ${e.code} ${e.reason}`));
         if (!this.room || this.room.state !== LKConnectionState.Connected) {
@@ -386,7 +332,6 @@ export class LiveKitConnection {
 
   private async requestRoomInfo(): Promise<LiveKitRoomInfoMessage> {
     const askedAt = performance.now();
-    this.logger.debug("Requesting LiveKit room info", { timeoutMs: ROOM_INFO_TIMEOUT_MS });
     this.send({ type: "livekit_join" });
     return await new Promise<LiveKitRoomInfoMessage>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -397,12 +342,6 @@ export class LiveKitConnection {
       const handler = (msg: IncomingRealtimeMessage) => {
         if (msg.type === "livekit_room_info") {
           cleanup();
-          this.logger.debug("Received LiveKit room info", {
-            roomName: msg.room_name,
-            sfuUrl: msg.livekit_url,
-            tokenBytes: msg.token.length,
-            waitMs: Math.round(performance.now() - askedAt),
-          });
           resolve(msg);
         } else if (msg.type === "queue_position") {
           clearTimeout(timer);
@@ -477,30 +416,13 @@ export class LiveKitConnection {
   // -------------------------------------------------------------------------
 
   private async joinRoom(info: LiveKitRoomInfoMessage): Promise<void> {
-    this.logger.debug("Joining LiveKit room", {
-      roomName: info.room_name,
-      sfuUrl: info.livekit_url,
-      adaptiveStream: LIVEKIT_ROOM_OPTIONS.adaptiveStream,
-      dynacast: LIVEKIT_ROOM_OPTIONS.dynacast,
-    });
     this.room = new Room(LIVEKIT_ROOM_OPTIONS);
 
-    this.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, pub: RemoteTrackPublication, p: RemoteParticipant) => {
+    this.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
       if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {
         track.attach();
         const mediaStreamTrack = track.mediaStreamTrack;
         if (mediaStreamTrack) {
-          const settings = mediaStreamTrack.getSettings?.() ?? {};
-          this.logger.debug("LiveKit remote track subscribed", {
-            kind: track.kind,
-            source: track.source,
-            trackSid: track.sid ?? null,
-            participant: p.identity,
-            mimeType: pub.mimeType ?? null,
-            width: settings.width ?? null,
-            height: settings.height ?? null,
-            frameRate: settings.frameRate ?? null,
-          });
           this.remoteStream ??= new MediaStream();
           if (!this.remoteStream.getTracks().includes(mediaStreamTrack)) {
             this.remoteStream.addTrack(mediaStreamTrack);
@@ -513,30 +435,11 @@ export class LiveKitConnection {
       }
     });
 
-    this.room.on(RoomEvent.Connected, () => {
-      this.logger.info("LiveKit room connected", {
-        roomName: this.room?.name ?? null,
-        participantIdentity: this.room?.localParticipant?.identity ?? null,
-        participantSid: this.room?.localParticipant?.sid ?? null,
-        remoteParticipants: this.room?.numParticipants ?? null,
-      });
-    });
-    this.room.on(RoomEvent.Disconnected, (reason?: unknown) => {
-      this.logger.info("LiveKit room disconnected", {
-        roomName: this.room?.name ?? null,
-        reason: String(reason),
-      });
+    this.room.on(RoomEvent.Disconnected, () => {
       this.setState("disconnected");
     });
 
-    const roomConnectStart = performance.now();
     await this.room.connect(info.livekit_url, info.token);
-    this.logger.debug("LiveKit room connect resolved", {
-      roomName: info.room_name,
-      sfuUrl: info.livekit_url,
-      participantSid: this.room?.localParticipant?.sid ?? null,
-      durationMs: Math.round(performance.now() - roomConnectStart),
-    });
 
     // Wire up the stats provider now that the room has local+remote
     // participant objects available. Held by reference here so the SDK
@@ -551,41 +454,12 @@ export class LiveKitConnection {
 
   private async publishLocalTracks(stream: MediaStream): Promise<void> {
     if (!this.room) return;
-    this.logger.info("LiveKit client publish config", {
-      codec: DEFAULT_VIDEO_CODEC,
-      lowEndCodec: LOW_END_VIDEO_CODEC,
-      maxBitrateKbps: DEFAULT_MAX_VIDEO_BITRATE_KBPS,
-      trackCount: stream.getTracks().length,
-    });
     for (const track of stream.getTracks()) {
-      const settings = track.getSettings?.() ?? {};
-      this.logger.debug("Publishing local track to LiveKit", {
-        kind: track.kind,
-        label: track.label || null,
-        width: settings.width ?? null,
-        height: settings.height ?? null,
-        frameRate: settings.frameRate ?? null,
-        deviceId: settings.deviceId ?? null,
-      });
-      const publishStart = performance.now();
       if (track.kind === "video") {
         const publishOptions = getDefaultVideoPublishOptions();
-        const publication = await this.room.localParticipant.publishTrack(track, publishOptions);
-        this.logger.debug("LiveKit local video track published", {
-          trackSid: publication.trackSid ?? null,
-          mimeType: publication.mimeType ?? null,
-          requestedCodec: publishOptions.videoCodec,
-          maxBitrateKbps: DEFAULT_MAX_VIDEO_BITRATE_KBPS,
-          durationMs: Math.round(performance.now() - publishStart),
-        });
+        await this.room.localParticipant.publishTrack(track, publishOptions);
       } else {
-        const publication = await this.room.localParticipant.publishTrack(track);
-        this.logger.debug("LiveKit local track published", {
-          kind: track.kind,
-          trackSid: publication.trackSid ?? null,
-          mimeType: publication.mimeType ?? null,
-          durationMs: Math.round(performance.now() - publishStart),
-        });
+        await this.room.localParticipant.publishTrack(track);
       }
     }
   }
@@ -633,28 +507,7 @@ export class LiveKitConnection {
   }
 }
 
-/**
- * Build a StatsProvider that aggregates `track.getRTCStatsReport()` across
- * every local and remote track in a LiveKit Room into a single
- * RTCStatsReport-shaped Map.
- *
- * Why this shape: `WebRTCStatsCollector.parse()` expects to call
- * `.forEach((stat) => { ... })` on the returned object and keys off each
- * entry's `type` (inbound-rtp, outbound-rtp, candidate-pair). The standard
- * `RTCStatsReport` is an iterable map-like — our aggregate mimics that by
- * returning a `Map<string, unknown>` (structurally compatible with the spec).
- *
- * Each livekit track's `getRTCStatsReport()` under the hood calls
- * `RTCRtpSender.getStats()` / `RTCRtpReceiver.getStats()`, which in all
- * current browsers returns the track's inbound-rtp/outbound-rtp plus the
- * associated candidate-pair and transport reports. Stitching them together
- * per-tick gives us a report compatible with the SDK's stats parser.
- *
- * Key collisions (candidate-pair ids repeat across publisher+subscriber
- * PCs) are namespaced with a monotonic suffix so `forEach` sees every
- * entry once. `parse()` only cares about the last `candidate-pair` where
- * `state == "succeeded"`, so duplicate candidate-pair entries are harmless.
- */
+
 function createLiveKitStatsProvider(room: Room): StatsProvider {
   let uid = 0;
 
@@ -686,8 +539,6 @@ function createLiveKitStatsProvider(room: Room): StatsProvider {
         await collectFromTrack(pub.track, entries);
       }
 
-      // Inbound: every remote participant's tracks (what the server sends
-      // back to us — the model output).
       for (const participant of room.remoteParticipants.values()) {
         for (const pub of participant.trackPublications.values()) {
           await collectFromTrack(pub.track as RemoteTrack | undefined, entries);

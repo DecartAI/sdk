@@ -61,7 +61,6 @@ export class TelemetryReporter implements ITelemetryReporter {
   private sessionId: string;
   private model?: string;
   private integration?: string;
-  private logger: Logger;
   private reportIntervalMs: number;
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private statsBuffer: WebRTCStats[] = [];
@@ -72,7 +71,6 @@ export class TelemetryReporter implements ITelemetryReporter {
     this.sessionId = options.sessionId;
     this.model = options.model;
     this.integration = options.integration;
-    this.logger = options.logger;
     this.reportIntervalMs = options.reportIntervalMs ?? DEFAULT_REPORT_INTERVAL_MS;
   }
 
@@ -156,23 +154,12 @@ export class TelemetryReporter implements ITelemetryReporter {
           body: JSON.stringify(chunk),
           // Only set keepalive on the very last chunk (if the caller requested it).
           keepalive: keepalive && isLast,
-        })
-          .then((response) => {
-            if (!response.ok) {
-              this.logger.warn("Telemetry report rejected", {
-                status: response.status,
-                statusText: response.statusText,
-              });
-            }
-          })
-          .catch((error) => {
-            this.logger.debug("Telemetry report failed", { error: String(error) });
-          });
+        }).catch(() => {});
 
         chunk = this.createReportChunk();
       }
-    } catch (error) {
-      this.logger.debug("Telemetry report failed", { error: String(error) });
+    } catch {
+      // Telemetry is best-effort and should never add console noise for SDK users.
     }
   }
 }

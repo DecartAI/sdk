@@ -3,6 +3,7 @@ import { type CustomModelDefinition, type ModelDefinition, modelDefinitionSchema
 import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
+import { imageToBase64 } from "../utils/media";
 import type { DiagnosticEvent } from "./diagnostics";
 import { createEventBuffer } from "./event-buffer";
 import { LiveKitManager } from "./livekit-manager";
@@ -25,56 +26,6 @@ import type {
   SessionIdMessage,
 } from "./types";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result;
-      if (typeof result !== "string") {
-        reject(new Error("FileReader did not return a string"));
-        return;
-      }
-      const base64 = result.split(",")[1];
-      if (!base64) {
-        reject(new Error("Invalid data URL format"));
-        return;
-      }
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function imageToBase64(image: Blob | File | string): Promise<string> {
-  if (typeof image === "string") {
-    let url: URL | null = null;
-    try {
-      url = new URL(image);
-    } catch {
-      // Not a valid URL, treat as raw base64
-    }
-
-    if (url?.protocol === "data:") {
-      const [, base64] = image.split(",", 2);
-      if (!base64) {
-        throw new Error("Invalid data URL image");
-      }
-      return base64;
-    }
-    if (url?.protocol === "http:" || url?.protocol === "https:") {
-      const response = await fetch(image);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
-      }
-      const imageBlob = await response.blob();
-      return blobToBase64(imageBlob);
-    }
-    return image;
-  }
-  return blobToBase64(image);
-}
 
 export type RealTimeClientOptions = {
   baseUrl: string;
@@ -142,7 +93,7 @@ export type RealTimeClient = {
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
   const { baseUrl, apiKey, integration } = opts;
-  const logger = opts.logger ?? createConsoleLogger("debug");
+  const logger = opts.logger ?? createConsoleLogger("info");
 
   const connect = async (
     stream: MediaStream | null,
@@ -174,13 +125,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
-      logger.debug("Realtime connect requested", {
-        modelName: options.model.name,
-        modelFps: options.model.fps,
-        hasLocalStream: Boolean(inputStream),
-        hasInitialImage: Boolean(initialImage),
-        hasInitialPrompt: Boolean(initialPrompt),
-      });
 
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
       const queryParams = new URLSearchParams({
@@ -194,6 +138,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         integration,
         logger,
         onDiagnostic: (name, data) => {
+          logger.debug(name, data as Record<string, unknown>);
           emitOrBuffer("diagnostic", { name, data } as Events["diagnostic"]);
           addTelemetryDiagnostic(name, data);
         },
@@ -321,11 +266,13 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
             if (!videoStalled && stats.video && fps < STALL_FPS_THRESHOLD) {
               videoStalled = true;
               stallStartMs = Date.now();
+              logger.debug("videoStall", { stalled: true, durationMs: 0 });
               emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: true, durationMs: 0 } });
               addTelemetryDiagnostic("videoStall", { stalled: true, durationMs: 0 }, stallStartMs);
             } else if (videoStalled && fps >= STALL_FPS_THRESHOLD) {
               const durationMs = Date.now() - stallStartMs;
               videoStalled = false;
+              logger.debug("videoStall", { stalled: false, durationMs });
               emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: false, durationMs } });
               addTelemetryDiagnostic("videoStall", { stalled: false, durationMs });
             }
@@ -415,6 +362,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         integration,
         logger,
         onDiagnostic: (name, data) => {
+          logger.debug(name, data as Record<string, unknown>);
           emitOrBuffer("diagnostic", { name, data } as SubscribeEvents["diagnostic"]);
         },
         onRemoteStream: options.onRemoteStream,

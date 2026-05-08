@@ -82,25 +82,11 @@ export class LiveKitManager {
       logger: this.logger,
       onDiagnostic: config.onDiagnostic,
     });
-    this.logger.info("LiveKit realtime selected", {
-      modelName: config.modelName ?? null,
-      url: sanitizeUrl(config.url),
-      hasInitialImage: Boolean(config.initialImage),
-      hasInitialPrompt: Boolean(config.initialPrompt),
-      integration: config.integration ?? null,
-    });
   }
 
   private emitState(state: ConnectionState, details?: ConnectionChangeDetails): void {
     const shouldEmit = this.managerState !== state || (state === "pending" && details?.queuePosition !== undefined);
     if (shouldEmit) {
-      this.logger.debug("LiveKit manager state changed", {
-        previousState: this.managerState,
-        state,
-        modelName: this.config.modelName ?? null,
-        subscribeMode: this.subscribeMode,
-        connectionStatus: this.connectionStatus.status,
-      });
       this.managerState = state;
       this.config.onConnectionStateChange?.(state, details);
     }
@@ -132,10 +118,6 @@ export class LiveKitManager {
     }
 
     if (state === "disconnected" && this.isConnected()) {
-      this.logger.debug("LiveKit manager starting reconnect after unexpected disconnect", {
-        modelName: this.config.modelName ?? null,
-        subscribeMode: this.subscribeMode,
-      });
       this.reconnect();
       return;
     }
@@ -152,12 +134,6 @@ export class LiveKitManager {
     this.connectionStatus = myStatus;
     this.emitState("reconnecting");
     const reconnectStart = performance.now();
-    this.logger.debug("LiveKit reconnect started", {
-      generation,
-      maxAttempts: MAX_ATTEMPTS,
-      modelName: this.config.modelName ?? null,
-      subscribeMode: this.subscribeMode,
-    });
 
     try {
       let attemptCount = 0;
@@ -169,10 +145,6 @@ export class LiveKitManager {
             throw new AbortError("Reconnect cancelled");
           }
           myStatus.queued = false;
-          this.logger.debug("LiveKit reconnect attempt started", {
-            attempt: attemptCount,
-            maxAttempts: MAX_ATTEMPTS,
-          });
 
           if (!this.subscribeMode && !this.localStream) {
             throw new AbortError("Reconnect cancelled: no local stream");
@@ -190,13 +162,6 @@ export class LiveKitManager {
           ...RETRY_OPTIONS,
           onFailedAttempt: (error) => {
             if (this.connectionStatus !== myStatus) return;
-            this.logger.warn("Reconnect attempt failed", {
-              error: error.message,
-              attempt: error.attemptNumber,
-              maxAttempts: MAX_ATTEMPTS,
-              retriesLeft: error.retriesLeft,
-              elapsedMs: Math.round(performance.now() - reconnectStart),
-            });
             this.config.onDiagnostic?.("reconnect", {
               attempt: error.attemptNumber,
               maxAttempts: MAX_ATTEMPTS,
@@ -221,12 +186,6 @@ export class LiveKitManager {
         maxAttempts: MAX_ATTEMPTS,
         durationMs: performance.now() - reconnectStart,
         success: true,
-      });
-      this.logger.info("LiveKit reconnect completed", {
-        attempts: attemptCount,
-        maxAttempts: MAX_ATTEMPTS,
-        durationMs: Math.round(performance.now() - reconnectStart),
-        generation,
       });
     } catch (error) {
       if (this.connectionStatus !== myStatus) return;

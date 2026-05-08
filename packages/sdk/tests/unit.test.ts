@@ -2031,7 +2031,7 @@ describe("TelemetryReporter", () => {
     }
   });
 
-  it("warns on non-2xx response status", async () => {
+  it("silences non-2xx telemetry responses", async () => {
     const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500, statusText: "Internal Server Error" });
@@ -2054,15 +2054,8 @@ describe("TelemetryReporter", () => {
 
       reporter.flush();
 
-      // Wait for the .then() handler to execute
-      await vi.waitFor(() => {
-        expect(warnMock).toHaveBeenCalledTimes(1);
-      });
-
-      expect(warnMock).toHaveBeenCalledWith("Telemetry report rejected", {
-        status: 500,
-        statusText: "Internal Server Error",
-      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(warnMock).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }
