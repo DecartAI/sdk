@@ -166,6 +166,8 @@ export class LiveKitConnection {
 
       // Phase 2 — join the SFU room and publish local tracks.
       const roomStart = performance.now();
+      this.room = new Room(LIVEKIT_ROOM_OPTIONS);
+      this.room.prepareConnection(roomInfo.livekit_url, roomInfo.token).catch(() => {});
       await Promise.race([this.joinRoom(roomInfo), connectAbort]);
       this.emitDiagnostic("phaseTiming", {
         phase: "webrtc-handshake",
@@ -416,7 +418,7 @@ export class LiveKitConnection {
   // -------------------------------------------------------------------------
 
   private async joinRoom(info: LiveKitRoomInfoMessage): Promise<void> {
-    this.room = new Room(LIVEKIT_ROOM_OPTIONS);
+    this.room ??= new Room(LIVEKIT_ROOM_OPTIONS);
 
     this.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
       if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {
