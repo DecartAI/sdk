@@ -675,14 +675,26 @@
         function getSelectedCameraSettings() {
             const orientation = document.querySelector('input[name="camera-orientation"]:checked').value;
             const isVertical = orientation === 'vertical';
-            const shortEdge = 720;
-            const longEdge = 1280;
+            const modelWidth = model.width;
+            const modelHeight = model.height;
 
             return {
                 orientation,
-                width: isVertical ? shortEdge : longEdge,
-                height: isVertical ? longEdge : shortEdge,
+                width: isVertical ? modelHeight : modelWidth,
+                height: isVertical ? modelWidth : modelHeight,
                 fps: model.fps ?? 30,
+            };
+        }
+
+        function getCameraVideoConstraints(camera) {
+            const enforceDimensions = window.matchMedia('(min-width: 769px)').matches;
+            const dimensionConstraint = (value) => enforceDimensions ? { exact: value } : { ideal: value };
+
+            return {
+                width: dimensionConstraint(camera.width),
+                height: dimensionConstraint(camera.height),
+                frameRate: { ideal: camera.fps },
+                resizeMode: 'crop-and-scale',
             };
         }
 
@@ -707,11 +719,7 @@
                 const streamAudio = elements.streamAudioToggle.checked;
                 const camera = getSelectedCameraSettings();
                 const constraints = {
-                    video: {
-                        width: { ideal: camera.width },
-                        height: { ideal: camera.height },
-                        frameRate: { ideal: camera.fps },
-                    },
+                    video: getCameraVideoConstraints(camera),
                     audio: streamAudio
                         ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
                         : false,
