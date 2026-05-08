@@ -201,7 +201,6 @@ export class LiveKitManager {
     const myStatus = { status: "connecting" as const, queued: false };
     this.connectionStatus = myStatus;
     this.emitState("connecting");
-    const connectStart = performance.now();
     this.logger.debug("LiveKit initial connect started", {
       url: sanitizeUrl(this.config.url),
       subscribeMode: this.subscribeMode,
@@ -220,7 +219,6 @@ export class LiveKitManager {
           await this.connection.connect(this.config.url, localStream, CONNECTION_TIMEOUT, this.config.integration);
           this.logger.info("LiveKit initial connect succeeded", {
             modelName: this.config.modelName ?? null,
-            durationMs: Math.round(performance.now() - connectStart),
           });
           return true;
         },
@@ -232,7 +230,6 @@ export class LiveKitManager {
               attempt: error.attemptNumber,
               maxAttempts: MAX_ATTEMPTS,
               retriesLeft: error.retriesLeft,
-              elapsedMs: Math.round(performance.now() - connectStart),
             });
             this.connection.cleanup();
           },
