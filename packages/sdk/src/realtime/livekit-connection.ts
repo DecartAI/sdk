@@ -547,7 +547,6 @@ export class LiveKitConnection {
   }
 }
 
-
 function createLiveKitStatsProvider(room: Room): StatsProvider {
   let uid = 0;
 
