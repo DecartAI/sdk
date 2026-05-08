@@ -184,7 +184,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     baseUrl = parsedOptions.data.baseUrl || "https://api.decart.ai";
   }
   const { integration } = parsedOptions.data;
-  const logger = "logger" in options && options.logger ? options.logger : createConsoleLogger("debug");
+  const logger = "logger" in options && options.logger ? options.logger : createConsoleLogger("info");
   const telemetryEnabled = !("telemetry" in options && options.telemetry === false);
 
   // Realtime (WebRTC) always requires direct API access with API key

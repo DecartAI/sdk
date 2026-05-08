@@ -1119,10 +1119,11 @@ describe("LiveKit realtime client integration", () => {
     const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
+      const debugMock = vi.fn();
       const realtime = createRealTimeClient({
         baseUrl: "wss://api3.decart.ai",
         apiKey: "test-key",
-        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        logger: { debug: debugMock, info() {}, warn() {}, error() {} },
         telemetryEnabled: true,
       });
       const client = await realtime.connect({} as MediaStream, {
@@ -1131,6 +1132,11 @@ describe("LiveKit realtime client integration", () => {
       });
 
       expect(fetchMock).not.toHaveBeenCalled();
+      expect(debugMock).toHaveBeenCalledWith("phaseTiming", {
+        phase: "websocket",
+        durationMs: 12,
+        success: true,
+      });
 
       for (const listener of sessionIdListeners) {
         listener({

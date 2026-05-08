@@ -574,8 +574,11 @@
          * Logger for createDecartClient: mirrors to on-page log + [DecartSDK] in DevTools
          * (createConsoleLogger alone only shows in the browser console, not in #logs-container.)
          */
-        function createDemoLogger() {
+        function createDemoLogger(minLevel = "info") {
+            const logLevels = { debug: 0, info: 1, warn: 2, error: 3 };
+            const threshold = logLevels[minLevel] ?? logLevels.info;
             const toPage = (label, message, data) => {
+                if (logLevels[label] < threshold) return;
                 const line =
                     data !== undefined
                         ? `${message} ${typeof data === "object" ? JSON.stringify(data) : String(data)}`
@@ -585,7 +588,7 @@
                     label === "error" ? "error" : "info",
                 );
             };
-            const c = createConsoleLogger("debug");
+            const c = createConsoleLogger(minLevel);
             return {
                 debug: (msg, data) => {
                     c.debug(msg, data);
@@ -760,7 +763,7 @@
                 decartClient = createDecartClient({
                     apiKey,
                     ...(realtimeBaseUrl && { realtimeBaseUrl }),
-                    logger: createDemoLogger(),
+                    logger: createDemoLogger("debug"),
                 });
                 
                 addLog('Connecting to Decart server via LiveKit...', 'info');
@@ -891,7 +894,7 @@
                 decartClient = createDecartClient({
                     apiKey,
                     ...(realtimeBaseUrl && { realtimeBaseUrl }),
-                    logger: createDemoLogger(),
+                    logger: createDemoLogger("debug"),
                 });
 
                 addLog('Subscribing to Decart stream via LiveKit...', 'info');
@@ -1175,7 +1178,7 @@
                     decartClient = createDecartClient({
                         apiKey,
                         ...(realtimeBaseUrl && { realtimeBaseUrl }),
-                        logger: createDemoLogger(),
+                        logger: createDemoLogger("debug"),
                     });
                     addLog('Initialized Decart client for processing', 'info');
                 }
