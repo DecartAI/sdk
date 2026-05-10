@@ -1,5 +1,7 @@
+import type { Room } from "livekit-client";
 import type { Logger } from "../../utils/logger";
 import type { DiagnosticEvent, DiagnosticEventName, DiagnosticEvents } from "./diagnostics";
+import { createLiveKitStatsProvider } from "./livekit-stats-provider";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
@@ -27,6 +29,7 @@ export class RealtimeObservability {
   private pendingTelemetryDiagnostics: PendingTelemetryDiagnostic[] = [];
   private statsCollector: WebRTCStatsCollector | null = null;
   private statsCollectorSource: StatsProvider | null = null;
+  private liveKitRoom: Room | null = null;
   private videoStalled = false;
   private stallStartMs = 0;
 
@@ -86,10 +89,26 @@ export class RealtimeObservability {
     this.statsCollector.start(source, (stats) => this.handleStats(stats));
   }
 
+  setLiveKitRoom(room: Room | null): void {
+    if (!room) {
+      this.liveKitRoom = null;
+      this.setStatsProvider(null);
+      return;
+    }
+
+    if (room === this.liveKitRoom) {
+      return;
+    }
+
+    this.liveKitRoom = room;
+    this.setStatsProvider(createLiveKitStatsProvider(room));
+  }
+
   stopStats(): void {
     this.statsCollector?.stop();
     this.statsCollector = null;
     this.statsCollectorSource = null;
+    this.liveKitRoom = null;
     this.resetStallDetection();
   }
 

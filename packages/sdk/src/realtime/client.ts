@@ -144,7 +144,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       livekitManager = new LiveKitManager({
         url: `${url}?${queryParams.toString()}`,
         integration,
-        logger,
         observability,
         onRemoteStream,
         onConnectionStateChange: (state, details) => {
@@ -257,7 +256,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       livekitManager = new LiveKitManager({
         url: subscribeUrl,
         integration,
-        logger,
         observability,
         onRemoteStream: options.onRemoteStream,
         onConnectionStateChange: (state, details) => {

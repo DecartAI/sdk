@@ -1,15 +1,12 @@
 import pRetry, { AbortError } from "p-retry";
 
-import type { Logger } from "../utils/logger";
 import { LiveKitConnection } from "./livekit-connection";
 import type { RealtimeObservability } from "./observability/realtime-observability";
-import type { StatsProvider } from "./observability/webrtc-stats";
 import type { ConnectionChangeDetails, ConnectionState, OutgoingMessage, QueuePosition } from "./types";
 
 export interface LiveKitConfig {
   url: string;
   integration?: string;
-  logger?: Logger;
   observability?: RealtimeObservability;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionStateChange?: (state: ConnectionState, details?: ConnectionChangeDetails) => void;
@@ -37,8 +34,6 @@ const RETRY_OPTIONS = {
   maxTimeout: 10000,
 } as const;
 
-const MAX_ATTEMPTS = RETRY_OPTIONS.retries + 1;
-
 type ConnectionStatus =
   | { status: "idle" }
   | { status: "connecting"; queued: boolean }
@@ -49,7 +44,6 @@ type ConnectionStatus =
 export class LiveKitManager {
   private connection: LiveKitConnection;
   private config: LiveKitConfig;
-  private logger: Logger;
   private localStream: MediaStream | null = null;
   private subscribeMode = false;
   private managerState: ConnectionState = "disconnected";
@@ -58,7 +52,6 @@ export class LiveKitManager {
 
   constructor(config: LiveKitConfig) {
     this.config = config;
-    this.logger = config.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
     this.connection = new LiveKitConnection({
       onRemoteStream: config.onRemoteStream,
       onStateChange: (state: ConnectionState, details?: ConnectionChangeDetails) =>
@@ -67,7 +60,6 @@ export class LiveKitManager {
       onError: config.onError,
       initialImage: config.initialImage,
       initialPrompt: config.initialPrompt,
-      logger: this.logger,
       observability: config.observability,
     });
   }
@@ -121,14 +113,10 @@ export class LiveKitManager {
     const myStatus = { status: "reconnecting" as const, generation, queued: false };
     this.connectionStatus = myStatus;
     this.emitState("reconnecting");
-    const reconnectStart = performance.now();
 
     try {
-      let attemptCount = 0;
-
       await pRetry(
         async () => {
-          attemptCount++;
           if (this.connectionStatus !== myStatus) {
             throw new AbortError("Reconnect cancelled");
           }
@@ -148,15 +136,7 @@ export class LiveKitManager {
         },
         {
           ...RETRY_OPTIONS,
-          onFailedAttempt: (error) => {
-            if (this.connectionStatus !== myStatus) return;
-            this.config.observability?.diagnostic("reconnect", {
-              attempt: error.attemptNumber,
-              maxAttempts: MAX_ATTEMPTS,
-              durationMs: performance.now() - reconnectStart,
-              success: false,
-              error: error.message,
-            });
+          onFailedAttempt: () => {
             this.connection.cleanup();
           },
           shouldRetry: (error) => {
@@ -169,12 +149,6 @@ export class LiveKitManager {
       if (this.connectionStatus === myStatus) {
         this.connectionStatus = { status: "connected" };
       }
-      this.config.observability?.diagnostic("reconnect", {
-        attempt: attemptCount,
-        maxAttempts: MAX_ATTEMPTS,
-        durationMs: performance.now() - reconnectStart,
-        success: true,
-      });
     } catch (error) {
       if (this.connectionStatus !== myStatus) return;
       this.connectionStatus = { status: "idle" };
@@ -241,13 +215,6 @@ export class LiveKitManager {
 
   getConnectionState(): ConnectionState {
     return this.managerState;
-  }
-
-  /**
-   * Stats source for telemetry. Aggregates LiveKit room track reports.
-   */
-  getStatsProvider(): StatsProvider | null {
-    return this.connection.getStatsProvider();
   }
 
   getWebsocketMessageEmitter() {
