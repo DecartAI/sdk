@@ -1551,7 +1551,7 @@ describe("WebRTC Error Classification", () => {
 
 describe("WebRTCStatsCollector", () => {
   it("starts and stops polling", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
     const collector = new WebRTCStatsCollector();
 
     const mockPC = {
@@ -1568,7 +1568,7 @@ describe("WebRTCStatsCollector", () => {
   });
 
   it("parses inbound video stats", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -1595,7 +1595,7 @@ describe("WebRTCStatsCollector", () => {
         getStats: vi.fn().mockResolvedValue(statsReport),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -1619,7 +1619,7 @@ describe("WebRTCStatsCollector", () => {
   });
 
   it("parses inbound audio and candidate-pair stats", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -1649,7 +1649,7 @@ describe("WebRTCStatsCollector", () => {
         getStats: vi.fn().mockResolvedValue(statsReport),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -1668,7 +1668,7 @@ describe("WebRTCStatsCollector", () => {
   });
 
   it("computes video bitrate from bytesReceived delta", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -1701,7 +1701,7 @@ describe("WebRTCStatsCollector", () => {
         }),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       // First tick: no previous data, bitrate = 0
@@ -1719,7 +1719,7 @@ describe("WebRTCStatsCollector", () => {
   });
 
   it("enforces minimum interval of 500ms", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -1747,7 +1747,7 @@ describe("WebRTCStatsCollector", () => {
   });
 
   it("stops silently if getStats throws", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -1774,7 +1774,7 @@ describe("WebRTCStatsCollector", () => {
 
 describe("TelemetryReporter", () => {
   it("buffers stats and diagnostics then flushes on interval", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     vi.useFakeTimers();
 
@@ -1829,7 +1829,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("does not send empty reports", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     vi.useFakeTimers();
 
@@ -1859,7 +1859,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("stop sends final report with keepalive", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -1891,7 +1891,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("silently handles fetch failures", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockRejectedValue(new Error("network error"));
     vi.stubGlobal("fetch", fetchMock);
@@ -1919,7 +1919,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("includes auth headers and sdk version in report", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -1954,7 +1954,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("clears buffers after sending", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     vi.useFakeTimers();
 
@@ -1994,7 +1994,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("chunks reports when buffers exceed 120 items", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -2032,7 +2032,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("silences non-2xx telemetry responses", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500, statusText: "Internal Server Error" });
     vi.stubGlobal("fetch", fetchMock);
@@ -2062,7 +2062,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("includes model in report body and tags when provided", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -2093,7 +2093,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("omits model from report when not provided", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -2125,7 +2125,7 @@ describe("TelemetryReporter", () => {
 
 describe("NullTelemetryReporter", () => {
   it("all methods are no-ops", async () => {
-    const { NullTelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { NullTelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
     const reporter = new NullTelemetryReporter();
 
     // None of these should throw
@@ -2143,7 +2143,7 @@ describe("NullTelemetryReporter", () => {
   });
 
   it("implements ITelemetryReporter interface", async () => {
-    const { NullTelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { NullTelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
     const reporter = new NullTelemetryReporter();
 
     expect(typeof reporter.start).toBe("function");
@@ -2156,7 +2156,7 @@ describe("NullTelemetryReporter", () => {
 
 describe("Outbound Video Stats", () => {
   it("parses outbound-rtp video with quality limitation tracking", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -2179,7 +2179,7 @@ describe("Outbound Video Stats", () => {
         getStats: vi.fn().mockResolvedValue(statsReport),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -2204,7 +2204,7 @@ describe("Outbound Video Stats", () => {
   });
 
   it("returns null outboundVideo when no outbound-rtp report", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -2214,7 +2214,7 @@ describe("Outbound Video Stats", () => {
         getStats: vi.fn().mockResolvedValue(new Map()),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -2228,7 +2228,7 @@ describe("Outbound Video Stats", () => {
   });
 
   it("computes outbound video bitrate from bytesSent delta", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -2257,7 +2257,7 @@ describe("Outbound Video Stats", () => {
         }),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       // First tick: no previous data, bitrate = 0
@@ -2277,7 +2277,7 @@ describe("Outbound Video Stats", () => {
 
 describe("Delta computation for cumulative counters", () => {
   it("computes packetsLostDelta, framesDroppedDelta, freezeCountDelta, freezeDurationDelta", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -2317,7 +2317,7 @@ describe("Delta computation for cumulative counters", () => {
         }),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       // First tick: delta = cumulative (since prev was 0)
@@ -2341,7 +2341,7 @@ describe("Delta computation for cumulative counters", () => {
   });
 
   it("computes audio packetsLostDelta", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -2367,7 +2367,7 @@ describe("Delta computation for cumulative counters", () => {
         }),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -2383,7 +2383,7 @@ describe("Delta computation for cumulative counters", () => {
   });
 
   it("clamps deltas to zero if cumulative counter resets", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -2420,7 +2420,7 @@ describe("Delta computation for cumulative counters", () => {
         }),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -2440,7 +2440,7 @@ describe("Delta computation for cumulative counters", () => {
 describe("VideoStall Diagnostic", () => {
   it("videoStall event type exists in DiagnosticEvents", async () => {
     // Type-level check: videoStall is a valid DiagnosticEventName
-    const event: import("../src/realtime/diagnostics.js").DiagnosticEvent = {
+    const event: import("../src/realtime/observability/diagnostics.js").DiagnosticEvent = {
       name: "videoStall",
       data: { stalled: true, durationMs: 0 },
     };
@@ -2450,7 +2450,7 @@ describe("VideoStall Diagnostic", () => {
   });
 
   it("videoStall recovery includes duration", () => {
-    const event: import("../src/realtime/diagnostics.js").DiagnosticEvent = {
+    const event: import("../src/realtime/observability/diagnostics.js").DiagnosticEvent = {
       name: "videoStall",
       data: { stalled: false, durationMs: 1500 },
     };

@@ -4,10 +4,12 @@ import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { imageToBase64 } from "../utils/media";
-import type { DiagnosticEvent } from "./diagnostics";
 import { createEventBuffer } from "./event-buffer";
 import { LiveKitManager } from "./livekit-manager";
 import { realtimeMethods, type SetInput } from "./methods";
+import type { DiagnosticEvent } from "./observability/diagnostics";
+import { RealtimeObservability } from "./observability/realtime-observability";
+import type { WebRTCStats } from "./observability/webrtc-stats";
 import {
   decodeSubscribeToken,
   encodeSubscribeToken,
@@ -15,7 +17,6 @@ import {
   type SubscribeEvents,
   type SubscribeOptions,
 } from "./subscribe-client";
-import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import type {
   ConnectionChangeDetails,
   ConnectionState,
@@ -25,7 +26,6 @@ import type {
   QueuePosition,
   SessionIdMessage,
 } from "./types";
-import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
 
 export type RealTimeClientOptions = {
   baseUrl: string;
@@ -109,8 +109,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     const inputStream = stream ?? new MediaStream();
 
     let livekitManager: LiveKitManager | undefined;
-    let telemetryReporter: ITelemetryReporter = new NullTelemetryReporter();
-    let handleConnectionStateChange: ((state: ConnectionState) => void) | null = null;
+    let observability: RealtimeObservability | undefined;
 
     try {
       // Prepare initial image base64 before connection
@@ -127,6 +126,15 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       const url = `${baseUrl}${options.model.urlPath}`;
 
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
+      observability = new RealtimeObservability({
+        telemetryEnabled: opts.telemetryEnabled,
+        apiKey,
+        model: options.model.name,
+        integration,
+        logger,
+        onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
+        onStats: (stats) => emitOrBuffer("stats", stats),
+      });
       const queryParams = new URLSearchParams({
         ...(options.queryParams ?? {}),
         api_key: apiKey,
@@ -137,11 +145,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         url: `${url}?${queryParams.toString()}`,
         integration,
         logger,
-        onDiagnostic: (name, data) => {
-          logger.debug(name, data as Record<string, unknown>);
-          emitOrBuffer("diagnostic", { name, data } as Events["diagnostic"]);
-          addTelemetryDiagnostic(name, data);
-        },
+        observability,
         onRemoteStream,
         onConnectionStateChange: (state, details) => {
           emitOrBuffer("connectionChange", state);
@@ -149,7 +153,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
             emitOrBuffer("pending", details.queuePosition);
           }
           onConnectionChange?.(state, details);
-          handleConnectionStateChange?.(state);
         },
         onQueuePosition: (queuePosition) => {
           emitOrBuffer("queuePosition", queuePosition);
@@ -159,7 +162,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           logger.error("Realtime error", { error: error.message });
           emitOrBuffer("error", classifyWebrtcError(error));
         },
-        modelName: options.model.name,
         initialImage,
         initialPrompt,
       });
@@ -168,55 +170,10 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       let sessionId: string | null = null;
       let subscribeToken: string | null = null;
-      const pendingTelemetryDiagnostics: Array<{
-        name: DiagnosticEvent["name"];
-        data: DiagnosticEvent["data"];
-        timestamp: number;
-      }> = [];
-      let telemetryReporterReady = false;
-
-      const addTelemetryDiagnostic = (
-        name: DiagnosticEvent["name"],
-        data: DiagnosticEvent["data"],
-        timestamp: number = Date.now(),
-      ): void => {
-        if (!opts.telemetryEnabled) {
-          return;
-        }
-
-        if (!telemetryReporterReady) {
-          pendingTelemetryDiagnostics.push({ name, data, timestamp });
-          return;
-        }
-
-        telemetryReporter.addDiagnostic({ name, data, timestamp });
-      };
 
       const sessionIdListener = (msg: SessionIdMessage) => {
         sessionId = msg.session_id;
-
-        // Start telemetry reporter now that we have a session ID
-        if (opts.telemetryEnabled) {
-          if (telemetryReporterReady) {
-            telemetryReporter.stop();
-          }
-
-          const reporter = new TelemetryReporter({
-            apiKey,
-            sessionId: msg.session_id,
-            model: options.model.name,
-            integration,
-            logger,
-          });
-          reporter.start();
-          telemetryReporter = reporter;
-          telemetryReporterReady = true;
-
-          for (const diagnostic of pendingTelemetryDiagnostics) {
-            telemetryReporter.addDiagnostic(diagnostic);
-          }
-          pendingTelemetryDiagnostics.length = 0;
-        }
+        observability?.sessionStarted(msg.session_id);
       };
       manager.getWebsocketMessageEmitter().on("sessionId", sessionIdListener);
 
@@ -239,82 +196,13 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       const methods = realtimeMethods(manager, imageToBase64);
 
-      let statsCollector: WebRTCStatsCollector | null = null;
-      let statsCollectorSource: StatsProvider | null = null;
-
-      // Video stall detection state (Twilio pattern: fps < 0.5 = stalled)
-      const STALL_FPS_THRESHOLD = 0.5;
-      let videoStalled = false;
-      let stallStartMs = 0;
-
-      const startStatsCollection = (): (() => void) => {
-        statsCollector?.stop();
-        videoStalled = false;
-        stallStartMs = 0;
-        statsCollector = new WebRTCStatsCollector();
-        // LiveKit: aggregator over the room's tracks. The collector
-        // just calls `.getStats()` and parses the returned report.
-        const source = manager.getStatsProvider();
-        statsCollectorSource = source;
-        if (source) {
-          statsCollector.start(source, (stats) => {
-            emitOrBuffer("stats", stats);
-            telemetryReporter.addStats(stats);
-
-            // Stall detection: check if video fps dropped below threshold
-            const fps = stats.video?.framesPerSecond ?? 0;
-            if (!videoStalled && stats.video && fps < STALL_FPS_THRESHOLD) {
-              videoStalled = true;
-              stallStartMs = Date.now();
-              logger.debug("videoStall", { stalled: true, durationMs: 0 });
-              emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: true, durationMs: 0 } });
-              addTelemetryDiagnostic("videoStall", { stalled: true, durationMs: 0 }, stallStartMs);
-            } else if (videoStalled && fps >= STALL_FPS_THRESHOLD) {
-              const durationMs = Date.now() - stallStartMs;
-              videoStalled = false;
-              logger.debug("videoStall", { stalled: false, durationMs });
-              emitOrBuffer("diagnostic", { name: "videoStall", data: { stalled: false, durationMs } });
-              addTelemetryDiagnostic("videoStall", { stalled: false, durationMs });
-            }
-          });
-        }
-        return () => {
-          statsCollector?.stop();
-          statsCollector = null;
-          statsCollectorSource = null;
-        };
-      };
-
-      handleConnectionStateChange = (state) => {
-        if (!opts.telemetryEnabled) {
-          return;
-        }
-
-        if (state !== "connected" && state !== "generating") {
-          return;
-        }
-
-        const source = manager.getStatsProvider();
-        if (!source || source === statsCollectorSource) {
-          return;
-        }
-
-        startStatsCollection();
-      };
-
-      // Auto-start stats when telemetry is enabled
-      if (opts.telemetryEnabled) {
-        startStatsCollection();
-      }
-
       const client: RealTimeClient = {
         set: methods.set,
         setPrompt: methods.setPrompt,
         isConnected: () => manager.isConnected(),
         getConnectionState: () => manager.getConnectionState(),
         disconnect: () => {
-          statsCollector?.stop();
-          telemetryReporter.stop();
+          observability?.stop();
           stop();
           manager.cleanup();
         },
@@ -342,7 +230,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       flush();
       return client;
     } catch (error) {
-      telemetryReporter.stop();
+      observability?.stop();
       livekitManager?.cleanup();
       throw error;
     }
@@ -350,21 +238,27 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
   const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
     const { room_name: roomName } = decodeSubscribeToken(options.token);
-    const subscribeUrl = `${baseUrl}/subscribe/${encodeURIComponent(roomName)}?api_key=${encodeURIComponent(apiKey)}`;
+    const subscribeUrl = `${baseUrl}/watch-stream/${encodeURIComponent(roomName)}?api_key=${encodeURIComponent(apiKey)}`;
 
     const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
 
     let livekitManager: LiveKitManager | undefined;
+    let observability: RealtimeObservability | undefined;
 
     try {
+      observability = new RealtimeObservability({
+        telemetryEnabled: false,
+        apiKey,
+        integration,
+        logger,
+        onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
+      });
+
       livekitManager = new LiveKitManager({
         url: subscribeUrl,
         integration,
         logger,
-        onDiagnostic: (name, data) => {
-          logger.debug(name, data as Record<string, unknown>);
-          emitOrBuffer("diagnostic", { name, data } as SubscribeEvents["diagnostic"]);
-        },
+        observability,
         onRemoteStream: options.onRemoteStream,
         onConnectionStateChange: (state, details) => {
           emitOrBuffer("connectionChange", state);
@@ -390,6 +284,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         isConnected: () => manager.isConnected(),
         getConnectionState: () => manager.getConnectionState(),
         disconnect: () => {
+          observability?.stop();
           stop();
           manager.cleanup();
         },
@@ -400,6 +295,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       flush();
       return client;
     } catch (error) {
+      observability?.stop();
       livekitManager?.cleanup();
       throw error;
     }
