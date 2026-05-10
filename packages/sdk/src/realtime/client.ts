@@ -3,7 +3,6 @@ import { type CustomModelDefinition, type ModelDefinition, modelDefinitionSchema
 import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import type { Logger } from "../utils/logger";
-import { AudioStreamManager } from "./audio-stream-manager";
 import type { DiagnosticEvent } from "./diagnostics";
 import { createEventBuffer } from "./event-buffer";
 import { realtimeMethods, type SetInput } from "./methods";
@@ -120,7 +119,6 @@ export type RealTimeClient = {
     image: Blob | File | string | null,
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
   ) => Promise<void>;
-  playAudio?: (audio: Blob | File | ArrayBuffer) => Promise<void>;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
@@ -135,21 +133,9 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       throw parsedOptions.error;
     }
 
-    const isAvatarLive = options.model.name === "live_avatar" || options.model.name === "live-avatar";
-
     const { onRemoteStream, initialState } = parsedOptions.data;
 
-    // For live_avatar without user-provided stream: create AudioStreamManager for continuous silent stream with audio injection
-    // If user provides their own stream (e.g., mic input), use it directly
-    let audioStreamManager: AudioStreamManager | undefined;
-    let inputStream: MediaStream;
-
-    if (isAvatarLive && !stream) {
-      audioStreamManager = new AudioStreamManager();
-      inputStream = audioStreamManager.getStream();
-    } else {
-      inputStream = stream ?? new MediaStream();
-    }
+    const inputStream: MediaStream = stream ?? new MediaStream();
 
     let webrtcManager: WebRTCManager | undefined;
     let telemetryReporter: ITelemetryReporter = new NullTelemetryReporter();
@@ -191,7 +177,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
         vp8MinBitrate: 300,
         vp8StartBitrate: 600,
-        modelName: options.model.name,
         initialImage,
         initialPrompt,
       });
@@ -336,7 +321,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           telemetryReporter.stop();
           stop();
           manager.cleanup();
-          audioStreamManager?.cleanup();
         },
         on: eventEmitter.on,
         off: eventEmitter.off,
@@ -358,18 +342,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         },
       };
 
-      // Add live_avatar specific audio method (only when using internal AudioStreamManager)
-      if (isAvatarLive && audioStreamManager) {
-        const manager = audioStreamManager; // Capture for closures
-        client.playAudio = (audio: Blob | File | ArrayBuffer) => manager.playAudio(audio);
-      }
-
       flush();
       return client;
     } catch (error) {
       telemetryReporter.stop();
       webrtcManager?.cleanup();
-      audioStreamManager?.cleanup();
       throw error;
     }
   };

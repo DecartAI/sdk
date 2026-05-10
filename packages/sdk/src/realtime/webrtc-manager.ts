@@ -16,7 +16,6 @@ export interface WebRTCConfig {
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
-  modelName?: string;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
 }
@@ -61,7 +60,6 @@ export class WebRTCManager {
       customizeOffer: config.customizeOffer,
       vp8MinBitrate: config.vp8MinBitrate,
       vp8StartBitrate: config.vp8StartBitrate,
-      modelName: config.modelName,
       initialImage: config.initialImage,
       initialPrompt: config.initialPrompt,
       logger: this.logger,

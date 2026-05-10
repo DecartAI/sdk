@@ -43,6 +43,5 @@ pnpm dev
 
 This example uses `lucy-restyle-2` for style transformation. You can also use:
 
-- `lucy-restyle` - MirageLSD video restyling model (older)
-- `lucy` - Lucy for video editing (add objects, change elements)
 - `lucy-2.1` - Lucy 2.1 for video editing with reference image support
+- `lucy-2.1-vton` - Lucy 2.1 virtual try-on
