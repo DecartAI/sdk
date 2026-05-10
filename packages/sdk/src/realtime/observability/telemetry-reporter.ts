@@ -1,6 +1,6 @@
-import { buildAuthHeaders } from "../shared/request";
-import type { Logger } from "../utils/logger";
-import { VERSION } from "../version";
+import { buildAuthHeaders } from "../../shared/request";
+import type { Logger } from "../../utils/logger";
+import { VERSION } from "../../version";
 import type { WebRTCStats } from "./webrtc-stats";
 
 const DEFAULT_REPORT_INTERVAL_MS = 10_000; // 10 seconds

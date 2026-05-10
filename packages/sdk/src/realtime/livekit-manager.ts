@@ -1,21 +1,20 @@
 import pRetry, { AbortError } from "p-retry";
 
 import type { Logger } from "../utils/logger";
-import type { DiagnosticEmitter } from "./diagnostics";
 import { LiveKitConnection } from "./livekit-connection";
+import type { RealtimeObservability } from "./observability/realtime-observability";
+import type { StatsProvider } from "./observability/webrtc-stats";
 import type { ConnectionChangeDetails, ConnectionState, OutgoingMessage, QueuePosition } from "./types";
-import type { StatsProvider } from "./webrtc-stats";
 
 export interface LiveKitConfig {
   url: string;
   integration?: string;
   logger?: Logger;
-  onDiagnostic?: DiagnosticEmitter;
+  observability?: RealtimeObservability;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionStateChange?: (state: ConnectionState, details?: ConnectionChangeDetails) => void;
   onQueuePosition?: (queuePosition: QueuePosition) => void;
   onError?: (error: Error) => void;
-  modelName?: string;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
 }
@@ -47,16 +46,6 @@ type ConnectionStatus =
   | { status: "reconnecting"; generation: number; queued: boolean }
   | { status: "disposed" };
 
-function sanitizeUrl(url: string): string {
-  try {
-    const u = new URL(url);
-    if (u.searchParams.has("api_key")) u.searchParams.set("api_key", "***");
-    return u.toString();
-  } catch {
-    return url.replace(/api_key=[^&]*/g, "api_key=***");
-  }
-}
-
 export class LiveKitManager {
   private connection: LiveKitConnection;
   private config: LiveKitConfig;
@@ -76,11 +65,10 @@ export class LiveKitManager {
         this.handleConnectionStateChange(state, details),
       onQueuePosition: config.onQueuePosition,
       onError: config.onError,
-      modelName: config.modelName,
       initialImage: config.initialImage,
       initialPrompt: config.initialPrompt,
       logger: this.logger,
-      onDiagnostic: config.onDiagnostic,
+      observability: config.observability,
     });
   }
 
@@ -162,7 +150,7 @@ export class LiveKitManager {
           ...RETRY_OPTIONS,
           onFailedAttempt: (error) => {
             if (this.connectionStatus !== myStatus) return;
-            this.config.onDiagnostic?.("reconnect", {
+            this.config.observability?.diagnostic("reconnect", {
               attempt: error.attemptNumber,
               maxAttempts: MAX_ATTEMPTS,
               durationMs: performance.now() - reconnectStart,
@@ -181,7 +169,7 @@ export class LiveKitManager {
       if (this.connectionStatus === myStatus) {
         this.connectionStatus = { status: "connected" };
       }
-      this.config.onDiagnostic?.("reconnect", {
+      this.config.observability?.diagnostic("reconnect", {
         attempt: attemptCount,
         maxAttempts: MAX_ATTEMPTS,
         durationMs: performance.now() - reconnectStart,
@@ -201,14 +189,6 @@ export class LiveKitManager {
     const myStatus = { status: "connecting" as const, queued: false };
     this.connectionStatus = myStatus;
     this.emitState("connecting");
-    const connectStart = performance.now();
-    this.logger.debug("LiveKit initial connect started", {
-      url: sanitizeUrl(this.config.url),
-      subscribeMode: this.subscribeMode,
-      maxAttempts: MAX_ATTEMPTS,
-      timeoutMs: CONNECTION_TIMEOUT,
-      modelName: this.config.modelName ?? null,
-    });
 
     try {
       const result = await pRetry(
@@ -218,22 +198,11 @@ export class LiveKitManager {
           }
           myStatus.queued = false;
           await this.connection.connect(this.config.url, localStream, CONNECTION_TIMEOUT, this.config.integration);
-          this.logger.info("LiveKit initial connect succeeded", {
-            modelName: this.config.modelName ?? null,
-            durationMs: Math.round(performance.now() - connectStart),
-          });
           return true;
         },
         {
           ...RETRY_OPTIONS,
-          onFailedAttempt: (error) => {
-            this.logger.warn("Connection attempt failed", {
-              error: error.message,
-              attempt: error.attemptNumber,
-              maxAttempts: MAX_ATTEMPTS,
-              retriesLeft: error.retriesLeft,
-              elapsedMs: Math.round(performance.now() - connectStart),
-            });
+          onFailedAttempt: () => {
             this.connection.cleanup();
           },
           shouldRetry: (error) => {

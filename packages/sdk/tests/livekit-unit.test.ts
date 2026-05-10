@@ -4,6 +4,8 @@ import { models } from "../src/index.js";
 type ConnectionState = import("../src/realtime/types.js").ConnectionState;
 type IncomingRealtimeMessage = import("../src/realtime/types.js").IncomingRealtimeMessage;
 
+const testLogger = { debug() {}, info() {}, warn() {}, error() {} };
+
 type FakeWebSocketInstance = {
   readyState: number;
   onopen: (() => void) | null;
@@ -373,7 +375,7 @@ describe("LiveKitConnection", () => {
         await promise;
 
         expect(rejected).toBe(true);
-        expect(rejectionError?.message).toBe("Image send timed out");
+        expect((rejectionError as Error | null)?.message).toBe("Image send timed out");
       } finally {
         sendSpy.mockRestore();
         vi.useRealTimers();
@@ -402,7 +404,7 @@ describe("LiveKitConnection", () => {
         await promise;
 
         expect(rejected).toBe(true);
-        expect(rejectionError?.message).toBe("Image send timed out");
+        expect((rejectionError as Error | null)?.message).toBe("Image send timed out");
       } finally {
         sendSpy.mockRestore();
         vi.useRealTimers();
@@ -757,7 +759,12 @@ describe("LiveKit realtime client integration", () => {
     const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
-      const realtime = createRealTimeClient({ baseUrl: "wss://example.com", apiKey: "test-key" });
+      const realtime = createRealTimeClient({
+        baseUrl: "wss://example.com",
+        apiKey: "test-key",
+        logger: testLogger,
+        telemetryEnabled: true,
+      });
       const connectionStates: ConnectionState[] = [];
       const connectionDetails: Array<import("../src/realtime/types.js").ConnectionChangeDetails | undefined> = [];
       const queuePositions: Array<{ position: number; queueSize: number }> = [];
@@ -827,7 +834,12 @@ describe("LiveKit realtime client integration", () => {
     const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
-      const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "test-key" });
+      const realtime = createRealTimeClient({
+        baseUrl: "wss://api3.decart.ai",
+        apiKey: "test-key",
+        logger: testLogger,
+        telemetryEnabled: true,
+      });
       const client = await realtime.connect({} as MediaStream, {
         model: models.realtime("lucy-latest"),
         onRemoteStream: vi.fn(),
@@ -919,13 +931,19 @@ describe("LiveKit realtime client integration", () => {
     const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
-      const realtime = createRealTimeClient({ baseUrl: "wss://example.com", apiKey: "test-key" });
+      const realtime = createRealTimeClient({
+        baseUrl: "wss://example.com",
+        apiKey: "test-key",
+        logger: testLogger,
+        telemetryEnabled: true,
+      });
       const client = await realtime.connect({} as MediaStream, {
         model: models.realtime("lucy-latest"),
         onRemoteStream: vi.fn(),
         initialState: {
           prompt: {
             text: "test",
+            enhance: true,
           },
         },
       });
@@ -963,7 +981,12 @@ describe("LiveKit realtime client integration", () => {
     const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
-      const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "test-key" });
+      const realtime = createRealTimeClient({
+        baseUrl: "wss://api3.decart.ai",
+        apiKey: "test-key",
+        logger: testLogger,
+        telemetryEnabled: true,
+      });
       const client = await realtime.connect({} as MediaStream, {
         model: models.realtime("lucy-latest"),
         queryParams: { region: "us-west", queue: "true" },
@@ -1027,7 +1050,12 @@ describe("LiveKit realtime client integration", () => {
     const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
-      const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "test-key" });
+      const realtime = createRealTimeClient({
+        baseUrl: "wss://api3.decart.ai",
+        apiKey: "test-key",
+        logger: testLogger,
+        telemetryEnabled: true,
+      });
       const client = await realtime.connect({} as MediaStream, {
         model: models.realtime("lucy-latest"),
         onRemoteStream: vi.fn(),
@@ -1097,12 +1125,12 @@ describe("LiveKit realtime client integration", () => {
       const mgr = this as unknown as {
         config: {
           onConnectionStateChange?: (state: ConnectionState) => void;
-          onDiagnostic?: (name: string, data: unknown) => void;
+          observability?: { diagnostic: (name: string, data: unknown) => void };
         };
         managerState: ConnectionState;
       };
 
-      mgr.config.onDiagnostic?.("phaseTiming", {
+      mgr.config.observability?.diagnostic("phaseTiming", {
         phase: "websocket",
         durationMs: 12,
         success: true,
@@ -1251,30 +1279,30 @@ describe("LiveKit realtime client integration", () => {
   it("restarts stats collection when stats source changes after reconnect", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const { LiveKitManager } = await import("../src/realtime/livekit-manager.js");
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     const firstStatsSource = { getStats: vi.fn() };
     const secondStatsSource = { getStats: vi.fn() };
-    let currentStatsSource: typeof firstStatsSource = firstStatsSource;
-    let onConnectionStateChange: ((state: ConnectionState) => void) | undefined;
+    let observability: { setStatsProvider: (source: typeof firstStatsSource) => void } | undefined;
 
     const startSpy = vi.spyOn(WebRTCStatsCollector.prototype, "start").mockImplementation(() => {});
     const stopSpy = vi.spyOn(WebRTCStatsCollector.prototype, "stop").mockImplementation(() => {});
 
     const connectSpy = vi.spyOn(LiveKitManager.prototype, "connect").mockImplementation(async function () {
       const mgr = this as unknown as {
-        config: { onConnectionStateChange?: (state: ConnectionState) => void };
+        config: {
+          observability?: { setStatsProvider: (source: typeof firstStatsSource) => void };
+          onConnectionStateChange?: (state: ConnectionState) => void;
+        };
         managerState: ConnectionState;
       };
-      onConnectionStateChange = mgr.config.onConnectionStateChange;
+      observability = mgr.config.observability;
+      observability?.setStatsProvider(firstStatsSource);
       mgr.managerState = "connected";
       mgr.config.onConnectionStateChange?.("connected");
       return true;
     });
     const stateSpy = vi.spyOn(LiveKitManager.prototype, "getConnectionState").mockReturnValue("connected");
-    const statsProviderSpy = vi
-      .spyOn(LiveKitManager.prototype, "getStatsProvider")
-      .mockImplementation(() => currentStatsSource);
     const cleanupSpy = vi.spyOn(LiveKitManager.prototype, "cleanup").mockImplementation(() => {});
 
     try {
@@ -1292,8 +1320,7 @@ describe("LiveKit realtime client integration", () => {
       expect(startSpy).toHaveBeenCalledTimes(1);
       expect(startSpy.mock.calls[0][0]).toBe(firstStatsSource);
 
-      currentStatsSource = secondStatsSource;
-      onConnectionStateChange?.("connected");
+      observability?.setStatsProvider(secondStatsSource);
 
       expect(startSpy).toHaveBeenCalledTimes(2);
       expect(startSpy.mock.calls[1][0]).toBe(secondStatsSource);
@@ -1305,7 +1332,6 @@ describe("LiveKit realtime client integration", () => {
       stopSpy.mockRestore();
       connectSpy.mockRestore();
       stateSpy.mockRestore();
-      statsProviderSpy.mockRestore();
       cleanupSpy.mockRestore();
     }
   });
@@ -1332,7 +1358,12 @@ describe("LiveKit realtime client integration", () => {
     try {
       const roomName = "room/name with spaces";
       const token = encodeSubscribeToken(roomName);
-      const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "sub-key" });
+      const realtime = createRealTimeClient({
+        baseUrl: "wss://api3.decart.ai",
+        apiKey: "sub-key",
+        logger: testLogger,
+        telemetryEnabled: true,
+      });
       const client = await realtime.subscribe({
         token,
         onRemoteStream: vi.fn(),

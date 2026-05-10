@@ -24,6 +24,7 @@ export type {
   RealTimeClientConnectOptions,
   RealTimeClientInitialState,
 } from "./realtime/client";
+export type { SetInput } from "./realtime/methods";
 export type {
   ConnectionPhase,
   DiagnosticEvent,
@@ -32,15 +33,14 @@ export type {
   PhaseTimingEvent,
   ReconnectEvent,
   VideoStallEvent,
-} from "./realtime/diagnostics";
-export type { SetInput } from "./realtime/methods";
+} from "./realtime/observability/diagnostics";
+export type { WebRTCStats } from "./realtime/observability/webrtc-stats";
 export type {
   RealTimeSubscribeClient,
   SubscribeEvents,
   SubscribeOptions,
 } from "./realtime/subscribe-client";
 export type { ConnectionState, GenerationEndedMessage, QueuePosition, QueuePositionMessage } from "./realtime/types";
-export type { WebRTCStats } from "./realtime/webrtc-stats";
 export {
   type CanonicalModel,
   type CustomModelDefinition,

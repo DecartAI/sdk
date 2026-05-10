@@ -23,7 +23,8 @@ import mitt from "mitt";
 
 import type { Logger } from "../utils/logger";
 import { buildUserAgent } from "../utils/user-agent";
-import type { DiagnosticEmitter } from "./diagnostics";
+import type { RealtimeObservability } from "./observability/realtime-observability";
+import type { StatsProvider } from "./observability/webrtc-stats";
 import type {
   ConnectionChangeDetails,
   ConnectionState,
@@ -37,7 +38,6 @@ import type {
   SessionIdMessage,
   SetImageAckMessage,
 } from "./types";
-import type { StatsProvider } from "./webrtc-stats";
 
 const SETUP_TIMEOUT_MS = 30_000;
 const ROOM_INFO_TIMEOUT_MS = 15_000;
@@ -89,11 +89,10 @@ interface LiveKitCallbacks {
   onStateChange?: (state: ConnectionState, details?: ConnectionChangeDetails) => void;
   onQueuePosition?: (queuePosition: QueuePosition) => void;
   onError?: (error: Error) => void;
-  modelName?: string;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;
-  onDiagnostic?: DiagnosticEmitter;
+  observability?: RealtimeObservability;
 }
 
 type WsMessageEvents = {
@@ -105,54 +104,21 @@ type WsMessageEvents = {
   generationEnded: GenerationEndedMessage;
 };
 
-const noopDiagnostic: DiagnosticEmitter = () => {};
-
 export class LiveKitConnection {
   private ws: WebSocket | null = null;
   private room: Room | null = null;
   private localStream: MediaStream | null = null;
   private connectionReject: ((error: Error) => void) | null = null;
   private logger: Logger;
-  private emitDiagnostic: DiagnosticEmitter;
   private statsProvider: StatsProvider | null = null;
   private remoteStream: MediaStream | null = null;
   private wsOpenedAt: number | null = null;
   private lastServerError: string | null = null;
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
-  private startupMarks: Map<string, number> = new Map();
-  private startupEmitted = false;
 
   constructor(private callbacks: LiveKitCallbacks = {}) {
     this.logger = callbacks.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
-    this.emitDiagnostic = callbacks.onDiagnostic ?? noopDiagnostic;
-  }
-
-  private startupMark(name: string): void {
-    if (this.startupEmitted || this.startupMarks.has(name)) return;
-    this.startupMarks.set(name, performance.now());
-  }
-
-  private emitStartupBreakdown(): void {
-    if (this.startupEmitted) return;
-    this.startupEmitted = true;
-    const m = this.startupMarks;
-    const delta = (a: string, b: string): number | null => {
-      const ta = m.get(a);
-      const tb = m.get(b);
-      if (ta === undefined || tb === undefined) return null;
-      return Math.round((tb - ta) * 100) / 100;
-    };
-    this.logger.info("livekit_client_startup_breakdown", {
-      ws_open_ms: delta("connect_start", "ws_open"),
-      room_info_ms: delta("ws_open", "room_info_received"),
-      prepare_connection_ms: delta("room_info_received", "prepare_connection_done"),
-      room_connect_ms: delta("room_info_received", "room_connect_done"),
-      publish_local_track_ms: delta("room_connect_done", "publish_local_track_done"),
-      remote_track_announced_ms: delta("room_connect_done", "first_remote_track_subscribed"),
-      first_frame_after_remote_track_ms: delta("first_remote_track_subscribed", "first_frame_received"),
-      total_perceived_ttff_ms: delta("connect_start", "first_frame_received"),
-    });
   }
 
   /**
@@ -182,15 +148,12 @@ export class LiveKitConnection {
     this.connectionReject = (error) => rejectConnect(error);
 
     try {
-      this.startupMark("connect_start");
       // Phase 1 — control WS + livekit_join/livekit_room_info handshake.
       const roomInfoStart = performance.now();
       await Promise.race([this.openControlWs(wsUrl, timeout), connectAbort]);
-      this.startupMark("ws_open");
       const roomInfo = await Promise.race([this.requestRoomInfo(), connectAbort]);
-      this.startupMark("room_info_received");
       this.setState("connecting");
-      this.emitDiagnostic("phaseTiming", {
+      this.callbacks.observability?.diagnostic("phaseTiming", {
         phase: "websocket",
         durationMs: performance.now() - roomInfoStart,
         success: true,
@@ -199,18 +162,15 @@ export class LiveKitConnection {
       // Phase 2 — join the SFU room and publish local tracks.
       const roomStart = performance.now();
       this.room = new Room(LIVEKIT_ROOM_OPTIONS);
-      this.room
-        .prepareConnection(roomInfo.livekit_url, roomInfo.token)
-        .then(() => this.startupMark("prepare_connection_done"))
-        .catch(() => {});
+      this.room.prepareConnection(roomInfo.livekit_url, roomInfo.token).catch(() => {});
       await Promise.race([this.joinRoom(roomInfo), connectAbort]);
-      this.emitDiagnostic("phaseTiming", {
+      this.callbacks.observability?.diagnostic("phaseTiming", {
         phase: "webrtc-handshake",
         durationMs: performance.now() - roomStart,
         success: true,
       });
 
-      // Phase 3 — optional startup conditioning over the control WS.
+      // Phase 3 — optional initial conditioning over the control WS.
       if (this.callbacks.initialImage) {
         const imageStart = performance.now();
         await Promise.race([
@@ -220,7 +180,7 @@ export class LiveKitConnection {
           }),
           connectAbort,
         ]);
-        this.emitDiagnostic("phaseTiming", {
+        this.callbacks.observability?.diagnostic("phaseTiming", {
           phase: "initial-image",
           durationMs: performance.now() - imageStart,
           success: true,
@@ -228,7 +188,7 @@ export class LiveKitConnection {
       } else if (this.callbacks.initialPrompt) {
         const promptStart = performance.now();
         await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
-        this.emitDiagnostic("phaseTiming", {
+        this.callbacks.observability?.diagnostic("phaseTiming", {
           phase: "initial-prompt",
           durationMs: performance.now() - promptStart,
           success: true,
@@ -236,7 +196,7 @@ export class LiveKitConnection {
       } else if (localStream) {
         const passthroughStart = performance.now();
         await Promise.race([this.setImageBase64(null, { prompt: null }), connectAbort]);
-        this.emitDiagnostic("phaseTiming", {
+        this.callbacks.observability?.diagnostic("phaseTiming", {
           phase: "initial-prompt",
           durationMs: performance.now() - passthroughStart,
           success: true,
@@ -307,6 +267,7 @@ export class LiveKitConnection {
       this.room = null;
     }
     this.statsProvider = null;
+    this.callbacks.observability?.setStatsProvider(null);
     this.remoteStream = null;
     if (this.ws) {
       try {
@@ -368,7 +329,6 @@ export class LiveKitConnection {
   }
 
   private async requestRoomInfo(): Promise<LiveKitRoomInfoMessage> {
-    const askedAt = performance.now();
     this.send({ type: "livekit_join" });
     return await new Promise<LiveKitRoomInfoMessage>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -386,11 +346,6 @@ export class LiveKitConnection {
             position: msg.position,
             queueSize: msg.queue_size,
           };
-          this.logger.info("LiveKit join queued", {
-            position: queuePosition.position,
-            queueSize: queuePosition.queueSize,
-            waitMs: Math.round(performance.now() - askedAt),
-          });
           this.setState("pending", { queuePosition });
           this.callbacks.onQueuePosition?.(queuePosition);
         } else if (msg.type === "error") {
@@ -457,9 +412,6 @@ export class LiveKitConnection {
 
     this.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
       if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {
-        if (track.kind === Track.Kind.Video) {
-          this.startupMark("first_remote_track_subscribed");
-        }
         track.attach();
         const mediaStreamTrack = track.mediaStreamTrack;
         if (mediaStreamTrack) {
@@ -470,8 +422,6 @@ export class LiveKitConnection {
           this.callbacks.onRemoteStream?.(this.remoteStream);
         }
         track.on(TrackEvent.VideoPlaybackStarted, () => {
-          this.startupMark("first_frame_received");
-          this.emitStartupBreakdown();
           this.setState("generating");
         });
       }
@@ -482,17 +432,15 @@ export class LiveKitConnection {
     });
 
     await this.room.connect(info.livekit_url, info.token);
-    this.startupMark("room_connect_done");
 
     // Wire up the stats provider now that the room has local+remote
-    // participant objects available. Held by reference here so the SDK
-    // client's identity-check in handleConnectionStateChange() sees a
-    // stable provider for this room.
+    // participant objects available. Observability owns polling and
+    // replaces the collector when reconnect creates a new room/provider.
     this.statsProvider = createLiveKitStatsProvider(this.room);
+    this.callbacks.observability?.setStatsProvider(this.statsProvider);
 
     if (this.localStream) {
       await this.publishLocalTracks(this.localStream);
-      this.startupMark("publish_local_track_done");
     }
   }
 
