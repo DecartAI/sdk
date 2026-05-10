@@ -47,11 +47,9 @@ Video models use the asynchronous Queue API - jobs are submitted and polled for 
 These examples require browser APIs (WebRTC) and are for reference.
 See `examples/nextjs-realtime` or `examples/react-vite` for runnable demos.
 
-- `realtime/mirage-basic.ts` - Basic Mirage connection (style transformation)
-- `realtime/mirage-v2-basic.ts` - Mirage v2 connection (improved style transformation)
-- `realtime/lucy-v2v-720p.ts` - Lucy v2v realtime (video editing - add objects, change elements)
+- `realtime/mirage-v2-basic.ts` - Realtime style transformation with `lucy-restyle-2`
 - `realtime/lucy-2.1.ts` - Lucy 2.1 realtime video editing with reference image support
-- `realtime/live-avatar.ts` - Live avatar (audio-driven avatar with playAudio or mic input)
+- `realtime/lucy-2.1-vton.ts` - Lucy 2.1 virtual try-on
 - `realtime/connection-events.ts` - Handling connection state and errors
 - `realtime/prompt-update.ts` - Updating prompt dynamically
 - `realtime/custom-model.ts` - Using a custom model definition (e.g., preview/experimental models)
@@ -101,28 +99,3 @@ realtimeClient.on("connectionChange", (state) => { ... });
 realtimeClient.disconnect();
 ```
 
-### Live Avatar (WebRTC)
-
-```typescript
-// Option 1: Use playAudio() to inject audio
-const realtimeClient = await client.realtime.connect(null, {
-  model: models.realtime("live-avatar"),
-  onRemoteStream: (videoStream) => { ... },
-  initialState: {
-    image: "https://example.com/avatar.png",
-    prompt: { text: "A friendly assistant", enhance: true },
-  },
-});
-await realtimeClient.playAudio(audioBlob);
-
-// Option 2: Use mic input directly
-const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-const realtimeClient = await client.realtime.connect(micStream, {
-  model: models.realtime("live-avatar"),
-  onRemoteStream: (videoStream) => { ... },
-  initialState: {
-    image: avatarFile,
-    prompt: { text: "A friendly assistant", enhance: true },
-  },
-});
-```

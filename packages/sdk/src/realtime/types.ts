@@ -35,7 +35,6 @@ export type ErrorMessage = {
   error: string;
 };
 
-// Avatar Live message types
 export type SetAvatarImageMessage = {
   type: "set_image";
   image_data: string | null; // Base64-encoded image data, or null to clear/use placeholder
