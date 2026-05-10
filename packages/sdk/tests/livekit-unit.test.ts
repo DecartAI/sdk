@@ -1374,7 +1374,7 @@ describe("LiveKit realtime client integration", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(states).toEqual(["connected"]);
-      expect(managerUrl).toBe(`wss://api3.decart.ai/subscribe/${encodeURIComponent(roomName)}?api_key=sub-key`);
+      expect(managerUrl).toBe(`wss://api3.decart.ai/watch-stream/${encodeURIComponent(roomName)}?api_key=sub-key`);
       expect(managerUrl).not.toContain("IP=");
       expect(managerUrl).not.toContain("port=");
       expect(managerUrl).not.toContain("sid=");
