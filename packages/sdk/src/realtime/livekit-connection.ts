@@ -12,6 +12,7 @@
 import {
   ConnectionState as LKConnectionState,
   type LocalTrack,
+  type RemoteParticipant,
   type RemoteTrack,
   Room,
   RoomEvent,
@@ -19,6 +20,8 @@ import {
   TrackEvent,
   type TrackPublishOptions,
 } from "livekit-client";
+
+const INFERENCE_SERVER_IDENTITY_PREFIX = "inference-server-";
 import mitt from "mitt";
 
 import type { Logger } from "../utils/logger";
@@ -410,7 +413,8 @@ export class LiveKitConnection {
   private async joinRoom(info: LiveKitRoomInfoMessage): Promise<void> {
     this.room ??= new Room(LIVEKIT_ROOM_OPTIONS);
 
-    this.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
+    this.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _publication, participant: RemoteParticipant) => {
+      if (!participant.identity.startsWith(INFERENCE_SERVER_IDENTITY_PREFIX)) return;
       if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {
         track.attach();
         const mediaStreamTrack = track.mediaStreamTrack;
