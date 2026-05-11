@@ -15,7 +15,6 @@ const INFERENCE_SERVER_IDENTITY_PREFIX = "inference-server-";
 
 const DEFAULT_VIDEO_CODEC = "h264" as const;
 const DEFAULT_MAX_VIDEO_BITRATE_BPS = 3_000_000;
-const REMOTE_PLAYOUT_DELAY_SECONDS = 0.15;
 
 export const LIVEKIT_ROOM_OPTIONS = {
   adaptiveStream: false,
@@ -72,7 +71,6 @@ export class MediaChannel {
       if (track.kind !== Track.Kind.Video && track.kind !== Track.Kind.Audio) return;
 
       track.attach();
-      track.setPlayoutDelay(REMOTE_PLAYOUT_DELAY_SECONDS);
       const mediaStreamTrack = track.mediaStreamTrack;
       if (mediaStreamTrack) {
         this.remoteStream ??= new MediaStream();
