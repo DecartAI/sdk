@@ -9,20 +9,27 @@ import {
 } from "livekit-client";
 import mitt, { type Emitter } from "mitt";
 
+import type { ModelDefinition } from "../shared/model";
 import type { RealtimeObservability } from "./observability/realtime-observability";
+
+type PublishModel = Pick<ModelDefinition, "fps">;
 
 const INFERENCE_SERVER_IDENTITY_PREFIX = "inference-server-";
 
 const DEFAULT_VIDEO_CODEC = "h264" as const;
 const DEFAULT_MAX_VIDEO_BITRATE_BPS = 3_000_000;
+const DEFAULT_PUBLISH_FPS = 20;
 
 export const LIVEKIT_ROOM_OPTIONS = {
   adaptiveStream: false,
   dynacast: false,
 } as const;
 
-export function getDefaultVideoPublishOptions(): TrackPublishOptions {
-  const videoEncoding = { maxBitrate: DEFAULT_MAX_VIDEO_BITRATE_BPS };
+export function getDefaultVideoPublishOptions(model: PublishModel): TrackPublishOptions {
+  const videoEncoding = {
+    maxBitrate: DEFAULT_MAX_VIDEO_BITRATE_BPS,
+    maxFramerate: model.fps,
+  };
 
   return { source: Track.Source.Camera, videoCodec: DEFAULT_VIDEO_CODEC, videoEncoding };
 }
@@ -36,6 +43,7 @@ export type MediaChannelEvents = {
 export interface MediaChannelConfig {
   observability?: RealtimeObservability;
   localStream: MediaStream | null;
+  model?: PublishModel;
 }
 
 export class MediaChannel {
@@ -108,9 +116,10 @@ export class MediaChannel {
 
   private async publishLocalTracks(stream: MediaStream): Promise<void> {
     if (!this.room) return;
+    const publishModel = this.config.model ?? { fps: DEFAULT_PUBLISH_FPS };
     for (const track of stream.getTracks()) {
       if (track.kind === "video") {
-        await this.room.localParticipant.publishTrack(track, getDefaultVideoPublishOptions());
+        await this.room.localParticipant.publishTrack(track, getDefaultVideoPublishOptions(publishModel));
       } else {
         await this.room.localParticipant.publishTrack(track);
       }
