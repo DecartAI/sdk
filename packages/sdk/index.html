@@ -83,7 +83,7 @@
             font-size: 13px;
         }
         
-        input[type="text"], input[type="password"], select {
+        input[type="text"], input[type="password"], input[type="number"], select {
             width: 100%;
             padding: 8px 10px;
             border: 2px solid #ddd;
@@ -97,7 +97,7 @@
             color: #555;
         }
         
-        input[type="text"]:focus, input[type="password"]:focus, select:focus {
+        input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus, select:focus {
             outline: none;
             border-color: #4CAF50;
         }
@@ -343,6 +343,10 @@
             <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
         </div>
         <div class="control-group">
+            <label for="camera-fps">Camera FPS:</label>
+            <input type="number" id="camera-fps" min="1" max="120" step="1">
+        </div>
+        <div class="control-group">
             <label>Camera Orientation:</label>
             <div class="inline-controls">
                 <label style="margin: 0; font-weight: normal;"><input type="radio" name="camera-orientation" value="horizontal" checked> Horizontal</label>
@@ -509,6 +513,7 @@
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             initialPrompt: document.getElementById('initial-prompt'),
+            cameraFps: document.getElementById('camera-fps'),
             streamAudioToggle: document.getElementById('stream-audio-toggle'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
@@ -558,6 +563,8 @@
         if (import.meta.env.VITE_DECART_API_KEY) {
             elements.apiKey.value = import.meta.env.VITE_DECART_API_KEY;
         }
+
+        elements.cameraFps.value = String(model.fps ?? 30);
 
         // Logging system
         function addLog(message, type = 'info') {
@@ -662,6 +669,7 @@
         elements.modelSelect.addEventListener('change', (e) => {
             const selectedModel = e.target.value;
             model = models.realtime(selectedModel);
+            elements.cameraFps.value = String(model.fps ?? 30);
             addLog(`Selected model: ${selectedModel}`, 'info');
             
             // If camera is already started, stop it so user can restart with new model settings.
@@ -679,11 +687,14 @@
             const modelWidth = model.width;
             const modelHeight = model.height;
 
+            const parsedFps = Number.parseInt(elements.cameraFps.value, 10);
+            const fps = Number.isFinite(parsedFps) && parsedFps > 0 ? parsedFps : (model.fps ?? 30);
+
             return {
                 orientation,
                 width: isVertical ? modelHeight : modelWidth,
                 height: isVertical ? modelWidth : modelHeight,
-                fps: model.fps ?? 30,
+                fps,
             };
         }
 
