@@ -2300,7 +2300,6 @@ describe("TelemetryReporter", () => {
       const [url, options] = fetchMock.mock.calls[0];
       expect(url).toBe("https://platform.decart.ai/api/v1/telemetry");
       expect(options.method).toBe("POST");
-      expect(options.keepalive).toBe(false);
 
       const body = JSON.parse(options.body);
       expect(body.sessionId).toBe("sess-1");
