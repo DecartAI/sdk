@@ -611,37 +611,6 @@ describe("Queue API", () => {
       ).rejects.toThrow("Invalid inputs");
     });
 
-    it("submits motion video job", async () => {
-      server.use(
-        http.post("http://localhost/v1/jobs/lucy-motion", async ({ request }) => {
-          lastRequest = request;
-          lastFormData = await request.formData();
-          return HttpResponse.json({
-            job_id: "job_motion",
-            status: "pending",
-          });
-        }),
-      );
-
-      const testBlob = new Blob(["test-image"], { type: "image/png" });
-
-      const result = await decart.queue.submit({
-        model: models.video("lucy-motion"),
-        data: testBlob,
-        trajectory: [
-          { frame: 0, x: 0, y: 0 },
-          { frame: 10, x: 100, y: 100 },
-        ],
-      });
-
-      expect(result.job_id).toBe("job_motion");
-      expect(result.status).toBe("pending");
-
-      const dataFile = lastFormData?.get("data") as File;
-      expect(dataFile).toBeInstanceOf(File);
-      expect(lastFormData?.get("trajectory")).toBeDefined();
-    });
-
     it("validates required inputs for video-to-video", async () => {
       await expect(
         decart.queue.submit({
@@ -650,22 +619,6 @@ describe("Queue API", () => {
           // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
         } as any),
       ).rejects.toThrow("Invalid inputs");
-    });
-
-    it("validates trajectory length is less	 than 1000", async () => {
-      const testBlob = new Blob(["test-image"], { type: "image/png" });
-
-      await expect(
-        decart.queue.submit({
-          model: models.video("lucy-motion"),
-          data: testBlob,
-          trajectory: Array.from({ length: 1001 }, (_, i) => ({
-            frame: i,
-            x: 0,
-            y: 0,
-          })),
-        }),
-      ).rejects.toThrow("expected array to have <=1000 items");
     });
 
     it("handles API errors", async () => {
@@ -1335,119 +1288,6 @@ describe("WebRTCConnection", () => {
       } finally {
         vi.unstubAllGlobals();
       }
-    });
-  });
-});
-
-describe("RealTimeClient cleanup", () => {
-  it("cleans up AudioStreamManager when initial image fetch fails before WebRTC connect", async () => {
-    class FakeAudioContext {
-      createMediaStreamDestination() {
-        return { stream: {} };
-      }
-      createOscillator() {
-        return { connect: vi.fn(), start: vi.fn(), stop: vi.fn() };
-      }
-      createGain() {
-        return { gain: { value: 0 }, connect: vi.fn() };
-      }
-      close() {
-        return Promise.resolve();
-      }
-    }
-
-    vi.stubGlobal("AudioContext", FakeAudioContext);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 404,
-        statusText: "Not Found",
-      }),
-    );
-
-    const { AudioStreamManager } = await import("../src/realtime/audio-stream-manager.js");
-    const cleanupSpy = vi.spyOn(AudioStreamManager.prototype, "cleanup");
-
-    try {
-      const { createRealTimeClient } = await import("../src/realtime/client.js");
-      const realtime = createRealTimeClient({ baseUrl: "wss://example.com", apiKey: "test-key" });
-
-      await expect(
-        realtime.connect(null, {
-          model: models.realtime("live_avatar"),
-          onRemoteStream: vi.fn(),
-          initialState: { image: "https://example.com/avatar.png" },
-        }),
-      ).rejects.toThrow("Failed to fetch image: 404 Not Found");
-
-      expect(cleanupSpy).toHaveBeenCalledTimes(1);
-    } finally {
-      cleanupSpy.mockRestore();
-      vi.unstubAllGlobals();
-    }
-  });
-});
-
-describe("live_avatar Model", () => {
-  describe("Model Definition", () => {
-    it("has correct model name", () => {
-      const avatarModel = models.realtime("live_avatar");
-      expect(avatarModel.name).toBe("live_avatar");
-    });
-
-    it("has correct URL path for live_avatar", () => {
-      const avatarModel = models.realtime("live_avatar");
-      expect(avatarModel.urlPath).toBe("/v1/stream");
-    });
-
-    it("has expected dimensions", () => {
-      const avatarModel = models.realtime("live_avatar");
-      expect(avatarModel.width).toBe(1280);
-      expect(avatarModel.height).toBe(720);
-    });
-
-    it("has correct fps", () => {
-      const avatarModel = models.realtime("live_avatar");
-      expect(avatarModel.fps).toBe(25);
-    });
-
-    it("is recognized as a realtime model", () => {
-      expect(models.realtime("live_avatar")).toBeDefined();
-    });
-  });
-
-  describe("Live_Avatar Message Types", () => {
-    it("SetAvatarImageMessage has correct structure", () => {
-      const message: import("../src/realtime/types").SetAvatarImageMessage = {
-        type: "set_image",
-        image_data: "base64encodeddata",
-      };
-
-      expect(message.type).toBe("set_image");
-      expect(message.image_data).toBe("base64encodeddata");
-    });
-
-    it("SetImageAckMessage has correct structure", () => {
-      const successMessage: import("../src/realtime/types").SetImageAckMessage = {
-        type: "set_image_ack",
-        success: true,
-        error: null,
-      };
-
-      expect(successMessage.type).toBe("set_image_ack");
-      expect(successMessage.success).toBe(true);
-      expect(successMessage.error).toBeNull();
-
-      const failureMessage: import("../src/realtime/types").SetImageAckMessage = {
-        type: "set_image_ack",
-        success: false,
-        error: "invalid image",
-      };
-
-      expect(failureMessage.type).toBe("set_image_ack");
-      expect(failureMessage.success).toBe(false);
-      expect(failureMessage.error).toBe("invalid image");
     });
   });
 });
@@ -3432,15 +3272,6 @@ describe("CustomModelDefinition", () => {
 
 describe("Canonical Model Names", () => {
   describe("Realtime canonical models", () => {
-    it("lucy canonical name works", () => {
-      const model = models.realtime("lucy");
-      expect(model.name).toBe("lucy");
-      expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(25);
-      expect(model.width).toBe(1280);
-      expect(model.height).toBe(704);
-    });
-
     it("lucy-2.1 canonical name works", () => {
       const model = models.realtime("lucy-2.1");
       expect(model.name).toBe("lucy-2.1");
@@ -3459,24 +3290,10 @@ describe("Canonical Model Names", () => {
       expect(model.height).toBe(624);
     });
 
-    it("lucy-restyle canonical name works", () => {
-      const model = models.realtime("lucy-restyle");
-      expect(model.name).toBe("lucy-restyle");
-      expect(model.fps).toBe(25);
-    });
-
     it("lucy-restyle-2 canonical name works", () => {
       const model = models.realtime("lucy-restyle-2");
       expect(model.name).toBe("lucy-restyle-2");
       expect(model.fps).toBe(22);
-    });
-
-    it("live-avatar canonical name works", () => {
-      const model = models.realtime("live-avatar");
-      expect(model.name).toBe("live-avatar");
-      expect(model.fps).toBe(25);
-      expect(model.width).toBe(1280);
-      expect(model.height).toBe(720);
     });
   });
 
@@ -3585,14 +3402,6 @@ describe("Canonical Model Names", () => {
       expect(model.fps).toBe(25);
     });
 
-    it("lucy-motion-latest works as video model", () => {
-      const model = models.video("lucy-motion-latest");
-      expect(model.name).toBe("lucy-motion-latest");
-      expect(model.urlPath).toBe("/v1/generate/lucy-motion-latest");
-      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-motion-latest");
-      expect(model.fps).toBe(25);
-    });
-
     it("lucy-image-latest works as image model", () => {
       const model = models.image("lucy-image-latest");
       expect(model.name).toBe("lucy-image-latest");
@@ -3626,7 +3435,6 @@ describe("Canonical Model Names", () => {
       models.video("lucy-vton-latest");
       models.video("lucy-restyle-latest");
       models.video("lucy-clip-latest");
-      models.video("lucy-motion-latest");
       models.image("lucy-image-latest");
 
       expect(warnSpy).not.toHaveBeenCalled();
@@ -3655,11 +3463,6 @@ describe("Canonical Model Names", () => {
     it("mirage_v2 still works as realtime model", () => {
       const model = models.realtime("mirage_v2");
       expect(model.name).toBe("mirage_v2");
-    });
-
-    it("live_avatar still works as realtime model", () => {
-      const model = models.realtime("live_avatar");
-      expect(model.name).toBe("live_avatar");
     });
 
     it("lucy-pro-v2v still works as video model", () => {

@@ -14,7 +14,7 @@ import type {
 } from "./types";
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
-const AVATAR_SETUP_TIMEOUT_MS = 30_000; // 30 seconds
+const SETUP_TIMEOUT_MS = 30_000; // 30 seconds
 
 interface ConnectionCallbacks {
   onRemoteStream?: (stream: MediaStream) => void;
@@ -23,7 +23,6 @@ interface ConnectionCallbacks {
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
   vp8MinBitrate?: number;
   vp8StartBitrate?: number;
-  modelName?: string;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;
@@ -318,7 +317,7 @@ export class WebRTCConnection {
       const timeoutId = setTimeout(() => {
         this.websocketMessagesEmitter.off("setImageAck", listener);
         reject(new Error("Image send timed out"));
-      }, options?.timeout ?? AVATAR_SETUP_TIMEOUT_MS);
+      }, options?.timeout ?? SETUP_TIMEOUT_MS);
 
       const listener = (msg: SetImageAckMessage) => {
         clearTimeout(timeoutId);
@@ -365,7 +364,7 @@ export class WebRTCConnection {
       const timeoutId = setTimeout(() => {
         this.websocketMessagesEmitter.off("promptAck", listener);
         reject(new Error("Prompt send timed out"));
-      }, AVATAR_SETUP_TIMEOUT_MS);
+      }, SETUP_TIMEOUT_MS);
 
       const listener = (msg: PromptAckMessage) => {
         if (msg.prompt === prompt.text) {
@@ -415,11 +414,6 @@ export class WebRTCConnection {
     this.setState("connecting");
 
     if (this.localStream) {
-      // For live_avatar: add receive-only video transceiver (sends audio only, receives audio+video)
-      if (this.callbacks.modelName === "live_avatar" || this.callbacks.modelName === "live-avatar") {
-        this.pc.addTransceiver("video", { direction: "recvonly" });
-      }
-
       this.localStream.getTracks().forEach((track) => {
         if (this.pc && this.localStream) {
           this.pc.addTrack(track, this.localStream);
