@@ -1,14 +1,14 @@
-import type { DecartSDKError } from "../utils/errors";
+import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
+import { createConsoleLogger, type Logger } from "../utils/logger";
+import { createEventBuffer } from "./event-buffer";
 import type { DiagnosticEvent } from "./observability/diagnostics";
-import type { ConnectionChangeDetails, ConnectionState, QueuePosition } from "./types";
+import { RealtimeObservability } from "./observability/realtime-observability";
+import { StreamSession } from "./stream-session";
+import type { ConnectionState, QueuePosition } from "./types";
 
 type TokenPayload = {
   room_name: string;
 };
-
-export function encodeSubscribeToken(roomName: string): string {
-  return btoa(JSON.stringify({ room_name: roomName }));
-}
 
 export function decodeSubscribeToken(token: string): TokenPayload {
   try {
@@ -24,7 +24,6 @@ export function decodeSubscribeToken(token: string): TokenPayload {
 
 export type SubscribeEvents = {
   connectionChange: ConnectionState;
-  pending: QueuePosition;
   queuePosition: QueuePosition;
   error: DecartSDKError;
   diagnostic: DiagnosticEvent;
@@ -41,6 +40,86 @@ export type RealTimeSubscribeClient = {
 export type SubscribeOptions = {
   token: string;
   onRemoteStream: (stream: MediaStream) => void;
-  onConnectionChange?: (state: ConnectionState, details?: ConnectionChangeDetails) => void;
+  onConnectionChange?: (state: ConnectionState) => void;
   onQueuePosition?: (queuePosition: QueuePosition) => void;
+};
+
+export type RealTimeSubscribeClientOptions = {
+  baseUrl: string;
+  apiKey: string;
+  integration?: string;
+  logger: Logger;
+};
+
+export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptions) => {
+  const { baseUrl, apiKey, integration } = opts;
+  const logger = opts.logger ?? createConsoleLogger("info");
+
+  const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
+    const { room_name: roomName } = decodeSubscribeToken(options.token);
+    const subscribeUrl = `${baseUrl}/watch-stream/${encodeURIComponent(roomName)}?api_key=${encodeURIComponent(apiKey)}`;
+
+    const { emitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
+
+    let session: StreamSession | undefined;
+    let observability: RealtimeObservability | undefined;
+
+    try {
+      observability = new RealtimeObservability({
+        telemetryEnabled: false,
+        apiKey,
+        integration,
+        logger,
+        onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
+      });
+
+      session = new StreamSession({
+        url: subscribeUrl,
+        integration,
+        observability,
+        localStream: null,
+      });
+
+      session.on("remoteStream", options.onRemoteStream);
+
+      session.on("connectionChange", (state) => {
+        emitOrBuffer("connectionChange", state);
+        options.onConnectionChange?.(state);
+      });
+
+      session.on("queuePosition", (qp) => {
+        emitOrBuffer("queuePosition", qp);
+        options.onQueuePosition?.(qp);
+      });
+
+      session.on("error", (error) => {
+        logger.error("Realtime subscribe error", { error: error.message });
+        emitOrBuffer("error", classifyWebrtcError(error));
+      });
+
+      const activeSession = session;
+      await activeSession.connect();
+
+      const client: RealTimeSubscribeClient = {
+        isConnected: () => activeSession.isConnected(),
+        getConnectionState: () => activeSession.getConnectionState(),
+        disconnect: () => {
+          observability?.stop();
+          stop();
+          activeSession.disconnect();
+        },
+        on: emitter.on,
+        off: emitter.off,
+      };
+
+      flush();
+      return client;
+    } catch (error) {
+      observability?.stop();
+      session?.disconnect();
+      throw error;
+    }
+  };
+
+  return { subscribe };
 };

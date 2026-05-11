@@ -40,13 +40,6 @@ export type GenerationEndedMessage = {
   reason: string;
 };
 
-export type SessionIdMessage = {
-  type: "session_id";
-  session_id: string;
-  server_ip: string;
-  server_port: number;
-};
-
 export type LiveKitJoinMessage = {
   type: "livekit_join";
 };
@@ -56,6 +49,7 @@ export type LiveKitRoomInfoMessage = {
   livekit_url: string;
   token: string;
   room_name: string;
+  session_id: string;
 };
 
 export type QueuePositionMessage = {
@@ -69,11 +63,7 @@ export type QueuePosition = {
   queueSize: number;
 };
 
-export type ConnectionState = "connecting" | "pending" | "connected" | "generating" | "disconnected" | "reconnecting";
-
-export type ConnectionChangeDetails = {
-  queuePosition?: QueuePosition;
-};
+export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
 
 // Incoming message types (from server)
 export type IncomingRealtimeMessage =
@@ -82,7 +72,6 @@ export type IncomingRealtimeMessage =
   | SetImageAckMessage
   | GenerationTickMessage
   | GenerationEndedMessage
-  | SessionIdMessage
   | LiveKitRoomInfoMessage
   | QueuePositionMessage;
 

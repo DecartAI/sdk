@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createProcessClient } from "./process/client";
 import { createQueueClient } from "./queue/client";
 import { createRealTimeClient } from "./realtime/client";
+import { createRealTimeSubscribeClient } from "./realtime/subscribe-client";
 import { createTokensClient } from "./tokens/client";
 import { readEnv } from "./utils/env";
 import { createInvalidApiKeyError, createInvalidBaseUrlError } from "./utils/errors";
@@ -182,12 +183,18 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
   // Proxy mode is only for HTTP endpoints (process, queue, tokens)
   // Note: Realtime will fail at connection time if no API key is provided
   const wsBaseUrl = parsedOptions.data.realtimeBaseUrl || "wss://api3.decart.ai";
-  const realtime = createRealTimeClient({
+  const realtimePublish = createRealTimeClient({
     baseUrl: wsBaseUrl,
     apiKey: apiKey || "",
     integration,
     logger,
     telemetryEnabled,
+  });
+  const realtimeSubscribe = createRealTimeSubscribeClient({
+    baseUrl: wsBaseUrl,
+    apiKey: apiKey || "",
+    integration,
+    logger,
   });
 
   const process = createProcessClient({
@@ -209,7 +216,11 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
   });
 
   return {
-    realtime,
+    realtime: {
+      connect: realtimePublish.connect,
+      subscribe: realtimeSubscribe.subscribe,
+    },
+
     /**
      * Client for synchronous image generation.
      * Only image models support the sync/process API.
