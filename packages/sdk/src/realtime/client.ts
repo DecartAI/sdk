@@ -147,7 +147,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       integration,
       logger,
       onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
-      onStats: (stats) => emitOrBuffer("stats", stats),
+      ...(opts.telemetryEnabled ? { onStats: (stats: WebRTCStats) => emitOrBuffer("stats", stats) } : {}),
     });
 
     try {
