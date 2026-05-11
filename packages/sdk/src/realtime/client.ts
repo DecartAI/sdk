@@ -5,27 +5,12 @@ import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { imageToBase64 } from "../utils/media";
 import { createEventBuffer } from "./event-buffer";
-import { LiveKitManager } from "./livekit-manager";
 import { realtimeMethods, type SetInput } from "./methods";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
 import type { WebRTCStats } from "./observability/webrtc-stats";
-import {
-  decodeSubscribeToken,
-  encodeSubscribeToken,
-  type RealTimeSubscribeClient,
-  type SubscribeEvents,
-  type SubscribeOptions,
-} from "./subscribe-client";
-import type {
-  ConnectionChangeDetails,
-  ConnectionState,
-  GenerationEndedMessage,
-  GenerationTickMessage,
-  LiveKitRoomInfoMessage,
-  QueuePosition,
-  SessionIdMessage,
-} from "./types";
+import { StreamSession } from "./stream-session";
+import type { ConnectionState, QueuePosition } from "./types";
 
 export type RealTimeClientOptions = {
   baseUrl: string;
@@ -37,7 +22,7 @@ export type RealTimeClientOptions = {
 
 const realTimeClientInitialStateSchema = modelStateSchema;
 type OnRemoteStreamFn = (stream: MediaStream) => void;
-type OnConnectionChangeFn = (state: ConnectionState, details?: ConnectionChangeDetails) => void;
+type OnConnectionChangeFn = (state: ConnectionState) => void;
 type OnQueuePositionFn = (queuePosition: QueuePosition) => void;
 export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialStateSchema>;
 
@@ -65,7 +50,6 @@ export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientCon
 
 export type Events = {
   connectionChange: ConnectionState;
-  pending: QueuePosition;
   queuePosition: QueuePosition;
   error: DecartSDKError;
   generationTick: { seconds: number };
@@ -100,32 +84,23 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     options: RealTimeClientConnectOptions,
   ): Promise<RealTimeClient> => {
     const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
-    if (!parsedOptions.success) {
-      throw parsedOptions.error;
-    }
+    if (!parsedOptions.success) throw parsedOptions.error;
 
     const { onRemoteStream, onConnectionChange, onQueuePosition, initialState } = parsedOptions.data;
-
     const inputStream = stream ?? new MediaStream();
 
-    let livekitManager: LiveKitManager | undefined;
+    let session: StreamSession | undefined;
     let observability: RealtimeObservability | undefined;
 
     try {
-      // Prepare initial image base64 before connection
       const initialImage = initialState?.image ? await imageToBase64(initialState.image) : undefined;
-
-      // Prepare initial prompt to send over the control WebSocket before joining LiveKit.
       const initialPrompt = initialState?.prompt
-        ? {
-            text: initialState.prompt.text,
-            enhance: initialState.prompt.enhance,
-          }
+        ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
         : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
-
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
+
       observability = new RealtimeObservability({
         telemetryEnabled: opts.telemetryEnabled,
         apiKey,
@@ -135,75 +110,65 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
         onStats: (stats) => emitOrBuffer("stats", stats),
       });
+
       const queryParams = new URLSearchParams({
         ...(options.queryParams ?? {}),
         api_key: apiKey,
         model: options.model.name,
       });
 
-      livekitManager = new LiveKitManager({
+      session = new StreamSession({
         url: `${url}?${queryParams.toString()}`,
         integration,
         observability,
-        onRemoteStream,
-        onConnectionStateChange: (state, details) => {
-          emitOrBuffer("connectionChange", state);
-          if (state === "pending" && details?.queuePosition) {
-            emitOrBuffer("pending", details.queuePosition);
-          }
-          onConnectionChange?.(state, details);
-        },
-        onQueuePosition: (queuePosition) => {
-          emitOrBuffer("queuePosition", queuePosition);
-          onQueuePosition?.(queuePosition);
-        },
-        onError: (error) => {
-          logger.error("Realtime error", { error: error.message });
-          emitOrBuffer("error", classifyWebrtcError(error));
-        },
+        localStream: inputStream,
         initialImage,
         initialPrompt,
       });
 
-      const manager = livekitManager;
-
       let sessionId: string | null = null;
       let subscribeToken: string | null = null;
 
-      const sessionIdListener = (msg: SessionIdMessage) => {
-        sessionId = msg.session_id;
-        observability?.sessionStarted(msg.session_id);
-      };
-      manager.getWebsocketMessageEmitter().on("sessionId", sessionIdListener);
+      session.on("remoteStream", onRemoteStream);
 
-      const roomInfoListener = (msg: LiveKitRoomInfoMessage) => {
-        subscribeToken = encodeSubscribeToken(msg.room_name);
-      };
-      manager.getWebsocketMessageEmitter().on("roomInfo", roomInfoListener);
+      session.on("connectionChange", (state) => {
+        emitOrBuffer("connectionChange", state);
+        onConnectionChange?.(state);
+      });
 
-      const tickListener = (msg: GenerationTickMessage) => {
-        emitOrBuffer("generationTick", { seconds: msg.seconds });
-      };
-      manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
+      session.on("queuePosition", (qp) => {
+        emitOrBuffer("queuePosition", qp);
+        onQueuePosition?.(qp);
+      });
 
-      const generationEndedListener = (msg: GenerationEndedMessage) => {
-        emitOrBuffer("generationEnded", { seconds: msg.seconds, reason: msg.reason });
-      };
-      manager.getWebsocketMessageEmitter().on("generationEnded", generationEndedListener);
+      session.on("sessionStarted", ({ sessionId: id, subscribeToken: token }) => {
+        sessionId = id;
+        subscribeToken = token;
+        observability?.sessionStarted(id);
+      });
 
-      await manager.connect(inputStream);
+      session.on("generationTick", (e) => emitOrBuffer("generationTick", e));
+      session.on("generationEnded", (e) => emitOrBuffer("generationEnded", e));
 
-      const methods = realtimeMethods(manager, imageToBase64);
+      session.on("error", (error) => {
+        logger.error("Realtime error", { error: error.message });
+        emitOrBuffer("error", classifyWebrtcError(error));
+      });
+
+      const activeSession = session;
+      await activeSession.connect();
+
+      const methods = realtimeMethods(activeSession, imageToBase64);
 
       const client: RealTimeClient = {
         set: methods.set,
         setPrompt: methods.setPrompt,
-        isConnected: () => manager.isConnected(),
-        getConnectionState: () => manager.getConnectionState(),
+        isConnected: () => activeSession.isConnected(),
+        getConnectionState: () => activeSession.getConnectionState(),
         disconnect: () => {
           observability?.stop();
           stop();
-          manager.cleanup();
+          activeSession.disconnect();
         },
         on: eventEmitter.on,
         off: eventEmitter.off,
@@ -216,13 +181,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         getSubscribeToken: () => subscribeToken,
         setImage: async (
           image: Blob | File | string | null,
-          options?: { prompt?: string; enhance?: boolean; timeout?: number },
+          imgOptions?: { prompt?: string; enhance?: boolean; timeout?: number },
         ) => {
-          if (image === null) {
-            return manager.setImage(null, options);
-          }
+          if (image === null) return activeSession.setImage(null, imgOptions);
           const base64 = await imageToBase64(image);
-          return manager.setImage(base64, options);
+          return activeSession.setImage(base64, imgOptions);
         },
       };
 
@@ -230,77 +193,10 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       return client;
     } catch (error) {
       observability?.stop();
-      livekitManager?.cleanup();
+      session?.disconnect();
       throw error;
     }
   };
 
-  const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
-    const { room_name: roomName } = decodeSubscribeToken(options.token);
-    const subscribeUrl = `${baseUrl}/watch-stream/${encodeURIComponent(roomName)}?api_key=${encodeURIComponent(apiKey)}`;
-
-    const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
-
-    let livekitManager: LiveKitManager | undefined;
-    let observability: RealtimeObservability | undefined;
-
-    try {
-      observability = new RealtimeObservability({
-        telemetryEnabled: false,
-        apiKey,
-        integration,
-        logger,
-        onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
-      });
-
-      livekitManager = new LiveKitManager({
-        url: subscribeUrl,
-        integration,
-        observability,
-        onRemoteStream: options.onRemoteStream,
-        onConnectionStateChange: (state, details) => {
-          emitOrBuffer("connectionChange", state);
-          if (state === "pending" && details?.queuePosition) {
-            emitOrBuffer("pending", details.queuePosition);
-          }
-          options.onConnectionChange?.(state, details);
-        },
-        onQueuePosition: (queuePosition) => {
-          emitOrBuffer("queuePosition", queuePosition);
-          options.onQueuePosition?.(queuePosition);
-        },
-        onError: (error) => {
-          logger.error("Realtime subscribe error", { error: error.message });
-          emitOrBuffer("error", classifyWebrtcError(error));
-        },
-      });
-
-      const manager = livekitManager;
-      await manager.connect(null);
-
-      const client: RealTimeSubscribeClient = {
-        isConnected: () => manager.isConnected(),
-        getConnectionState: () => manager.getConnectionState(),
-        disconnect: () => {
-          observability?.stop();
-          stop();
-          manager.cleanup();
-        },
-        on: eventEmitter.on,
-        off: eventEmitter.off,
-      };
-
-      flush();
-      return client;
-    } catch (error) {
-      observability?.stop();
-      livekitManager?.cleanup();
-      throw error;
-    }
-  };
-
-  return {
-    connect,
-    subscribe,
-  };
+  return { connect };
 };

@@ -615,7 +615,6 @@
                 'connected': 'status-connected',
                 'generating': 'status-connected',
                 'connecting': 'status-connecting',
-                'pending': 'status-connecting',
                 'reconnecting': 'status-connecting',
                 'disconnected': 'status-disconnected'
             };
@@ -799,11 +798,8 @@
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
                     },
-                    onConnectionChange: (state, details) => {
+                    onConnectionChange: (state) => {
                         updateStatus(state);
-                        if (details?.queuePosition) {
-                            addLog(`Queue position: ${details.queuePosition.position}/${details.queuePosition.queueSize}`, 'info');
-                        }
                         if (state === 'connected' || state === 'generating') {
                             syncPublisherSubscribeToken();
                         }
@@ -913,11 +909,8 @@
                         addLog('Received subscribed stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
                     },
-                    onConnectionChange: (state, details) => {
+                    onConnectionChange: (state) => {
                         updateStatus(state);
-                        if (details?.queuePosition) {
-                            addLog(`Queue position: ${details.queuePosition.position}/${details.queuePosition.queueSize}`, 'info');
-                        }
                     },
                     onQueuePosition: (queuePosition) => {
                         addLog(`Queue position: ${queuePosition.position}/${queuePosition.queueSize}`, 'info');
