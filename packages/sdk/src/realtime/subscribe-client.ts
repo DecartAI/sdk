@@ -1,5 +1,5 @@
 import type { DecartSDKError } from "../utils/errors";
-import type { DiagnosticEvent } from "./diagnostics";
+import type { DiagnosticEvent } from "./observability/diagnostics";
 import type { ConnectionState } from "./types";
 
 type TokenPayload = {
