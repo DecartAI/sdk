@@ -1,7 +1,7 @@
 import pRetry, { AbortError } from "p-retry";
 
 import type { Logger } from "../utils/logger";
-import type { DiagnosticEmitter } from "./diagnostics";
+import { RealtimeObservability } from "./observability/realtime-observability";
 import type { ConnectionState, OutgoingMessage } from "./types";
 import { WebRTCConnection } from "./webrtc-connection";
 
@@ -9,7 +9,7 @@ export interface WebRTCConfig {
   webrtcUrl: string;
   integration?: string;
   logger?: Logger;
-  onDiagnostic?: DiagnosticEmitter;
+  observability?: RealtimeObservability;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionStateChange?: (state: ConnectionState) => void;
   onError?: (error: Error) => void;
@@ -42,6 +42,7 @@ export class WebRTCManager {
   private connection: WebRTCConnection;
   private config: WebRTCConfig;
   private logger: Logger;
+  private observability: RealtimeObservability;
   private localStream: MediaStream | null = null;
   private subscribeMode = false;
   private managerState: ConnectionState = "disconnected";
@@ -49,10 +50,18 @@ export class WebRTCManager {
   private isReconnecting = false;
   private intentionalDisconnect = false;
   private reconnectGeneration = 0;
+  private statsProviderConnection: RTCPeerConnection | null = null;
 
   constructor(config: WebRTCConfig) {
     this.config = config;
     this.logger = config.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
+    this.observability =
+      config.observability ??
+      new RealtimeObservability({
+        telemetryEnabled: false,
+        apiKey: "",
+        logger: this.logger,
+      });
     this.connection = new WebRTCConnection({
       onRemoteStream: config.onRemoteStream,
       onStateChange: (state) => this.handleConnectionStateChange(state),
@@ -63,7 +72,7 @@ export class WebRTCManager {
       initialImage: config.initialImage,
       initialPrompt: config.initialPrompt,
       logger: this.logger,
-      onDiagnostic: config.onDiagnostic,
+      observability: this.observability,
     });
   }
 
@@ -75,9 +84,22 @@ export class WebRTCManager {
     }
   }
 
+  private syncStatsProvider(): void {
+    const pc = this.getPeerConnection();
+    const isLive = this.managerState === "connected" || this.managerState === "generating";
+    if (isLive && pc && pc !== this.statsProviderConnection) {
+      this.statsProviderConnection = pc;
+      this.observability.setStatsProvider(pc);
+    } else if (!isLive && this.statsProviderConnection) {
+      this.statsProviderConnection = null;
+      this.observability.setStatsProvider(null);
+    }
+  }
+
   private handleConnectionStateChange(state: ConnectionState): void {
     if (this.intentionalDisconnect) {
       this.emitState("disconnected");
+      this.syncStatsProvider();
       return;
     }
 
@@ -86,6 +108,7 @@ export class WebRTCManager {
       if (state === "connected" || state === "generating") {
         this.isReconnecting = false;
         this.emitState(state);
+        this.syncStatsProvider();
       }
       return;
     }
@@ -98,6 +121,7 @@ export class WebRTCManager {
     }
 
     this.emitState(state);
+    this.syncStatsProvider();
   }
 
   private async reconnect(): Promise<void> {
@@ -107,6 +131,8 @@ export class WebRTCManager {
     const reconnectGeneration = ++this.reconnectGeneration;
     this.isReconnecting = true;
     this.emitState("reconnecting");
+    this.observability.setStatsProvider(null);
+    this.statsProviderConnection = null;
     const reconnectStart = performance.now();
 
     try {
@@ -144,7 +170,7 @@ export class WebRTCManager {
               return;
             }
             this.logger.warn("Reconnect attempt failed", { error: error.message, attempt: error.attemptNumber });
-            this.config.onDiagnostic?.("reconnect", {
+            this.observability.diagnostic("reconnect", {
               attempt: error.attemptNumber,
               maxAttempts: RETRY_OPTIONS.retries + 1,
               durationMs: performance.now() - reconnectStart,
@@ -162,7 +188,7 @@ export class WebRTCManager {
           },
         },
       );
-      this.config.onDiagnostic?.("reconnect", {
+      this.observability.diagnostic("reconnect", {
         attempt: attemptCount,
         maxAttempts: RETRY_OPTIONS.retries + 1,
         durationMs: performance.now() - reconnectStart,
@@ -223,6 +249,8 @@ export class WebRTCManager {
     this.reconnectGeneration += 1;
     this.connection.cleanup();
     this.localStream = null;
+    this.statsProviderConnection = null;
+    this.observability.setStatsProvider(null);
     this.emitState("disconnected");
   }
 
@@ -244,7 +272,7 @@ export class WebRTCManager {
 
   setImage(
     imageBase64: string | null,
-    options?: { prompt?: string; enhance?: boolean; timeout?: number },
+    options?: { prompt?: string | null; enhance?: boolean; timeout?: number },
   ): Promise<void> {
     return this.connection.setImageBase64(imageBase64, options);
   }
