@@ -1,6 +1,7 @@
 import mitt, { type Emitter } from "mitt";
 import pRetry, { AbortError } from "p-retry";
 
+import type { ModelDefinition } from "../shared/model";
 import { SignalingChannel, type RoomInfo } from "./signaling-channel";
 import { MediaChannel } from "./media-channel";
 import type { RealtimeObservability } from "./observability/realtime-observability";
@@ -43,6 +44,7 @@ interface StreamSessionConfig {
   integration?: string;
   observability?: RealtimeObservability;
   localStream: MediaStream | null;
+  model?: Pick<ModelDefinition, "fps">;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
 }
@@ -241,7 +243,11 @@ export class StreamSession {
 
   private createTransport(): void {
     this.signaling = new SignalingChannel({ url: this.config.url, integration: this.config.integration });
-    this.media = new MediaChannel({ observability: this.config.observability, localStream: this.config.localStream });
+    this.media = new MediaChannel({
+      observability: this.config.observability,
+      localStream: this.config.localStream,
+      model: this.config.model,
+    });
     this.wireSignalingEvents();
     this.wireMediaEvents();
   }

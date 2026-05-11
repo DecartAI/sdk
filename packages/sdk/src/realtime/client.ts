@@ -122,6 +122,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         integration,
         observability,
         localStream: inputStream,
+        model: options.model,
         initialImage,
         initialPrompt,
       });
