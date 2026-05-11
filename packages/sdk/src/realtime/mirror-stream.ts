@@ -6,7 +6,7 @@ interface MediaStreamTrackGeneratorCtor {
   new (init: { kind: "video" }): MediaStreamTrack & { writable: WritableStream<VideoFrame> };
 }
 
-type FlipImpl = "track-processor" | "canvas";
+type FlipImpl = "track-processor" | "canvas" | "noop";
 
 export interface MirroredStreamOptions {
   fps: number;
@@ -42,7 +42,7 @@ export function createMirroredStream(input: MediaStream, opts: MirroredStreamOpt
   const audioTracks = input.getAudioTracks();
 
   if (!sourceVideo) {
-    return { stream: input, dispose: () => {}, impl: "canvas" };
+    return { stream: input, dispose: () => {}, impl: "noop" };
   }
 
   if (isMediaStreamTrackProcessorSupported()) {
@@ -57,24 +57,25 @@ function createWithTrackProcessor(sourceVideo: MediaStreamTrack, audioTracks: Me
   const Generator = (globalThis as unknown as { MediaStreamTrackGenerator: MediaStreamTrackGeneratorCtor })
     .MediaStreamTrackGenerator;
 
+  // Probe 2D context at setup so we fail loud here rather than silently
+  // passing un-flipped frames through the pipeline.
+  if (!new OffscreenCanvas(1, 1).getContext("2d")) {
+    throw new Error("createMirroredStream: OffscreenCanvas 2D context unavailable");
+  }
+
   const processor = new Processor({ track: sourceVideo });
   const generator = new Generator({ kind: "video" });
 
-  let canvas: OffscreenCanvas | null = null;
-  let ctx: OffscreenCanvasRenderingContext2D | null = null;
+  let canvas = new OffscreenCanvas(1, 1);
+  let ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;
 
   const transform = new TransformStream<VideoFrame, VideoFrame>({
     transform(frame, controller) {
       const w = frame.displayWidth;
       const h = frame.displayHeight;
-      if (!canvas || canvas.width !== w || canvas.height !== h) {
+      if (canvas.width !== w || canvas.height !== h) {
         canvas = new OffscreenCanvas(w, h);
-        ctx = canvas.getContext("2d");
-      }
-      if (!ctx) {
-        // Pass-through: ownership of frame transfers to the consumer.
-        controller.enqueue(frame);
-        return;
+        ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;
       }
 
       // VideoFrames hold GPU buffers; close them deterministically even if

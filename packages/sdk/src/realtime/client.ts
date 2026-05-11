@@ -153,6 +153,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         if (firstVideoTrack && (mirror === true || shouldMirrorTrack(firstVideoTrack))) {
           mirroredStream = createMirroredStream(inputStream, { fps: options.model.fps });
           inputStream = mirroredStream.stream;
+        } else if (mirror === true && !firstVideoTrack) {
+          logger.warn("mirror: true requested but no video track was found on the input stream");
         }
       } catch (error) {
         logger.warn("Failed to mirror input stream; falling back to un-mirrored input", {

@@ -58,6 +58,19 @@ describe("createMirroredStream", () => {
 
     const result = createMirroredStream(inputStream, { fps: 25 });
     expect(result.stream).toBe(inputStream);
-    expect(() => result.dispose()).not.toThrow();
+    expect(result.impl).toBe("noop");
+  });
+
+  it("dispose is idempotent on the no-op path", () => {
+    const inputStream = {
+      getVideoTracks: () => [],
+      getAudioTracks: () => [],
+    } as unknown as MediaStream;
+
+    const result = createMirroredStream(inputStream, { fps: 25 });
+    expect(() => {
+      result.dispose();
+      result.dispose();
+    }).not.toThrow();
   });
 });
