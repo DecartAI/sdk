@@ -1618,7 +1618,7 @@ describe("Subscribe Client", () => {
     }
   });
 
-  it("buffers pre-session telemetry diagnostics and flushes them after session_id", async () => {
+  it("buffers pre-session telemetry diagnostics and discards them on disconnect", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
 
@@ -1683,17 +1683,11 @@ describe("Subscribe Client", () => {
         });
       }
 
+      // disconnect() calls stop() which discards buffered data instead of sending it.
+      // This avoids 401s when the API key has been invalidated on reconnect.
       client.disconnect();
 
-      await vi.waitFor(() => {
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-      });
-
-      const [, options] = fetchMock.mock.calls[0];
-      const body = JSON.parse(options.body);
-      expect(body.diagnostics).toHaveLength(1);
-      expect(body.diagnostics[0].name).toBe("phaseTiming");
-      expect(body.diagnostics[0].data.phase).toBe("websocket");
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       connectSpy.mockRestore();
       stateSpy.mockRestore();
@@ -2306,7 +2300,6 @@ describe("TelemetryReporter", () => {
       const [url, options] = fetchMock.mock.calls[0];
       expect(url).toBe("https://platform.decart.ai/api/v1/telemetry");
       expect(options.method).toBe("POST");
-      expect(options.keepalive).toBe(false);
 
       const body = JSON.parse(options.body);
       expect(body.sessionId).toBe("sess-1");
@@ -2351,7 +2344,7 @@ describe("TelemetryReporter", () => {
     }
   });
 
-  it("stop sends final report with keepalive", async () => {
+  it("stop discards buffered data without sending a request", async () => {
     const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
@@ -2375,9 +2368,12 @@ describe("TelemetryReporter", () => {
 
       reporter.stop();
 
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      const [, options] = fetchMock.mock.calls[0];
-      expect(options.keepalive).toBe(true);
+      // stop() should NOT send any network request
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // flush() after stop() should be a no-op (buffers were cleared)
+      reporter.flush();
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }
