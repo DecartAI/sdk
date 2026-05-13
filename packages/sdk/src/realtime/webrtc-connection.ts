@@ -3,7 +3,7 @@ import mitt from "mitt";
 import type { Logger } from "../utils/logger";
 import { buildUserAgent } from "../utils/user-agent";
 import type { IceCandidateEvent } from "./observability/diagnostics";
-import { RealtimeObservability } from "./observability/realtime-observability";
+import type { RealtimeObservability } from "./observability/realtime-observability";
 import type {
   ConnectionState,
   GenerationTickMessage,
@@ -27,7 +27,7 @@ interface ConnectionCallbacks {
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;
-  observability?: RealtimeObservability;
+  observability: RealtimeObservability;
 }
 
 type WsMessageEvents = {
@@ -46,15 +46,9 @@ export class WebRTCConnection {
   private observability: RealtimeObservability;
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
-  constructor(private callbacks: ConnectionCallbacks = {}) {
+  constructor(private callbacks: ConnectionCallbacks) {
     this.logger = callbacks.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
-    this.observability =
-      callbacks.observability ??
-      new RealtimeObservability({
-        telemetryEnabled: false,
-        apiKey: "",
-        logger: this.logger,
-      });
+    this.observability = callbacks.observability;
   }
 
   getPeerConnection(): RTCPeerConnection | null {

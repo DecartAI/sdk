@@ -252,12 +252,13 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
     let webrtcManager: WebRTCManager | undefined;
     const observability = new RealtimeObservability({
-      telemetryEnabled: false,
+      telemetryEnabled: opts.telemetryEnabled,
       apiKey,
       integration,
       logger,
       onDiagnostic: (event) => emitOrBuffer("diagnostic", event as SubscribeEvents["diagnostic"]),
     });
+    observability.sessionStarted(sid);
 
     try {
       webrtcManager = new WebRTCManager({
