@@ -1257,6 +1257,76 @@ describe("WebRTCConnection", () => {
         vi.useRealTimers();
       }
     });
+
+    it("includes sample_frame_data in the outgoing set_image message when provided", async () => {
+      vi.useFakeTimers();
+      try {
+        const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+        const connection = new WebRTCConnection();
+        const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
+
+        const promise = connection.setImageBase64("imgbase64", { sampleFrameDataBase64: "refbase64" }).catch(() => {});
+
+        expect(sendSpy).toHaveBeenCalledWith({
+          type: "set_image",
+          image_data: "imgbase64",
+          sample_frame_data: "refbase64",
+        });
+
+        await vi.advanceTimersByTimeAsync(30001);
+        await promise;
+        sendSpy.mockRestore();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("omits sample_frame_data when not provided", async () => {
+      vi.useFakeTimers();
+      try {
+        const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+        const connection = new WebRTCConnection();
+        const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
+
+        const promise = connection.setImageBase64("imgbase64").catch(() => {});
+
+        const sentMessage = sendSpy.mock.calls[0]?.[0] as Record<string, unknown>;
+        expect(sentMessage).toEqual({
+          type: "set_image",
+          image_data: "imgbase64",
+        });
+        expect("sample_frame_data" in sentMessage).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(30001);
+        await promise;
+        sendSpy.mockRestore();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("forwards explicit null sample_frame_data", async () => {
+      vi.useFakeTimers();
+      try {
+        const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+        const connection = new WebRTCConnection();
+        const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
+
+        const promise = connection.setImageBase64("imgbase64", { sampleFrameDataBase64: null }).catch(() => {});
+
+        expect(sendSpy).toHaveBeenCalledWith({
+          type: "set_image",
+          image_data: "imgbase64",
+          sample_frame_data: null,
+        });
+
+        await vi.advanceTimersByTimeAsync(30001);
+        await promise;
+        sendSpy.mockRestore();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe("setupNewPeerConnection", () => {
@@ -1469,6 +1539,56 @@ describe("set()", () => {
       enhance: true,
       timeout: 30000,
     });
+  });
+
+  it("converts sampleFrameData Blob to base64 and forwards it", async () => {
+    const refBlob = new Blob(["ref-frame"], { type: "image/jpeg" });
+    mockImageToBase64.mockImplementation(async (input) => (input === refBlob ? "refbase64" : "imgbase64"));
+
+    await methods.set({ prompt: "a cat", image: "rawimg", sampleFrameData: refBlob });
+
+    expect(mockImageToBase64).toHaveBeenCalledWith(refBlob);
+    expect(mockManager.setImage).toHaveBeenCalledWith("imgbase64", {
+      prompt: "a cat",
+      enhance: true,
+      timeout: 30000,
+      sampleFrameDataBase64: "refbase64",
+    });
+  });
+
+  it("forwards a base64 string sampleFrameData through imageToBase64", async () => {
+    mockImageToBase64.mockImplementation(async (input) => (input === "raw-ref" ? "refbase64" : "imgbase64"));
+
+    await methods.set({ image: "raw-img", sampleFrameData: "raw-ref" });
+
+    expect(mockImageToBase64).toHaveBeenCalledWith("raw-ref");
+    expect(mockManager.setImage).toHaveBeenCalledWith("imgbase64", {
+      prompt: undefined,
+      enhance: true,
+      timeout: 30000,
+      sampleFrameDataBase64: "refbase64",
+    });
+  });
+
+  it("forwards null sampleFrameData without calling imageToBase64", async () => {
+    mockImageToBase64.mockResolvedValue("imgbase64");
+
+    await methods.set({ image: "raw-img", sampleFrameData: null });
+
+    expect(mockImageToBase64).toHaveBeenCalledTimes(1);
+    expect(mockImageToBase64).toHaveBeenCalledWith("raw-img");
+    expect(mockManager.setImage).toHaveBeenCalledWith("imgbase64", {
+      prompt: undefined,
+      enhance: true,
+      timeout: 30000,
+      sampleFrameDataBase64: null,
+    });
+  });
+
+  it("omits sampleFrameDataBase64 when sampleFrameData is not provided", async () => {
+    await methods.set({ prompt: "a cat" });
+    const call = mockManager.setImage.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect("sampleFrameDataBase64" in call).toBe(false);
   });
 });
 
@@ -3314,7 +3434,13 @@ describe("Canonical Model Names", () => {
         expect(canonicalModelSchema.safeParse(alias).success).toBe(false);
       }
 
-      expect(canonicalRealtimeModels.options).toEqual(["lucy-2.1", "lucy-2.1-vton", "lucy-vton-2", "lucy-restyle-2"]);
+      expect(canonicalRealtimeModels.options).toEqual([
+        "lucy-2.1",
+        "lucy-2.5",
+        "lucy-2.1-vton",
+        "lucy-vton-2",
+        "lucy-restyle-2",
+      ]);
       expect(canonicalVideoModels.options).toEqual([
         "lucy-clip",
         "lucy-2.1",
@@ -3380,7 +3506,7 @@ describe("Canonical Model Names", () => {
     it("lists all models when called without options", () => {
       const listedModels = listModels();
 
-      expect(listedModels).toHaveLength(26);
+      expect(listedModels).toHaveLength(27);
       expect(listedModels.some((model) => model.kind === "realtime" && model.name === "lucy-2.1")).toBe(true);
       expect(listedModels.some((model) => model.kind === "video" && model.name === "lucy-clip")).toBe(true);
       expect(listedModels.some((model) => model.kind === "image" && model.name === "lucy-image-2")).toBe(true);
@@ -3440,6 +3566,15 @@ describe("Canonical Model Names", () => {
     it("lucy-2.1 canonical name works", () => {
       const model = models.realtime("lucy-2.1");
       expect(model.name).toBe("lucy-2.1");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
+    it("lucy-2.5 canonical name works", () => {
+      const model = models.realtime("lucy-2.5");
+      expect(model.name).toBe("lucy-2.5");
       expect(model.urlPath).toBe("/v1/stream");
       expect(model.fps).toBe(20);
       expect(model.width).toBe(1088);

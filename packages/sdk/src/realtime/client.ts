@@ -117,7 +117,12 @@ export type RealTimeClient = {
   subscribeToken: string | null;
   setImage: (
     image: Blob | File | string | null,
-    options?: { prompt?: string; enhance?: boolean; timeout?: number },
+    options?: {
+      prompt?: string;
+      enhance?: boolean;
+      timeout?: number;
+      sampleFrameData?: Blob | File | string | null;
+    },
   ) => Promise<void>;
 };
 
@@ -332,13 +337,31 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         },
         setImage: async (
           image: Blob | File | string | null,
-          options?: { prompt?: string; enhance?: boolean; timeout?: number },
+          options?: {
+            prompt?: string;
+            enhance?: boolean;
+            timeout?: number;
+            sampleFrameData?: Blob | File | string | null;
+          },
         ) => {
+          const { sampleFrameData, ...rest } = options ?? {};
+          const managerOptions: {
+            prompt?: string;
+            enhance?: boolean;
+            timeout?: number;
+            sampleFrameDataBase64?: string | null;
+          } = rest;
+
+          if (sampleFrameData !== undefined) {
+            managerOptions.sampleFrameDataBase64 =
+              sampleFrameData === null ? null : await imageToBase64(sampleFrameData);
+          }
+
           if (image === null) {
-            return manager.setImage(null, options);
+            return manager.setImage(null, managerOptions);
           }
           const base64 = await imageToBase64(image);
-          return manager.setImage(base64, options);
+          return manager.setImage(base64, managerOptions);
         },
       };
 

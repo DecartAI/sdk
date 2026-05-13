@@ -311,7 +311,12 @@ export class WebRTCConnection {
 
   async setImageBase64(
     imageBase64: string | null,
-    options?: { prompt?: string | null; enhance?: boolean; timeout?: number },
+    options?: {
+      prompt?: string | null;
+      enhance?: boolean;
+      timeout?: number;
+      sampleFrameDataBase64?: string | null;
+    },
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
@@ -336,6 +341,7 @@ export class WebRTCConnection {
         image_data: string | null;
         prompt?: string | null;
         enhance_prompt?: boolean;
+        sample_frame_data?: string | null;
       } = {
         type: "set_image",
         image_data: imageBase64,
@@ -346,6 +352,9 @@ export class WebRTCConnection {
       }
       if (options?.enhance !== undefined) {
         message.enhance_prompt = options.enhance;
+      }
+      if (options?.sampleFrameDataBase64 !== undefined) {
+        message.sample_frame_data = options.sampleFrameDataBase64;
       }
 
       if (!this.send(message)) {

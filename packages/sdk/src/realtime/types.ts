@@ -40,6 +40,7 @@ export type SetAvatarImageMessage = {
   image_data: string | null; // Base64-encoded image data, or null to clear/use placeholder
   prompt?: string | null; // Optional prompt to send with the image, null for passthrough
   enhance_prompt?: boolean; // Optional flag to enhance the prompt
+  sample_frame_data?: string | null; // Optional base64-encoded sample frame (e.g. current camera frame) to give prompt enhancement extra context
 };
 
 export type SetImageAckMessage = {
