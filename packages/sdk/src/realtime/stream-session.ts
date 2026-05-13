@@ -144,7 +144,14 @@ export class StreamSession {
     }
 
     this.resetHandshakeState();
-    await this.signaling.connect({ connectTimeout: CONNECTION_TIMEOUT_MS });
+    await this.signaling.connect({
+      connectTimeout: CONNECTION_TIMEOUT_MS,
+      initialState: {
+        image: this.config.initialImage,
+        prompt: this.config.initialPrompt?.text,
+        enhance: this.config.initialPrompt?.enhance,
+      },
+    });
 
     if (!this.roomInfo) {
       throw new Error("Handshake completed without room info");
@@ -164,29 +171,10 @@ export class StreamSession {
       throw new AbortError("Stale connect attempt");
     }
 
-    await this.runInitialConditioning();
-
     this.setState("connected");
   }
 
-  private async runInitialConditioning(): Promise<void> {
-    if (this.config.initialImage) {
-      await this.signaling.setImage(this.config.initialImage, {
-        prompt: this.config.initialPrompt?.text,
-        enhance: this.config.initialPrompt?.enhance,
-      });
-      return;
-    }
-    if (this.config.initialPrompt) {
-      await this.signaling.sendPrompt(this.config.initialPrompt.text, {
-        enhance: this.config.initialPrompt.enhance,
-      });
-      return;
-    }
-    if (this.config.localStream) {
-      await this.signaling.setImage(null, { prompt: null });
-    }
-  }
+ 
 
   private wireSignalingEvents(): void {
     this.signaling.on("roomInfo", (info) => {
