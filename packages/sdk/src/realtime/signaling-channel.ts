@@ -59,11 +59,7 @@ export class SignalingChannel {
   }
 
   async connect(
-    opts: {
-      connectTimeout?: number;
-      handshakeTimeout?: number;
-      initialState?: InitialState;
-    } = {},
+    opts: { connectTimeout?: number; handshakeTimeout?: number; initialState?: InitialState } = {},
   ): Promise<void> {
     const connectTimeout = opts.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT_MS;
     const handshakeTimeout = opts.handshakeTimeout ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
@@ -115,17 +111,6 @@ export class SignalingChannel {
     if (!ack.success) throw new Error(ack.error ?? "Failed to send image");
   }
 
-  sendPromptNoWait(text: string, opts: { enhance?: boolean } = {}): void {
-    this.writeMessage({ type: "prompt", prompt: text, enhance_prompt: opts.enhance ?? true });
-  }
-
-  setImageNoWait(image: string | null, opts: { prompt?: string | null; enhance?: boolean } = {}): void {
-    const message: OutgoingRealtimeMessage = { type: "set_image", image_data: image };
-    if (opts.prompt !== undefined) message.prompt = opts.prompt;
-    if (opts.enhance !== undefined) message.enhance_prompt = opts.enhance;
-    this.writeMessage(message);
-  }
-
   private async openSocket(timeout: number): Promise<void> {
     const userAgent = encodeURIComponent(buildUserAgent(this.config.integration));
     const separator = this.config.url.includes("?") ? "&" : "?";
@@ -165,35 +150,52 @@ export class SignalingChannel {
   }
 
   private async runHandshake(timeoutMs: number, initialState?: InitialState): Promise<void> {
-    this.writeMessage({ type: "livekit_join" });
+    const roomInfoWait = this.waitForRoomInfo(timeoutMs);
 
-    if (initialState?.image) {
-      this.setImageNoWait(initialState.image, {
-        prompt: initialState.prompt,
-        enhance: initialState.enhance,
-      });
-    } else if (initialState?.prompt) {
-      this.sendPromptNoWait(initialState.prompt, { enhance: initialState.enhance });
+    try {
+      if (!this.writeMessage({ type: "livekit_join" })) {
+        throw new Error("WebSocket is not open");
+      }
+
+      await Promise.all([roomInfoWait.promise, this.sendInitialState(initialState)]);
+    } catch (error) {
+      roomInfoWait.cancel();
+      this.rejectAllPending(error instanceof Error ? error : new Error(String(error)));
+      throw error;
     }
+  }
 
-
-    return new Promise<void>((resolve, reject) => {
+  private waitForRoomInfo(timeoutMs: number): { promise: Promise<void>; cancel: () => void } {
+    let cleanup: () => void = () => {};
+    const promise = new Promise<void>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
         cleanup();
         reject(new Error(`livekit_room_info timeout (${timeoutMs}ms)`));
       }, timeoutMs);
 
-      const onRoomInfo = () => { cleanup(); resolve(); };
-      const onQueue = () => {
-        if (timer) { clearTimeout(timer); timer = null; }
+      const onRoomInfo = () => {
+        cleanup();
+        resolve();
       };
-      const onServerError = (err: Error) => { cleanup(); reject(err); };
+      const onQueue = () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      };
+      const onServerError = (err: Error) => {
+        cleanup();
+        reject(err);
+      };
       const onClosed = (e: { code: number; reason: string }) => {
         cleanup();
         reject(new Error(`WebSocket closed: ${e.code} ${e.reason}`));
       };
-      const cleanup = () => {
-        if (timer) { clearTimeout(timer); timer = null; }
+      cleanup = () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
         this.events.off("roomInfo", onRoomInfo);
         this.events.off("queuePosition", onQueue);
         this.events.off("serverError", onServerError);
@@ -205,6 +207,24 @@ export class SignalingChannel {
       this.events.on("serverError", onServerError);
       this.events.on("closed", onClosed);
     });
+
+    return { promise, cancel: cleanup };
+  }
+
+  private async sendInitialState(initialState?: InitialState): Promise<void> {
+    if (!initialState) return;
+
+    if (initialState.image !== undefined) {
+      await this.setImage(initialState.image, {
+        prompt: initialState.prompt,
+        enhance: initialState.enhance,
+      });
+      return;
+    }
+
+    if (initialState.prompt !== undefined && initialState.prompt !== null) {
+      await this.sendPrompt(initialState.prompt, { enhance: initialState.enhance });
+    }
   }
 
   private async request<TAck extends IncomingRealtimeMessage>(

@@ -2,10 +2,10 @@ import mitt, { type Emitter } from "mitt";
 import pRetry, { AbortError } from "p-retry";
 
 import type { ModelDefinition } from "../shared/model";
-import { SignalingChannel, type RoomInfo } from "./signaling-channel";
 import { MediaChannel } from "./media-channel";
 import type { RealtimeObservability } from "./observability/realtime-observability";
-import type { ConnectionState, QueuePosition } from "./types";
+import { type RoomInfo, SignalingChannel } from "./signaling-channel";
+import type { ConnectionState, InitialState, QueuePosition } from "./types";
 
 const PERMANENT_ERRORS = [
   "permission denied",
@@ -146,11 +146,7 @@ export class StreamSession {
     this.resetHandshakeState();
     await this.signaling.connect({
       connectTimeout: CONNECTION_TIMEOUT_MS,
-      initialState: {
-        image: this.config.initialImage,
-        prompt: this.config.initialPrompt?.text,
-        enhance: this.config.initialPrompt?.enhance,
-      },
+      initialState: this.getInitialState(),
     });
 
     if (!this.roomInfo) {
@@ -174,7 +170,28 @@ export class StreamSession {
     this.setState("connected");
   }
 
- 
+  private getInitialState(): InitialState | undefined {
+    if (this.config.initialImage !== undefined) {
+      return {
+        image: this.config.initialImage,
+        prompt: this.config.initialPrompt?.text,
+        enhance: this.config.initialPrompt?.enhance,
+      };
+    }
+
+    if (this.config.initialPrompt) {
+      return {
+        prompt: this.config.initialPrompt.text,
+        enhance: this.config.initialPrompt.enhance,
+      };
+    }
+
+    if (this.config.localStream) {
+      return { image: null, prompt: null };
+    }
+
+    return undefined;
+  }
 
   private wireSignalingEvents(): void {
     this.signaling.on("roomInfo", (info) => {
