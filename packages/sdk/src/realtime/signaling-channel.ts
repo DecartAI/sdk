@@ -3,6 +3,7 @@ import mitt, { type Emitter } from "mitt";
 import { buildUserAgent } from "../utils/user-agent";
 import type {
   IncomingRealtimeMessage,
+  InitialState,
   OutgoingRealtimeMessage,
   PromptAckMessage,
   QueuePosition,
@@ -57,12 +58,18 @@ export class SignalingChannel {
     this.events.off(event, handler);
   }
 
-  async connect(opts: { connectTimeout?: number; handshakeTimeout?: number } = {}): Promise<void> {
+  async connect(
+    opts: {
+      connectTimeout?: number;
+      handshakeTimeout?: number;
+      initialState?: InitialState;
+    } = {},
+  ): Promise<void> {
     const connectTimeout = opts.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT_MS;
     const handshakeTimeout = opts.handshakeTimeout ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
 
     await this.openSocket(connectTimeout);
-    await this.runHandshake(handshakeTimeout);
+    await this.runHandshake(handshakeTimeout, opts.initialState);
     this.connected = true;
   }
 
@@ -108,6 +115,17 @@ export class SignalingChannel {
     if (!ack.success) throw new Error(ack.error ?? "Failed to send image");
   }
 
+  sendPromptNoWait(text: string, opts: { enhance?: boolean } = {}): void {
+    this.writeMessage({ type: "prompt", prompt: text, enhance_prompt: opts.enhance ?? true });
+  }
+
+  setImageNoWait(image: string | null, opts: { prompt?: string | null; enhance?: boolean } = {}): void {
+    const message: OutgoingRealtimeMessage = { type: "set_image", image_data: image };
+    if (opts.prompt !== undefined) message.prompt = opts.prompt;
+    if (opts.enhance !== undefined) message.enhance_prompt = opts.enhance;
+    this.writeMessage(message);
+  }
+
   private async openSocket(timeout: number): Promise<void> {
     const userAgent = encodeURIComponent(buildUserAgent(this.config.integration));
     const separator = this.config.url.includes("?") ? "&" : "?";
@@ -146,8 +164,18 @@ export class SignalingChannel {
     });
   }
 
-  private async runHandshake(timeoutMs: number): Promise<void> {
+  private async runHandshake(timeoutMs: number, initialState?: InitialState): Promise<void> {
     this.writeMessage({ type: "livekit_join" });
+
+    if (initialState?.image) {
+      this.setImageNoWait(initialState.image, {
+        prompt: initialState.prompt,
+        enhance: initialState.enhance,
+      });
+    } else if (initialState?.prompt) {
+      this.sendPromptNoWait(initialState.prompt, { enhance: initialState.enhance });
+    }
+
 
     return new Promise<void>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
