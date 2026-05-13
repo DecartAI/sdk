@@ -1,7 +1,7 @@
 import pRetry, { AbortError } from "p-retry";
 
 import type { Logger } from "../utils/logger";
-import { RealtimeObservability } from "./observability/realtime-observability";
+import type { RealtimeObservability } from "./observability/realtime-observability";
 import type { ConnectionState, OutgoingMessage } from "./types";
 import { WebRTCConnection } from "./webrtc-connection";
 
@@ -9,7 +9,7 @@ export interface WebRTCConfig {
   webrtcUrl: string;
   integration?: string;
   logger?: Logger;
-  observability?: RealtimeObservability;
+  observability: RealtimeObservability;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionStateChange?: (state: ConnectionState) => void;
   onError?: (error: Error) => void;
@@ -55,13 +55,7 @@ export class WebRTCManager {
   constructor(config: WebRTCConfig) {
     this.config = config;
     this.logger = config.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
-    this.observability =
-      config.observability ??
-      new RealtimeObservability({
-        telemetryEnabled: false,
-        apiKey: "",
-        logger: this.logger,
-      });
+    this.observability = config.observability;
     this.connection = new WebRTCConnection({
       onRemoteStream: config.onRemoteStream,
       onStateChange: (state) => this.handleConnectionStateChange(state),

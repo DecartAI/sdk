@@ -2,11 +2,20 @@ import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDecartClient, isRealtimeModel, isVideoModel, models } from "../src/index.js";
+import { RealtimeObservability } from "../src/realtime/observability/realtime-observability.js";
 import { _resetDeprecationWarnings } from "../src/shared/model.js";
 
 const MOCK_RESPONSE_DATA = new Uint8Array([0x00, 0x01, 0x02]).buffer;
 const TEST_API_KEY = "test-api-key";
 const BASE_URL = "http://localhost";
+
+const TEST_LOGGER = { debug() {}, info() {}, warn() {}, error() {} };
+const createTestObservability = () =>
+  new RealtimeObservability({
+    telemetryEnabled: false,
+    apiKey: TEST_API_KEY,
+    logger: TEST_LOGGER,
+  });
 
 describe("Decart SDK", () => {
   describe("createDecartClient", () => {
@@ -1138,14 +1147,14 @@ describe("WebRTCConnection", () => {
   describe("setImageBase64", () => {
     it("rejects immediately when WebSocket is not open", async () => {
       const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-      const connection = new WebRTCConnection();
+      const connection = new WebRTCConnection({ observability: createTestObservability() });
 
       await expect(connection.setImageBase64("base64data", { timeout: 5000 })).rejects.toThrow("WebSocket is not open");
     });
 
     it("rejects immediately with default timeout when WebSocket is not open", async () => {
       const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-      const connection = new WebRTCConnection();
+      const connection = new WebRTCConnection({ observability: createTestObservability() });
 
       await expect(connection.setImageBase64("base64data")).rejects.toThrow("WebSocket is not open");
     });
@@ -1161,7 +1170,7 @@ describe("WebRTCConnection", () => {
 
       it("uses custom timeout when send succeeds but ack is not received", async () => {
         const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-        const connection = new WebRTCConnection();
+        const connection = new WebRTCConnection({ observability: createTestObservability() });
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
         const customTimeout = 5000;
@@ -1186,7 +1195,7 @@ describe("WebRTCConnection", () => {
 
       it("uses default timeout (30000ms) when send succeeds but ack is not received", async () => {
         const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-        const connection = new WebRTCConnection();
+        const connection = new WebRTCConnection({ observability: createTestObservability() });
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
         let rejected = false;
@@ -1213,7 +1222,7 @@ describe("WebRTCConnection", () => {
       vi.useFakeTimers();
       try {
         const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-        const connection = new WebRTCConnection();
+        const connection = new WebRTCConnection({ observability: createTestObservability() });
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
         const promise = connection.setImageBase64(null, { prompt: null }).catch(() => {});
@@ -1271,7 +1280,7 @@ describe("WebRTCConnection", () => {
       vi.stubGlobal("RTCPeerConnection", FakePeerConnection as unknown as typeof RTCPeerConnection);
 
       try {
-        const connection = new WebRTCConnection();
+        const connection = new WebRTCConnection({ observability: createTestObservability() });
         const internalConnection = connection as unknown as {
           handleSignalingMessage: (msg: unknown) => Promise<void>;
           localStream: { getTracks: () => MediaStreamTrack[] };
@@ -1504,7 +1513,7 @@ describe("Subscribe Client", () => {
     vi.stubGlobal("RTCPeerConnection", FakePeerConnection as unknown as typeof RTCPeerConnection);
 
     try {
-      const connection = new WebRTCConnection();
+      const connection = new WebRTCConnection({ observability: createTestObservability() });
       const internal = connection as unknown as {
         handleSignalingMessage: (msg: unknown) => Promise<void>;
         localStream: MediaStream | null;
@@ -1530,6 +1539,7 @@ describe("Subscribe Client", () => {
 
     const manager = new WebRTCManager({
       webrtcUrl: "wss://example.com",
+      observability: createTestObservability(),
       onRemoteStream: vi.fn(),
       onError: vi.fn(),
     });
@@ -2731,7 +2741,7 @@ describe("WebSockets Connection", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
 
     try {
-      const connection = new WebRTCConnection();
+      const connection = new WebRTCConnection({ observability: createTestObservability() });
       const internal = connection as unknown as {
         setState: (state: import("../src/realtime/types").ConnectionState) => void;
         setupNewPeerConnection: () => Promise<void>;
@@ -2785,7 +2795,7 @@ describe("WebSockets Connection", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
 
     try {
-      const connection = new WebRTCConnection();
+      const connection = new WebRTCConnection({ observability: createTestObservability() });
       const internal = connection as unknown as {
         setState: (state: import("../src/realtime/types").ConnectionState) => void;
         setupNewPeerConnection: () => Promise<void>;
@@ -2838,7 +2848,7 @@ describe("WebSockets Connection", () => {
     vi.stubGlobal("RTCPeerConnection", FakePeerConnection as unknown as typeof RTCPeerConnection);
 
     try {
-      const connection = new WebRTCConnection();
+      const connection = new WebRTCConnection({ observability: createTestObservability() });
       const internal = connection as unknown as {
         handleSignalingMessage: (msg: unknown) => Promise<void>;
         localStream: { getTracks: () => MediaStreamTrack[] };
@@ -2868,6 +2878,7 @@ describe("WebSockets Connection", () => {
     const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
     const manager = new WebRTCManager({
       webrtcUrl: "wss://example.com",
+      observability: createTestObservability(),
       onRemoteStream: vi.fn(),
       onError: vi.fn(),
     });
