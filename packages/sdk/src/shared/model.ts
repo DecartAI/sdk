@@ -1,18 +1,43 @@
 import { z } from "zod";
 import { createModelNotFoundError } from "../utils/errors";
 
+const CANONICAL_MODEL_NAMES = [
+  "lucy-2.1",
+  "lucy-2.1-vton",
+  "lucy-vton-2",
+  "lucy-restyle-2",
+  "lucy-clip",
+  "lucy-image-2",
+] as const;
+
+const CANONICAL_REALTIME_MODEL_NAMES = ["lucy-2.1", "lucy-2.1-vton", "lucy-vton-2", "lucy-restyle-2"] as const;
+const CANONICAL_VIDEO_MODEL_NAMES = [
+  "lucy-clip",
+  "lucy-2.1",
+  "lucy-2.1-vton",
+  "lucy-vton-2",
+  "lucy-restyle-2",
+] as const;
+const CANONICAL_IMAGE_MODEL_NAMES = ["lucy-image-2"] as const;
+
+export const canonicalRealtimeModels = z.enum(CANONICAL_REALTIME_MODEL_NAMES);
+export const canonicalVideoModels = z.enum(CANONICAL_VIDEO_MODEL_NAMES);
+export const canonicalImageModels = z.enum(CANONICAL_IMAGE_MODEL_NAMES);
+export const canonicalModelSchema = z.enum(CANONICAL_MODEL_NAMES);
+export type CanonicalModel = z.infer<typeof canonicalModelSchema>;
+
 /**
  * Map of deprecated model names to their canonical replacements.
  * Old names still work but will log a deprecation warning.
  */
-const MODEL_ALIASES: Record<string, string> = {
-  mirage: "lucy-restyle",
+export const modelAliases = {
   mirage_v2: "lucy-restyle-2",
-  lucy_v2v_720p_rt: "lucy",
+  "lucy-vton": "lucy-2.1-vton",
+  "lucy-2.1-vton-2": "lucy-vton-2",
   "lucy-pro-v2v": "lucy-clip",
   "lucy-restyle-v2v": "lucy-restyle-2",
   "lucy-pro-i2i": "lucy-image-2",
-};
+} as const satisfies Record<string, CanonicalModel>;
 
 const _warnedAliases = new Set<string>();
 
@@ -22,7 +47,7 @@ export function _resetDeprecationWarnings(): void {
 }
 
 function warnDeprecated(model: string): void {
-  const canonical = MODEL_ALIASES[model];
+  const canonical = modelAliases[model as keyof typeof modelAliases];
   if (canonical && !_warnedAliases.has(model)) {
     _warnedAliases.add(model);
     console.warn(
@@ -33,34 +58,34 @@ function warnDeprecated(model: string): void {
 
 export const realtimeModels = z.union([
   // Canonical names
-  z.literal("lucy"),
   z.literal("lucy-2.1"),
   z.literal("lucy-2.1-vton"),
-  z.literal("lucy-restyle"),
+  z.literal("lucy-vton-2"),
   z.literal("lucy-restyle-2"),
   // Latest aliases (server-side resolution)
   z.literal("lucy-latest"),
   z.literal("lucy-vton-latest"),
   z.literal("lucy-restyle-latest"),
   // Deprecated names (use canonical names above instead)
-  z.literal("mirage"),
   z.literal("mirage_v2"),
-  z.literal("lucy_v2v_720p_rt"),
+  z.literal("lucy-vton"),
+  z.literal("lucy-2.1-vton-2"),
 ]);
 export const videoModels = z.union([
   // Canonical names
   z.literal("lucy-clip"),
   z.literal("lucy-2.1"),
   z.literal("lucy-2.1-vton"),
+  z.literal("lucy-vton-2"),
   z.literal("lucy-restyle-2"),
-  z.literal("lucy-motion"),
   // Latest aliases (server-side resolution)
   z.literal("lucy-latest"),
   z.literal("lucy-vton-latest"),
   z.literal("lucy-restyle-latest"),
   z.literal("lucy-clip-latest"),
-  z.literal("lucy-motion-latest"),
   // Deprecated names (use canonical names above instead)
+  z.literal("lucy-vton"),
+  z.literal("lucy-2.1-vton-2"),
   z.literal("lucy-pro-v2v"),
   z.literal("lucy-restyle-v2v"),
 ]);
@@ -92,6 +117,44 @@ export function isImageModel(model: string): model is ImageModels {
   return imageModels.safeParse(model).success;
 }
 
+export function isModel(model: string): model is Model {
+  return modelSchema.safeParse(model).success;
+}
+
+export function isCanonicalModel(model: string): model is CanonicalModel {
+  return canonicalModelSchema.safeParse(model).success;
+}
+
+/**
+ * Resolve deprecated aliases to canonical model names and pass accepted model names through unchanged.
+ * Latest aliases pass through unchanged because they are server-side moving targets. This is a pure normalization helper
+ * and does not emit deprecation warnings.
+ */
+export function resolveModelAlias(model: string): Model | undefined {
+  const canonical = modelAliases[model as keyof typeof modelAliases];
+  if (canonical) {
+    return canonical;
+  }
+
+  const parsedModel = modelSchema.safeParse(model);
+  return parsedModel.success ? parsedModel.data : undefined;
+}
+
+/**
+ * Resolve deprecated aliases and canonical inputs to stable canonical model names.
+ * Latest aliases are server-side moving targets, so they intentionally return undefined. This is a pure normalization
+ * helper and does not emit deprecation warnings.
+ */
+export function resolveCanonicalModelAlias(model: string): CanonicalModel | undefined {
+  const canonical = modelAliases[model as keyof typeof modelAliases];
+  if (canonical) {
+    return canonical;
+  }
+
+  const parsedModel = canonicalModelSchema.safeParse(model);
+  return parsedModel.success ? parsedModel.data : undefined;
+}
+
 const fileInputSchema = z.union([
   z.instanceof(File),
   z.instanceof(Blob),
@@ -113,15 +176,6 @@ const fileInputSchema = z.union([
 const proResolutionSchema = () => {
   return z.enum(["720p", "480p"]).optional().describe("The resolution to use for the generation").default("720p");
 };
-
-/**
- * Resolution schema for lucy-motion.
- */
-const motionResolutionSchema = z
-  .literal("720p")
-  .default("720p")
-  .optional()
-  .describe("The resolution to use for the generation");
 
 /**
  * Resolution schema for video-to-video models (supports 720p).
@@ -202,49 +256,16 @@ export const modelInputSchemas = {
   "lucy-restyle-2": restyleSchema,
   "lucy-2.1": videoEdit2Schema,
   "lucy-2.1-vton": videoEdit2Schema,
-  "lucy-motion": z.object({
-    data: fileInputSchema.describe(
-      "The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
-    ),
-    trajectory: z
-      .array(
-        z.object({
-          frame: z.number().min(0),
-          x: z.number().min(0),
-          y: z.number().min(0),
-        }),
-      )
-      .min(2)
-      .max(1000)
-      .describe("The trajectory of the desired movement of the object in the image"),
-    seed: z.number().optional().describe("The seed to use for the generation"),
-    resolution: motionResolutionSchema,
-  }),
+  "lucy-vton-2": videoEdit2Schema,
   // Latest aliases (server-side resolution)
   "lucy-latest": videoEdit2Schema,
   "lucy-vton-latest": videoEdit2Schema,
   "lucy-restyle-latest": restyleSchema,
   "lucy-clip-latest": videoEditSchema,
-  "lucy-motion-latest": z.object({
-    data: fileInputSchema.describe(
-      "The image data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
-    ),
-    trajectory: z
-      .array(
-        z.object({
-          frame: z.number().min(0),
-          x: z.number().min(0),
-          y: z.number().min(0),
-        }),
-      )
-      .min(2)
-      .max(1000)
-      .describe("The trajectory of the desired movement of the object in the image"),
-    seed: z.number().optional().describe("The seed to use for the generation"),
-    resolution: motionResolutionSchema,
-  }),
   "lucy-image-latest": imageEditSchema,
   // Deprecated names (kept for backward compatibility)
+  "lucy-vton": videoEdit2Schema,
+  "lucy-2.1-vton-2": videoEdit2Schema,
   "lucy-pro-v2v": videoEditSchema,
   "lucy-pro-i2i": imageEditSchema,
   "lucy-restyle-v2v": restyleSchema,
@@ -298,14 +319,6 @@ export const modelDefinitionSchema = z.object({
 const _models = {
   realtime: {
     // Canonical names
-    lucy: {
-      urlPath: "/v1/stream",
-      name: "lucy" as const,
-      fps: 25,
-      width: 1280,
-      height: 704,
-      inputSchema: z.object({}),
-    },
     "lucy-2.1": {
       urlPath: "/v1/stream",
       name: "lucy-2.1" as const,
@@ -322,12 +335,12 @@ const _models = {
       height: 624,
       inputSchema: z.object({}),
     },
-    "lucy-restyle": {
+    "lucy-vton-2": {
       urlPath: "/v1/stream",
-      name: "lucy-restyle" as const,
-      fps: 25,
-      width: 1280,
-      height: 704,
+      name: "lucy-vton-2" as const,
+      fps: 20,
+      width: 1088,
+      height: 624,
       inputSchema: z.object({}),
     },
     "lucy-restyle-2": {
@@ -347,6 +360,7 @@ const _models = {
       height: 624,
       inputSchema: z.object({}),
     },
+    // Server-side alias currently resolves to lucy-vton-2.
     "lucy-vton-latest": {
       urlPath: "/v1/stream",
       name: "lucy-vton-latest" as const,
@@ -364,14 +378,6 @@ const _models = {
       inputSchema: z.object({}),
     },
     // Deprecated names (use canonical names above instead)
-    mirage: {
-      urlPath: "/v1/stream",
-      name: "mirage" as const,
-      fps: 25,
-      width: 1280,
-      height: 704,
-      inputSchema: z.object({}),
-    },
     mirage_v2: {
       urlPath: "/v1/stream",
       name: "mirage_v2" as const,
@@ -380,12 +386,20 @@ const _models = {
       height: 704,
       inputSchema: z.object({}),
     },
-    lucy_v2v_720p_rt: {
+    "lucy-vton": {
       urlPath: "/v1/stream",
-      name: "lucy_v2v_720p_rt" as const,
-      fps: 25,
-      width: 1280,
-      height: 704,
+      name: "lucy-vton" as const,
+      fps: 20,
+      width: 1088,
+      height: 624,
+      inputSchema: z.object({}),
+    },
+    "lucy-2.1-vton-2": {
+      urlPath: "/v1/stream",
+      name: "lucy-2.1-vton-2" as const,
+      fps: 20,
+      width: 1088,
+      height: 624,
       inputSchema: z.object({}),
     },
   },
@@ -450,6 +464,15 @@ const _models = {
       height: 624,
       inputSchema: modelInputSchemas["lucy-2.1-vton"],
     },
+    "lucy-vton-2": {
+      urlPath: "/v1/generate/lucy-vton-2",
+      queueUrlPath: "/v1/jobs/lucy-vton-2",
+      name: "lucy-vton-2" as const,
+      fps: 20,
+      width: 1088,
+      height: 624,
+      inputSchema: modelInputSchemas["lucy-vton-2"],
+    },
     "lucy-restyle-2": {
       urlPath: "/v1/generate/lucy-restyle-2",
       queueUrlPath: "/v1/jobs/lucy-restyle-2",
@@ -458,15 +481,6 @@ const _models = {
       width: 1280,
       height: 704,
       inputSchema: modelInputSchemas["lucy-restyle-2"],
-    },
-    "lucy-motion": {
-      urlPath: "/v1/generate/lucy-motion",
-      queueUrlPath: "/v1/jobs/lucy-motion",
-      name: "lucy-motion" as const,
-      fps: 25,
-      width: 1280,
-      height: 704,
-      inputSchema: modelInputSchemas["lucy-motion"],
     },
     // Latest aliases (server-side resolution)
     "lucy-latest": {
@@ -478,6 +492,7 @@ const _models = {
       height: 624,
       inputSchema: modelInputSchemas["lucy-latest"],
     },
+    // Server-side alias currently resolves to lucy-vton-2.
     "lucy-vton-latest": {
       urlPath: "/v1/generate/lucy-vton-latest",
       queueUrlPath: "/v1/jobs/lucy-vton-latest",
@@ -505,16 +520,25 @@ const _models = {
       height: 704,
       inputSchema: modelInputSchemas["lucy-clip-latest"],
     },
-    "lucy-motion-latest": {
-      urlPath: "/v1/generate/lucy-motion-latest",
-      queueUrlPath: "/v1/jobs/lucy-motion-latest",
-      name: "lucy-motion-latest" as const,
-      fps: 25,
-      width: 1280,
-      height: 704,
-      inputSchema: modelInputSchemas["lucy-motion-latest"],
-    },
     // Deprecated names (use canonical names above instead)
+    "lucy-vton": {
+      urlPath: "/v1/generate/lucy-vton",
+      queueUrlPath: "/v1/jobs/lucy-vton",
+      name: "lucy-vton" as const,
+      fps: 20,
+      width: 1088,
+      height: 624,
+      inputSchema: modelInputSchemas["lucy-vton"],
+    },
+    "lucy-2.1-vton-2": {
+      urlPath: "/v1/generate/lucy-2.1-vton-2",
+      queueUrlPath: "/v1/jobs/lucy-2.1-vton-2",
+      name: "lucy-2.1-vton-2" as const,
+      fps: 20,
+      width: 1088,
+      height: 624,
+      inputSchema: modelInputSchemas["lucy-2.1-vton-2"],
+    },
     "lucy-pro-v2v": {
       urlPath: "/v1/generate/lucy-pro-v2v",
       queueUrlPath: "/v1/jobs/lucy-pro-v2v",
@@ -536,6 +560,34 @@ const _models = {
   },
 } as const;
 
+export type ModelKind = "realtime" | "video" | "image";
+export type ListedModelDefinition = ModelDefinition & { kind: ModelKind };
+
+const modelKinds = ["realtime", "video", "image"] as const satisfies readonly ModelKind[];
+const canonicalSchemasByKind = {
+  realtime: canonicalRealtimeModels,
+  video: canonicalVideoModels,
+  image: canonicalImageModels,
+} as const;
+
+/**
+ * List SDK model definitions by kind.
+ * When canonicalOnly is true, deprecated and latest aliases are excluded per kind. Models available in multiple kinds
+ * are returned once per kind with the same name and different kind values.
+ */
+export function listModels(options: { kind?: ModelKind; canonicalOnly?: boolean } = {}): ListedModelDefinition[] {
+  const kinds = options.kind ? [options.kind] : modelKinds;
+
+  return kinds.flatMap((kind) => {
+    return Object.values(_models[kind])
+      .filter(
+        (modelDefinition) =>
+          !options.canonicalOnly || canonicalSchemasByKind[kind].safeParse(modelDefinition.name).success,
+      )
+      .map((modelDefinition) => ({ ...modelDefinition, kind }) as ListedModelDefinition);
+  });
+}
+
 export const models = {
   /**
    * Get a realtime streaming model identifier.
@@ -543,9 +595,8 @@ export const models = {
    * Available options:
    *   - `"lucy-2.1"` - Lucy 2.1 realtime video editing
    *   - `"lucy-2.1-vton"` - Lucy 2.1 virtual try-on
+   *   - `"lucy-vton-2"` - Lucy virtual try-on 2
    *   - `"lucy-restyle-2"` - Realtime video restyling
-   *   - `"lucy-restyle"` - Legacy realtime restyling
-   *   - `"lucy"` - Legacy Lucy realtime
    */
   realtime: <T extends RealTimeModels>(model: T): ModelDefinition<T> => {
     warnDeprecated(model);
@@ -562,8 +613,8 @@ export const models = {
    *   - `"lucy-clip"` - Video-to-video editing
    *   - `"lucy-2.1"` - Long-form video editing (Lucy 2.1)
    *   - `"lucy-2.1-vton"` - Virtual try-on video editing
+   *   - `"lucy-vton-2"` - Virtual try-on 2 video editing
    *   - `"lucy-restyle-2"` - Video restyling
-   *   - `"lucy-motion"` - Motion generation
    */
   video: <T extends VideoModels>(model: T): ModelDefinition<T> & { queueUrlPath: string } => {
     warnDeprecated(model);

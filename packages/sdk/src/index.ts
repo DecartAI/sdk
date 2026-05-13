@@ -43,16 +43,25 @@ export type {
 } from "./realtime/subscribe-client";
 export type { ConnectionState, GenerationEndedMessage, QueuePosition, QueuePositionMessage } from "./realtime/types";
 export {
+  type CanonicalModel,
   type CustomModelDefinition,
   type ImageModelDefinition,
   type ImageModels,
+  isCanonicalModel,
   isImageModel,
+  isModel,
   isRealtimeModel,
   isVideoModel,
+  type ListedModelDefinition,
+  listModels,
   type Model,
   type ModelDefinition,
+  type ModelKind,
+  modelAliases,
   models,
   type RealTimeModels,
+  resolveCanonicalModelAlias,
+  resolveModelAlias,
   type VideoModelDefinition,
   type VideoModels,
 } from "./shared/model";

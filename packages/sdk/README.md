@@ -27,7 +27,7 @@ camera `MediaStream`, choose a realtime model, and handle the transformed remote
 ```typescript
 import { createDecartClient, models } from "@decartai/sdk";
 
-const model = models.realtime("mirage_v2");
+const model = models.realtime("lucy-restyle-2");
 
 // Get user's camera stream
 const stream = await navigator.mediaDevices.getUserMedia({

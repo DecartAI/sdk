@@ -92,16 +92,17 @@ export class TelemetryReporter implements ITelemetryReporter {
 
   /** Flush buffered data immediately. */
   flush(): void {
-    this.sendReport(false);
+    this.sendReport();
   }
 
-  /** Stop the reporter and send a final report with keepalive. */
+  /** Stop the reporter and discard any buffered data. */
   stop(): void {
     if (this.intervalId !== null) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    this.sendReport(true);
+    this.statsBuffer = [];
+    this.diagnosticsBuffer = [];
   }
 
   /**
@@ -131,7 +132,7 @@ export class TelemetryReporter implements ITelemetryReporter {
     };
   }
 
-  private sendReport(keepalive: boolean): void {
+  private sendReport(): void {
     if (this.statsBuffer.length === 0 && this.diagnosticsBuffer.length === 0) {
       return;
     }
@@ -146,14 +147,10 @@ export class TelemetryReporter implements ITelemetryReporter {
       // Send as many chunks as needed to drain both buffers.
       let chunk = this.createReportChunk();
       while (chunk !== null) {
-        const isLast = this.statsBuffer.length === 0 && this.diagnosticsBuffer.length === 0;
-
         fetch(TELEMETRY_URL, {
           method: "POST",
           headers: commonHeaders,
           body: JSON.stringify(chunk),
-          // Only set keepalive on the very last chunk (if the caller requested it).
-          keepalive: keepalive && isLast,
         }).catch(() => {});
 
         chunk = this.createReportChunk();
