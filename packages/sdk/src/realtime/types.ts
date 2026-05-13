@@ -66,8 +66,8 @@ export type QueuePosition = {
 export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
 
 export type InitialState = {
-  image?: string;
-  prompt?: string;
+  image?: string | null;
+  prompt?: string | null;
   enhance?: boolean;
 };
 

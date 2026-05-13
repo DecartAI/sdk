@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { models } from "../src/index.js";
 
 describe("Lucy 2.1 realtime", () => {
@@ -175,6 +175,116 @@ describe("Subscribe Token", () => {
     const { decodeSubscribeToken } = await import("../src/realtime/subscribe-client.js");
     const token = btoa(JSON.stringify({ sid: "s" }));
     expect(() => decodeSubscribeToken(token)).toThrow("Invalid subscribe token");
+  });
+});
+
+describe("SignalingChannel initial handshake", () => {
+  class FakeWebSocket {
+    static OPEN = 1;
+
+    static instances: FakeWebSocket[] = [];
+
+    readyState = FakeWebSocket.OPEN;
+    onopen: (() => void) | null = null;
+    onmessage: ((event: { data: string }) => void) | null = null;
+    onclose: ((event: { code: number; reason: string }) => void) | null = null;
+    sentMessages: unknown[] = [];
+
+    constructor(readonly url: string) {
+      FakeWebSocket.instances.push(this);
+    }
+
+    send(data: string): void {
+      this.sentMessages.push(JSON.parse(data));
+    }
+
+    close(): void {
+      this.onclose?.({ code: 1000, reason: "closed" });
+    }
+
+    receive(message: unknown): void {
+      this.onmessage?.({ data: JSON.stringify(message) });
+    }
+  }
+
+  beforeEach(() => {
+    FakeWebSocket.instances = [];
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("waits for the initial set_image ack before resolving the handshake", async () => {
+    const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
+    const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
+
+    const connectPromise = channel.connect({
+      initialState: { image: "base64-image", prompt: "wear a hat", enhance: false },
+    });
+
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ws.sentMessages).toEqual([
+      { type: "livekit_join" },
+      { type: "set_image", image_data: "base64-image", prompt: "wear a hat", enhance_prompt: false },
+    ]);
+
+    let resolved = false;
+    connectPromise.then(() => {
+      resolved = true;
+    });
+
+    ws.receive({
+      type: "livekit_room_info",
+      livekit_url: "wss://livekit.example.test",
+      token: "token",
+      room_name: "room",
+      session_id: "session",
+    });
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    ws.receive({ type: "set_image_ack", success: true, error: null });
+    await expect(connectPromise).resolves.toBeUndefined();
+    expect(resolved).toBe(true);
+  });
+
+  it("waits for the initial null set_image ack before resolving the handshake", async () => {
+    const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
+    const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
+
+    const connectPromise = channel.connect({
+      initialState: { image: null, prompt: null },
+    });
+
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }, { type: "set_image", image_data: null, prompt: null }]);
+
+    let resolved = false;
+    connectPromise.then(() => {
+      resolved = true;
+    });
+
+    ws.receive({
+      type: "livekit_room_info",
+      livekit_url: "wss://livekit.example.test",
+      token: "token",
+      room_name: "room",
+      session_id: "session",
+    });
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    ws.receive({ type: "set_image_ack", success: true, error: null });
+    await expect(connectPromise).resolves.toBeUndefined();
+    expect(resolved).toBe(true);
   });
 });
 
