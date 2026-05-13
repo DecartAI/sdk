@@ -2,7 +2,9 @@ import {
   type RemoteParticipant,
   type RemoteTrack,
   Room,
+  type RoomConnectOptions,
   RoomEvent,
+  type RoomOptions,
   Track,
   TrackEvent,
   type TrackPublishOptions,
@@ -20,10 +22,26 @@ const DEFAULT_VIDEO_CODEC = "h264" as const;
 const DEFAULT_MAX_VIDEO_BITRATE_BPS = 3_000_000;
 const DEFAULT_PUBLISH_FPS = 20;
 
-export const LIVEKIT_ROOM_OPTIONS = {
+export const LIVEKIT_ROOM_OPTIONS: RoomOptions = {
   adaptiveStream: false,
   dynacast: false,
-} as const;
+  singlePeerConnection: true,
+  publishDefaults: {
+    simulcast: false,
+    degradationPreference: "maintain-framerate",
+  },
+};
+
+export const LIVEKIT_CONNECT_OPTIONS: RoomConnectOptions = {
+  peerConnectionTimeout: 8_000,
+  websocketTimeout: 8_000,
+  maxRetries: 1,
+  rtcConfig: {
+    iceCandidatePoolSize: 4,
+    bundlePolicy: "max-bundle",
+    rtcpMuxPolicy: "require",
+  },
+};
 
 export function getDefaultVideoPublishOptions(model: PublishModel): TrackPublishOptions {
   const videoEncoding = {
@@ -96,7 +114,7 @@ export class MediaChannel {
       this.events.emit("disconnected");
     });
 
-    await room.connect(opts.url, opts.token);
+    await room.connect(opts.url, opts.token, LIVEKIT_CONNECT_OPTIONS);
     this.config.observability?.setLiveKitRoom(room);
 
     if (this.config.localStream) {
