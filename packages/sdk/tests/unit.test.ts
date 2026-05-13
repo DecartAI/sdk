@@ -1,30 +1,33 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import * as publicSdk from "../src/index.js";
 import {
   type CanonicalModel,
-  canonicalImageModels,
-  canonicalModelSchema,
-  canonicalRealtimeModels,
-  canonicalVideoModels,
   createDecartClient,
-  imageModels,
+  isCanonicalModel,
+  isModel,
   isRealtimeModel,
   isVideoModel,
   type ListedModelDefinition,
   listModels,
-  type ModelInputSchemas,
   type ModelKind,
   modelAliases,
-  modelInputSchemas,
-  modelSchema,
   models,
-  realtimeModels,
   resolveCanonicalModelAlias,
   resolveModelAlias,
-  videoModels,
 } from "../src/index.js";
-import { _resetDeprecationWarnings } from "../src/shared/model.js";
+import {
+  _resetDeprecationWarnings,
+  canonicalImageModels,
+  canonicalModelSchema,
+  canonicalRealtimeModels,
+  canonicalVideoModels,
+  imageModels,
+  modelSchema,
+  realtimeModels,
+  videoModels,
+} from "../src/shared/model.js";
 
 const MOCK_RESPONSE_DATA = new Uint8Array([0x00, 0x01, 0x02]).buffer;
 const TEST_API_KEY = "test-api-key";
@@ -3356,6 +3359,13 @@ describe("Canonical Model Names", () => {
       expect(resolveCanonicalModelAlias("unknown-model")).toBeUndefined();
     });
 
+    it("validates models through public helper functions instead of root zod exports", () => {
+      expect(isModel("lucy-latest")).toBe(true);
+      expect(isModel("unknown-model")).toBe(false);
+      expect(isCanonicalModel("lucy-clip")).toBe(true);
+      expect(isCanonicalModel("lucy-latest")).toBe(false);
+    });
+
     it("does not emit deprecation warnings from alias resolution helpers", () => {
       _resetDeprecationWarnings();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -3404,13 +3414,25 @@ describe("Canonical Model Names", () => {
 
     it("supports consumer-style imports from the package root", () => {
       const kind: ModelKind = "video";
-      const schemaName: keyof ModelInputSchemas = "lucy-clip";
       const canonicalModel: CanonicalModel = resolveCanonicalModelAlias("lucy-pro-v2v") ?? "lucy-clip";
       const listedModels: ListedModelDefinition[] = listModels({ kind, canonicalOnly: true });
 
       expect(canonicalModel).toBe("lucy-clip");
-      expect(modelInputSchemas[schemaName]).toBeDefined();
+      expect(isCanonicalModel(canonicalModel)).toBe(true);
       expect(listedModels.every((model) => model.kind === kind)).toBe(true);
+    });
+
+    it("does not expose raw zod schemas from the package root", () => {
+      expect("canonicalModelSchema" in publicSdk).toBe(false);
+      expect("canonicalRealtimeModels" in publicSdk).toBe(false);
+      expect("canonicalVideoModels" in publicSdk).toBe(false);
+      expect("canonicalImageModels" in publicSdk).toBe(false);
+      expect("modelSchema" in publicSdk).toBe(false);
+      expect("realtimeModels" in publicSdk).toBe(false);
+      expect("videoModels" in publicSdk).toBe(false);
+      expect("imageModels" in publicSdk).toBe(false);
+      expect("modelInputSchemas" in publicSdk).toBe(false);
+      expect("modelDefinitionSchema" in publicSdk).toBe(false);
     });
   });
 

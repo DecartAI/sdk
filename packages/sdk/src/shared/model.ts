@@ -117,6 +117,14 @@ export function isImageModel(model: string): model is ImageModels {
   return imageModels.safeParse(model).success;
 }
 
+export function isModel(model: string): model is Model {
+  return modelSchema.safeParse(model).success;
+}
+
+export function isCanonicalModel(model: string): model is CanonicalModel {
+  return canonicalModelSchema.safeParse(model).success;
+}
+
 /**
  * Resolve deprecated aliases to canonical model names and pass accepted model names through unchanged.
  * Latest aliases pass through unchanged because they are server-side moving targets. This is a pure normalization helper
