@@ -1240,9 +1240,7 @@ describe("WebRTCConnection", () => {
         const connection = new WebRTCConnection();
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
-        const promise = connection
-          .setImageBase64("imgbase64", { referenceFrameBase64: "refbase64" })
-          .catch(() => {});
+        const promise = connection.setImageBase64("imgbase64", { referenceFrameBase64: "refbase64" }).catch(() => {});
 
         expect(sendSpy).toHaveBeenCalledWith({
           type: "set_image",
@@ -1289,9 +1287,7 @@ describe("WebRTCConnection", () => {
         const connection = new WebRTCConnection();
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
-        const promise = connection
-          .setImageBase64("imgbase64", { referenceFrameBase64: null })
-          .catch(() => {});
+        const promise = connection.setImageBase64("imgbase64", { referenceFrameBase64: null }).catch(() => {});
 
         expect(sendSpy).toHaveBeenCalledWith({
           type: "set_image",
@@ -1522,9 +1518,7 @@ describe("set()", () => {
 
   it("converts referenceFrame Blob to base64 and forwards it", async () => {
     const refBlob = new Blob(["ref-frame"], { type: "image/jpeg" });
-    mockImageToBase64.mockImplementation(async (input) =>
-      input === refBlob ? "refbase64" : "imgbase64",
-    );
+    mockImageToBase64.mockImplementation(async (input) => (input === refBlob ? "refbase64" : "imgbase64"));
 
     await methods.set({ prompt: "a cat", image: "rawimg", referenceFrame: refBlob });
 
@@ -1538,9 +1532,7 @@ describe("set()", () => {
   });
 
   it("forwards a base64 string referenceFrame through imageToBase64", async () => {
-    mockImageToBase64.mockImplementation(async (input) =>
-      input === "raw-ref" ? "refbase64" : "imgbase64",
-    );
+    mockImageToBase64.mockImplementation(async (input) => (input === "raw-ref" ? "refbase64" : "imgbase64"));
 
     await methods.set({ image: "raw-img", referenceFrame: "raw-ref" });
 

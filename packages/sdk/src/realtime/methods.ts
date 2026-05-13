@@ -10,9 +10,7 @@ const setInputSchema = z
     prompt: z.string().min(1).optional(),
     enhance: z.boolean().optional().default(true),
     image: z.union([z.instanceof(Blob), z.instanceof(File), z.string(), z.null()]).optional(),
-    referenceFrame: z
-      .union([z.instanceof(Blob), z.instanceof(File), z.string(), z.null()])
-      .optional(),
+    referenceFrame: z.union([z.instanceof(Blob), z.instanceof(File), z.string(), z.null()]).optional(),
   })
   .refine((data) => data.prompt !== undefined || data.image !== undefined, {
     message: "At least one of 'prompt' or 'image' must be provided",
@@ -59,8 +57,7 @@ export const realtimeMethods = (
     } = { prompt, enhance, timeout: UPDATE_TIMEOUT_MS };
 
     if (referenceFrame !== undefined) {
-      options.referenceFrameBase64 =
-        referenceFrame === null ? null : await imageToBase64(referenceFrame);
+      options.referenceFrameBase64 = referenceFrame === null ? null : await imageToBase64(referenceFrame);
     }
 
     await webrtcManager.setImage(imageBase64, options);
