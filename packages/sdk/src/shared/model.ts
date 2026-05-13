@@ -1,18 +1,43 @@
 import { z } from "zod";
 import { createModelNotFoundError } from "../utils/errors";
 
+const CANONICAL_MODEL_NAMES = [
+  "lucy-2.1",
+  "lucy-2.1-vton",
+  "lucy-vton-2",
+  "lucy-restyle-2",
+  "lucy-clip",
+  "lucy-image-2",
+] as const;
+
+const CANONICAL_REALTIME_MODEL_NAMES = ["lucy-2.1", "lucy-2.1-vton", "lucy-vton-2", "lucy-restyle-2"] as const;
+const CANONICAL_VIDEO_MODEL_NAMES = [
+  "lucy-clip",
+  "lucy-2.1",
+  "lucy-2.1-vton",
+  "lucy-vton-2",
+  "lucy-restyle-2",
+] as const;
+const CANONICAL_IMAGE_MODEL_NAMES = ["lucy-image-2"] as const;
+
+export const canonicalRealtimeModels = z.enum(CANONICAL_REALTIME_MODEL_NAMES);
+export const canonicalVideoModels = z.enum(CANONICAL_VIDEO_MODEL_NAMES);
+export const canonicalImageModels = z.enum(CANONICAL_IMAGE_MODEL_NAMES);
+export const canonicalModelSchema = z.enum(CANONICAL_MODEL_NAMES);
+export type CanonicalModel = z.infer<typeof canonicalModelSchema>;
+
 /**
  * Map of deprecated model names to their canonical replacements.
  * Old names still work but will log a deprecation warning.
  */
-const MODEL_ALIASES: Record<string, string> = {
+export const modelAliases = {
   mirage_v2: "lucy-restyle-2",
   "lucy-vton": "lucy-2.1-vton",
   "lucy-2.1-vton-2": "lucy-vton-2",
   "lucy-pro-v2v": "lucy-clip",
   "lucy-restyle-v2v": "lucy-restyle-2",
   "lucy-pro-i2i": "lucy-image-2",
-};
+} as const satisfies Record<string, CanonicalModel>;
 
 const _warnedAliases = new Set<string>();
 
@@ -22,7 +47,7 @@ export function _resetDeprecationWarnings(): void {
 }
 
 function warnDeprecated(model: string): void {
-  const canonical = MODEL_ALIASES[model];
+  const canonical = modelAliases[model as keyof typeof modelAliases];
   if (canonical && !_warnedAliases.has(model)) {
     _warnedAliases.add(model);
     console.warn(
@@ -90,6 +115,44 @@ export function isVideoModel(model: string): model is VideoModels {
 
 export function isImageModel(model: string): model is ImageModels {
   return imageModels.safeParse(model).success;
+}
+
+export function isModel(model: string): model is Model {
+  return modelSchema.safeParse(model).success;
+}
+
+export function isCanonicalModel(model: string): model is CanonicalModel {
+  return canonicalModelSchema.safeParse(model).success;
+}
+
+/**
+ * Resolve deprecated aliases to canonical model names and pass accepted model names through unchanged.
+ * Latest aliases pass through unchanged because they are server-side moving targets. This is a pure normalization helper
+ * and does not emit deprecation warnings.
+ */
+export function resolveModelAlias(model: string): Model | undefined {
+  const canonical = modelAliases[model as keyof typeof modelAliases];
+  if (canonical) {
+    return canonical;
+  }
+
+  const parsedModel = modelSchema.safeParse(model);
+  return parsedModel.success ? parsedModel.data : undefined;
+}
+
+/**
+ * Resolve deprecated aliases and canonical inputs to stable canonical model names.
+ * Latest aliases are server-side moving targets, so they intentionally return undefined. This is a pure normalization
+ * helper and does not emit deprecation warnings.
+ */
+export function resolveCanonicalModelAlias(model: string): CanonicalModel | undefined {
+  const canonical = modelAliases[model as keyof typeof modelAliases];
+  if (canonical) {
+    return canonical;
+  }
+
+  const parsedModel = canonicalModelSchema.safeParse(model);
+  return parsedModel.success ? parsedModel.data : undefined;
 }
 
 const fileInputSchema = z.union([
@@ -496,6 +559,34 @@ const _models = {
     },
   },
 } as const;
+
+export type ModelKind = "realtime" | "video" | "image";
+export type ListedModelDefinition = ModelDefinition & { kind: ModelKind };
+
+const modelKinds = ["realtime", "video", "image"] as const satisfies readonly ModelKind[];
+const canonicalSchemasByKind = {
+  realtime: canonicalRealtimeModels,
+  video: canonicalVideoModels,
+  image: canonicalImageModels,
+} as const;
+
+/**
+ * List SDK model definitions by kind.
+ * When canonicalOnly is true, deprecated and latest aliases are excluded per kind. Models available in multiple kinds
+ * are returned once per kind with the same name and different kind values.
+ */
+export function listModels(options: { kind?: ModelKind; canonicalOnly?: boolean } = {}): ListedModelDefinition[] {
+  const kinds = options.kind ? [options.kind] : modelKinds;
+
+  return kinds.flatMap((kind) => {
+    return Object.values(_models[kind])
+      .filter(
+        (modelDefinition) =>
+          !options.canonicalOnly || canonicalSchemasByKind[kind].safeParse(modelDefinition.name).success,
+      )
+      .map((modelDefinition) => ({ ...modelDefinition, kind }) as ListedModelDefinition);
+  });
+}
 
 export const models = {
   /**

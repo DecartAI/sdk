@@ -47,16 +47,25 @@ export type {
 export type { ConnectionState } from "./realtime/types";
 export type { WebRTCStats } from "./realtime/webrtc-stats";
 export {
+  type CanonicalModel,
   type CustomModelDefinition,
   type ImageModelDefinition,
   type ImageModels,
+  isCanonicalModel,
   isImageModel,
+  isModel,
   isRealtimeModel,
   isVideoModel,
+  type ListedModelDefinition,
+  listModels,
   type Model,
   type ModelDefinition,
+  type ModelKind,
+  modelAliases,
   models,
   type RealTimeModels,
+  resolveCanonicalModelAlias,
+  resolveModelAlias,
   type VideoModelDefinition,
   type VideoModels,
 } from "./shared/model";

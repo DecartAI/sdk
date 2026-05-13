@@ -1,8 +1,33 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDecartClient, isRealtimeModel, isVideoModel, models } from "../src/index.js";
-import { _resetDeprecationWarnings } from "../src/shared/model.js";
+import * as publicSdk from "../src/index.js";
+import {
+  type CanonicalModel,
+  createDecartClient,
+  isCanonicalModel,
+  isModel,
+  isRealtimeModel,
+  isVideoModel,
+  type ListedModelDefinition,
+  listModels,
+  type ModelKind,
+  modelAliases,
+  models,
+  resolveCanonicalModelAlias,
+  resolveModelAlias,
+} from "../src/index.js";
+import {
+  _resetDeprecationWarnings,
+  canonicalImageModels,
+  canonicalModelSchema,
+  canonicalRealtimeModels,
+  canonicalVideoModels,
+  imageModels,
+  modelSchema,
+  realtimeModels,
+  videoModels,
+} from "../src/shared/model.js";
 
 const MOCK_RESPONSE_DATA = new Uint8Array([0x00, 0x01, 0x02]).buffer;
 const TEST_API_KEY = "test-api-key";
@@ -3267,6 +3292,150 @@ describe("CustomModelDefinition", () => {
 });
 
 describe("Canonical Model Names", () => {
+  describe("Public model registry exports", () => {
+    const latestAliases = [
+      "lucy-latest",
+      "lucy-vton-latest",
+      "lucy-restyle-latest",
+      "lucy-clip-latest",
+      "lucy-image-latest",
+    ];
+    const deprecatedAliases = [
+      "mirage_v2",
+      "lucy-vton",
+      "lucy-2.1-vton-2",
+      "lucy-pro-v2v",
+      "lucy-restyle-v2v",
+      "lucy-pro-i2i",
+    ];
+
+    it("canonical schemas exclude deprecated and latest aliases", () => {
+      for (const alias of [...latestAliases, ...deprecatedAliases]) {
+        expect(canonicalModelSchema.safeParse(alias).success).toBe(false);
+      }
+
+      expect(canonicalRealtimeModels.options).toEqual(["lucy-2.1", "lucy-2.1-vton", "lucy-vton-2", "lucy-restyle-2"]);
+      expect(canonicalVideoModels.options).toEqual([
+        "lucy-clip",
+        "lucy-2.1",
+        "lucy-2.1-vton",
+        "lucy-vton-2",
+        "lucy-restyle-2",
+      ]);
+      expect(canonicalImageModels.options).toEqual(["lucy-image-2"]);
+      expect(canonicalRealtimeModels.safeParse("lucy-2.1").success).toBe(true);
+      expect(canonicalRealtimeModels.safeParse("lucy-latest").success).toBe(false);
+      expect(canonicalVideoModels.safeParse("lucy-clip").success).toBe(true);
+      expect(canonicalVideoModels.safeParse("lucy-pro-v2v").success).toBe(false);
+      expect(canonicalImageModels.safeParse("lucy-image-2").success).toBe(true);
+      expect(canonicalImageModels.safeParse("lucy-image-latest").success).toBe(false);
+    });
+
+    it("public model schemas still accept deprecated and latest aliases", () => {
+      for (const model of [...latestAliases, ...deprecatedAliases]) {
+        expect(modelSchema.safeParse(model).success).toBe(true);
+      }
+
+      expect(realtimeModels.safeParse("lucy-latest").success).toBe(true);
+      expect(realtimeModels.safeParse("mirage_v2").success).toBe(true);
+      expect(videoModels.safeParse("lucy-clip-latest").success).toBe(true);
+      expect(videoModels.safeParse("lucy-pro-v2v").success).toBe(true);
+      expect(imageModels.safeParse("lucy-image-latest").success).toBe(true);
+      expect(imageModels.safeParse("lucy-pro-i2i").success).toBe(true);
+    });
+
+    it("resolves model aliases while preserving accepted latest aliases", () => {
+      expect(modelAliases["lucy-pro-v2v"]).toBe("lucy-clip");
+      expect(resolveModelAlias("lucy-pro-v2v")).toBe("lucy-clip");
+      expect(resolveModelAlias("lucy-clip")).toBe("lucy-clip");
+      expect(resolveModelAlias("lucy-latest")).toBe("lucy-latest");
+      expect(resolveModelAlias("unknown-model")).toBeUndefined();
+    });
+
+    it("resolves only stable canonical names for canonical alias resolution", () => {
+      expect(resolveCanonicalModelAlias("lucy-pro-v2v")).toBe("lucy-clip");
+      expect(resolveCanonicalModelAlias("lucy-clip")).toBe("lucy-clip");
+      expect(resolveCanonicalModelAlias("lucy-latest")).toBeUndefined();
+      expect(resolveCanonicalModelAlias("unknown-model")).toBeUndefined();
+    });
+
+    it("validates models through public helper functions instead of root zod exports", () => {
+      expect(isModel("lucy-latest")).toBe(true);
+      expect(isModel("unknown-model")).toBe(false);
+      expect(isCanonicalModel("lucy-clip")).toBe(true);
+      expect(isCanonicalModel("lucy-latest")).toBe(false);
+    });
+
+    it("does not emit deprecation warnings from alias resolution helpers", () => {
+      _resetDeprecationWarnings();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      expect(resolveModelAlias("lucy-pro-v2v")).toBe("lucy-clip");
+      expect(resolveCanonicalModelAlias("lucy-pro-v2v")).toBe("lucy-clip");
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("lists all models when called without options", () => {
+      const listedModels = listModels();
+
+      expect(listedModels).toHaveLength(26);
+      expect(listedModels.some((model) => model.kind === "realtime" && model.name === "lucy-2.1")).toBe(true);
+      expect(listedModels.some((model) => model.kind === "video" && model.name === "lucy-clip")).toBe(true);
+      expect(listedModels.some((model) => model.kind === "image" && model.name === "lucy-image-2")).toBe(true);
+    });
+
+    it("filters by kind without excluding latest or deprecated aliases", () => {
+      const realtimeModels = listModels({ kind: "realtime" });
+      const realtimeNames = realtimeModels.map((model) => model.name);
+
+      expect(realtimeModels.every((model) => model.kind === "realtime")).toBe(true);
+      expect(realtimeNames).toContain("lucy-latest");
+      expect(realtimeNames).toContain("mirage_v2");
+    });
+
+    it("lists canonical model definitions without latest or deprecated aliases", () => {
+      const listedModels = listModels({ canonicalOnly: true });
+      const listedNames = listedModels.map((model) => model.name);
+
+      for (const alias of [...latestAliases, ...deprecatedAliases]) {
+        expect(listedNames).not.toContain(alias);
+      }
+      expect(listedModels.every((model) => canonicalModelSchema.safeParse(model.name).success)).toBe(true);
+    });
+
+    it("preserves model kind for dual-kind canonical names", () => {
+      const lucyModels = listModels({ canonicalOnly: true }).filter((model) => model.name === "lucy-2.1");
+
+      expect(lucyModels).toHaveLength(2);
+      expect(lucyModels.map((model) => model.kind).sort()).toEqual(["realtime", "video"]);
+    });
+
+    it("supports consumer-style imports from the package root", () => {
+      const kind: ModelKind = "video";
+      const canonicalModel: CanonicalModel = resolveCanonicalModelAlias("lucy-pro-v2v") ?? "lucy-clip";
+      const listedModels: ListedModelDefinition[] = listModels({ kind, canonicalOnly: true });
+
+      expect(canonicalModel).toBe("lucy-clip");
+      expect(isCanonicalModel(canonicalModel)).toBe(true);
+      expect(listedModels.every((model) => model.kind === kind)).toBe(true);
+    });
+
+    it("does not expose raw zod schemas from the package root", () => {
+      expect("canonicalModelSchema" in publicSdk).toBe(false);
+      expect("canonicalRealtimeModels" in publicSdk).toBe(false);
+      expect("canonicalVideoModels" in publicSdk).toBe(false);
+      expect("canonicalImageModels" in publicSdk).toBe(false);
+      expect("modelSchema" in publicSdk).toBe(false);
+      expect("realtimeModels" in publicSdk).toBe(false);
+      expect("videoModels" in publicSdk).toBe(false);
+      expect("imageModels" in publicSdk).toBe(false);
+      expect("modelInputSchemas" in publicSdk).toBe(false);
+      expect("modelDefinitionSchema" in publicSdk).toBe(false);
+    });
+  });
+
   describe("Realtime canonical models", () => {
     it("lucy-2.1 canonical name works", () => {
       const model = models.realtime("lucy-2.1");
