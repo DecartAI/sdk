@@ -3397,6 +3397,15 @@ describe("Canonical Model Names", () => {
       expect(model.height).toBe(624);
     });
 
+    it("lucy-2.5 canonical name works", () => {
+      const model = models.realtime("lucy-2.5");
+      expect(model.name).toBe("lucy-2.5");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
     it("lucy-2.1-vton canonical name works", () => {
       const model = models.realtime("lucy-2.1-vton");
       expect(model.name).toBe("lucy-2.1-vton");
