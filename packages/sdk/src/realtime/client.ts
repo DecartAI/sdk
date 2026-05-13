@@ -121,7 +121,7 @@ export type RealTimeClient = {
       prompt?: string;
       enhance?: boolean;
       timeout?: number;
-      referenceFrame?: Blob | File | string | null;
+      sampleFrameData?: Blob | File | string | null;
     },
   ) => Promise<void>;
 };
@@ -341,19 +341,20 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
             prompt?: string;
             enhance?: boolean;
             timeout?: number;
-            referenceFrame?: Blob | File | string | null;
+            sampleFrameData?: Blob | File | string | null;
           },
         ) => {
-          const { referenceFrame, ...rest } = options ?? {};
+          const { sampleFrameData, ...rest } = options ?? {};
           const managerOptions: {
             prompt?: string;
             enhance?: boolean;
             timeout?: number;
-            referenceFrameBase64?: string | null;
+            sampleFrameDataBase64?: string | null;
           } = rest;
 
-          if (referenceFrame !== undefined) {
-            managerOptions.referenceFrameBase64 = referenceFrame === null ? null : await imageToBase64(referenceFrame);
+          if (sampleFrameData !== undefined) {
+            managerOptions.sampleFrameDataBase64 =
+              sampleFrameData === null ? null : await imageToBase64(sampleFrameData);
           }
 
           if (image === null) {

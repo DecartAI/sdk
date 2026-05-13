@@ -315,7 +315,7 @@ export class WebRTCConnection {
       prompt?: string | null;
       enhance?: boolean;
       timeout?: number;
-      referenceFrameBase64?: string | null;
+      sampleFrameDataBase64?: string | null;
     },
   ): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -341,7 +341,7 @@ export class WebRTCConnection {
         image_data: string | null;
         prompt?: string | null;
         enhance_prompt?: boolean;
-        reference_frame?: string | null;
+        sample_frame_data?: string | null;
       } = {
         type: "set_image",
         image_data: imageBase64,
@@ -353,8 +353,8 @@ export class WebRTCConnection {
       if (options?.enhance !== undefined) {
         message.enhance_prompt = options.enhance;
       }
-      if (options?.referenceFrameBase64 !== undefined) {
-        message.reference_frame = options.referenceFrameBase64;
+      if (options?.sampleFrameDataBase64 !== undefined) {
+        message.sample_frame_data = options.sampleFrameDataBase64;
       }
 
       if (!this.send(message)) {

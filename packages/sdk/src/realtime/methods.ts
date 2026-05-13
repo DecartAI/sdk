@@ -10,7 +10,7 @@ const setInputSchema = z
     prompt: z.string().min(1).optional(),
     enhance: z.boolean().optional().default(true),
     image: z.union([z.instanceof(Blob), z.instanceof(File), z.string(), z.null()]).optional(),
-    referenceFrame: z.union([z.instanceof(Blob), z.instanceof(File), z.string(), z.null()]).optional(),
+    sampleFrameData: z.union([z.instanceof(Blob), z.instanceof(File), z.string(), z.null()]).optional(),
   })
   .refine((data) => data.prompt !== undefined || data.image !== undefined, {
     message: "At least one of 'prompt' or 'image' must be provided",
@@ -42,7 +42,7 @@ export const realtimeMethods = (
       throw parsed.error;
     }
 
-    const { prompt, enhance, image, referenceFrame } = parsed.data;
+    const { prompt, enhance, image, sampleFrameData } = parsed.data;
 
     let imageBase64: string | null = null;
     if (image !== undefined && image !== null) {
@@ -53,11 +53,11 @@ export const realtimeMethods = (
       prompt?: string;
       enhance: boolean;
       timeout: number;
-      referenceFrameBase64?: string | null;
+      sampleFrameDataBase64?: string | null;
     } = { prompt, enhance, timeout: UPDATE_TIMEOUT_MS };
 
-    if (referenceFrame !== undefined) {
-      options.referenceFrameBase64 = referenceFrame === null ? null : await imageToBase64(referenceFrame);
+    if (sampleFrameData !== undefined) {
+      options.sampleFrameDataBase64 = sampleFrameData === null ? null : await imageToBase64(sampleFrameData);
     }
 
     await webrtcManager.setImage(imageBase64, options);

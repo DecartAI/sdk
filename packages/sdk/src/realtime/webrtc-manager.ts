@@ -248,7 +248,7 @@ export class WebRTCManager {
       prompt?: string;
       enhance?: boolean;
       timeout?: number;
-      referenceFrameBase64?: string | null;
+      sampleFrameDataBase64?: string | null;
     },
   ): Promise<void> {
     return this.connection.setImageBase64(imageBase64, options);

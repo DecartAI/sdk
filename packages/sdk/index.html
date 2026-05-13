@@ -798,17 +798,17 @@
 
                 addLog('Sending reference image...', 'info');
 
-                let referenceFrame = null;
+                let sampleFrameData = null;
                 if (elements.includeReferenceFrame.checked) {
-                    referenceFrame = await captureReferenceFrame();
-                    if (referenceFrame) {
-                        addLog(`Captured reference frame from camera (${(referenceFrame.size / 1024).toFixed(1)} KB)`, 'info');
+                    sampleFrameData = await captureReferenceFrame();
+                    if (sampleFrameData) {
+                        addLog(`Captured reference frame from camera (${(sampleFrameData.size / 1024).toFixed(1)} KB)`, 'info');
                     } else {
                         addLog('Camera stream not available — skipping reference frame', 'warning');
                     }
                 }
 
-                await decartRealtime.setImage(file, referenceFrame ? { referenceFrame } : undefined);
+                await decartRealtime.setImage(file, sampleFrameData ? { sampleFrameData } : undefined);
 
                 elements.imageStatusText.textContent = '✅ Image sent successfully!';
                 elements.imageStatusText.style.color = '#4CAF50';
