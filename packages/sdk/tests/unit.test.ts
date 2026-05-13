@@ -1232,6 +1232,80 @@ describe("WebRTCConnection", () => {
         vi.useRealTimers();
       }
     });
+
+    it("includes reference_frame in the outgoing set_image message when provided", async () => {
+      vi.useFakeTimers();
+      try {
+        const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+        const connection = new WebRTCConnection();
+        const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
+
+        const promise = connection
+          .setImageBase64("imgbase64", { referenceFrameBase64: "refbase64" })
+          .catch(() => {});
+
+        expect(sendSpy).toHaveBeenCalledWith({
+          type: "set_image",
+          image_data: "imgbase64",
+          reference_frame: "refbase64",
+        });
+
+        await vi.advanceTimersByTimeAsync(30001);
+        await promise;
+        sendSpy.mockRestore();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("omits reference_frame when not provided", async () => {
+      vi.useFakeTimers();
+      try {
+        const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+        const connection = new WebRTCConnection();
+        const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
+
+        const promise = connection.setImageBase64("imgbase64").catch(() => {});
+
+        const sentMessage = sendSpy.mock.calls[0]?.[0] as Record<string, unknown>;
+        expect(sentMessage).toEqual({
+          type: "set_image",
+          image_data: "imgbase64",
+        });
+        expect("reference_frame" in sentMessage).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(30001);
+        await promise;
+        sendSpy.mockRestore();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("forwards explicit null reference_frame", async () => {
+      vi.useFakeTimers();
+      try {
+        const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
+        const connection = new WebRTCConnection();
+        const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
+
+        const promise = connection
+          .setImageBase64("imgbase64", { referenceFrameBase64: null })
+          .catch(() => {});
+
+        expect(sendSpy).toHaveBeenCalledWith({
+          type: "set_image",
+          image_data: "imgbase64",
+          reference_frame: null,
+        });
+
+        await vi.advanceTimersByTimeAsync(30001);
+        await promise;
+        sendSpy.mockRestore();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe("setupNewPeerConnection", () => {
@@ -1444,6 +1518,60 @@ describe("set()", () => {
       enhance: true,
       timeout: 30000,
     });
+  });
+
+  it("converts referenceFrame Blob to base64 and forwards it", async () => {
+    const refBlob = new Blob(["ref-frame"], { type: "image/jpeg" });
+    mockImageToBase64.mockImplementation(async (input) =>
+      input === refBlob ? "refbase64" : "imgbase64",
+    );
+
+    await methods.set({ prompt: "a cat", image: "rawimg", referenceFrame: refBlob });
+
+    expect(mockImageToBase64).toHaveBeenCalledWith(refBlob);
+    expect(mockManager.setImage).toHaveBeenCalledWith("imgbase64", {
+      prompt: "a cat",
+      enhance: true,
+      timeout: 30000,
+      referenceFrameBase64: "refbase64",
+    });
+  });
+
+  it("forwards a base64 string referenceFrame through imageToBase64", async () => {
+    mockImageToBase64.mockImplementation(async (input) =>
+      input === "raw-ref" ? "refbase64" : "imgbase64",
+    );
+
+    await methods.set({ image: "raw-img", referenceFrame: "raw-ref" });
+
+    expect(mockImageToBase64).toHaveBeenCalledWith("raw-ref");
+    expect(mockManager.setImage).toHaveBeenCalledWith("imgbase64", {
+      prompt: undefined,
+      enhance: true,
+      timeout: 30000,
+      referenceFrameBase64: "refbase64",
+    });
+  });
+
+  it("forwards null referenceFrame without calling imageToBase64", async () => {
+    mockImageToBase64.mockResolvedValue("imgbase64");
+
+    await methods.set({ image: "raw-img", referenceFrame: null });
+
+    expect(mockImageToBase64).toHaveBeenCalledTimes(1);
+    expect(mockImageToBase64).toHaveBeenCalledWith("raw-img");
+    expect(mockManager.setImage).toHaveBeenCalledWith("imgbase64", {
+      prompt: undefined,
+      enhance: true,
+      timeout: 30000,
+      referenceFrameBase64: null,
+    });
+  });
+
+  it("omits referenceFrameBase64 when referenceFrame is not provided", async () => {
+    await methods.set({ prompt: "a cat" });
+    const call = mockManager.setImage.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect("referenceFrameBase64" in call).toBe(false);
   });
 });
 
