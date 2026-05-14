@@ -200,9 +200,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     telemetryEnabled,
   });
   const hasExplicitBaseUrl = isProxyMode || parsedOptions.data.baseUrl !== undefined;
-  const subscribeBaseUrl = hasExplicitBaseUrl
-    ? baseUrl
-    : wsBaseUrl.replace(/^wss?:\/\//i, "https://");
+  const subscribeBaseUrl = hasExplicitBaseUrl ? baseUrl : wsBaseUrl.replace(/^wss?:\/\//i, "https://");
   const realtimeSubscribe = createRealTimeSubscribeClient({
     baseUrl: subscribeBaseUrl,
     apiKey: apiKey || "",

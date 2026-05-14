@@ -740,7 +740,10 @@ describe("StreamSession startup orchestration", () => {
     expect(secondWs).toBeDefined();
     secondWs.onopen?.();
     await flushMicrotasks();
-    expect(secondWs.sentMessages).toEqual([{ type: "livekit_join" }, { type: "set_image", image_data: "base64-image" }]);
+    expect(secondWs.sentMessages).toEqual([
+      { type: "livekit_join" },
+      { type: "set_image", image_data: "base64-image" },
+    ]);
 
     sendRoomInfo(secondWs, "second");
     secondWs.receive({ type: "set_image_ack", success: true, error: null });

@@ -88,9 +88,7 @@ function mapLiveKitState(state: LiveKitConnectionState): ConnectionState {
 
 async function fetchWatchStreamCredentials(opts: WatchStreamCredentialsRequest): Promise<WatchStreamResponse> {
   if (!/^https?:\/\//i.test(opts.baseUrl)) {
-    throw new Error(
-      `watch-stream baseUrl must use http(s); got ${opts.baseUrl}`,
-    );
+    throw new Error(`watch-stream baseUrl must use http(s); got ${opts.baseUrl}`);
   }
   const url = `${opts.baseUrl}/watch-stream/${encodeURIComponent(opts.roomName)}`;
   const res = await fetch(url, {

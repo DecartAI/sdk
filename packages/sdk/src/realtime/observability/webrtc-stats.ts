@@ -495,7 +495,7 @@ export class WebRTCStatsCollector {
     //
     // Cast via `unknown` because TypeScript can't track the non-null
     // assignment inside the forEach closure above — flow analysis sees
-      // only the initial `let outboundVideo = null` and narrows to `never`.
+    // only the initial `let outboundVideo = null` and narrows to `never`.
     const ov = outboundVideo as unknown as OutboundVideo | null;
     if (ov !== null) {
       const outBitrate = elapsed > 0 ? ((ov.bytesSent - this.prevBytesSentVideo) * 8) / elapsed : 0;

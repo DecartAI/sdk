@@ -1,19 +1,19 @@
 import mitt, { type Emitter } from "mitt";
 
-import { type Logger, createConsoleLogger } from "../utils/logger";
+import { createConsoleLogger, type Logger } from "../utils/logger";
 import { buildUserAgent } from "../utils/user-agent";
 import { REALTIME_CONFIG } from "./config-realtime";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 import type {
-  IncomingRealtimeMessage,
   ConnectionClosed,
   GenerationEnded,
   GenerationTick,
   ImageSetOptions,
+  IncomingRealtimeMessage,
   InitialState,
   OutgoingRealtimeMessage,
-  PromptSendOptions,
   PromptAckMessage,
+  PromptSendOptions,
   QueuePosition,
   ServerError,
   SetImageAckMessage,

@@ -10,7 +10,7 @@ import {
 } from "livekit-client";
 import mitt, { type Emitter } from "mitt";
 
-import { type Logger, createConsoleLogger } from "../utils/logger";
+import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 
@@ -30,7 +30,7 @@ export function getDefaultVideoPublishOptions(): TrackPublishOptions {
 
 export type MediaChannelEvents = {
   remoteStream: MediaStream;
-  firstFrame: void;
+  firstFrame: undefined;
   disconnected: { reason?: DisconnectReason };
 };
 

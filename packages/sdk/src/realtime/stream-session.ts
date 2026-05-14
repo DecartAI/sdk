@@ -1,7 +1,7 @@
 import mitt, { type Emitter } from "mitt";
 import pRetry, { AbortError } from "p-retry";
 
-import { type Logger, createConsoleLogger } from "../utils/logger";
+import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import { MediaChannel } from "./media-channel";
 import type { RealtimeObservability } from "./observability/realtime-observability";
@@ -137,7 +137,7 @@ export class StreamSession {
   private retryOptionsFor(attempt: number) {
     return {
       ...REALTIME_CONFIG.session.retry,
-      onFailedAttempt: (error: RetryAttemptError) => {
+      onFailedAttempt: (_error: RetryAttemptError) => {
         this.tearDown();
       },
       shouldRetry: (error: Error) => {
