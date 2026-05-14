@@ -9,26 +9,23 @@ import {
 } from "livekit-client";
 import mitt, { type Emitter } from "mitt";
 
-import type { ModelDefinition } from "../shared/model";
 import type { RealtimeObservability } from "./observability/realtime-observability";
-
-type PublishModel = Pick<ModelDefinition, "fps">;
 
 const INFERENCE_SERVER_IDENTITY_PREFIX = "inference-server-";
 
 const DEFAULT_VIDEO_CODEC = "h264" as const;
-const DEFAULT_MAX_VIDEO_BITRATE_BPS = 3_000_000;
-const DEFAULT_PUBLISH_FPS = 20;
+const DEFAULT_MAX_VIDEO_BITRATE_BPS = 3_500_000;
+const DEFAULT_PUBLISH_FPS = 30;
 
 export const LIVEKIT_ROOM_OPTIONS = {
   adaptiveStream: false,
   dynacast: false,
 } as const;
 
-export function getDefaultVideoPublishOptions(model: PublishModel): TrackPublishOptions {
+export function getDefaultVideoPublishOptions(): TrackPublishOptions {
   const videoEncoding = {
     maxBitrate: DEFAULT_MAX_VIDEO_BITRATE_BPS,
-    maxFramerate: model.fps,
+    maxFramerate: DEFAULT_PUBLISH_FPS,
   };
 
   return { source: Track.Source.Camera, videoCodec: DEFAULT_VIDEO_CODEC, simulcast: true, videoEncoding };
@@ -43,7 +40,6 @@ export type MediaChannelEvents = {
 export interface MediaChannelConfig {
   observability?: RealtimeObservability;
   localStream: MediaStream | null;
-  model?: PublishModel;
 }
 
 export class MediaChannel {
@@ -100,8 +96,8 @@ export class MediaChannel {
     this.config.observability?.setLiveKitRoom(room);
 
     if (this.config.localStream) {
-      await this.publishLocalTracks(this.config.localStream);
-    }
+    await this.publishLocalTracks(this.config.localStream);
+  }
   }
 
   disconnect(): void {
@@ -116,10 +112,9 @@ export class MediaChannel {
 
   private async publishLocalTracks(stream: MediaStream): Promise<void> {
     if (!this.room) return;
-    const publishModel = this.config.model ?? { fps: DEFAULT_PUBLISH_FPS };
     for (const track of stream.getTracks()) {
       if (track.kind === "video") {
-        await this.room.localParticipant.publishTrack(track, getDefaultVideoPublishOptions(publishModel));
+        await this.room.localParticipant.publishTrack(track, getDefaultVideoPublishOptions());
       } else {
         await this.room.localParticipant.publishTrack(track);
       }
