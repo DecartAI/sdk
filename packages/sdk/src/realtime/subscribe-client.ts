@@ -1,12 +1,29 @@
+import {
+  ConnectionState as LiveKitConnectionState,
+  type RemoteParticipant,
+  type RemoteTrack,
+  Room,
+  RoomEvent,
+  Track,
+} from "livekit-client";
+
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { createEventBuffer } from "./event-buffer";
+import { LIVEKIT_CONNECT_OPTIONS, LIVEKIT_ROOM_OPTIONS } from "./media-channel";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
-import { StreamSession } from "./stream-session";
-import type { ConnectionState, QueuePosition } from "./types";
+import type { ConnectionState } from "./types";
+
+const INFERENCE_SERVER_IDENTITY_PREFIX = "inference-server-";
 
 type TokenPayload = {
+  room_name: string;
+};
+
+type WatchStreamResponse = {
+  livekit_url: string;
+  token: string;
   room_name: string;
 };
 
@@ -24,7 +41,6 @@ export function decodeSubscribeToken(token: string): TokenPayload {
 
 export type SubscribeEvents = {
   connectionChange: ConnectionState;
-  queuePosition: QueuePosition;
   error: DecartSDKError;
   diagnostic: DiagnosticEvent;
 };
@@ -41,7 +57,6 @@ export type SubscribeOptions = {
   token: string;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionChange?: (state: ConnectionState) => void;
-  onQueuePosition?: (queuePosition: QueuePosition) => void;
 };
 
 export type RealTimeSubscribeClientOptions = {
@@ -51,18 +66,65 @@ export type RealTimeSubscribeClientOptions = {
   logger: Logger;
 };
 
+function mapLiveKitState(state: LiveKitConnectionState): ConnectionState {
+  switch (state) {
+    case LiveKitConnectionState.Connecting:
+      return "connecting";
+    case LiveKitConnectionState.Connected:
+      return "connected";
+    case LiveKitConnectionState.Reconnecting:
+    case LiveKitConnectionState.SignalReconnecting:
+      return "reconnecting";
+    case LiveKitConnectionState.Disconnected:
+      return "disconnected";
+    default:
+      return "disconnected";
+  }
+}
+
+async function fetchWatchStreamCredentials(opts: {
+  baseUrl: string;
+  apiKey: string;
+  roomName: string;
+}): Promise<WatchStreamResponse> {
+  const url = `${opts.baseUrl}/watch-stream/${encodeURIComponent(opts.roomName)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "x-api-key": opts.apiKey,
+      "content-type": "application/json",
+    },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`watch-stream request failed (${res.status}): ${body || res.statusText}`);
+  }
+  const json = (await res.json()) as Partial<WatchStreamResponse>;
+  if (!json.livekit_url || !json.token || !json.room_name) {
+    throw new Error("watch-stream response missing required fields");
+  }
+  return { livekit_url: json.livekit_url, token: json.token, room_name: json.room_name };
+}
+
 export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptions) => {
   const { baseUrl, apiKey, integration } = opts;
   const logger = opts.logger ?? createConsoleLogger("info");
 
   const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
     const { room_name: roomName } = decodeSubscribeToken(options.token);
-    const subscribeUrl = `${baseUrl}/watch-stream/${encodeURIComponent(roomName)}?api_key=${encodeURIComponent(apiKey)}`;
-
     const { emitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
 
-    let session: StreamSession | undefined;
     let observability: RealtimeObservability | undefined;
+    let room: Room | undefined;
+    let currentState: ConnectionState = "connecting";
+    let remoteStream: MediaStream | null = null;
+
+    const setState = (state: ConnectionState) => {
+      if (currentState === state) return;
+      currentState = state;
+      options.onConnectionChange?.(state);
+      emitOrBuffer("connectionChange", state);
+    };
 
     try {
       observability = new RealtimeObservability({
@@ -73,40 +135,46 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
         onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
       });
 
-      session = new StreamSession({
-        url: subscribeUrl,
-        integration,
-        observability,
-        localStream: null,
+      setState("connecting");
+
+      const creds = await fetchWatchStreamCredentials({ baseUrl, apiKey, roomName });
+
+      room = new Room(LIVEKIT_ROOM_OPTIONS);
+      const activeRoom = room;
+
+      activeRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
+        if (!participant.identity.startsWith(INFERENCE_SERVER_IDENTITY_PREFIX)) return;
+        if (track.kind !== Track.Kind.Video && track.kind !== Track.Kind.Audio) return;
+
+        track.attach();
+        const mediaStreamTrack = track.mediaStreamTrack;
+        if (!mediaStreamTrack) return;
+        remoteStream ??= new MediaStream();
+        if (!remoteStream.getTracks().includes(mediaStreamTrack)) {
+          remoteStream.addTrack(mediaStreamTrack);
+        }
+        options.onRemoteStream(remoteStream);
       });
 
-      session.on("remoteStream", options.onRemoteStream);
-
-      session.on("connectionChange", (state) => {
-        emitOrBuffer("connectionChange", state);
-        options.onConnectionChange?.(state);
+      activeRoom.on(RoomEvent.ConnectionStateChanged, (state) => {
+        setState(mapLiveKitState(state));
       });
 
-      session.on("queuePosition", (qp) => {
-        emitOrBuffer("queuePosition", qp);
-        options.onQueuePosition?.(qp);
+      activeRoom.on(RoomEvent.Disconnected, () => {
+        setState("disconnected");
       });
 
-      session.on("error", (error) => {
-        logger.error("Realtime subscribe error", { error: error.message });
-        emitOrBuffer("error", classifyWebrtcError(error));
-      });
-
-      const activeSession = session;
-      await activeSession.connect();
+      await activeRoom.connect(creds.livekit_url, creds.token, LIVEKIT_CONNECT_OPTIONS);
+      observability.setLiveKitRoom(activeRoom);
+      setState("connected");
 
       const client: RealTimeSubscribeClient = {
-        isConnected: () => activeSession.isConnected(),
-        getConnectionState: () => activeSession.getConnectionState(),
+        isConnected: () => activeRoom.state === LiveKitConnectionState.Connected,
+        getConnectionState: () => mapLiveKitState(activeRoom.state),
         disconnect: () => {
           observability?.stop();
           stop();
-          activeSession.disconnect();
+          activeRoom.disconnect().catch(() => {});
         },
         on: emitter.on,
         off: emitter.off,
@@ -116,8 +184,12 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
       return client;
     } catch (error) {
       observability?.stop();
-      session?.disconnect();
-      throw error;
+      if (room) {
+        room.disconnect().catch(() => {});
+      }
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error("Realtime subscribe error", { error: err.message });
+      throw classifyWebrtcError(err);
     }
   };
 
