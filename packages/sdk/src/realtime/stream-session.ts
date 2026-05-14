@@ -251,7 +251,6 @@ export class StreamSession {
     this.media = new MediaChannel({
       observability: this.config.observability,
       localStream: this.config.localStream,
-      model: this.config.model,
     });
     this.wireSignalingEvents();
     this.wireMediaEvents();
