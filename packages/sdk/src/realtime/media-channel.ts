@@ -11,26 +11,21 @@ import {
 import mitt, { type Emitter } from "mitt";
 
 import { type Logger, createConsoleLogger } from "../utils/logger";
+import { REALTIME_CONFIG } from "./config-realtime";
 import type { RealtimeObservability } from "./observability/realtime-observability";
-
-const INFERENCE_SERVER_IDENTITY_PREFIX = "inference-server-";
-
-const DEFAULT_VIDEO_CODEC = "h264" as const;
-const DEFAULT_MAX_VIDEO_BITRATE_BPS = 3_500_000;
-const DEFAULT_PUBLISH_FPS = 30;
-
-export const LIVEKIT_ROOM_OPTIONS = {
-  adaptiveStream: false,
-  dynacast: false,
-} as const;
 
 export function getDefaultVideoPublishOptions(): TrackPublishOptions {
   const videoEncoding = {
-    maxBitrate: DEFAULT_MAX_VIDEO_BITRATE_BPS,
-    maxFramerate: DEFAULT_PUBLISH_FPS,
+    maxBitrate: REALTIME_CONFIG.livekit.defaultMaxVideoBitrateBps,
+    maxFramerate: REALTIME_CONFIG.livekit.defaultPublishFps,
   };
 
-  return { source: Track.Source.Camera, videoCodec: DEFAULT_VIDEO_CODEC, simulcast: true, videoEncoding };
+  return {
+    source: Track.Source.Camera,
+    videoCodec: REALTIME_CONFIG.livekit.defaultVideoCodec,
+    simulcast: true,
+    videoEncoding,
+  };
 }
 
 export type MediaChannelEvents = {
@@ -44,6 +39,11 @@ export interface MediaChannelConfig {
   localStream: MediaStream | null;
   logger?: Logger;
 }
+
+export type MediaConnectOptions = {
+  url: string;
+  token: string;
+};
 
 export class MediaChannel {
   private room: Room | null = null;
@@ -67,17 +67,12 @@ export class MediaChannel {
     this.events.off(event, handler);
   }
 
-  prepare(url: string, token: string): void {
-    this.room ??= new Room(LIVEKIT_ROOM_OPTIONS);
-    this.room.prepareConnection(url, token).catch(() => {});
-  }
-
-  async connect(opts: { url: string; token: string }): Promise<void> {
-    this.room ??= new Room(LIVEKIT_ROOM_OPTIONS);
+  async connect(opts: MediaConnectOptions): Promise<void> {
+    this.room ??= new Room(REALTIME_CONFIG.livekit.roomOptions);
     const room = this.room;
 
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
-      if (!participant.identity.startsWith(INFERENCE_SERVER_IDENTITY_PREFIX)) return;
+      if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) return;
       if (track.kind !== Track.Kind.Video && track.kind !== Track.Kind.Audio) return;
 
       track.attach();
@@ -99,31 +94,9 @@ export class MediaChannel {
       this.events.emit("disconnected", { reason });
     });
 
-    const handshakeStart = Date.now();
-    try {
-      await room.connect(opts.url, opts.token);
-      if (this.config.localStream) {
-        await this.publishLocalTracks(this.config.localStream);
-      }
-      this.config.observability?.diagnostic("phaseTiming", {
-        phase: "webrtc-handshake",
-        durationMs: Date.now() - handshakeStart,
-        success: true,
-      });
-      this.logger.debug("livekit: room connected", { durationMs: Date.now() - handshakeStart });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.config.observability?.diagnostic("phaseTiming", {
-        phase: "webrtc-handshake",
-        durationMs: Date.now() - handshakeStart,
-        success: false,
-        error: message,
-      });
-      this.logger.error("livekit: room connect failed", {
-        durationMs: Date.now() - handshakeStart,
-        error: message,
-      });
-      throw error;
+    await room.connect(opts.url, opts.token);
+    if (this.config.localStream) {
+      await this.publishLocalTracks(this.config.localStream);
     }
     this.config.observability?.setLiveKitRoom(room);
   }

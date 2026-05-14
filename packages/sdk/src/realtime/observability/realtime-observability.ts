@@ -1,11 +1,10 @@
 import type { Room } from "livekit-client";
 import type { Logger } from "../../utils/logger";
+import { REALTIME_CONFIG } from "../config-realtime";
 import type { DiagnosticEvent, DiagnosticEventName, DiagnosticEvents } from "./diagnostics";
 import { createLiveKitStatsProvider } from "./livekit-stats-provider";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
-
-const STALL_FPS_THRESHOLD = 0.5;
 
 export type RealtimeObservabilityOptions = {
   telemetryEnabled: boolean;
@@ -128,11 +127,11 @@ export class RealtimeObservability {
 
   private detectVideoStall(stats: WebRTCStats): void {
     const fps = stats.video?.framesPerSecond ?? 0;
-    if (!this.videoStalled && stats.video && fps < STALL_FPS_THRESHOLD) {
+    if (!this.videoStalled && stats.video && fps < REALTIME_CONFIG.observability.stallFpsThreshold) {
       this.videoStalled = true;
       this.stallStartMs = Date.now();
       this.diagnostic("videoStall", { stalled: true, durationMs: 0 }, this.stallStartMs);
-    } else if (this.videoStalled && fps >= STALL_FPS_THRESHOLD) {
+    } else if (this.videoStalled && fps >= REALTIME_CONFIG.observability.stallFpsThreshold) {
       const durationMs = Date.now() - this.stallStartMs;
       this.videoStalled = false;
       this.diagnostic("videoStall", { stalled: false, durationMs });

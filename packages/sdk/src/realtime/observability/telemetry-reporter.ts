@@ -1,16 +1,8 @@
 import { buildAuthHeaders } from "../../shared/request";
 import type { Logger } from "../../utils/logger";
 import { VERSION } from "../../version";
+import { REALTIME_CONFIG } from "../config-realtime";
 import type { WebRTCStats } from "./webrtc-stats";
-
-const DEFAULT_REPORT_INTERVAL_MS = 10_000; // 10 seconds
-const TELEMETRY_URL = "https://platform.decart.ai/api/v1/telemetry";
-
-/**
- * Maximum number of items per array (stats / diagnostics) in a single report.
- * Matches the backend Zod schema which enforces `z.array().max(120)`.
- */
-const MAX_ITEMS_PER_REPORT = 120;
 
 type TelemetryDiagnostic = {
   name: string;
@@ -71,7 +63,7 @@ export class TelemetryReporter implements ITelemetryReporter {
     this.sessionId = options.sessionId;
     this.model = options.model;
     this.integration = options.integration;
-    this.reportIntervalMs = options.reportIntervalMs ?? DEFAULT_REPORT_INTERVAL_MS;
+    this.reportIntervalMs = options.reportIntervalMs ?? REALTIME_CONFIG.observability.telemetryReportIntervalMs;
   }
 
   /** Start the periodic reporting timer. */
@@ -106,7 +98,7 @@ export class TelemetryReporter implements ITelemetryReporter {
   }
 
   /**
-   * Build a single chunk from the front of the buffers, respecting MAX_ITEMS_PER_REPORT.
+   * Build a single chunk from the front of the buffers, respecting the configured report item cap.
    * Returns null when both buffers are empty.
    */
   private createReportChunk(): TelemetryReport | null {
@@ -127,8 +119,8 @@ export class TelemetryReporter implements ITelemetryReporter {
       sdkVersion: VERSION,
       ...(this.model ? { model: this.model } : {}),
       tags,
-      stats: this.statsBuffer.splice(0, MAX_ITEMS_PER_REPORT),
-      diagnostics: this.diagnosticsBuffer.splice(0, MAX_ITEMS_PER_REPORT),
+      stats: this.statsBuffer.splice(0, REALTIME_CONFIG.observability.telemetryMaxItemsPerReport),
+      diagnostics: this.diagnosticsBuffer.splice(0, REALTIME_CONFIG.observability.telemetryMaxItemsPerReport),
     };
   }
 
@@ -147,7 +139,7 @@ export class TelemetryReporter implements ITelemetryReporter {
       // Send as many chunks as needed to drain both buffers.
       let chunk = this.createReportChunk();
       while (chunk !== null) {
-        fetch(TELEMETRY_URL, {
+        fetch(REALTIME_CONFIG.observability.telemetryUrl, {
           method: "POST",
           headers: commonHeaders,
           body: JSON.stringify(chunk),

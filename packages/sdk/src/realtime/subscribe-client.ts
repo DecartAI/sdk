@@ -9,13 +9,11 @@ import {
 
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
+import { REALTIME_CONFIG } from "./config-realtime";
 import { createEventBuffer } from "./event-buffer";
-import { LIVEKIT_ROOM_OPTIONS } from "./media-channel";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
 import type { ConnectionState } from "./types";
-
-const INFERENCE_SERVER_IDENTITY_PREFIX = "inference-server-";
 
 type TokenPayload = {
   room_name: string;
@@ -25,6 +23,12 @@ type WatchStreamResponse = {
   livekit_url: string;
   token: string;
   room_name: string;
+};
+
+type WatchStreamCredentialsRequest = {
+  baseUrl: string;
+  apiKey: string;
+  roomName: string;
 };
 
 export function decodeSubscribeToken(token: string): TokenPayload {
@@ -82,11 +86,7 @@ function mapLiveKitState(state: LiveKitConnectionState): ConnectionState {
   }
 }
 
-async function fetchWatchStreamCredentials(opts: {
-  baseUrl: string;
-  apiKey: string;
-  roomName: string;
-}): Promise<WatchStreamResponse> {
+async function fetchWatchStreamCredentials(opts: WatchStreamCredentialsRequest): Promise<WatchStreamResponse> {
   if (!/^https?:\/\//i.test(opts.baseUrl)) {
     throw new Error(
       `watch-stream baseUrl must use http(s); got ${opts.baseUrl}`,
@@ -144,11 +144,11 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
 
       const creds = await fetchWatchStreamCredentials({ baseUrl, apiKey, roomName });
 
-      room = new Room(LIVEKIT_ROOM_OPTIONS);
+      room = new Room(REALTIME_CONFIG.livekit.roomOptions);
       const activeRoom = room;
 
       activeRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
-        if (!participant.identity.startsWith(INFERENCE_SERVER_IDENTITY_PREFIX)) return;
+        if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) return;
         if (track.kind !== Track.Kind.Video && track.kind !== Track.Kind.Audio) return;
 
         track.attach();

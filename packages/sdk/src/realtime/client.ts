@@ -10,7 +10,7 @@ import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
 import type { WebRTCStats } from "./observability/webrtc-stats";
 import { StreamSession } from "./stream-session";
-import type { ConnectionState, QueuePosition } from "./types";
+import type { ConnectionState, GenerationEnded, GenerationTick, ImageSetOptions, QueuePosition } from "./types";
 
 export type RealTimeClientOptions = {
   baseUrl: string;
@@ -52,8 +52,8 @@ export type Events = {
   connectionChange: ConnectionState;
   queuePosition: QueuePosition;
   error: DecartSDKError;
-  generationTick: { seconds: number };
-  generationEnded: { seconds: number; reason: string };
+  generationTick: GenerationTick;
+  generationEnded: GenerationEnded;
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
 };
@@ -69,10 +69,7 @@ export type RealTimeClient = {
   sessionId: string | null;
   subscribeToken: string | null;
   getSubscribeToken: () => string | null;
-  setImage: (
-    image: Blob | File | string | null,
-    options?: { prompt?: string; enhance?: boolean; timeout?: number },
-  ) => Promise<void>;
+  setImage: (image: Blob | File | string | null, options?: ImageSetOptions) => Promise<void>;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
@@ -122,7 +119,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         integration,
         observability,
         localStream: inputStream,
-        model: options.model,
         initialImage,
         initialPrompt,
         logger,
@@ -163,8 +159,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       const methods = realtimeMethods(activeSession, imageToBase64);
 
       const client: RealTimeClient = {
-        set: methods.set,
-        setPrompt: methods.setPrompt,
+        ...methods,
         isConnected: () => activeSession.isConnected(),
         getConnectionState: () => activeSession.getConnectionState(),
         disconnect: () => {
@@ -181,10 +176,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           return subscribeToken;
         },
         getSubscribeToken: () => subscribeToken,
-        setImage: async (
-          image: Blob | File | string | null,
-          imgOptions?: { prompt?: string; enhance?: boolean; timeout?: number },
-        ) => {
+        setImage: async (image: Blob | File | string | null, imgOptions?: ImageSetOptions) => {
           if (image === null) return activeSession.setImage(null, imgOptions);
           const base64 = await imageToBase64(image);
           return activeSession.setImage(base64, imgOptions);

@@ -1,8 +1,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { REALTIME_CONFIG } from "../src/realtime/config-realtime.js";
 
 const logger = { debug() {}, info() {}, warn() {}, error() {} };
 
 const emptyStatsReport = () => new Map() as unknown as RTCStatsReport;
+
+type FlushableTelemetryReporter = {
+  flush: () => void;
+};
+
+type RealtimeObservabilityWithTelemetry = {
+  telemetryReporter: FlushableTelemetryReporter;
+};
+
+const flushTelemetry = (observability: unknown) => {
+  (observability as RealtimeObservabilityWithTelemetry).telemetryReporter.flush();
+};
+
+type NamedDiagnostic = {
+  name: string;
+};
 
 describe("RealtimeObservability", () => {
   afterEach(() => {
@@ -31,6 +48,7 @@ describe("RealtimeObservability", () => {
     expect(fetchMock).not.toHaveBeenCalled();
 
     observability.sessionStarted("session-1");
+    flushTelemetry(observability);
     observability.stop();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -82,10 +100,11 @@ describe("RealtimeObservability", () => {
     observability.sessionStarted("session-2");
     observability.setStatsProvider(source);
 
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.observability.statsDefaultIntervalMs);
     fps = 30;
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.observability.statsDefaultIntervalMs);
 
+    flushTelemetry(observability);
     observability.stop();
 
     expect(statsEvents).toHaveLength(2);
@@ -99,7 +118,7 @@ describe("RealtimeObservability", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.stats).toHaveLength(2);
-    expect(body.diagnostics.map((event: { name: string }) => event.name)).toEqual(["videoStall", "videoStall"]);
+    expect(body.diagnostics.map((event: NamedDiagnostic) => event.name)).toEqual(["videoStall", "videoStall"]);
   });
 
   it("replaces the stats provider without leaving the old polling loop running", async () => {
@@ -117,10 +136,10 @@ describe("RealtimeObservability", () => {
     });
 
     observability.setStatsProvider(firstSource);
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.observability.statsDefaultIntervalMs);
 
     observability.setStatsProvider(secondSource);
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.observability.statsDefaultIntervalMs);
 
     observability.stop();
 

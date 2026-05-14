@@ -29,15 +29,12 @@ export type SetImageAckMessage = {
   error: null | string;
 };
 
-export type GenerationTickMessage = {
+export type GenerationTickMessage = GenerationTick & {
   type: "generation_tick";
-  seconds: number;
 };
 
-export type GenerationEndedMessage = {
+export type GenerationEndedMessage = GenerationEnded & {
   type: "generation_ended";
-  seconds: number;
-  reason: string;
 };
 
 export type LiveKitJoinMessage = {
@@ -65,10 +62,54 @@ export type QueuePosition = {
 
 export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
 
+export type ConnectionStatus = {
+  connection: ConnectionState;
+  queue: QueuePosition | null;
+};
+
+export type GenerationTick = {
+  seconds: number;
+};
+
+export type GenerationEnded = {
+  seconds: number;
+  reason: string;
+};
+
+export type ConnectionClosed = {
+  code: number;
+  reason: string;
+};
+
+export type SessionStarted = {
+  sessionId: string;
+  subscribeToken: string;
+};
+
 export type InitialState = {
   image?: string | null;
   prompt?: string | null;
   enhance?: boolean;
+};
+
+export type InitialPrompt = {
+  text: string;
+  enhance?: boolean;
+};
+
+export type ServerError = Error & {
+  source?: string;
+};
+
+export type PromptSendOptions = {
+  enhance?: boolean;
+  timeout?: number;
+};
+
+export type ImageSetOptions = {
+  prompt?: string | null;
+  enhance?: boolean;
+  timeout?: number;
 };
 
 // Incoming message types (from server)

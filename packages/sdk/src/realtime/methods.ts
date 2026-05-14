@@ -1,8 +1,7 @@
 import { z } from "zod";
+import { REALTIME_CONFIG } from "./config-realtime";
 import type { StreamSession } from "./stream-session";
-
-const PROMPT_TIMEOUT_MS = 15 * 1000;
-const UPDATE_TIMEOUT_MS = 30 * 1000;
+import type { PromptSendOptions } from "./types";
 
 const setInputSchema = z
   .object({
@@ -32,16 +31,16 @@ export const realtimeMethods = (
     const { prompt, enhance, image } = parsed.data;
     const imageBase64 = image !== undefined && image !== null ? await imageToBase64(image) : null;
 
-    await session.setImage(imageBase64, { prompt, enhance, timeout: UPDATE_TIMEOUT_MS });
+    await session.setImage(imageBase64, { prompt, enhance, timeout: REALTIME_CONFIG.methods.updateTimeoutMs });
   };
 
-  const setPrompt = async (prompt: string, { enhance }: { enhance?: boolean } = {}): Promise<void> => {
+  const setPrompt = async (prompt: string, { enhance }: PromptSendOptions = {}): Promise<void> => {
     const parsed = setPromptInputSchema.safeParse({ prompt, enhance });
     if (!parsed.success) throw parsed.error;
 
     await session.sendPrompt(parsed.data.prompt, {
       enhance: parsed.data.enhance,
-      timeout: PROMPT_TIMEOUT_MS,
+      timeout: REALTIME_CONFIG.methods.promptTimeoutMs,
     });
   };
 

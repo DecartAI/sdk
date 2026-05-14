@@ -32,9 +32,14 @@ export type DiagnosticEvents = {
 
 export type DiagnosticEventName = keyof DiagnosticEvents;
 
+type DiagnosticEventForName<K extends DiagnosticEventName> = {
+  name: K;
+  data: DiagnosticEvents[K];
+};
+
 /** A single diagnostic event with its name and typed data. */
 export type DiagnosticEvent = {
-  [K in DiagnosticEventName]: { name: K; data: DiagnosticEvents[K] };
+  [K in DiagnosticEventName]: DiagnosticEventForName<K>;
 }[DiagnosticEventName];
 
 /** Callback for emitting diagnostic events from the connection/manager layers. */

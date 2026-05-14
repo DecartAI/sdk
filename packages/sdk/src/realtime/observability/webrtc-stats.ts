@@ -1,3 +1,5 @@
+import { REALTIME_CONFIG } from "../config-realtime";
+
 export type WebRTCStats = {
   timestamp: number;
   video: {
@@ -126,10 +128,7 @@ export type WebRTCStats = {
      * jitter and failure modes, so this is essential signal for
      * benchmarking and incident triage.
      */
-    selectedCandidatePairs: Array<{
-      local: IceCandidateInfo;
-      remote: IceCandidateInfo;
-    }>;
+    selectedCandidatePairs: IceCandidatePair[];
   };
 };
 
@@ -142,6 +141,16 @@ export type IceCandidateInfo = {
   port: number;
   /** "udp" | "tcp" */
   protocol: string;
+};
+
+export type IceCandidatePair = {
+  local: IceCandidateInfo;
+  remote: IceCandidateInfo;
+};
+
+type SucceededCandidatePairIds = {
+  localId: string;
+  remoteId: string;
 };
 
 export type StatsOptions = {
@@ -157,9 +166,6 @@ export type StatsOptions = {
 export interface StatsProvider {
   getStats(): Promise<RTCStatsReport>;
 }
-
-const DEFAULT_INTERVAL_MS = 1000;
-const MIN_INTERVAL_MS = 500;
 
 export class WebRTCStatsCollector {
   private source: StatsProvider | null = null;
@@ -179,7 +185,10 @@ export class WebRTCStatsCollector {
   private intervalMs: number;
 
   constructor(options: StatsOptions = {}) {
-    this.intervalMs = Math.max(options.intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS);
+    this.intervalMs = Math.max(
+      options.intervalMs ?? REALTIME_CONFIG.observability.statsDefaultIntervalMs,
+      REALTIME_CONFIG.observability.statsMinIntervalMs,
+    );
   }
 
   /** Attach to a stats provider and start polling. */
@@ -250,7 +259,7 @@ export class WebRTCStatsCollector {
     // so we have access to every report (ordering of rawStats is not
     // guaranteed: a succeeded pair's local-candidate may appear before
     // or after it).
-    const succeededPairs: Array<{ localId: string; remoteId: string }> = [];
+    const succeededPairs: SucceededCandidatePairIds[] = [];
 
     rawStats.forEach((report) => {
       if (report.type === "inbound-rtp" && report.kind === "video") {
@@ -486,7 +495,7 @@ export class WebRTCStatsCollector {
     //
     // Cast via `unknown` because TypeScript can't track the non-null
     // assignment inside the forEach closure above — flow analysis sees
-    // only the initial `let outboundVideo = null` and narrows to `never`.
+      // only the initial `let outboundVideo = null` and narrows to `never`.
     const ov = outboundVideo as unknown as OutboundVideo | null;
     if (ov !== null) {
       const outBitrate = elapsed > 0 ? ((ov.bytesSent - this.prevBytesSentVideo) * 8) / elapsed : 0;

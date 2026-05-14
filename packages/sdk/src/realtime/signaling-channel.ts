@@ -2,19 +2,22 @@ import mitt, { type Emitter } from "mitt";
 
 import { type Logger, createConsoleLogger } from "../utils/logger";
 import { buildUserAgent } from "../utils/user-agent";
+import { REALTIME_CONFIG } from "./config-realtime";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 import type {
   IncomingRealtimeMessage,
+  ConnectionClosed,
+  GenerationEnded,
+  GenerationTick,
+  ImageSetOptions,
   InitialState,
   OutgoingRealtimeMessage,
+  PromptSendOptions,
   PromptAckMessage,
   QueuePosition,
+  ServerError,
   SetImageAckMessage,
 } from "./types";
-
-const DEFAULT_CONNECT_TIMEOUT_MS = 30_000;
-const DEFAULT_HANDSHAKE_TIMEOUT_MS = 15_000;
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 export type RoomInfo = {
   livekitUrl: string;
@@ -24,12 +27,11 @@ export type RoomInfo = {
 };
 
 export type SignalingChannelEvents = {
-  roomInfo: RoomInfo;
   queuePosition: QueuePosition;
-  generationTick: { seconds: number };
-  generationEnded: { seconds: number; reason: string };
+  generationTick: GenerationTick;
+  generationEnded: GenerationEnded;
   serverError: Error;
-  closed: { code: number; reason: string };
+  closed: ConnectionClosed;
 };
 
 export interface SignalingChannelConfig {
@@ -45,10 +47,34 @@ type PendingAck = {
   reject: (err: Error) => void;
 };
 
+type PendingRoomInfo = {
+  resolve: (info: RoomInfo) => void;
+  reject: (err: Error) => void;
+  cancel: () => void;
+  pauseTimeout: () => void;
+};
+
+export type OpenAndJoinOptions = {
+  connectTimeout?: number;
+  handshakeTimeout?: number;
+  initialState?: InitialState;
+};
+
+export type OpenAndJoinResult = {
+  roomInfo: RoomInfo;
+  initialStateAck: Promise<void>;
+};
+
+type RoomInfoWait = {
+  promise: Promise<RoomInfo>;
+  cancel: () => void;
+};
+
 export class SignalingChannel {
   private ws: WebSocket | null = null;
   private events: Emitter<SignalingChannelEvents> = mitt();
   private pendingAcks: PendingAck[] = [];
+  private pendingRoomInfo: PendingRoomInfo | null = null;
   private connected = false;
   private closing = false;
   private readonly logger: Logger;
@@ -65,35 +91,32 @@ export class SignalingChannel {
     this.events.off(event, handler);
   }
 
-  async connect(
-    opts: { connectTimeout?: number; handshakeTimeout?: number; initialState?: InitialState } = {},
-  ): Promise<void> {
-    const connectTimeout = opts.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT_MS;
-    const handshakeTimeout = opts.handshakeTimeout ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
+  async openAndJoin(opts: OpenAndJoinOptions = {}): Promise<OpenAndJoinResult> {
+    const connectTimeout = opts.connectTimeout ?? REALTIME_CONFIG.signaling.connectTimeoutMs;
+    const handshakeTimeout = opts.handshakeTimeout ?? REALTIME_CONFIG.signaling.handshakeTimeoutMs;
 
-    const wsStart = Date.now();
+    await this.openSocket(connectTimeout);
+
+    const roomInfoWait = this.waitForRoomInfo(handshakeTimeout);
+
+    if (!this.writeMessage({ type: "livekit_join" })) {
+      roomInfoWait.cancel();
+      throw new Error("WebSocket is not open");
+    }
+
+    const initialStateAck = this.sendInitialState(opts.initialState);
+    initialStateAck.catch(() => {});
+
+    let roomInfo: RoomInfo;
     try {
-      await this.openSocket(connectTimeout);
-      this.config.observability?.diagnostic("phaseTiming", {
-        phase: "websocket",
-        durationMs: Date.now() - wsStart,
-        success: true,
-      });
-      this.logger.debug("signaling: websocket open", { durationMs: Date.now() - wsStart });
+      roomInfo = await roomInfoWait.promise;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.config.observability?.diagnostic("phaseTiming", {
-        phase: "websocket",
-        durationMs: Date.now() - wsStart,
-        success: false,
-        error: message,
-      });
-      this.logger.error("signaling: websocket open failed", { durationMs: Date.now() - wsStart, error: message });
+      this.rejectAllPending(error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
 
-    await this.runHandshake(handshakeTimeout, opts.initialState);
     this.connected = true;
+    return { roomInfo, initialStateAck };
   }
 
   close(): void {
@@ -108,23 +131,21 @@ export class SignalingChannel {
         // ignore
       }
     }
+    this.rejectPendingRoomInfo(new Error("Control channel closed"));
     this.rejectAllPending(new Error("Control channel closed"));
   }
 
-  async sendPrompt(text: string, opts: { enhance?: boolean; timeout?: number } = {}): Promise<void> {
+  async sendPrompt(text: string, opts: PromptSendOptions = {}): Promise<void> {
     const ack = await this.request<PromptAckMessage>(
       { type: "prompt", prompt: text, enhance_prompt: opts.enhance ?? true },
       (msg) => msg.type === "prompt_ack" && msg.prompt === text,
-      opts.timeout ?? DEFAULT_REQUEST_TIMEOUT_MS,
+      opts.timeout ?? REALTIME_CONFIG.signaling.requestTimeoutMs,
       "Prompt send",
     );
     if (!ack.success) throw new Error(ack.error ?? "Failed to send prompt");
   }
 
-  async setImage(
-    image: string | null,
-    opts: { prompt?: string | null; enhance?: boolean; timeout?: number } = {},
-  ): Promise<void> {
+  async setImage(image: string | null, opts: ImageSetOptions = {}): Promise<void> {
     const message: OutgoingRealtimeMessage = { type: "set_image", image_data: image };
     if (opts.prompt !== undefined) message.prompt = opts.prompt;
     if (opts.enhance !== undefined) message.enhance_prompt = opts.enhance;
@@ -132,7 +153,7 @@ export class SignalingChannel {
     const ack = await this.request<SetImageAckMessage>(
       message,
       (msg) => msg.type === "set_image_ack",
-      opts.timeout ?? DEFAULT_REQUEST_TIMEOUT_MS,
+      opts.timeout ?? REALTIME_CONFIG.signaling.requestTimeoutMs,
       "Image send",
     );
     if (!ack.success) throw new Error(ack.error ?? "Failed to send image");
@@ -144,10 +165,7 @@ export class SignalingChannel {
     const wsUrl = `${this.config.url}${separator}user_agent=${userAgent}`;
 
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.logger.error("signaling: websocket open timeout", { timeoutMs: timeout });
-        reject(new Error("WebSocket timeout"));
-      }, timeout);
+      const timer = setTimeout(() => reject(new Error(`WebSocket open timeout (${timeout}ms)`)), timeout);
       const ws = new WebSocket(wsUrl);
       this.ws = ws;
       ws.onopen = () => {
@@ -167,11 +185,13 @@ export class SignalingChannel {
           closing: this.closing,
           pendingAcks: pendingCount,
         });
-        this.rejectAllPending(new Error(`WebSocket closed: ${e.code} ${e.reason}`));
+        const error = new Error(`WebSocket closed: ${e.code} ${e.reason}`);
+        this.rejectPendingRoomInfo(error);
+        this.rejectAllPending(error);
         if (wasConnected || this.closing) {
           this.events.emit("closed", { code: e.code, reason: e.reason });
         } else {
-          reject(new Error(`WebSocket closed: ${e.code} ${e.reason}`));
+          reject(error);
         }
       };
       ws.onerror = () => {
@@ -187,64 +207,46 @@ export class SignalingChannel {
     });
   }
 
-  private async runHandshake(timeoutMs: number, initialState?: InitialState): Promise<void> {
-    const roomInfoWait = this.waitForRoomInfo(timeoutMs);
-
-    try {
-      if (!this.writeMessage({ type: "livekit_join" })) {
-        throw new Error("WebSocket is not open");
-      }
-
-      await Promise.all([roomInfoWait.promise, this.sendInitialState(initialState)]);
-    } catch (error) {
-      roomInfoWait.cancel();
-      this.rejectAllPending(error instanceof Error ? error : new Error(String(error)));
-      throw error;
-    }
-  }
-
-  private waitForRoomInfo(timeoutMs: number): { promise: Promise<void>; cancel: () => void } {
+  private waitForRoomInfo(timeoutMs: number): RoomInfoWait {
     let cleanup: () => void = () => {};
-    const promise = new Promise<void>((resolve, reject) => {
+    const promise = new Promise<RoomInfo>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
         cleanup();
         this.logger.warn("signaling: livekit_room_info timeout", { timeoutMs });
         reject(new Error(`livekit_room_info timeout (${timeoutMs}ms)`));
       }, timeoutMs);
 
-      const onRoomInfo = () => {
-        cleanup();
-        resolve();
+      const pendingRoomInfo: PendingRoomInfo = {
+        resolve: (info) => {
+          cleanup();
+          resolve(info);
+        },
+        reject: (err) => {
+          cleanup();
+          reject(err);
+        },
+        cancel: () => {
+          cleanup();
+        },
+        pauseTimeout: () => {
+          if (timer) {
+            clearTimeout(timer);
+            timer = null;
+          }
+        },
       };
-      const onQueue = () => {
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-      };
-      const onServerError = (err: Error) => {
-        cleanup();
-        reject(err);
-      };
-      const onClosed = (e: { code: number; reason: string }) => {
-        cleanup();
-        reject(new Error(`WebSocket closed: ${e.code} ${e.reason}`));
-      };
+
       cleanup = () => {
         if (timer) {
           clearTimeout(timer);
           timer = null;
         }
-        this.events.off("roomInfo", onRoomInfo);
-        this.events.off("queuePosition", onQueue);
-        this.events.off("serverError", onServerError);
-        this.events.off("closed", onClosed);
+        if (this.pendingRoomInfo === pendingRoomInfo) {
+          this.pendingRoomInfo = null;
+        }
       };
 
-      this.events.on("roomInfo", onRoomInfo);
-      this.events.on("queuePosition", onQueue);
-      this.events.on("serverError", onServerError);
-      this.events.on("closed", onClosed);
+      this.pendingRoomInfo = pendingRoomInfo;
     });
 
     return { promise, cancel: cleanup };
@@ -254,51 +256,15 @@ export class SignalingChannel {
     if (!initialState) return;
 
     if (initialState.image !== undefined) {
-      const started = Date.now();
-      try {
-        await this.setImage(initialState.image, {
-          prompt: initialState.prompt,
-          enhance: initialState.enhance,
-        });
-        this.config.observability?.diagnostic("phaseTiming", {
-          phase: "initial-image",
-          durationMs: Date.now() - started,
-          success: true,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.config.observability?.diagnostic("phaseTiming", {
-          phase: "initial-image",
-          durationMs: Date.now() - started,
-          success: false,
-          error: message,
-        });
-        this.logger.error("signaling: initial image ack failed", { durationMs: Date.now() - started, error: message });
-        throw error;
-      }
+      await this.setImage(initialState.image, {
+        prompt: initialState.prompt,
+        enhance: initialState.enhance,
+      });
       return;
     }
 
     if (initialState.prompt !== undefined && initialState.prompt !== null) {
-      const started = Date.now();
-      try {
-        await this.sendPrompt(initialState.prompt, { enhance: initialState.enhance });
-        this.config.observability?.diagnostic("phaseTiming", {
-          phase: "initial-prompt",
-          durationMs: Date.now() - started,
-          success: true,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.config.observability?.diagnostic("phaseTiming", {
-          phase: "initial-prompt",
-          durationMs: Date.now() - started,
-          success: false,
-          error: message,
-        });
-        this.logger.error("signaling: initial prompt ack failed", { durationMs: Date.now() - started, error: message });
-        throw error;
-      }
+      await this.sendPrompt(initialState.prompt, { enhance: initialState.enhance });
     }
   }
 
@@ -355,7 +321,7 @@ export class SignalingChannel {
 
     switch (msg.type) {
       case "livekit_room_info":
-        this.events.emit("roomInfo", {
+        this.resolvePendingRoomInfo({
           livekitUrl: msg.livekit_url,
           token: msg.token,
           roomName: msg.room_name,
@@ -363,6 +329,7 @@ export class SignalingChannel {
         });
         break;
       case "queue_position":
+        this.pendingRoomInfo?.pauseTimeout();
         this.events.emit("queuePosition", {
           position: msg.position,
           queueSize: msg.queue_size,
@@ -375,14 +342,27 @@ export class SignalingChannel {
         this.events.emit("generationEnded", { seconds: msg.seconds, reason: msg.reason });
         break;
       case "error": {
-        const error = new Error(msg.error) as Error & { source?: string };
+        const error = new Error(msg.error) as ServerError;
         error.source = "server";
         this.logger.error("signaling: server error received", { error: msg.error });
         this.events.emit("serverError", error);
+        this.rejectPendingRoomInfo(error);
         this.rejectAllPending(error);
         break;
       }
     }
+  }
+
+  private resolvePendingRoomInfo(info: RoomInfo): void {
+    const pending = this.pendingRoomInfo;
+    if (!pending) return;
+    pending.resolve(info);
+  }
+
+  private rejectPendingRoomInfo(error: Error): void {
+    const pending = this.pendingRoomInfo;
+    if (!pending) return;
+    pending.reject(error);
   }
 
   private rejectAllPending(error: Error): void {
