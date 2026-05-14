@@ -2,6 +2,7 @@ import mitt, { type Emitter } from "mitt";
 import pRetry, { AbortError } from "p-retry";
 
 import type { ModelDefinition } from "../shared/model";
+import { type Logger, createConsoleLogger } from "../utils/logger";
 import { MediaChannel } from "./media-channel";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 import { type RoomInfo, SignalingChannel } from "./signaling-channel";
@@ -47,6 +48,7 @@ interface StreamSessionConfig {
   model?: Pick<ModelDefinition, "fps">;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
+  logger?: Logger;
 }
 
 export class StreamSession {
@@ -61,8 +63,10 @@ export class StreamSession {
   private currentAttempt = 0;
 
   private roomInfo: RoomInfo | null = null;
+  private readonly logger: Logger;
 
   constructor(private readonly config: StreamSessionConfig) {
+    this.logger = config.logger ?? createConsoleLogger("warn");
     this.createTransport();
   }
 
@@ -90,10 +94,25 @@ export class StreamSession {
     this.disposed = false;
     const attempt = ++this.currentAttempt;
     this.setState("connecting");
+    const startedAt = Date.now();
+    this.logger.info("realtime connect: starting", { attemptCycle: attempt });
 
     try {
       await pRetry(() => this.runOneConnect(attempt), this.retryOptionsFor(attempt));
+      this.config.observability?.diagnostic("phaseTiming", {
+        phase: "total",
+        durationMs: Date.now() - startedAt,
+        success: true,
+      });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.config.observability?.diagnostic("phaseTiming", {
+        phase: "total",
+        durationMs: Date.now() - startedAt,
+        success: false,
+        error: message,
+      });
+      this.logger.error("realtime connect: exhausted all retries", { error: message });
       if (this.currentAttempt === attempt && !this.disposed) {
         this.setState("disconnected");
       }
@@ -129,11 +148,32 @@ export class StreamSession {
   private retryOptionsFor(attempt: number) {
     return {
       ...RETRY_OPTIONS,
-      onFailedAttempt: () => this.tearDown(),
+      onFailedAttempt: (error: Error & { attemptNumber?: number; retriesLeft?: number }) => {
+        const attemptNumber = error.attemptNumber ?? 0;
+        const retriesLeft = error.retriesLeft ?? 0;
+        this.logger.warn("realtime connect: attempt failed", {
+          attemptNumber,
+          retriesLeft,
+          error: error.message,
+          state: this.state,
+        });
+        this.config.observability?.diagnostic("reconnect", {
+          attempt: attemptNumber,
+          maxAttempts: attemptNumber + retriesLeft,
+          durationMs: 0,
+          success: false,
+          error: error.message,
+        });
+        this.tearDown();
+      },
       shouldRetry: (error: Error) => {
         if (this.disposed || this.currentAttempt !== attempt) return false;
         const msg = error.message.toLowerCase();
-        return !PERMANENT_ERRORS.some((err) => msg.includes(err));
+        const permanent = PERMANENT_ERRORS.some((err) => msg.includes(err));
+        if (permanent) {
+          this.logger.error("realtime connect: permanent error, not retrying", { error: error.message });
+        }
+        return !permanent;
       },
     };
   }
@@ -210,7 +250,7 @@ export class StreamSession {
     this.signaling.on("generationTick", (e) => this.events.emit("generationTick", e));
     this.signaling.on("generationEnded", (e) => this.events.emit("generationEnded", e));
     this.signaling.on("serverError", (err) => this.events.emit("error", err));
-    this.signaling.on("closed", () => this.handleConnectionLoss());
+    this.signaling.on("closed", (info) => this.handleConnectionLoss({ source: "signaling", ...info }));
   }
 
   private wireMediaEvents(): void {
@@ -218,17 +258,22 @@ export class StreamSession {
     this.media.on("firstFrame", () => {
       if (this.state === "connected") this.setState("generating");
     });
-    this.media.on("disconnected", () => this.handleConnectionLoss());
+    this.media.on("disconnected", (info) => this.handleConnectionLoss({ source: "media", reason: info.reason }));
   }
 
-  private handleConnectionLoss(): void {
+  private handleConnectionLoss(cause: Record<string, unknown>): void {
     if (this.disposed) return;
-    if (this.state !== "connected" && this.state !== "generating") return;
+    if (this.state !== "connected" && this.state !== "generating") {
+      this.logger.debug("connection loss ignored (not connected)", { state: this.state, ...cause });
+      return;
+    }
+    this.logger.warn("realtime connection lost; scheduling reconnect", { state: this.state, ...cause });
     this.scheduleReconnect();
   }
 
   private scheduleReconnect(): void {
     const attempt = ++this.currentAttempt;
+    const startedAt = Date.now();
     this.setState("reconnecting");
 
     pRetry(async () => {
@@ -238,19 +283,45 @@ export class StreamSession {
       this.tearDown();
       this.createTransport();
       await this.runOneConnect(attempt);
-    }, this.retryOptionsFor(attempt)).catch((error) => {
-      if (this.disposed || this.currentAttempt !== attempt) return;
-      this.tearDown();
-      this.setState("disconnected");
-      this.events.emit("error", error instanceof Error ? error : new Error(String(error)));
-    });
+    }, this.retryOptionsFor(attempt))
+      .then(() => {
+        if (this.disposed || this.currentAttempt !== attempt) return;
+        this.config.observability?.diagnostic("reconnect", {
+          attempt: 1,
+          maxAttempts: RETRY_OPTIONS.retries + 1,
+          durationMs: Date.now() - startedAt,
+          success: true,
+        });
+        this.logger.info("realtime reconnect: succeeded", { durationMs: Date.now() - startedAt });
+      })
+      .catch((error) => {
+        if (this.disposed || this.currentAttempt !== attempt) return;
+        const message = error instanceof Error ? error.message : String(error);
+        this.config.observability?.diagnostic("reconnect", {
+          attempt: RETRY_OPTIONS.retries + 1,
+          maxAttempts: RETRY_OPTIONS.retries + 1,
+          durationMs: Date.now() - startedAt,
+          success: false,
+          error: message,
+        });
+        this.logger.error("realtime reconnect: failed permanently", { error: message });
+        this.tearDown();
+        this.setState("disconnected");
+        this.events.emit("error", error instanceof Error ? error : new Error(String(error)));
+      });
   }
 
   private createTransport(): void {
-    this.signaling = new SignalingChannel({ url: this.config.url, integration: this.config.integration });
+    this.signaling = new SignalingChannel({
+      url: this.config.url,
+      integration: this.config.integration,
+      logger: this.logger,
+      observability: this.config.observability,
+    });
     this.media = new MediaChannel({
       observability: this.config.observability,
       localStream: this.config.localStream,
+      logger: this.logger,
     });
     this.wireSignalingEvents();
     this.wireMediaEvents();
@@ -269,6 +340,7 @@ export class StreamSession {
 
   private setState(state: ConnectionState): void {
     if (this.state === state) return;
+    this.logger.debug("realtime state change", { from: this.state, to: state });
     this.state = state;
     this.events.emit("connectionChange", state);
   }

@@ -125,6 +125,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         model: options.model,
         initialImage,
         initialPrompt,
+        logger,
       });
 
       let sessionId: string | null = null;
