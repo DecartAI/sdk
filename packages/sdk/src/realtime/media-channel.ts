@@ -1,4 +1,5 @@
 import {
+  type DisconnectReason,
   type RemoteParticipant,
   type RemoteTrack,
   Room,
@@ -9,6 +10,7 @@ import {
 } from "livekit-client";
 import mitt, { type Emitter } from "mitt";
 
+import { type Logger, createConsoleLogger } from "../utils/logger";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 
 const INFERENCE_SERVER_IDENTITY_PREFIX = "inference-server-";
@@ -34,20 +36,24 @@ export function getDefaultVideoPublishOptions(): TrackPublishOptions {
 export type MediaChannelEvents = {
   remoteStream: MediaStream;
   firstFrame: void;
-  disconnected: void;
+  disconnected: { reason?: DisconnectReason };
 };
 
 export interface MediaChannelConfig {
   observability?: RealtimeObservability;
   localStream: MediaStream | null;
+  logger?: Logger;
 }
 
 export class MediaChannel {
   private room: Room | null = null;
   private remoteStream: MediaStream | null = null;
   private events: Emitter<MediaChannelEvents> = mitt();
+  private readonly logger: Logger;
 
-  constructor(private readonly config: MediaChannelConfig) {}
+  constructor(private readonly config: MediaChannelConfig) {
+    this.logger = config.logger ?? createConsoleLogger("warn");
+  }
 
   get localStream(): MediaStream | null {
     return this.config.localStream;
@@ -88,16 +94,38 @@ export class MediaChannel {
       });
     });
 
-    room.on(RoomEvent.Disconnected, () => {
-      this.events.emit("disconnected");
+    room.on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
+      this.logger.warn("livekit: room disconnected", { reason });
+      this.events.emit("disconnected", { reason });
     });
 
-    await room.connect(opts.url, opts.token);
+    const handshakeStart = Date.now();
+    try {
+      await room.connect(opts.url, opts.token);
+      if (this.config.localStream) {
+        await this.publishLocalTracks(this.config.localStream);
+      }
+      this.config.observability?.diagnostic("phaseTiming", {
+        phase: "webrtc-handshake",
+        durationMs: Date.now() - handshakeStart,
+        success: true,
+      });
+      this.logger.debug("livekit: room connected", { durationMs: Date.now() - handshakeStart });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.config.observability?.diagnostic("phaseTiming", {
+        phase: "webrtc-handshake",
+        durationMs: Date.now() - handshakeStart,
+        success: false,
+        error: message,
+      });
+      this.logger.error("livekit: room connect failed", {
+        durationMs: Date.now() - handshakeStart,
+        error: message,
+      });
+      throw error;
+    }
     this.config.observability?.setLiveKitRoom(room);
-
-    if (this.config.localStream) {
-    await this.publishLocalTracks(this.config.localStream);
-  }
   }
 
   disconnect(): void {
