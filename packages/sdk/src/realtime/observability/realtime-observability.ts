@@ -75,7 +75,6 @@ export class RealtimeObservability {
     }
 
     this.stopStats();
-    this.resetStallDetection();
     this.statsCollectorSource = source;
 
     if (!this.options.telemetryEnabled && !this.options.onStats) {

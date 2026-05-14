@@ -147,7 +147,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       integration,
       logger,
       onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
-      onStats: (stats) => emitOrBuffer("stats", stats),
+      onStats: opts.telemetryEnabled ? (stats) => emitOrBuffer("stats", stats) : undefined,
     });
 
     try {
@@ -257,6 +257,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       integration,
       logger,
       onDiagnostic: (event) => emitOrBuffer("diagnostic", event as SubscribeEvents["diagnostic"]),
+      onStats: opts.telemetryEnabled ? (stats) => emitOrBuffer("stats", stats) : undefined,
     });
     observability.sessionStarted(sid);
 

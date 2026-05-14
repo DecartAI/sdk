@@ -1884,6 +1884,51 @@ describe("Subscribe Client", () => {
     }
   });
 
+  it("does not start stats collection when telemetry is disabled", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
+
+    const peerConnection = { getStats: vi.fn().mockResolvedValue(new Map()) } as unknown as RTCPeerConnection;
+
+    const startSpy = vi.spyOn(WebRTCStatsCollector.prototype, "start").mockImplementation(() => {});
+    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+      const mgr = this as unknown as {
+        managerState: import("../src/realtime/types").ConnectionState;
+        handleConnectionStateChange: (state: import("../src/realtime/types").ConnectionState) => void;
+      };
+      mgr.managerState = "connected";
+      mgr.handleConnectionStateChange("connected");
+      return true;
+    });
+    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const peerConnectionSpy = vi.spyOn(WebRTCManager.prototype, "getPeerConnection").mockReturnValue(peerConnection);
+    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+
+    try {
+      const realtime = createRealTimeClient({
+        baseUrl: "wss://api3.decart.ai",
+        apiKey: "test-key",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        telemetryEnabled: false,
+      });
+      const client = await realtime.connect({} as MediaStream, {
+        model: models.realtime("mirage_v2"),
+        onRemoteStream: vi.fn(),
+      });
+
+      expect(startSpy).not.toHaveBeenCalled();
+
+      client.disconnect();
+    } finally {
+      startSpy.mockRestore();
+      connectSpy.mockRestore();
+      stateSpy.mockRestore();
+      peerConnectionSpy.mockRestore();
+      cleanupSpy.mockRestore();
+    }
+  });
+
   it("keeps explicit observability stats listeners independent from telemetry upload", async () => {
     const { RealtimeObservability } = await import("../src/realtime/observability/realtime-observability.js");
     const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
