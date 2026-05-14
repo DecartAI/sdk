@@ -104,9 +104,6 @@ export class SignalingChannel {
       throw new Error("WebSocket is not open");
     }
 
-    const initialStateAck = this.sendInitialState(opts.initialState);
-    initialStateAck.catch(() => {});
-
     let roomInfo: RoomInfo;
     try {
       roomInfo = await roomInfoWait.promise;
@@ -116,6 +113,10 @@ export class SignalingChannel {
     }
 
     this.connected = true;
+
+    const initialStateAck = this.sendInitialState(opts.initialState);
+    initialStateAck.catch(() => {});
+
     return { roomInfo, initialStateAck };
   }
 

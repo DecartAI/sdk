@@ -323,7 +323,7 @@ describe("SignalingChannel initial handshake", () => {
     vi.unstubAllGlobals();
   });
 
-  it("sends initial set_image in parallel with waiting for room info, exposes ack as a separate promise", async () => {
+  it("defers initial set_image until room info arrives, exposes ack as a separate promise", async () => {
     const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
     const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
 
@@ -335,10 +335,7 @@ describe("SignalingChannel initial handshake", () => {
     ws.onopen?.();
     await Promise.resolve();
     await Promise.resolve();
-    expect(ws.sentMessages).toEqual([
-      { type: "livekit_join" },
-      { type: "set_image", image_data: "base64-image", prompt: "wear a hat", enhance_prompt: false },
-    ]);
+    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
 
     ws.receive({
       type: "livekit_room_info",
@@ -355,6 +352,10 @@ describe("SignalingChannel initial handshake", () => {
       roomName: "room",
       sessionId: "session",
     });
+    expect(ws.sentMessages).toEqual([
+      { type: "livekit_join" },
+      { type: "set_image", image_data: "base64-image", prompt: "wear a hat", enhance_prompt: false },
+    ]);
 
     let ackResolved = false;
     initialStateAck.then(() => {
@@ -368,7 +369,7 @@ describe("SignalingChannel initial handshake", () => {
     expect(ackResolved).toBe(true);
   });
 
-  it("sends initial null set_image in parallel with waiting for room info", async () => {
+  it("defers initial null set_image until room info arrives", async () => {
     const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
     const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
 
@@ -380,7 +381,7 @@ describe("SignalingChannel initial handshake", () => {
     ws.onopen?.();
     await Promise.resolve();
     await Promise.resolve();
-    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }, { type: "set_image", image_data: null, prompt: null }]);
+    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
 
     ws.receive({
       type: "livekit_room_info",
@@ -392,6 +393,7 @@ describe("SignalingChannel initial handshake", () => {
 
     const { roomInfo, initialStateAck } = await openPromise;
     expect(roomInfo.roomName).toBe("room");
+    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }, { type: "set_image", image_data: null, prompt: null }]);
 
     let ackResolved = false;
     initialStateAck.then(() => {
@@ -455,6 +457,45 @@ describe("SignalingChannel initial handshake", () => {
     ws.onclose?.({ code: 1006, reason: "dropped" });
 
     await expect(initialStateAck).rejects.toThrow("WebSocket closed: 1006 dropped");
+  });
+
+  it("does not start the initial-state ack timer while waiting in queue", async () => {
+    vi.useFakeTimers();
+    try {
+      const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
+      const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
+
+      const openPromise = channel.openAndJoin({
+        initialState: { image: "base64-image" },
+      });
+      openPromise.catch(() => {});
+
+      const ws = FakeWebSocket.instances[0];
+      ws.onopen?.();
+      await flushMicrotasks();
+      expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
+
+      ws.receive({ type: "queue_position", position: 5, queue_size: 10 });
+      await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.signaling.requestTimeoutMs * 2);
+      expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
+
+      ws.receive({ type: "queue_position", position: 1, queue_size: 10 });
+      ws.receive({
+        type: "livekit_room_info",
+        livekit_url: "wss://livekit.example.test",
+        token: "token",
+        room_name: "room",
+        session_id: "session",
+      });
+
+      const { initialStateAck } = await openPromise;
+      expect(ws.sentMessages).toEqual([{ type: "livekit_join" }, { type: "set_image", image_data: "base64-image" }]);
+
+      ws.receive({ type: "set_image_ack", success: true, error: null });
+      await expect(initialStateAck).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects pending initial-state ack on timeout", async () => {
@@ -634,13 +675,15 @@ describe("StreamSession startup orchestration", () => {
     ws.onopen?.();
     await flushMicrotasks();
 
+    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
+
+    sendRoomInfo(ws);
+    await flushMicrotasks();
+
     expect(ws.sentMessages).toEqual([
       { type: "livekit_join" },
       { type: "prompt", prompt: "wear a hat", enhance_prompt: false },
     ]);
-
-    sendRoomInfo(ws);
-    await flushMicrotasks();
 
     const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
     expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "token");
@@ -701,10 +744,11 @@ describe("StreamSession startup orchestration", () => {
     const ws = FakeWebSocket.instances[0];
     ws.onopen?.();
     await flushMicrotasks();
-    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }, { type: "set_image", image_data: null, prompt: null }]);
+    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
 
     sendRoomInfo(ws);
     await flushMicrotasks();
+    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }, { type: "set_image", image_data: null, prompt: null }]);
     subscribeRemoteTrack();
 
     await expect(connectPromise).resolves.toBeUndefined();
@@ -740,12 +784,14 @@ describe("StreamSession startup orchestration", () => {
     expect(secondWs).toBeDefined();
     secondWs.onopen?.();
     await flushMicrotasks();
+    expect(secondWs.sentMessages).toEqual([{ type: "livekit_join" }]);
+
+    sendRoomInfo(secondWs, "second");
+    await flushMicrotasks();
     expect(secondWs.sentMessages).toEqual([
       { type: "livekit_join" },
       { type: "set_image", image_data: "base64-image" },
     ]);
-
-    sendRoomInfo(secondWs, "second");
     secondWs.receive({ type: "set_image_ack", success: true, error: null });
     await expect(connectPromise).resolves.toBeUndefined();
   });
