@@ -62,6 +62,23 @@ realtimeClient.setPrompt("Cyberpunk city");
 realtimeClient.disconnect();
 ```
 
+#### Front-camera mirroring
+
+Pre-flip the input stream:
+
+```ts
+const realtimeClient = await client.realtime.connect(stream, {
+  model,
+  mirror: "auto", // or true to always mirror
+  // ...
+});
+```
+
+Options:
+- `false` (default) — never mirror.
+- `"auto"` — mirror when the input track reports `facingMode: "user"` (mobile front cameras).
+- `true` — always mirror (e.g. desktop webcams).
+
 ### Async Processing (Queue API)
 
 For video generation jobs, use the queue API to submit jobs and poll for results:
