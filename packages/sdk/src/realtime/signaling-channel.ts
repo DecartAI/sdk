@@ -1,6 +1,8 @@
 import mitt, { type Emitter } from "mitt";
 
+import { type Logger, createConsoleLogger } from "../utils/logger";
 import { buildUserAgent } from "../utils/user-agent";
+import type { RealtimeObservability } from "./observability/realtime-observability";
 import type {
   IncomingRealtimeMessage,
   InitialState,
@@ -33,6 +35,8 @@ export type SignalingChannelEvents = {
 export interface SignalingChannelConfig {
   url: string;
   integration?: string;
+  logger?: Logger;
+  observability?: RealtimeObservability;
 }
 
 type PendingAck = {
@@ -47,8 +51,11 @@ export class SignalingChannel {
   private pendingAcks: PendingAck[] = [];
   private connected = false;
   private closing = false;
+  private readonly logger: Logger;
 
-  constructor(private readonly config: SignalingChannelConfig) {}
+  constructor(private readonly config: SignalingChannelConfig) {
+    this.logger = config.logger ?? createConsoleLogger("warn");
+  }
 
   on<E extends keyof SignalingChannelEvents>(event: E, handler: (data: SignalingChannelEvents[E]) => void): void {
     this.events.on(event, handler);
@@ -64,7 +71,27 @@ export class SignalingChannel {
     const connectTimeout = opts.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT_MS;
     const handshakeTimeout = opts.handshakeTimeout ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
 
-    await this.openSocket(connectTimeout);
+    const wsStart = Date.now();
+    try {
+      await this.openSocket(connectTimeout);
+      this.config.observability?.diagnostic("phaseTiming", {
+        phase: "websocket",
+        durationMs: Date.now() - wsStart,
+        success: true,
+      });
+      this.logger.debug("signaling: websocket open", { durationMs: Date.now() - wsStart });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.config.observability?.diagnostic("phaseTiming", {
+        phase: "websocket",
+        durationMs: Date.now() - wsStart,
+        success: false,
+        error: message,
+      });
+      this.logger.error("signaling: websocket open failed", { durationMs: Date.now() - wsStart, error: message });
+      throw error;
+    }
+
     await this.runHandshake(handshakeTimeout, opts.initialState);
     this.connected = true;
   }
@@ -117,7 +144,10 @@ export class SignalingChannel {
     const wsUrl = `${this.config.url}${separator}user_agent=${userAgent}`;
 
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("WebSocket timeout")), timeout);
+      const timer = setTimeout(() => {
+        this.logger.error("signaling: websocket open timeout", { timeoutMs: timeout });
+        reject(new Error("WebSocket timeout"));
+      }, timeout);
       const ws = new WebSocket(wsUrl);
       this.ws = ws;
       ws.onopen = () => {
@@ -127,8 +157,16 @@ export class SignalingChannel {
       ws.onclose = (e) => {
         clearTimeout(timer);
         const wasConnected = this.connected;
+        const pendingCount = this.pendingAcks.length;
         this.connected = false;
         this.ws = null;
+        this.logger.warn("signaling: websocket closed", {
+          code: e.code,
+          reason: e.reason,
+          wasConnected,
+          closing: this.closing,
+          pendingAcks: pendingCount,
+        });
         this.rejectAllPending(new Error(`WebSocket closed: ${e.code} ${e.reason}`));
         if (wasConnected || this.closing) {
           this.events.emit("closed", { code: e.code, reason: e.reason });
@@ -170,6 +208,7 @@ export class SignalingChannel {
     const promise = new Promise<void>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
         cleanup();
+        this.logger.warn("signaling: livekit_room_info timeout", { timeoutMs });
         reject(new Error(`livekit_room_info timeout (${timeoutMs}ms)`));
       }, timeoutMs);
 
@@ -215,15 +254,51 @@ export class SignalingChannel {
     if (!initialState) return;
 
     if (initialState.image !== undefined) {
-      await this.setImage(initialState.image, {
-        prompt: initialState.prompt,
-        enhance: initialState.enhance,
-      });
+      const started = Date.now();
+      try {
+        await this.setImage(initialState.image, {
+          prompt: initialState.prompt,
+          enhance: initialState.enhance,
+        });
+        this.config.observability?.diagnostic("phaseTiming", {
+          phase: "initial-image",
+          durationMs: Date.now() - started,
+          success: true,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.config.observability?.diagnostic("phaseTiming", {
+          phase: "initial-image",
+          durationMs: Date.now() - started,
+          success: false,
+          error: message,
+        });
+        this.logger.error("signaling: initial image ack failed", { durationMs: Date.now() - started, error: message });
+        throw error;
+      }
       return;
     }
 
     if (initialState.prompt !== undefined && initialState.prompt !== null) {
-      await this.sendPrompt(initialState.prompt, { enhance: initialState.enhance });
+      const started = Date.now();
+      try {
+        await this.sendPrompt(initialState.prompt, { enhance: initialState.enhance });
+        this.config.observability?.diagnostic("phaseTiming", {
+          phase: "initial-prompt",
+          durationMs: Date.now() - started,
+          success: true,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.config.observability?.diagnostic("phaseTiming", {
+          phase: "initial-prompt",
+          durationMs: Date.now() - started,
+          success: false,
+          error: message,
+        });
+        this.logger.error("signaling: initial prompt ack failed", { durationMs: Date.now() - started, error: message });
+        throw error;
+      }
     }
   }
 
@@ -236,6 +311,7 @@ export class SignalingChannel {
     return new Promise<TAck>((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
+        this.logger.warn("signaling: ack timed out", { label, timeoutMs });
         reject(new Error(`${label} timed out`));
       }, timeoutMs);
 
@@ -301,6 +377,7 @@ export class SignalingChannel {
       case "error": {
         const error = new Error(msg.error) as Error & { source?: string };
         error.source = "server";
+        this.logger.error("signaling: server error received", { error: msg.error });
         this.events.emit("serverError", error);
         this.rejectAllPending(error);
         break;
