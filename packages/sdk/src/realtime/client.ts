@@ -5,6 +5,7 @@ import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import type { Logger } from "../utils/logger";
 import { createEventBuffer } from "./event-buffer";
 import { realtimeMethods, type SetInput } from "./methods";
+import { createMirroredStream, type MirroredStream, shouldMirrorTrack } from "./mirror-stream";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
 import type { WebRTCStats } from "./observability/webrtc-stats";
@@ -92,6 +93,13 @@ const realTimeClientConnectOptionsSchema = z.object({
   }),
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
+  /**
+   * Pre-flip input video.
+   * - false (default): never mirror.
+   * - "auto": mirror when `facingMode === "user"`.
+   * - true: always mirror.
+   */
+  mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -134,8 +142,26 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     }
 
     const { onRemoteStream, initialState } = parsedOptions.data;
+    const mirror = parsedOptions.data.mirror ?? false;
 
-    const inputStream: MediaStream = stream ?? new MediaStream();
+    let inputStream: MediaStream = stream ?? new MediaStream();
+
+    let mirroredStream: MirroredStream | undefined;
+    if (mirror !== false) {
+      try {
+        const firstVideoTrack = inputStream.getVideoTracks?.()[0];
+        if (firstVideoTrack && (mirror === true || shouldMirrorTrack(firstVideoTrack))) {
+          mirroredStream = createMirroredStream(inputStream, { fps: options.model.fps });
+          inputStream = mirroredStream.stream;
+        } else if (mirror === true && !firstVideoTrack) {
+          logger.warn("mirror: true requested but no video track was found on the input stream");
+        }
+      } catch (error) {
+        logger.warn("Failed to mirror input stream; falling back to un-mirrored input", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     let webrtcManager: WebRTCManager | undefined;
     const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
@@ -214,6 +240,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           observability.stop();
           stop();
           manager.cleanup();
+          mirroredStream?.dispose();
         },
         on: eventEmitter.on,
         off: eventEmitter.off,
@@ -240,6 +267,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     } catch (error) {
       observability.stop();
       webrtcManager?.cleanup();
+      mirroredStream?.dispose();
       throw error;
     }
   };
