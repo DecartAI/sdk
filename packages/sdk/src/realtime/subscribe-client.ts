@@ -10,7 +10,7 @@ import {
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { createEventBuffer } from "./event-buffer";
-import { LIVEKIT_CONNECT_OPTIONS, LIVEKIT_ROOM_OPTIONS } from "./media-channel";
+import { LIVEKIT_ROOM_OPTIONS } from "./media-channel";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
 import type { ConnectionState } from "./types";
@@ -87,6 +87,11 @@ async function fetchWatchStreamCredentials(opts: {
   apiKey: string;
   roomName: string;
 }): Promise<WatchStreamResponse> {
+  if (!/^https?:\/\//i.test(opts.baseUrl)) {
+    throw new Error(
+      `watch-stream baseUrl must use http(s); got ${opts.baseUrl}`,
+    );
+  }
   const url = `${opts.baseUrl}/watch-stream/${encodeURIComponent(opts.roomName)}`;
   const res = await fetch(url, {
     method: "POST",
@@ -164,7 +169,7 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
         setState("disconnected");
       });
 
-      await activeRoom.connect(creds.livekit_url, creds.token, LIVEKIT_CONNECT_OPTIONS);
+      await activeRoom.connect(creds.livekit_url, creds.token);
       observability.setLiveKitRoom(activeRoom);
       setState("connected");
 

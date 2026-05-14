@@ -200,7 +200,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     telemetryEnabled,
   });
   const realtimeSubscribe = createRealTimeSubscribeClient({
-    baseUrl: wsBaseUrl,
+    baseUrl,
     apiKey: apiKey || "",
     integration,
     logger,
