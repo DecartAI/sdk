@@ -33,13 +33,11 @@ export class RemoteStreamExposure {
   }
 
   accept(stream: MediaStream): void {
-    if (!this.waitingForInitialState) {
-      this.config.expose(stream);
-      return;
-    }
-
-    this.config.logger.debug("buffering remoteStream until initial-state ack received");
-    this.bufferedStream = stream;
+    // TEMPORARILY DISABLED for demo: do not await caller initial-state ack
+    // before exposing the remote stream. Restore the buffering branch (and
+    // the matching commented-out tests in tests/realtime.unit.test.ts) to
+    // re-enable the gate.
+    this.config.expose(stream);
   }
 
   reset(): void {

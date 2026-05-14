@@ -6,6 +6,7 @@ import { createConsoleLogger, type Logger } from "../utils/logger";
 import { imageToBase64 } from "../utils/media";
 import { createEventBuffer } from "./event-buffer";
 import { realtimeMethods, type SetInput } from "./methods";
+import { createMirroredStream, type MirroredStream, shouldMirrorTrack } from "./mirror-stream";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
 import type { WebRTCStats } from "./observability/webrtc-stats";
@@ -43,6 +44,7 @@ const realTimeClientConnectOptionsSchema = z.object({
     .optional(),
   initialState: realTimeClientInitialStateSchema.optional(),
   queryParams: z.record(z.string(), z.string()).optional(),
+  mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -84,7 +86,25 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     if (!parsedOptions.success) throw parsedOptions.error;
 
     const { onRemoteStream, onConnectionChange, onQueuePosition, initialState } = parsedOptions.data;
-    const inputStream = stream ?? new MediaStream();
+    const mirror = parsedOptions.data.mirror ?? false;
+    let inputStream: MediaStream = stream ?? new MediaStream();
+
+    let mirroredStream: MirroredStream | undefined;
+    if (mirror !== false) {
+      try {
+        const firstVideoTrack = inputStream.getVideoTracks?.()[0];
+        if (firstVideoTrack && (mirror === true || shouldMirrorTrack(firstVideoTrack))) {
+          mirroredStream = createMirroredStream(inputStream, { fps: options.model.fps });
+          inputStream = mirroredStream.stream;
+        } else if (mirror === true && !firstVideoTrack) {
+          logger.warn("mirror: true requested but no video track was found on the input stream");
+        }
+      } catch (error) {
+        logger.warn("Failed to mirror input stream; falling back to un-mirrored input", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     let session: StreamSession | undefined;
     let observability: RealtimeObservability | undefined;
@@ -166,6 +186,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           observability?.stop();
           stop();
           activeSession.disconnect();
+          mirroredStream?.dispose();
         },
         on: eventEmitter.on,
         off: eventEmitter.off,
@@ -188,6 +209,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     } catch (error) {
       observability?.stop();
       session?.disconnect();
+      mirroredStream?.dispose();
       throw error;
     }
   };

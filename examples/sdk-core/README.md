@@ -47,10 +47,10 @@ Video models use the asynchronous Queue API - jobs are submitted and polled for 
 These examples require browser APIs (WebRTC) and are for reference.
 See `examples/nextjs-realtime` or `examples/react-vite` for runnable demos.
 
-- `realtime/mirage-basic.ts` - Basic Mirage connection (style transformation)
-- `realtime/mirage-v2-basic.ts` - Mirage v2 connection (improved style transformation)
-- `realtime/lucy-v2v-720p.ts` - Lucy v2v realtime (video editing - add objects, change elements)
-- `realtime/lucy-2.ts` - Lucy 2 realtime (better quality video editing with reference image support)
+- `realtime/mirage-v2-basic.ts` - Realtime style transformation with `lucy-restyle-2`
+- `realtime/lucy-2.1.ts` - Lucy 2.1 realtime video editing with reference image support
+- `realtime/lucy-2.1-vton.ts` - Lucy 2.1 virtual try-on
+- `realtime/lucy-vton-2.ts` - Lucy VTON 2
 - `realtime/connection-events.ts` - Handling connection state and errors
 - `realtime/prompt-update.ts` - Updating prompt dynamically
 - `realtime/custom-model.ts` - Using a custom model definition (e.g., preview/experimental models)
@@ -99,3 +99,4 @@ realtimeClient.setPrompt("new style");
 realtimeClient.on("connectionChange", (state) => { ... });
 realtimeClient.disconnect();
 ```
+

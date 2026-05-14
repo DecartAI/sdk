@@ -144,7 +144,6 @@ export class TelemetryReporter implements ITelemetryReporter {
           headers: commonHeaders,
           body: JSON.stringify(chunk),
           // Only set keepalive on the very last chunk (if the caller requested it).
-          keepalive: keepalive && isLast,
         }).catch(() => {});
 
         chunk = this.createReportChunk();

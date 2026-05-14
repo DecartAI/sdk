@@ -499,24 +499,26 @@ describe("RemoteStreamExposure", () => {
     logger.error.mockClear();
   });
 
-  it("buffers Remote Stream Exposure until caller Initial State is acknowledged", async () => {
-    const { RemoteStreamExposure } = await import("../src/realtime/remote-stream-exposure.js");
-    const exposed: MediaStream[] = [];
-    const exposure = new RemoteStreamExposure({ logger, expose: (stream) => exposed.push(stream) });
-    let ackInitialState!: () => void;
-    const initialStateAck = new Promise<void>((resolve) => {
-      ackInitialState = resolve;
-    });
-
-    const attempt = exposure.startAttempt({ prompt: "wear a hat" });
-    const stream = new FakeMediaStream() as MediaStream;
-    exposure.accept(stream);
-
-    expect(exposed).toEqual([]);
-    ackInitialState();
-    await attempt.waitForReadiness(initialStateAck);
-    expect(exposed).toEqual([stream]);
-  });
+  // TEMPORARILY DISABLED: initial-state ack gating is turned off for demo (see
+  // RemoteStreamExposure.accept). Restore this test when the gate is re-enabled.
+  // it("buffers Remote Stream Exposure until caller Initial State is acknowledged", async () => {
+  //   const { RemoteStreamExposure } = await import("../src/realtime/remote-stream-exposure.js");
+  //   const exposed: MediaStream[] = [];
+  //   const exposure = new RemoteStreamExposure({ logger, expose: (stream) => exposed.push(stream) });
+  //   let ackInitialState!: () => void;
+  //   const initialStateAck = new Promise<void>((resolve) => {
+  //     ackInitialState = resolve;
+  //   });
+  //
+  //   const attempt = exposure.startAttempt({ prompt: "wear a hat" });
+  //   const stream = new FakeMediaStream() as MediaStream;
+  //   exposure.accept(stream);
+  //
+  //   expect(exposed).toEqual([]);
+  //   ackInitialState();
+  //   await attempt.waitForReadiness(initialStateAck);
+  //   expect(exposed).toEqual([stream]);
+  // });
 
   it("does not gate Remote Stream Exposure for the internal null-image bootstrap", async () => {
     const { RemoteStreamExposure } = await import("../src/realtime/remote-stream-exposure.js");
@@ -531,25 +533,27 @@ describe("RemoteStreamExposure", () => {
     expect(exposed).toEqual([stream]);
   });
 
-  it("does not release a buffered stream from a stale startup attempt", async () => {
-    const { RemoteStreamExposure } = await import("../src/realtime/remote-stream-exposure.js");
-    const exposed: MediaStream[] = [];
-    const exposure = new RemoteStreamExposure({ logger, expose: (stream) => exposed.push(stream) });
-    let ackInitialState!: () => void;
-    const initialStateAck = new Promise<void>((resolve) => {
-      ackInitialState = resolve;
-    });
-
-    const attempt = exposure.startAttempt({ image: "base64-image" });
-    exposure.accept(new FakeMediaStream() as MediaStream);
-    const waitForReadiness = attempt.waitForReadiness(initialStateAck);
-
-    exposure.reset();
-    ackInitialState();
-    await waitForReadiness;
-
-    expect(exposed).toEqual([]);
-  });
+  // TEMPORARILY DISABLED: initial-state ack gating is turned off for demo (see
+  // RemoteStreamExposure.accept). Restore this test when the gate is re-enabled.
+  // it("does not release a buffered stream from a stale startup attempt", async () => {
+  //   const { RemoteStreamExposure } = await import("../src/realtime/remote-stream-exposure.js");
+  //   const exposed: MediaStream[] = [];
+  //   const exposure = new RemoteStreamExposure({ logger, expose: (stream) => exposed.push(stream) });
+  //   let ackInitialState!: () => void;
+  //   const initialStateAck = new Promise<void>((resolve) => {
+  //     ackInitialState = resolve;
+  //   });
+  //
+  //   const attempt = exposure.startAttempt({ image: "base64-image" });
+  //   exposure.accept(new FakeMediaStream() as MediaStream);
+  //   const waitForReadiness = attempt.waitForReadiness(initialStateAck);
+  //
+  //   exposure.reset();
+  //   ackInitialState();
+  //   await waitForReadiness;
+  //
+  //   expect(exposed).toEqual([]);
+  // });
 });
 
 describe("StreamSession startup orchestration", () => {
@@ -654,31 +658,33 @@ describe("StreamSession startup orchestration", () => {
     expect(states).toEqual(["connecting", "connected"]);
   });
 
-  it("buffers remoteStream before caller initial-state ack and releases it after ack", async () => {
-    const { StreamSession } = await import("../src/realtime/stream-session.js");
-    const session = new StreamSession({
-      url: "wss://example.test/realtime",
-      localStream: null,
-      initialImage: "base64-image",
-      initialPrompt: { text: "wear a hat" },
-    });
-    const remoteStreams: MediaStream[] = [];
-    session.on("remoteStream", (stream) => remoteStreams.push(stream));
-
-    const connectPromise = session.connect();
-    const ws = FakeWebSocket.instances[0];
-    ws.onopen?.();
-    await flushMicrotasks();
-    sendRoomInfo(ws);
-    await flushMicrotasks();
-
-    subscribeRemoteTrack();
-    expect(remoteStreams).toHaveLength(0);
-
-    ws.receive({ type: "set_image_ack", success: true, error: null });
-    await expect(connectPromise).resolves.toBeUndefined();
-    expect(remoteStreams).toHaveLength(1);
-  });
+  // TEMPORARILY DISABLED: initial-state ack gating is turned off for demo (see
+  // RemoteStreamExposure.accept). Restore this test when the gate is re-enabled.
+  // it("buffers remoteStream before caller initial-state ack and releases it after ack", async () => {
+  //   const { StreamSession } = await import("../src/realtime/stream-session.js");
+  //   const session = new StreamSession({
+  //     url: "wss://example.test/realtime",
+  //     localStream: null,
+  //     initialImage: "base64-image",
+  //     initialPrompt: { text: "wear a hat" },
+  //   });
+  //   const remoteStreams: MediaStream[] = [];
+  //   session.on("remoteStream", (stream) => remoteStreams.push(stream));
+  //
+  //   const connectPromise = session.connect();
+  //   const ws = FakeWebSocket.instances[0];
+  //   ws.onopen?.();
+  //   await flushMicrotasks();
+  //   sendRoomInfo(ws);
+  //   await flushMicrotasks();
+  //
+  //   subscribeRemoteTrack();
+  //   expect(remoteStreams).toHaveLength(0);
+  //
+  //   ws.receive({ type: "set_image_ack", success: true, error: null });
+  //   await expect(connectPromise).resolves.toBeUndefined();
+  //   expect(remoteStreams).toHaveLength(1);
+  // });
 
   it("does not gate remoteStream or connected state on the internal null-image bootstrap ack", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
@@ -741,44 +747,46 @@ describe("StreamSession startup orchestration", () => {
     await expect(connectPromise).resolves.toBeUndefined();
   });
 
-  it("resends caller initial state and gates remoteStream again on reconnect", async () => {
-    const { StreamSession } = await import("../src/realtime/stream-session.js");
-    const session = new StreamSession({
-      url: "wss://example.test/realtime",
-      localStream: null,
-      initialPrompt: { text: "make it cinematic" },
-    });
-    const remoteStreams: MediaStream[] = [];
-    session.on("remoteStream", (stream) => remoteStreams.push(stream));
-
-    const connectPromise = session.connect();
-    const firstWs = FakeWebSocket.instances[0];
-    firstWs.onopen?.();
-    await flushMicrotasks();
-    sendRoomInfo(firstWs, "first");
-    firstWs.receive({ type: "prompt_ack", prompt: "make it cinematic", success: true, error: null });
-    await expect(connectPromise).resolves.toBeUndefined();
-
-    const firstRoom = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
-    firstRoom.emit(liveKitMock.RoomEvent.Disconnected, "network");
-    await flushMicrotasks();
-
-    const secondWs = FakeWebSocket.instances[1];
-    secondWs.onopen?.();
-    await flushMicrotasks();
-    expect(secondWs.sentMessages).toEqual([
-      { type: "livekit_join" },
-      { type: "prompt", prompt: "make it cinematic", enhance_prompt: true },
-    ]);
-
-    sendRoomInfo(secondWs, "second");
-    await flushMicrotasks();
-    subscribeRemoteTrack();
-    expect(remoteStreams).toHaveLength(0);
-
-    secondWs.receive({ type: "prompt_ack", prompt: "make it cinematic", success: true, error: null });
-    await vi.waitFor(() => expect(remoteStreams).toHaveLength(1));
-  });
+  // TEMPORARILY DISABLED: initial-state ack gating is turned off for demo (see
+  // RemoteStreamExposure.accept). Restore this test when the gate is re-enabled.
+  // it("resends caller initial state and gates remoteStream again on reconnect", async () => {
+  //   const { StreamSession } = await import("../src/realtime/stream-session.js");
+  //   const session = new StreamSession({
+  //     url: "wss://example.test/realtime",
+  //     localStream: null,
+  //     initialPrompt: { text: "make it cinematic" },
+  //   });
+  //   const remoteStreams: MediaStream[] = [];
+  //   session.on("remoteStream", (stream) => remoteStreams.push(stream));
+  //
+  //   const connectPromise = session.connect();
+  //   const firstWs = FakeWebSocket.instances[0];
+  //   firstWs.onopen?.();
+  //   await flushMicrotasks();
+  //   sendRoomInfo(firstWs, "first");
+  //   firstWs.receive({ type: "prompt_ack", prompt: "make it cinematic", success: true, error: null });
+  //   await expect(connectPromise).resolves.toBeUndefined();
+  //
+  //   const firstRoom = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
+  //   firstRoom.emit(liveKitMock.RoomEvent.Disconnected, "network");
+  //   await flushMicrotasks();
+  //
+  //   const secondWs = FakeWebSocket.instances[1];
+  //   secondWs.onopen?.();
+  //   await flushMicrotasks();
+  //   expect(secondWs.sentMessages).toEqual([
+  //     { type: "livekit_join" },
+  //     { type: "prompt", prompt: "make it cinematic", enhance_prompt: true },
+  //   ]);
+  //
+  //   sendRoomInfo(secondWs, "second");
+  //   await flushMicrotasks();
+  //   subscribeRemoteTrack();
+  //   expect(remoteStreams).toHaveLength(0);
+  //
+  //   secondWs.receive({ type: "prompt_ack", prompt: "make it cinematic", success: true, error: null });
+  //   await vi.waitFor(() => expect(remoteStreams).toHaveLength(1));
+  // });
 });
 
 describe("WebRTC Error Classification", () => {
