@@ -17,6 +17,7 @@ import {
   resolveCanonicalModelAlias,
   resolveModelAlias,
 } from "../src/index.js";
+import { RealtimeObservability } from "../src/realtime/observability/realtime-observability.js";
 import {
   _resetDeprecationWarnings,
   canonicalImageModels,
@@ -32,6 +33,14 @@ import {
 const MOCK_RESPONSE_DATA = new Uint8Array([0x00, 0x01, 0x02]).buffer;
 const TEST_API_KEY = "test-api-key";
 const BASE_URL = "http://localhost";
+
+const TEST_LOGGER = { debug() {}, info() {}, warn() {}, error() {} };
+const createTestObservability = () =>
+  new RealtimeObservability({
+    telemetryEnabled: false,
+    apiKey: TEST_API_KEY,
+    logger: TEST_LOGGER,
+  });
 
 describe("Decart SDK", () => {
   describe("createDecartClient", () => {
@@ -1163,14 +1172,14 @@ describe("WebRTCConnection", () => {
   describe("setImageBase64", () => {
     it("rejects immediately when WebSocket is not open", async () => {
       const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-      const connection = new WebRTCConnection();
+      const connection = new WebRTCConnection({ observability: createTestObservability() });
 
       await expect(connection.setImageBase64("base64data", { timeout: 5000 })).rejects.toThrow("WebSocket is not open");
     });
 
     it("rejects immediately with default timeout when WebSocket is not open", async () => {
       const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-      const connection = new WebRTCConnection();
+      const connection = new WebRTCConnection({ observability: createTestObservability() });
 
       await expect(connection.setImageBase64("base64data")).rejects.toThrow("WebSocket is not open");
     });
@@ -1186,7 +1195,7 @@ describe("WebRTCConnection", () => {
 
       it("uses custom timeout when send succeeds but ack is not received", async () => {
         const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-        const connection = new WebRTCConnection();
+        const connection = new WebRTCConnection({ observability: createTestObservability() });
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
         const customTimeout = 5000;
@@ -1211,7 +1220,7 @@ describe("WebRTCConnection", () => {
 
       it("uses default timeout (30000ms) when send succeeds but ack is not received", async () => {
         const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-        const connection = new WebRTCConnection();
+        const connection = new WebRTCConnection({ observability: createTestObservability() });
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
         let rejected = false;
@@ -1238,7 +1247,7 @@ describe("WebRTCConnection", () => {
       vi.useFakeTimers();
       try {
         const { WebRTCConnection } = await import("../src/realtime/webrtc-connection.js");
-        const connection = new WebRTCConnection();
+        const connection = new WebRTCConnection({ observability: createTestObservability() });
         const sendSpy = vi.spyOn(connection, "send").mockReturnValue(true);
 
         const promise = connection.setImageBase64(null, { prompt: null }).catch(() => {});
@@ -1296,7 +1305,7 @@ describe("WebRTCConnection", () => {
       vi.stubGlobal("RTCPeerConnection", FakePeerConnection as unknown as typeof RTCPeerConnection);
 
       try {
-        const connection = new WebRTCConnection();
+        const connection = new WebRTCConnection({ observability: createTestObservability() });
         const internalConnection = connection as unknown as {
           handleSignalingMessage: (msg: unknown) => Promise<void>;
           localStream: { getTracks: () => MediaStreamTrack[] };
@@ -1529,7 +1538,7 @@ describe("Subscribe Client", () => {
     vi.stubGlobal("RTCPeerConnection", FakePeerConnection as unknown as typeof RTCPeerConnection);
 
     try {
-      const connection = new WebRTCConnection();
+      const connection = new WebRTCConnection({ observability: createTestObservability() });
       const internal = connection as unknown as {
         handleSignalingMessage: (msg: unknown) => Promise<void>;
         localStream: MediaStream | null;
@@ -1555,6 +1564,7 @@ describe("Subscribe Client", () => {
 
     const manager = new WebRTCManager({
       webrtcUrl: "wss://example.com",
+      observability: createTestObservability(),
       onRemoteStream: vi.fn(),
       onError: vi.fn(),
     });
@@ -1664,12 +1674,12 @@ describe("Subscribe Client", () => {
       const mgr = this as unknown as {
         config: {
           onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void;
-          onDiagnostic?: (name: string, data: unknown) => void;
         };
         managerState: import("../src/realtime/types").ConnectionState;
+        observability: import("../src/realtime/observability/realtime-observability").RealtimeObservability;
       };
 
-      mgr.config.onDiagnostic?.("phaseTiming", {
+      mgr.observability.diagnostic("phaseTiming", {
         phase: "websocket",
         durationMs: 12,
         success: true,
@@ -1808,24 +1818,22 @@ describe("Subscribe Client", () => {
   it("restarts stats collection when peer connection changes after reconnect", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
-    const firstPeerConnection = {} as RTCPeerConnection;
-    const secondPeerConnection = {} as RTCPeerConnection;
+    const firstPeerConnection = { getStats: vi.fn().mockResolvedValue(new Map()) } as unknown as RTCPeerConnection;
+    const secondPeerConnection = { getStats: vi.fn().mockResolvedValue(new Map()) } as unknown as RTCPeerConnection;
     let currentPeerConnection = firstPeerConnection;
-    let onConnectionStateChange: ((state: import("../src/realtime/types").ConnectionState) => void) | undefined;
 
     const startSpy = vi.spyOn(WebRTCStatsCollector.prototype, "start").mockImplementation(() => {});
     const stopSpy = vi.spyOn(WebRTCStatsCollector.prototype, "stop").mockImplementation(() => {});
 
     const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
       const mgr = this as unknown as {
-        config: { onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void };
         managerState: import("../src/realtime/types").ConnectionState;
+        handleConnectionStateChange: (state: import("../src/realtime/types").ConnectionState) => void;
       };
-      onConnectionStateChange = mgr.config.onConnectionStateChange;
       mgr.managerState = "connected";
-      mgr.config.onConnectionStateChange?.("connected");
+      mgr.handleConnectionStateChange("connected");
       return true;
     });
     const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
@@ -1846,11 +1854,20 @@ describe("Subscribe Client", () => {
         onRemoteStream: vi.fn(),
       });
 
+      const internalManager = connectSpy.mock.instances[0] as unknown as {
+        handleConnectionStateChange: (state: import("../src/realtime/types").ConnectionState) => void;
+        statsProviderConnection: RTCPeerConnection | null;
+        managerState: import("../src/realtime/types").ConnectionState;
+      };
+
       expect(startSpy).toHaveBeenCalledTimes(1);
       expect(startSpy.mock.calls[0][0]).toBe(firstPeerConnection);
 
       currentPeerConnection = secondPeerConnection;
-      onConnectionStateChange?.("connected");
+      // Simulate underlying connection bouncing: disconnected then reconnected. Manager treats the
+      // second "connected" as a new peer connection and rotates the stats provider accordingly.
+      internalManager.statsProviderConnection = null;
+      internalManager.handleConnectionStateChange("connected");
 
       expect(startSpy).toHaveBeenCalledTimes(2);
       expect(startSpy.mock.calls[1][0]).toBe(secondPeerConnection);
@@ -1864,6 +1881,77 @@ describe("Subscribe Client", () => {
       stateSpy.mockRestore();
       peerConnectionSpy.mockRestore();
       cleanupSpy.mockRestore();
+    }
+  });
+
+  it("does not start stats collection when telemetry is disabled", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
+
+    const peerConnection = { getStats: vi.fn().mockResolvedValue(new Map()) } as unknown as RTCPeerConnection;
+
+    const startSpy = vi.spyOn(WebRTCStatsCollector.prototype, "start").mockImplementation(() => {});
+    const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+      const mgr = this as unknown as {
+        managerState: import("../src/realtime/types").ConnectionState;
+        handleConnectionStateChange: (state: import("../src/realtime/types").ConnectionState) => void;
+      };
+      mgr.managerState = "connected";
+      mgr.handleConnectionStateChange("connected");
+      return true;
+    });
+    const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
+    const peerConnectionSpy = vi.spyOn(WebRTCManager.prototype, "getPeerConnection").mockReturnValue(peerConnection);
+    const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+
+    try {
+      const realtime = createRealTimeClient({
+        baseUrl: "wss://api3.decart.ai",
+        apiKey: "test-key",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        telemetryEnabled: false,
+      });
+      const client = await realtime.connect({} as MediaStream, {
+        model: models.realtime("mirage_v2"),
+        onRemoteStream: vi.fn(),
+      });
+
+      expect(startSpy).not.toHaveBeenCalled();
+
+      client.disconnect();
+    } finally {
+      startSpy.mockRestore();
+      connectSpy.mockRestore();
+      stateSpy.mockRestore();
+      peerConnectionSpy.mockRestore();
+      cleanupSpy.mockRestore();
+    }
+  });
+
+  it("keeps explicit observability stats listeners independent from telemetry upload", async () => {
+    const { RealtimeObservability } = await import("../src/realtime/observability/realtime-observability.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
+
+    const source = { getStats: vi.fn().mockResolvedValue(new Map()) };
+    const startSpy = vi.spyOn(WebRTCStatsCollector.prototype, "start").mockImplementation(() => {});
+
+    try {
+      const observability = new RealtimeObservability({
+        telemetryEnabled: false,
+        apiKey: "test-key",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        onStats: vi.fn(),
+      });
+
+      observability.setStatsProvider(source);
+
+      expect(startSpy).toHaveBeenCalledTimes(1);
+      expect(startSpy.mock.calls[0][0]).toBe(source);
+
+      observability.stop();
+    } finally {
+      startSpy.mockRestore();
     }
   });
 
@@ -2063,7 +2151,7 @@ describe("WebRTC Error Classification", () => {
 
 describe("WebRTCStatsCollector", () => {
   it("starts and stops polling", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
     const collector = new WebRTCStatsCollector();
 
     const mockPC = {
@@ -2080,7 +2168,7 @@ describe("WebRTCStatsCollector", () => {
   });
 
   it("parses inbound video stats", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -2107,7 +2195,7 @@ describe("WebRTCStatsCollector", () => {
         getStats: vi.fn().mockResolvedValue(statsReport),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -2131,7 +2219,7 @@ describe("WebRTCStatsCollector", () => {
   });
 
   it("parses inbound audio and candidate-pair stats", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -2161,7 +2249,7 @@ describe("WebRTCStatsCollector", () => {
         getStats: vi.fn().mockResolvedValue(statsReport),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -2180,7 +2268,7 @@ describe("WebRTCStatsCollector", () => {
   });
 
   it("computes video bitrate from bytesReceived delta", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -2213,7 +2301,7 @@ describe("WebRTCStatsCollector", () => {
         }),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       // First tick: no previous data, bitrate = 0
@@ -2231,7 +2319,7 @@ describe("WebRTCStatsCollector", () => {
   });
 
   it("enforces minimum interval of 500ms", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -2259,7 +2347,7 @@ describe("WebRTCStatsCollector", () => {
   });
 
   it("stops silently if getStats throws", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -2286,7 +2374,7 @@ describe("WebRTCStatsCollector", () => {
 
 describe("TelemetryReporter", () => {
   it("buffers stats and diagnostics then flushes on interval", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     vi.useFakeTimers();
 
@@ -2340,7 +2428,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("does not send empty reports", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     vi.useFakeTimers();
 
@@ -2370,7 +2458,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("stop discards buffered data without sending a request", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -2405,7 +2493,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("silently handles fetch failures", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockRejectedValue(new Error("network error"));
     vi.stubGlobal("fetch", fetchMock);
@@ -2433,7 +2521,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("includes auth headers and sdk version in report", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -2468,7 +2556,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("clears buffers after sending", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     vi.useFakeTimers();
 
@@ -2508,7 +2596,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("chunks reports when buffers exceed 120 items", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -2546,7 +2634,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("warns on non-2xx response status", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500, statusText: "Internal Server Error" });
     vi.stubGlobal("fetch", fetchMock);
@@ -2583,7 +2671,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("includes model in report body and tags when provided", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -2614,7 +2702,7 @@ describe("TelemetryReporter", () => {
   });
 
   it("omits model from report when not provided", async () => {
-    const { TelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -2678,7 +2766,7 @@ describe("WebSockets Connection", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
 
     try {
-      const connection = new WebRTCConnection();
+      const connection = new WebRTCConnection({ observability: createTestObservability() });
       const internal = connection as unknown as {
         setState: (state: import("../src/realtime/types").ConnectionState) => void;
         setupNewPeerConnection: () => Promise<void>;
@@ -2732,7 +2820,7 @@ describe("WebSockets Connection", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
 
     try {
-      const connection = new WebRTCConnection();
+      const connection = new WebRTCConnection({ observability: createTestObservability() });
       const internal = connection as unknown as {
         setState: (state: import("../src/realtime/types").ConnectionState) => void;
         setupNewPeerConnection: () => Promise<void>;
@@ -2785,7 +2873,7 @@ describe("WebSockets Connection", () => {
     vi.stubGlobal("RTCPeerConnection", FakePeerConnection as unknown as typeof RTCPeerConnection);
 
     try {
-      const connection = new WebRTCConnection();
+      const connection = new WebRTCConnection({ observability: createTestObservability() });
       const internal = connection as unknown as {
         handleSignalingMessage: (msg: unknown) => Promise<void>;
         localStream: { getTracks: () => MediaStreamTrack[] };
@@ -2815,6 +2903,7 @@ describe("WebSockets Connection", () => {
     const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
     const manager = new WebRTCManager({
       webrtcUrl: "wss://example.com",
+      observability: createTestObservability(),
       onRemoteStream: vi.fn(),
       onError: vi.fn(),
     });
@@ -2927,7 +3016,7 @@ describe("WebSockets Connection", () => {
 
 describe("NullTelemetryReporter", () => {
   it("all methods are no-ops", async () => {
-    const { NullTelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { NullTelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
     const reporter = new NullTelemetryReporter();
 
     // None of these should throw
@@ -2945,7 +3034,7 @@ describe("NullTelemetryReporter", () => {
   });
 
   it("implements ITelemetryReporter interface", async () => {
-    const { NullTelemetryReporter } = await import("../src/realtime/telemetry-reporter.js");
+    const { NullTelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
     const reporter = new NullTelemetryReporter();
 
     expect(typeof reporter.start).toBe("function");
@@ -2958,7 +3047,7 @@ describe("NullTelemetryReporter", () => {
 
 describe("Outbound Video Stats", () => {
   it("parses outbound-rtp video with quality limitation tracking", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -2981,7 +3070,7 @@ describe("Outbound Video Stats", () => {
         getStats: vi.fn().mockResolvedValue(statsReport),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -3006,7 +3095,7 @@ describe("Outbound Video Stats", () => {
   });
 
   it("returns null outboundVideo when no outbound-rtp report", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -3016,7 +3105,7 @@ describe("Outbound Video Stats", () => {
         getStats: vi.fn().mockResolvedValue(new Map()),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -3030,7 +3119,7 @@ describe("Outbound Video Stats", () => {
   });
 
   it("computes outbound video bitrate from bytesSent delta", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -3059,7 +3148,7 @@ describe("Outbound Video Stats", () => {
         }),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       // First tick: no previous data, bitrate = 0
@@ -3079,7 +3168,7 @@ describe("Outbound Video Stats", () => {
 
 describe("Delta computation for cumulative counters", () => {
   it("computes packetsLostDelta, framesDroppedDelta, freezeCountDelta, freezeDurationDelta", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -3119,7 +3208,7 @@ describe("Delta computation for cumulative counters", () => {
         }),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       // First tick: delta = cumulative (since prev was 0)
@@ -3143,7 +3232,7 @@ describe("Delta computation for cumulative counters", () => {
   });
 
   it("computes audio packetsLostDelta", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -3169,7 +3258,7 @@ describe("Delta computation for cumulative counters", () => {
         }),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -3185,7 +3274,7 @@ describe("Delta computation for cumulative counters", () => {
   });
 
   it("clamps deltas to zero if cumulative counter resets", async () => {
-    const { WebRTCStatsCollector } = await import("../src/realtime/webrtc-stats.js");
+    const { WebRTCStatsCollector } = await import("../src/realtime/observability/webrtc-stats.js");
 
     vi.useFakeTimers();
     try {
@@ -3222,7 +3311,7 @@ describe("Delta computation for cumulative counters", () => {
         }),
       } as unknown as RTCPeerConnection;
 
-      const receivedStats: Array<import("../src/realtime/webrtc-stats.js").WebRTCStats> = [];
+      const receivedStats: Array<import("../src/realtime/observability/webrtc-stats.js").WebRTCStats> = [];
       collector.start(mockPC, (stats) => receivedStats.push(stats));
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -3242,7 +3331,7 @@ describe("Delta computation for cumulative counters", () => {
 describe("VideoStall Diagnostic", () => {
   it("videoStall event type exists in DiagnosticEvents", async () => {
     // Type-level check: videoStall is a valid DiagnosticEventName
-    const event: import("../src/realtime/diagnostics.js").DiagnosticEvent = {
+    const event: import("../src/realtime/observability/diagnostics.js").DiagnosticEvent = {
       name: "videoStall",
       data: { stalled: true, durationMs: 0 },
     };
@@ -3252,7 +3341,7 @@ describe("VideoStall Diagnostic", () => {
   });
 
   it("videoStall recovery includes duration", () => {
-    const event: import("../src/realtime/diagnostics.js").DiagnosticEvent = {
+    const event: import("../src/realtime/observability/diagnostics.js").DiagnosticEvent = {
       name: "videoStall",
       data: { stalled: false, durationMs: 1500 },
     };

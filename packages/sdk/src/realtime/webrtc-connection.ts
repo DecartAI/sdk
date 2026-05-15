@@ -2,7 +2,8 @@ import mitt from "mitt";
 
 import type { Logger } from "../utils/logger";
 import { buildUserAgent } from "../utils/user-agent";
-import type { DiagnosticEmitter, IceCandidateEvent } from "./diagnostics";
+import type { IceCandidateEvent } from "./observability/diagnostics";
+import type { RealtimeObservability } from "./observability/realtime-observability";
 import type {
   ConnectionState,
   GenerationTickMessage,
@@ -26,7 +27,7 @@ interface ConnectionCallbacks {
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
   logger?: Logger;
-  onDiagnostic?: DiagnosticEmitter;
+  observability: RealtimeObservability;
 }
 
 type WsMessageEvents = {
@@ -36,20 +37,18 @@ type WsMessageEvents = {
   generationTick: GenerationTickMessage;
 };
 
-const noopDiagnostic: DiagnosticEmitter = () => {};
-
 export class WebRTCConnection {
   private pc: RTCPeerConnection | null = null;
   private ws: WebSocket | null = null;
   private localStream: MediaStream | null = null;
   private connectionReject: ((error: Error) => void) | null = null;
   private logger: Logger;
-  private emitDiagnostic: DiagnosticEmitter;
+  private observability: RealtimeObservability;
   state: ConnectionState = "disconnected";
   websocketMessagesEmitter = mitt<WsMessageEvents>();
-  constructor(private callbacks: ConnectionCallbacks = {}) {
+  constructor(private callbacks: ConnectionCallbacks) {
     this.logger = callbacks.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
-    this.emitDiagnostic = callbacks.onDiagnostic ?? noopDiagnostic;
+    this.observability = callbacks.observability;
   }
 
   getPeerConnection(): RTCPeerConnection | null {
@@ -87,7 +86,7 @@ export class WebRTCConnection {
 
           this.ws.onopen = () => {
             clearTimeout(timer);
-            this.emitDiagnostic("phaseTiming", {
+            this.observability.diagnostic("phaseTiming", {
               phase: "websocket",
               durationMs: performance.now() - wsStart,
               success: true,
@@ -104,7 +103,7 @@ export class WebRTCConnection {
           this.ws.onerror = () => {
             clearTimeout(timer);
             const error = new Error("WebSocket error");
-            this.emitDiagnostic("phaseTiming", {
+            this.observability.diagnostic("phaseTiming", {
               phase: "websocket",
               durationMs: performance.now() - wsStart,
               success: false,
@@ -134,7 +133,7 @@ export class WebRTCConnection {
           }),
           connectAbort,
         ]);
-        this.emitDiagnostic("phaseTiming", {
+        this.observability.diagnostic("phaseTiming", {
           phase: "avatar-image",
           durationMs: performance.now() - imageStart,
           success: true,
@@ -142,7 +141,7 @@ export class WebRTCConnection {
       } else if (this.callbacks.initialPrompt) {
         const promptStart = performance.now();
         await Promise.race([this.sendInitialPrompt(this.callbacks.initialPrompt), connectAbort]);
-        this.emitDiagnostic("phaseTiming", {
+        this.observability.diagnostic("phaseTiming", {
           phase: "initial-prompt",
           durationMs: performance.now() - promptStart,
           success: true,
@@ -151,7 +150,7 @@ export class WebRTCConnection {
         // No image and no prompt — send passthrough (skip for subscribe mode which has no local stream)
         const nullStart = performance.now();
         await Promise.race([this.setImageBase64(null, { prompt: null }), connectAbort]);
-        this.emitDiagnostic("phaseTiming", {
+        this.observability.diagnostic("phaseTiming", {
           phase: "initial-prompt",
           durationMs: performance.now() - nullStart,
           success: true,
@@ -166,7 +165,7 @@ export class WebRTCConnection {
           const checkConnection = setInterval(() => {
             if (this.state === "connected" || this.state === "generating") {
               clearInterval(checkConnection);
-              this.emitDiagnostic("phaseTiming", {
+              this.observability.diagnostic("phaseTiming", {
                 phase: "webrtc-handshake",
                 durationMs: performance.now() - handshakeStart,
                 success: true,
@@ -174,7 +173,7 @@ export class WebRTCConnection {
               resolve();
             } else if (this.state === "disconnected") {
               clearInterval(checkConnection);
-              this.emitDiagnostic("phaseTiming", {
+              this.observability.diagnostic("phaseTiming", {
                 phase: "webrtc-handshake",
                 durationMs: performance.now() - handshakeStart,
                 success: false,
@@ -183,7 +182,7 @@ export class WebRTCConnection {
               reject(new Error("Connection lost during WebRTC handshake"));
             } else if (Date.now() >= deadline) {
               clearInterval(checkConnection);
-              this.emitDiagnostic("phaseTiming", {
+              this.observability.diagnostic("phaseTiming", {
                 phase: "webrtc-handshake",
                 durationMs: performance.now() - handshakeStart,
                 success: false,
@@ -198,7 +197,7 @@ export class WebRTCConnection {
         connectAbort,
       ]);
 
-      this.emitDiagnostic("phaseTiming", {
+      this.observability.diagnostic("phaseTiming", {
         phase: "total",
         durationMs: performance.now() - totalStart,
         success: true,
@@ -282,7 +281,7 @@ export class WebRTCConnection {
         case "ice-candidate":
           if (msg.candidate) {
             await this.pc.addIceCandidate(msg.candidate);
-            this.emitDiagnostic("iceCandidate", {
+            this.observability.diagnostic("iceCandidate", {
               source: "remote",
               candidateType:
                 (msg.candidate.candidate?.match(/typ (\w+)/)?.[1] as IceCandidateEvent["candidateType"]) ?? "unknown",
@@ -439,7 +438,7 @@ export class WebRTCConnection {
     this.pc.onicecandidate = (e) => {
       this.send({ type: "ice-candidate", candidate: e.candidate });
       if (e.candidate) {
-        this.emitDiagnostic("iceCandidate", {
+        this.observability.diagnostic("iceCandidate", {
           source: "local",
           candidateType: (e.candidate.type as IceCandidateEvent["candidateType"]) ?? "unknown",
           protocol: (e.candidate.protocol as IceCandidateEvent["protocol"]) ?? "unknown",
@@ -453,7 +452,7 @@ export class WebRTCConnection {
     this.pc.onconnectionstatechange = () => {
       if (!this.pc) return;
       const s = this.pc.connectionState;
-      this.emitDiagnostic("peerConnectionStateChange", {
+      this.observability.diagnostic("peerConnectionStateChange", {
         state: s,
         previousState: prevPcState,
         timestampMs: performance.now(),
@@ -475,7 +474,7 @@ export class WebRTCConnection {
     this.pc.oniceconnectionstatechange = () => {
       if (!this.pc) return;
       const newIceState = this.pc.iceConnectionState;
-      this.emitDiagnostic("iceStateChange", {
+      this.observability.diagnostic("iceStateChange", {
         state: newIceState,
         previousState: prevIceState,
         timestampMs: performance.now(),
@@ -492,7 +491,7 @@ export class WebRTCConnection {
     this.pc.onsignalingstatechange = () => {
       if (!this.pc) return;
       const newState = this.pc.signalingState;
-      this.emitDiagnostic("signalingStateChange", {
+      this.observability.diagnostic("signalingStateChange", {
         state: newState,
         previousState: prevSignalingState,
         timestampMs: performance.now(),
@@ -519,7 +518,7 @@ export class WebRTCConnection {
             if (r.id === report.remoteCandidateId) remoteCandidate = r as Record<string, unknown>;
           });
           if (localCandidate && remoteCandidate) {
-            this.emitDiagnostic("selectedCandidatePair", {
+            this.observability.diagnostic("selectedCandidatePair", {
               local: {
                 candidateType: String(localCandidate.candidateType ?? "unknown"),
                 protocol: String(localCandidate.protocol ?? "unknown"),

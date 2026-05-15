@@ -1,5 +1,6 @@
 import type { DecartSDKError } from "../utils/errors";
-import type { DiagnosticEvent } from "./diagnostics";
+import type { DiagnosticEvent } from "./observability/diagnostics";
+import type { WebRTCStats } from "./observability/webrtc-stats";
 import type { ConnectionState } from "./types";
 
 type TokenPayload = {
@@ -28,6 +29,7 @@ export type SubscribeEvents = {
   connectionChange: ConnectionState;
   error: DecartSDKError;
   diagnostic: DiagnosticEvent;
+  stats: WebRTCStats;
 };
 
 export type RealTimeSubscribeClient = {
