@@ -4,6 +4,7 @@ import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { imageToBase64 } from "../utils/media";
+import { isDesktopSafari } from "../utils/platform";
 import { createEventBuffer } from "./event-buffer";
 import { realtimeMethods, type SetInput } from "./methods";
 import { createMirroredStream, type MirroredStream, shouldMirrorTrack } from "./mirror-stream";
@@ -128,7 +129,10 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         onStats: (stats) => emitOrBuffer("stats", stats),
       });
 
+      const safariCodec = isDesktopSafari() ? "vp8" : undefined;
+
       const queryParams = new URLSearchParams({
+        ...(safariCodec ? { livekit_server_codec: safariCodec } : {}),
         ...(options.queryParams ?? {}),
         api_key: apiKey,
         model: options.model.name,
@@ -142,6 +146,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialImage,
         initialPrompt,
         logger,
+        videoCodec: safariCodec,
       });
 
       let sessionId: string | null = null;
