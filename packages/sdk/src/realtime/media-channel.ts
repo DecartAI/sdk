@@ -14,7 +14,9 @@ import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 
-export function getDefaultVideoPublishOptions(): TrackPublishOptions {
+export type VideoCodec = "h264" | "vp8" | "vp9" | "av1";
+
+export function getDefaultVideoPublishOptions(videoCodec?: VideoCodec): TrackPublishOptions {
   const videoEncoding = {
     maxBitrate: REALTIME_CONFIG.livekit.defaultMaxVideoBitrateBps,
     maxFramerate: REALTIME_CONFIG.livekit.defaultPublishFps,
@@ -22,7 +24,7 @@ export function getDefaultVideoPublishOptions(): TrackPublishOptions {
 
   return {
     source: Track.Source.Camera,
-    videoCodec: REALTIME_CONFIG.livekit.defaultVideoCodec,
+    videoCodec: videoCodec ?? REALTIME_CONFIG.livekit.defaultVideoCodec,
     simulcast: true,
     videoEncoding,
   };
@@ -38,6 +40,7 @@ export interface MediaChannelConfig {
   observability?: RealtimeObservability;
   localStream: MediaStream | null;
   logger?: Logger;
+  videoCodec?: VideoCodec;
 }
 
 export type MediaConnectOptions = {
@@ -115,7 +118,7 @@ export class MediaChannel {
     if (!this.room) return;
     for (const track of stream.getTracks()) {
       if (track.kind === "video") {
-        await this.room.localParticipant.publishTrack(track, getDefaultVideoPublishOptions());
+        await this.room.localParticipant.publishTrack(track, getDefaultVideoPublishOptions(this.config.videoCodec));
       } else {
         await this.room.localParticipant.publishTrack(track);
       }

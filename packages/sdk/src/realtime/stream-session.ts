@@ -3,7 +3,7 @@ import pRetry, { AbortError } from "p-retry";
 
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
-import { MediaChannel } from "./media-channel";
+import { MediaChannel, type VideoCodec } from "./media-channel";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 import { RemoteStreamExposure } from "./remote-stream-exposure";
 import { SignalingChannel } from "./signaling-channel";
@@ -49,6 +49,7 @@ interface StreamSessionConfig {
   initialImage?: string;
   initialPrompt?: InitialPrompt;
   logger?: Logger;
+  videoCodec?: VideoCodec;
 }
 
 export class StreamSession {
@@ -287,6 +288,7 @@ export class StreamSession {
       observability: this.config.observability,
       localStream: this.config.localStream,
       logger: this.logger,
+      videoCodec: this.config.videoCodec,
     });
     this.wireSignalingEvents();
     this.wireMediaEvents();
