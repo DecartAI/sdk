@@ -3,9 +3,9 @@ import pRetry, { AbortError } from "p-retry";
 
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
-import { MediaChannel } from "./media-channel";
+import { InitialStateGate } from "./initial-state-gate";
+import { MediaChannel, type VideoCodec } from "./media-channel";
 import type { RealtimeObservability } from "./observability/realtime-observability";
-import { RemoteStreamExposure } from "./remote-stream-exposure";
 import { SignalingChannel } from "./signaling-channel";
 import type {
   ConnectionState,
@@ -31,6 +31,15 @@ export function encodeSubscribeToken(roomName: string): string {
   return btoa(JSON.stringify({ room_name: roomName }));
 }
 
+function getInitialImageSizeKb(image: string | null | undefined): number | null {
+  if (!image) return null;
+  const commaIdx = image.indexOf(",");
+  const base64 = commaIdx >= 0 && image.startsWith("data:") ? image.slice(commaIdx + 1) : image;
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  const bytes = Math.floor((base64.length * 3) / 4) - padding;
+  return Math.max(0, Math.round(bytes / 1024));
+}
+
 type StreamSessionEvents = {
   connectionChange: ConnectionState;
   queuePosition: QueuePosition;
@@ -49,6 +58,7 @@ interface StreamSessionConfig {
   initialImage?: string;
   initialPrompt?: InitialPrompt;
   logger?: Logger;
+  videoCodec?: VideoCodec;
 }
 
 export class StreamSession {
@@ -62,15 +72,11 @@ export class StreamSession {
   private disposed = false;
   private currentAttempt = 0;
 
-  private readonly remoteStreamExposure: RemoteStreamExposure;
+  private readonly initialStateGate = new InitialStateGate();
   private readonly logger: Logger;
 
   constructor(private readonly config: StreamSessionConfig) {
     this.logger = config.logger ?? createConsoleLogger("warn");
-    this.remoteStreamExposure = new RemoteStreamExposure({
-      logger: this.logger,
-      expose: (stream) => this.events.emit("remoteStream", stream),
-    });
     this.createTransport();
   }
 
@@ -157,45 +163,58 @@ export class StreamSession {
       throw new AbortError("Stale connect attempt");
     }
 
-    this.resetHandshakeState();
-    const initialState = this.getInitialState();
-    const exposureAttempt = this.remoteStreamExposure.startAttempt(initialState);
-
-    const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({
-      connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
-      initialState,
-    });
-
-    if (this.disposed || this.currentAttempt !== attempt) {
-      this.tearDown();
-      throw new AbortError("Stale connect attempt");
-    }
-
-    this.queue = null;
-
     try {
-      await Promise.all([
-        exposureAttempt.waitForReadiness(initialStateAck),
-        this.media.connect({
+      this.resetHandshakeState();
+      const initialState = this.getInitialState();
+      this.config.observability?.beginConnectionBreakdown(attempt, getInitialImageSizeKb(initialState?.image));
+      const gateAttempt = this.initialStateGate.startAttempt(initialState);
+
+      const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({
+        connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
+        initialState,
+      });
+
+      if (this.disposed || this.currentAttempt !== attempt) {
+        this.tearDown();
+        throw new AbortError("Stale connect attempt");
+      }
+
+      this.queue = null;
+
+      try {
+        await this.media.connect({
           url: roomInfo.livekitUrl,
           token: roomInfo.token,
-        }),
-      ]);
+        });
+        const isCurrentAttempt = await gateAttempt.waitForReadiness(initialStateAck);
+        if (!isCurrentAttempt) {
+          throw new AbortError("Stale connect attempt");
+        }
+        await this.media.publishLocalTracks();
+      } catch (error) {
+        this.tearDown();
+        throw error;
+      }
+
+      if (this.disposed || this.currentAttempt !== attempt) {
+        this.tearDown();
+        throw new AbortError("Stale connect attempt");
+      }
+
+      this.config.observability?.finishConnectionBreakdown({ success: true });
+
+      this.setState("connected");
+      this.events.emit("sessionStarted", {
+        sessionId: roomInfo.sessionId,
+        subscribeToken: encodeSubscribeToken(roomInfo.roomName),
+      });
     } catch (error) {
-      this.tearDown();
+      this.config.observability?.finishConnectionBreakdown({
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
-
-    if (this.disposed || this.currentAttempt !== attempt) {
-      this.tearDown();
-      throw new AbortError("Stale connect attempt");
-    }
-
-    this.setState("connected");
-    this.events.emit("sessionStarted", {
-      sessionId: roomInfo.sessionId,
-      subscribeToken: encodeSubscribeToken(roomInfo.roomName),
-    });
   }
 
   private getInitialState(): InitialState | undefined {
@@ -233,7 +252,7 @@ export class StreamSession {
   }
 
   private wireMediaEvents(): void {
-    this.media.on("remoteStream", (stream) => this.remoteStreamExposure.accept(stream));
+    this.media.on("remoteStream", (stream) => this.events.emit("remoteStream", stream));
     this.media.on("firstFrame", () => {
       if (this.state === "connected") this.setState("generating");
     });
@@ -287,6 +306,7 @@ export class StreamSession {
       observability: this.config.observability,
       localStream: this.config.localStream,
       logger: this.logger,
+      videoCodec: this.config.videoCodec,
     });
     this.wireSignalingEvents();
     this.wireMediaEvents();
@@ -295,7 +315,7 @@ export class StreamSession {
   private tearDown(): void {
     this.signaling.close();
     this.media.disconnect();
-    this.remoteStreamExposure.reset();
+    this.initialStateGate.reset();
     this.resetHandshakeState();
   }
 

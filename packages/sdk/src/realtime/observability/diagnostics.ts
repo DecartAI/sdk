@@ -1,4 +1,19 @@
-/** Connection phase names for timing events. */
+export type ClientSessionConnectionBreakdownPhase = {
+  phase: string;
+  durationMs: number;
+  success: boolean;
+  error?: string;
+};
+
+export type ClientSessionConnectionBreakdownEvent = {
+  attempt: number;
+  success: boolean;
+  totalDurationMs: number;
+  initialImageSizeKb: number | null;
+  phases: ClientSessionConnectionBreakdownPhase[];
+  error?: string;
+};
+
 export type ConnectionPhase = "websocket" | "avatar-image" | "initial-prompt" | "webrtc-handshake" | "total";
 
 export type PhaseTimingEvent = {
@@ -58,14 +73,12 @@ export type ReconnectEvent = {
 };
 
 export type VideoStallEvent = {
-  /** True when a stall is detected, false when recovered. */
   stalled: boolean;
-  /** Duration of the stall in ms (0 when stall first detected, actual duration on recovery). */
   durationMs: number;
 };
 
-/** All diagnostic event types keyed by name. */
 export type DiagnosticEvents = {
+  "client-session-connection-breakdown": ClientSessionConnectionBreakdownEvent;
   phaseTiming: PhaseTimingEvent;
   iceCandidate: IceCandidateEvent;
   iceStateChange: IceStateEvent;
@@ -78,10 +91,13 @@ export type DiagnosticEvents = {
 
 export type DiagnosticEventName = keyof DiagnosticEvents;
 
-/** A single diagnostic event with its name and typed data. */
+type DiagnosticEventForName<K extends DiagnosticEventName> = {
+  name: K;
+  data: DiagnosticEvents[K];
+};
+
 export type DiagnosticEvent = {
-  [K in DiagnosticEventName]: { name: K; data: DiagnosticEvents[K] };
+  [K in DiagnosticEventName]: DiagnosticEventForName<K>;
 }[DiagnosticEventName];
 
-/** Callback for emitting diagnostic events from the connection/manager layers. */
 export type DiagnosticEmitter = <K extends DiagnosticEventName>(name: K, data: DiagnosticEvents[K]) => void;

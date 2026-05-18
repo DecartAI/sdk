@@ -95,8 +95,11 @@ export class SignalingChannel {
     const connectTimeout = opts.connectTimeout ?? REALTIME_CONFIG.signaling.connectTimeoutMs;
     const handshakeTimeout = opts.handshakeTimeout ?? REALTIME_CONFIG.signaling.handshakeTimeoutMs;
 
+    this.config.observability?.startPhase("websocket-open");
     await this.openSocket(connectTimeout);
+    this.config.observability?.endPhase("websocket-open", { success: true });
 
+    this.config.observability?.startPhase("room-join");
     const roomInfoWait = this.waitForRoomInfo(handshakeTimeout);
 
     if (!this.writeMessage({ type: "livekit_join" })) {
@@ -111,13 +114,21 @@ export class SignalingChannel {
       this.rejectAllPending(error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
+    this.config.observability?.endPhase("room-join", { success: true });
 
     this.connected = true;
 
-    const initialStateAck = this.sendInitialState(opts.initialState);
+    const initialStateAck = this.sendInitialStateTracked(opts.initialState);
     initialStateAck.catch(() => {});
 
     return { roomInfo, initialStateAck };
+  }
+
+  private async sendInitialStateTracked(initialState?: InitialState): Promise<void> {
+    if (!initialState) return;
+    this.config.observability?.startPhase("initial-state-handshake");
+    await this.sendInitialState(initialState);
+    this.config.observability?.endPhase("initial-state-handshake", { success: true });
   }
 
   close(): void {

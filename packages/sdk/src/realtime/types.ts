@@ -1,22 +1,3 @@
-export type OfferMessage = {
-  type: "offer";
-  sdp: string;
-};
-
-export type AnswerMessage = {
-  type: "answer";
-  sdp: string;
-};
-
-export type IceCandidateMessage = {
-  type: "ice-candidate";
-  candidate: RTCIceCandidateInit | null;
-};
-
-export type ReadyMessage = {
-  type: "ready";
-};
-
 export type PromptMessage = {
   type: "prompt";
   prompt: string;
@@ -42,40 +23,18 @@ export type SetImageMessage = {
   enhance_prompt?: boolean;
 };
 
-export type SetAvatarImageMessage = SetImageMessage;
-
 export type SetImageAckMessage = {
   type: "set_image_ack";
   success: boolean;
   error: null | string;
 };
 
-export type GenerationStartedMessage = {
-  type: "generation_started";
-};
-
-export type GenerationTick = {
-  seconds: number;
-};
-
 export type GenerationTickMessage = GenerationTick & {
   type: "generation_tick";
 };
 
-export type GenerationEnded = {
-  seconds: number;
-  reason: string;
-};
-
 export type GenerationEndedMessage = GenerationEnded & {
   type: "generation_ended";
-};
-
-export type SessionIdMessage = {
-  type: "session_id";
-  session_id: string;
-  server_ip: string;
-  server_port: number;
 };
 
 export type LiveKitJoinMessage = {
@@ -106,6 +65,15 @@ export type ConnectionState = "connecting" | "connected" | "generating" | "disco
 export type ConnectionStatus = {
   connection: ConnectionState;
   queue: QueuePosition | null;
+};
+
+export type GenerationTick = {
+  seconds: number;
+};
+
+export type GenerationEnded = {
+  seconds: number;
+  reason: string;
 };
 
 export type ConnectionClosed = {
@@ -144,6 +112,55 @@ export type ImageSetOptions = {
   timeout?: number;
 };
 
+// Incoming message types (from server)
+export type IncomingRealtimeMessage =
+  | PromptAckMessage
+  | ErrorMessage
+  | SetImageAckMessage
+  | GenerationTickMessage
+  | GenerationEndedMessage
+  | LiveKitRoomInfoMessage
+  | QueuePositionMessage;
+
+// Outgoing message types (to server)
+export type OutgoingRealtimeMessage = LiveKitJoinMessage | PromptMessage | SetImageMessage;
+
+export type OutgoingMessage = PromptMessage | SetImageMessage;
+
+// --- aiortc-path types retained until PR 3 removes the aiortc transport ---
+
+export type OfferMessage = {
+  type: "offer";
+  sdp: string;
+};
+
+export type AnswerMessage = {
+  type: "answer";
+  sdp: string;
+};
+
+export type IceCandidateMessage = {
+  type: "ice-candidate";
+  candidate: RTCIceCandidateInit | null;
+};
+
+export type ReadyMessage = {
+  type: "ready";
+};
+
+export type SetAvatarImageMessage = SetImageMessage;
+
+export type GenerationStartedMessage = {
+  type: "generation_started";
+};
+
+export type SessionIdMessage = {
+  type: "session_id";
+  session_id: string;
+  server_ip: string;
+  server_port: number;
+};
+
 export type IncomingWebRTCMessage =
   | ReadyMessage
   | OfferMessage
@@ -157,22 +174,9 @@ export type IncomingWebRTCMessage =
   | GenerationEndedMessage
   | SessionIdMessage;
 
-export type IncomingRealtimeMessage =
-  | PromptAckMessage
-  | ErrorMessage
-  | SetImageAckMessage
-  | GenerationTickMessage
-  | GenerationEndedMessage
-  | LiveKitRoomInfoMessage
-  | QueuePositionMessage;
-
 export type OutgoingWebRTCMessage =
   | OfferMessage
   | AnswerMessage
   | IceCandidateMessage
   | PromptMessage
   | SetImageMessage;
-
-export type OutgoingRealtimeMessage = LiveKitJoinMessage | PromptMessage | SetImageMessage;
-
-export type OutgoingMessage = PromptMessage | SetImageMessage;
