@@ -37,6 +37,7 @@ type PhaseEntry = {
 type ConnectionBreakdownBuffer = {
   attempt: number;
   connectStartedAt: number;
+  initialImageSizeKb: number | null;
   phases: Map<string, PhaseEntry>;
 };
 
@@ -59,10 +60,11 @@ export class RealtimeObservability {
     this.addTelemetryDiagnostic(name, data, timestamp);
   }
 
-  beginConnectionBreakdown(attempt: number): void {
+  beginConnectionBreakdown(attempt: number, initialImageSizeKb: number | null): void {
     this.connectionBreakdown = {
       attempt,
       connectStartedAt: Date.now(),
+      initialImageSizeKb,
       phases: new Map(),
     };
   }
@@ -110,6 +112,7 @@ export class RealtimeObservability {
         attempt: buffer.attempt,
         success: opts.success,
         totalDurationMs: now - buffer.connectStartedAt,
+        initialImageSizeKb: buffer.initialImageSizeKb,
         phases,
         ...(opts.error !== undefined ? { error: opts.error } : {}),
       },

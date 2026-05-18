@@ -31,6 +31,15 @@ export function encodeSubscribeToken(roomName: string): string {
   return btoa(JSON.stringify({ room_name: roomName }));
 }
 
+function getInitialImageSizeKb(image: string | null | undefined): number | null {
+  if (!image) return null;
+  const commaIdx = image.indexOf(",");
+  const base64 = commaIdx >= 0 && image.startsWith("data:") ? image.slice(commaIdx + 1) : image;
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  const bytes = Math.floor((base64.length * 3) / 4) - padding;
+  return Math.max(0, Math.round(bytes / 1024));
+}
+
 type StreamSessionEvents = {
   connectionChange: ConnectionState;
   queuePosition: QueuePosition;
@@ -154,11 +163,10 @@ export class StreamSession {
       throw new AbortError("Stale connect attempt");
     }
 
-    this.config.observability?.beginConnectionBreakdown(attempt);
-
     try {
       this.resetHandshakeState();
       const initialState = this.getInitialState();
+      this.config.observability?.beginConnectionBreakdown(attempt, getInitialImageSizeKb(initialState?.image));
       const gateAttempt = this.initialStateGate.startAttempt(initialState);
 
       const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({

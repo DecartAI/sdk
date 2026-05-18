@@ -9,6 +9,7 @@ export type ClientSessionConnectionBreakdownEvent = {
   attempt: number;
   success: boolean;
   totalDurationMs: number;
+  initialImageSizeKb: number | null;
   phases: ClientSessionConnectionBreakdownPhase[];
   error?: string;
 };

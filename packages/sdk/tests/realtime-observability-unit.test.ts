@@ -42,7 +42,7 @@ describe("RealtimeObservability", () => {
         diagnostics.push(event as { name: string; data: { attempt: number; success: boolean; phases: unknown[] } }),
     });
 
-    observability.beginConnectionBreakdown(1);
+    observability.beginConnectionBreakdown(1, null);
     observability.startPhase("websocket-open");
     observability.endPhase("websocket-open", { success: true });
     observability.startPhase("room-join");
@@ -83,7 +83,7 @@ describe("RealtimeObservability", () => {
         diagnostics.push(event as { name: string; data: { success: boolean; error?: string; phases: unknown[] } }),
     });
 
-    observability.beginConnectionBreakdown(1);
+    observability.beginConnectionBreakdown(1, null);
     observability.startPhase("websocket-open");
     observability.endPhase("websocket-open", { success: true });
     observability.startPhase("room-join");
@@ -110,12 +110,12 @@ describe("RealtimeObservability", () => {
       onDiagnostic: (event) => diagnostics.push(event as { name: string; data: { attempt: number; success: boolean } }),
     });
 
-    observability.beginConnectionBreakdown(1);
+    observability.beginConnectionBreakdown(1, null);
     observability.startPhase("websocket-open");
     observability.endPhase("websocket-open", { success: false, error: "boom" });
     observability.finishConnectionBreakdown({ success: false, error: "boom" });
 
-    observability.beginConnectionBreakdown(2);
+    observability.beginConnectionBreakdown(2, null);
     observability.startPhase("websocket-open");
     observability.endPhase("websocket-open", { success: true });
     observability.finishConnectionBreakdown({ success: true });
@@ -123,6 +123,27 @@ describe("RealtimeObservability", () => {
     expect(diagnostics).toHaveLength(2);
     expect(diagnostics[0].data).toMatchObject({ attempt: 1, success: false });
     expect(diagnostics[1].data).toMatchObject({ attempt: 2, success: true });
+  });
+
+  it("includes initialImageSizeKb in connection-breakdown (number when image provided, null otherwise)", async () => {
+    const { RealtimeObservability } = await import("../src/realtime/observability/realtime-observability.js");
+
+    const diagnostics: { name: string; data: { initialImageSizeKb: number | null } }[] = [];
+    const observability = new RealtimeObservability({
+      telemetryEnabled: false,
+      apiKey: "test-key",
+      logger,
+      onDiagnostic: (event) => diagnostics.push(event as { name: string; data: { initialImageSizeKb: number | null } }),
+    });
+
+    observability.beginConnectionBreakdown(1, 42);
+    observability.finishConnectionBreakdown({ success: true });
+
+    observability.beginConnectionBreakdown(2, null);
+    observability.finishConnectionBreakdown({ success: true });
+
+    expect(diagnostics[0].data.initialImageSizeKb).toBe(42);
+    expect(diagnostics[1].data.initialImageSizeKb).toBeNull();
   });
 
   it("emits stats, reports them to telemetry, and emits video stall diagnostics", async () => {
