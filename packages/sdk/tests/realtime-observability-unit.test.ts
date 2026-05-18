@@ -107,8 +107,7 @@ describe("RealtimeObservability", () => {
       telemetryEnabled: false,
       apiKey: "test-key",
       logger,
-      onDiagnostic: (event) =>
-        diagnostics.push(event as { name: string; data: { attempt: number; success: boolean } }),
+      onDiagnostic: (event) => diagnostics.push(event as { name: string; data: { attempt: number; success: boolean } }),
     });
 
     observability.beginConnectionBreakdown(1);
