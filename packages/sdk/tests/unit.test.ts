@@ -27,6 +27,7 @@ import {
   imageModels,
   modelSchema,
   realtimeModels,
+  resolveFpsNumber,
   videoModels,
 } from "../src/shared/model.js";
 
@@ -1159,12 +1160,42 @@ describe("Lucy 2.1 realtime", () => {
 
     it("has correct fps", () => {
       const lucyModel = models.realtime("lucy-2.1");
-      expect(lucyModel.fps).toBe(20);
+      expect(lucyModel.fps).toEqual({ ideal: 30, max: 30 });
     });
 
     it("is recognized as a realtime model", () => {
       expect(models.realtime("lucy-2.1")).toBeDefined();
     });
+  });
+});
+
+describe("resolveFpsNumber", () => {
+  it("returns the number for a scalar fps value", () => {
+    expect(resolveFpsNumber(25)).toBe(25);
+  });
+
+  it("prefers ideal, then max, then exact, then min", () => {
+    expect(resolveFpsNumber({ ideal: 30, max: 60 })).toBe(30);
+    expect(resolveFpsNumber({ max: 30 })).toBe(30);
+    expect(resolveFpsNumber({ exact: 24 })).toBe(24);
+    expect(resolveFpsNumber({ min: 15 })).toBe(15);
+  });
+
+  it("falls back to 30 when the constraint object is empty", () => {
+    expect(resolveFpsNumber({})).toBe(30);
+  });
+
+  it("resolves the realtime model default to 30 for canvas.captureStream-style consumers", () => {
+    expect(resolveFpsNumber(models.realtime("lucy-2.1").fps)).toBe(30);
+  });
+});
+
+describe("Model fps types", () => {
+  it("video and image model fps stays typed as number", () => {
+    // Compile-time check: arithmetic on .fps must work for video/image models without narrowing.
+    const videoFps: number = models.video("lucy-clip").fps;
+    const imageFps: number = models.image("lucy-image-2").fps;
+    expect(videoFps + imageFps).toBeGreaterThan(0);
   });
 });
 
@@ -3596,7 +3627,7 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-2.1");
       expect(model.name).toBe("lucy-2.1");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(20);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);
     });
@@ -3605,7 +3636,7 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-2.1-vton");
       expect(model.name).toBe("lucy-2.1-vton");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(20);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);
     });
@@ -3614,7 +3645,7 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-vton-2");
       expect(model.name).toBe("lucy-vton-2");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(20);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);
     });
@@ -3622,7 +3653,7 @@ describe("Canonical Model Names", () => {
     it("lucy-restyle-2 canonical name works", () => {
       const model = models.realtime("lucy-restyle-2");
       expect(model.name).toBe("lucy-restyle-2");
-      expect(model.fps).toBe(22);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
     });
   });
 
@@ -3682,7 +3713,7 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-latest");
       expect(model.name).toBe("lucy-latest");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(20);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);
     });
@@ -3691,7 +3722,7 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-vton-latest");
       expect(model.name).toBe("lucy-vton-latest");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(20);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);
     });
@@ -3700,7 +3731,7 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-restyle-latest");
       expect(model.name).toBe("lucy-restyle-latest");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(22);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1280);
       expect(model.height).toBe(704);
     });
