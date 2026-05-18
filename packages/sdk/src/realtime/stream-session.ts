@@ -3,9 +3,9 @@ import pRetry, { AbortError } from "p-retry";
 
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
+import { InitialStateGate } from "./initial-state-gate";
 import { MediaChannel, type VideoCodec } from "./media-channel";
 import type { RealtimeObservability } from "./observability/realtime-observability";
-import { RemoteStreamExposure } from "./remote-stream-exposure";
 import { SignalingChannel } from "./signaling-channel";
 import type {
   ConnectionState,
@@ -63,15 +63,11 @@ export class StreamSession {
   private disposed = false;
   private currentAttempt = 0;
 
-  private readonly remoteStreamExposure: RemoteStreamExposure;
+  private readonly initialStateGate = new InitialStateGate();
   private readonly logger: Logger;
 
   constructor(private readonly config: StreamSessionConfig) {
     this.logger = config.logger ?? createConsoleLogger("warn");
-    this.remoteStreamExposure = new RemoteStreamExposure({
-      logger: this.logger,
-      expose: (stream) => this.events.emit("remoteStream", stream),
-    });
     this.createTransport();
   }
 
@@ -160,7 +156,7 @@ export class StreamSession {
 
     this.resetHandshakeState();
     const initialState = this.getInitialState();
-    const exposureAttempt = this.remoteStreamExposure.startAttempt(initialState);
+    const gateAttempt = this.initialStateGate.startAttempt(initialState);
 
     const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({
       connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
@@ -175,13 +171,15 @@ export class StreamSession {
     this.queue = null;
 
     try {
-      await Promise.all([
-        exposureAttempt.waitForReadiness(initialStateAck),
-        this.media.connect({
-          url: roomInfo.livekitUrl,
-          token: roomInfo.token,
-        }),
-      ]);
+      await this.media.connect({
+        url: roomInfo.livekitUrl,
+        token: roomInfo.token,
+      });
+      const isCurrentAttempt = await gateAttempt.waitForReadiness(initialStateAck);
+      if (!isCurrentAttempt) {
+        throw new AbortError("Stale connect attempt");
+      }
+      await this.media.publishLocalTracks();
     } catch (error) {
       this.tearDown();
       throw error;
@@ -234,7 +232,7 @@ export class StreamSession {
   }
 
   private wireMediaEvents(): void {
-    this.media.on("remoteStream", (stream) => this.remoteStreamExposure.accept(stream));
+    this.media.on("remoteStream", (stream) => this.events.emit("remoteStream", stream));
     this.media.on("firstFrame", () => {
       if (this.state === "connected") this.setState("generating");
     });
@@ -297,7 +295,7 @@ export class StreamSession {
   private tearDown(): void {
     this.signaling.close();
     this.media.disconnect();
-    this.remoteStreamExposure.reset();
+    this.initialStateGate.reset();
     this.resetHandshakeState();
   }
 

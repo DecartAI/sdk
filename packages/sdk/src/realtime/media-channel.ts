@@ -98,10 +98,12 @@ export class MediaChannel {
     });
 
     await room.connect(opts.url, opts.token);
-    if (this.config.localStream) {
-      await this.publishLocalTracks(this.config.localStream);
-    }
     this.config.observability?.setLiveKitRoom(room);
+  }
+
+  async publishLocalTracks(): Promise<void> {
+    if (!this.config.localStream) return;
+    await this.publishTracks(this.config.localStream);
   }
 
   disconnect(): void {
@@ -114,7 +116,7 @@ export class MediaChannel {
     }
   }
 
-  private async publishLocalTracks(stream: MediaStream): Promise<void> {
+  private async publishTracks(stream: MediaStream): Promise<void> {
     if (!this.room) return;
     for (const track of stream.getTracks()) {
       if (track.kind === "video") {
