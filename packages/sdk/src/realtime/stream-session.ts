@@ -154,47 +154,59 @@ export class StreamSession {
       throw new AbortError("Stale connect attempt");
     }
 
-    this.resetHandshakeState();
-    const initialState = this.getInitialState();
-    const gateAttempt = this.initialStateGate.startAttempt(initialState);
-
-    const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({
-      connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
-      initialState,
-    });
-
-    if (this.disposed || this.currentAttempt !== attempt) {
-      this.tearDown();
-      throw new AbortError("Stale connect attempt");
-    }
-
-    this.queue = null;
+    this.config.observability?.beginConnectionBreakdown(attempt);
 
     try {
-      await this.media.connect({
-        url: roomInfo.livekitUrl,
-        token: roomInfo.token,
+      this.resetHandshakeState();
+      const initialState = this.getInitialState();
+      const gateAttempt = this.initialStateGate.startAttempt(initialState);
+
+      const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({
+        connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
+        initialState,
       });
-      const isCurrentAttempt = await gateAttempt.waitForReadiness(initialStateAck);
-      if (!isCurrentAttempt) {
+
+      if (this.disposed || this.currentAttempt !== attempt) {
+        this.tearDown();
         throw new AbortError("Stale connect attempt");
       }
-      await this.media.publishLocalTracks();
+
+      this.queue = null;
+
+      try {
+        await this.media.connect({
+          url: roomInfo.livekitUrl,
+          token: roomInfo.token,
+        });
+        const isCurrentAttempt = await gateAttempt.waitForReadiness(initialStateAck);
+        if (!isCurrentAttempt) {
+          throw new AbortError("Stale connect attempt");
+        }
+        await this.media.publishLocalTracks();
+      } catch (error) {
+        this.tearDown();
+        throw error;
+      }
+
+      if (this.disposed || this.currentAttempt !== attempt) {
+        this.tearDown();
+        throw new AbortError("Stale connect attempt");
+      }
+
+      this.config.observability?.finishConnectionBreakdown({ success: true });
+
+      this.setState("connected");
+      this.events.emit("sessionStarted", {
+        sessionId: roomInfo.sessionId,
+        subscribeToken: encodeSubscribeToken(roomInfo.roomName),
+      });
     } catch (error) {
-      this.tearDown();
+      this.config.observability?.finishConnectionBreakdown({
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
-
-    if (this.disposed || this.currentAttempt !== attempt) {
-      this.tearDown();
-      throw new AbortError("Stale connect attempt");
-    }
-
-    this.setState("connected");
-    this.events.emit("sessionStarted", {
-      sessionId: roomInfo.sessionId,
-      subscribeToken: encodeSubscribeToken(roomInfo.roomName),
-    });
   }
 
   private getInitialState(): InitialState | undefined {

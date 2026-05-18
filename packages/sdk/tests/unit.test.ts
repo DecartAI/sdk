@@ -1475,8 +1475,8 @@ describe("TelemetryReporter", () => {
         connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
       });
       reporter.addDiagnostic({
-        name: "phaseTiming",
-        data: { phase: "total", durationMs: 500, success: true },
+        name: "client-session-connection-breakdown",
+        data: { attempt: 1, success: true, totalDurationMs: 500, phases: [] },
         timestamp: 1000,
       });
 
@@ -1495,7 +1495,7 @@ describe("TelemetryReporter", () => {
       expect(body.sessionId).toBe("sess-1");
       expect(body.stats).toHaveLength(1);
       expect(body.diagnostics).toHaveLength(1);
-      expect(body.diagnostics[0].name).toBe("phaseTiming");
+      expect(body.diagnostics[0].name).toBe("client-session-connection-breakdown");
 
       reporter.stop();
     } finally {
@@ -1816,7 +1816,7 @@ describe("NullTelemetryReporter", () => {
       outboundVideo: null,
       connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
     });
-    reporter.addDiagnostic({ name: "phaseTiming", data: {}, timestamp: 1000 });
+    reporter.addDiagnostic({ name: "client-session-connection-breakdown", data: {}, timestamp: 1000 });
     reporter.flush();
     reporter.stop();
   });

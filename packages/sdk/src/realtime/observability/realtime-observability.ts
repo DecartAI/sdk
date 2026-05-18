@@ -1,7 +1,12 @@
 import type { Room } from "livekit-client";
 import type { Logger } from "../../utils/logger";
 import { REALTIME_CONFIG } from "../config-realtime";
-import type { DiagnosticEvent, DiagnosticEventName, DiagnosticEvents } from "./diagnostics";
+import type {
+  ClientSessionConnectionBreakdownPhase,
+  DiagnosticEvent,
+  DiagnosticEventName,
+  DiagnosticEvents,
+} from "./diagnostics";
 import { createLiveKitStatsProvider } from "./livekit-stats-provider";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
@@ -22,6 +27,19 @@ type PendingTelemetryDiagnostic = {
   timestamp: number;
 };
 
+type PhaseEntry = {
+  startedAt: number;
+  endedAt?: number;
+  success?: boolean;
+  error?: string;
+};
+
+type ConnectionBreakdownBuffer = {
+  attempt: number;
+  connectStartedAt: number;
+  phases: Map<string, PhaseEntry>;
+};
+
 export class RealtimeObservability {
   private telemetryReporter: ITelemetryReporter = new NullTelemetryReporter();
   private telemetryReporterReady = false;
@@ -31,6 +49,7 @@ export class RealtimeObservability {
   private liveKitRoom: Room | null = null;
   private videoStalled = false;
   private stallStartMs = 0;
+  private connectionBreakdown: ConnectionBreakdownBuffer | null = null;
 
   constructor(private readonly options: RealtimeObservabilityOptions) {}
 
@@ -38,6 +57,64 @@ export class RealtimeObservability {
     this.options.logger.debug(name, data as Record<string, unknown>);
     this.options.onDiagnostic?.({ name, data } as DiagnosticEvent);
     this.addTelemetryDiagnostic(name, data, timestamp);
+  }
+
+  beginConnectionBreakdown(attempt: number): void {
+    this.connectionBreakdown = {
+      attempt,
+      connectStartedAt: Date.now(),
+      phases: new Map(),
+    };
+  }
+
+  startPhase(name: string): void {
+    if (!this.connectionBreakdown) return;
+    this.connectionBreakdown.phases.set(name, { startedAt: Date.now() });
+  }
+
+  endPhase(name: string, opts: { success: boolean; error?: string }): void {
+    if (!this.connectionBreakdown) return;
+    const entry = this.connectionBreakdown.phases.get(name);
+    if (!entry) {
+      this.options.logger.warn("observability: endPhase called for unknown phase", { phase: name });
+      return;
+    }
+    entry.endedAt = Date.now();
+    entry.success = opts.success;
+    if (opts.error !== undefined) entry.error = opts.error;
+  }
+
+  finishConnectionBreakdown(opts: { success: boolean; error?: string }): void {
+    const buffer = this.connectionBreakdown;
+    if (!buffer) return;
+    this.connectionBreakdown = null;
+
+    const now = Date.now();
+    const phases: ClientSessionConnectionBreakdownPhase[] = [];
+    for (const [phase, entry] of buffer.phases) {
+      const unfinished = entry.endedAt === undefined;
+      const endedAt = entry.endedAt ?? now;
+      const success = entry.success ?? false;
+      const error = entry.error ?? (unfinished && !opts.success ? opts.error : undefined);
+      phases.push({
+        phase,
+        durationMs: endedAt - entry.startedAt,
+        success,
+        ...(error !== undefined ? { error } : {}),
+      });
+    }
+
+    this.diagnostic(
+      "client-session-connection-breakdown",
+      {
+        attempt: buffer.attempt,
+        success: opts.success,
+        totalDurationMs: now - buffer.connectStartedAt,
+        phases,
+        ...(opts.error !== undefined ? { error: opts.error } : {}),
+      },
+      now,
+    );
   }
 
   sessionStarted(sessionId: string): void {
@@ -117,6 +194,7 @@ export class RealtimeObservability {
     this.telemetryReporter = new NullTelemetryReporter();
     this.telemetryReporterReady = false;
     this.pendingTelemetryDiagnostics.length = 0;
+    this.connectionBreakdown = null;
   }
 
   private handleStats(stats: WebRTCStats): void {

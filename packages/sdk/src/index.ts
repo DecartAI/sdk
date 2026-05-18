@@ -27,11 +27,11 @@ export type {
 } from "./realtime/client";
 export type { SetInput } from "./realtime/methods";
 export type {
-  ConnectionPhase,
+  ClientSessionConnectionBreakdownEvent,
+  ClientSessionConnectionBreakdownPhase,
   DiagnosticEvent,
   DiagnosticEventName,
   DiagnosticEvents,
-  PhaseTimingEvent,
   ReconnectEvent,
   VideoStallEvent,
 } from "./realtime/observability/diagnostics";

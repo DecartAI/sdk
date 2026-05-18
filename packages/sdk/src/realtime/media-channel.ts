@@ -97,13 +97,17 @@ export class MediaChannel {
       this.events.emit("disconnected", { reason });
     });
 
+    this.config.observability?.startPhase("webrtc-handshake");
     await room.connect(opts.url, opts.token);
+    this.config.observability?.endPhase("webrtc-handshake", { success: true });
     this.config.observability?.setLiveKitRoom(room);
   }
 
   async publishLocalTracks(): Promise<void> {
     if (!this.config.localStream) return;
+    this.config.observability?.startPhase("publish-local-track");
     await this.publishTracks(this.config.localStream);
+    this.config.observability?.endPhase("publish-local-track", { success: true });
   }
 
   disconnect(): void {
