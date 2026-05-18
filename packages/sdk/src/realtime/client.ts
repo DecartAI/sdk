@@ -100,6 +100,8 @@ const realTimeClientConnectOptionsSchema = z.object({
    * - true: always mirror.
    */
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
+  /** Output resolution. Defaults to "720p". */
+  resolution: z.enum(["720p", "1080p"]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -141,7 +143,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       throw parsedOptions.error;
     }
 
-    const { onRemoteStream, initialState } = parsedOptions.data;
+    const { onRemoteStream, initialState, resolution } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
 
     let inputStream: MediaStream = stream ?? new MediaStream();
@@ -189,9 +191,10 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
+      const resolutionQs = resolution ? `&resolution=${encodeURIComponent(resolution)}` : "";
 
       webrtcManager = new WebRTCManager({
-        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${resolutionQs}`,
         integration,
         logger,
         observability,
