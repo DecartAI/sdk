@@ -1,3 +1,5 @@
+import { REALTIME_CONFIG } from "../config-realtime";
+
 export type WebRTCStats = {
   timestamp: number;
   video: {
@@ -50,7 +52,7 @@ export type WebRTCStats = {
      * Std-dev of inter-frame delay (ms), computed from
      * totalInterFrameDelay + totalSquaredInterFrameDelay.
      */
-    interFrameDelayStdDevMs: number | null;
+    interFrameDelayVarianceMs: number | null;
     /** Current target delay of the jitter buffer (ms). */
     jitterBufferTargetDelayMs: number | null;
     /** Current minimum delay of the jitter buffer (ms). */
@@ -126,10 +128,7 @@ export type WebRTCStats = {
      * jitter and failure modes, so this is essential signal for
      * benchmarking and incident triage.
      */
-    selectedCandidatePairs: Array<{
-      local: IceCandidateInfo;
-      remote: IceCandidateInfo;
-    }>;
+    selectedCandidatePairs: IceCandidatePair[];
   };
 };
 
@@ -144,22 +143,29 @@ export type IceCandidateInfo = {
   protocol: string;
 };
 
+export type IceCandidatePair = {
+  local: IceCandidateInfo;
+  remote: IceCandidateInfo;
+};
+
+type SucceededCandidatePairIds = {
+  localId: string;
+  remoteId: string;
+};
+
 export type StatsOptions = {
   /** Polling interval in milliseconds. Default: 1000. Minimum: 500. */
   intervalMs?: number;
 };
 
 /**
- * Source of `RTCStatsReport`-shaped samples for telemetry. `RTCPeerConnection`
- * satisfies this interface natively; alternative transports can plug in their
- * own adapter that aggregates per-track stats.
+ * Source of `RTCStatsReport`-shaped samples for telemetry. LiveKit provides a
+ * custom adapter that aggregates per-track stats from the room. See
+ * `livekit-connection.ts` for the implementation.
  */
 export interface StatsProvider {
   getStats(): Promise<RTCStatsReport>;
 }
-
-const DEFAULT_INTERVAL_MS = 1000;
-const MIN_INTERVAL_MS = 500;
 
 export class WebRTCStatsCollector {
   private source: StatsProvider | null = null;
@@ -179,7 +185,10 @@ export class WebRTCStatsCollector {
   private intervalMs: number;
 
   constructor(options: StatsOptions = {}) {
-    this.intervalMs = Math.max(options.intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS);
+    this.intervalMs = Math.max(
+      options.intervalMs ?? REALTIME_CONFIG.observability.statsDefaultIntervalMs,
+      REALTIME_CONFIG.observability.statsMinIntervalMs,
+    );
   }
 
   /** Attach to a stats provider and start polling. */
@@ -250,7 +259,7 @@ export class WebRTCStatsCollector {
     // so we have access to every report (ordering of rawStats is not
     // guaranteed: a succeeded pair's local-candidate may appear before
     // or after it).
-    const succeededPairs: Array<{ localId: string; remoteId: string }> = [];
+    const succeededPairs: SucceededCandidatePairIds[] = [];
 
     rawStats.forEach((report) => {
       if (report.type === "inbound-rtp" && report.kind === "video") {
@@ -283,10 +292,10 @@ export class WebRTCStatsCollector {
         const avgDecodeTimeMs = framesDecoded > 0 ? (totalDecodeTime / framesDecoded) * 1000 : null;
         const avgProcessingDelayMs = framesDecoded > 0 ? (totalProcessingDelay / framesDecoded) * 1000 : null;
         const avgInterFrameDelayMs = framesDecoded > 0 ? (totalInterFrameDelay / framesDecoded) * 1000 : null;
-        // Variance σ² = E[X²] - E[X]²; std-dev = sqrt(σ²). Report std-dev
+        // Variance σ² = E[X²] - E[X]² ; std-dev = sqrt(σ²). Report std-dev
         // in ms — more actionable than variance for a threshold-based
         // "is the path jittery" check.
-        const interFrameDelayStdDevMs =
+        const interFrameDelayVarianceMs =
           framesDecoded > 0
             ? Math.sqrt(
                 Math.max(0, totalSquaredInterFrameDelay / framesDecoded - (totalInterFrameDelay / framesDecoded) ** 2),
@@ -323,7 +332,7 @@ export class WebRTCStatsCollector {
           avgJitterBufferMs,
           avgProcessingDelayMs,
           avgInterFrameDelayMs,
-          interFrameDelayStdDevMs,
+          interFrameDelayVarianceMs,
           jitterBufferTargetDelayMs,
           jitterBufferMinimumDelayMs,
           decoderImplementation: (r.decoderImplementation as string) ?? "",
