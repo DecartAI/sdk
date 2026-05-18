@@ -1993,6 +1993,72 @@ describe("Subscribe Client", () => {
       cleanupSpy.mockRestore();
     }
   });
+
+  describe("connect() resolution option", () => {
+    const connectAndCaptureUrl = async (resolution?: "720p" | "1080p"): Promise<string> => {
+      const { createRealTimeClient } = await import("../src/realtime/client.js");
+      const { WebRTCManager } = await import("../src/realtime/webrtc-manager.js");
+
+      let capturedUrl = "";
+      const connectSpy = vi.spyOn(WebRTCManager.prototype, "connect").mockImplementation(async function () {
+        const mgr = this as unknown as {
+          config: {
+            webrtcUrl: string;
+            onConnectionStateChange?: (state: import("../src/realtime/types").ConnectionState) => void;
+          };
+          managerState: import("../src/realtime/types").ConnectionState;
+        };
+        capturedUrl = mgr.config.webrtcUrl;
+        mgr.managerState = "connected";
+        mgr.config.onConnectionStateChange?.("connected");
+        return true;
+      });
+      const stateSpy = vi.spyOn(WebRTCManager.prototype, "getConnectionState").mockReturnValue("connected");
+      const cleanupSpy = vi.spyOn(WebRTCManager.prototype, "cleanup").mockImplementation(() => {});
+
+      try {
+        const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "test-key" });
+        const client = await realtime.connect({} as MediaStream, {
+          model: models.realtime("lucy-2.1"),
+          onRemoteStream: vi.fn(),
+          ...(resolution ? { resolution } : {}),
+        });
+        client.disconnect();
+        return capturedUrl;
+      } finally {
+        connectSpy.mockRestore();
+        stateSpy.mockRestore();
+        cleanupSpy.mockRestore();
+      }
+    };
+
+    it("omits the resolution query param when unset", async () => {
+      const url = await connectAndCaptureUrl();
+      expect(url).not.toContain("resolution=");
+    });
+
+    it("appends resolution=720p when set", async () => {
+      const url = await connectAndCaptureUrl("720p");
+      expect(url).toContain("&resolution=720p");
+    });
+
+    it("appends resolution=1080p when set", async () => {
+      const url = await connectAndCaptureUrl("1080p");
+      expect(url).toContain("&resolution=1080p");
+    });
+
+    it("rejects invalid resolution values", async () => {
+      const { createRealTimeClient } = await import("../src/realtime/client.js");
+      const realtime = createRealTimeClient({ baseUrl: "wss://api3.decart.ai", apiKey: "test-key" });
+      await expect(
+        realtime.connect({} as MediaStream, {
+          model: models.realtime("lucy-2.1"),
+          onRemoteStream: vi.fn(),
+          resolution: "480p" as unknown as "720p",
+        }),
+      ).rejects.toThrow();
+    });
+  });
 });
 
 describe("Logger", () => {
