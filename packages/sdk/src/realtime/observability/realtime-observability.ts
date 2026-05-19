@@ -1,9 +1,15 @@
+import type { Room } from "livekit-client";
 import type { Logger } from "../../utils/logger";
-import type { DiagnosticEvent, DiagnosticEventName, DiagnosticEvents } from "./diagnostics";
+import { REALTIME_CONFIG } from "../config-realtime";
+import type {
+  ClientSessionConnectionBreakdownPhase,
+  DiagnosticEvent,
+  DiagnosticEventName,
+  DiagnosticEvents,
+} from "./diagnostics";
+import { createLiveKitStatsProvider } from "./livekit-stats-provider";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
-
-const STALL_FPS_THRESHOLD = 0.5;
 
 export type RealtimeObservabilityOptions = {
   telemetryEnabled: boolean;
@@ -21,14 +27,30 @@ type PendingTelemetryDiagnostic = {
   timestamp: number;
 };
 
+type PhaseEntry = {
+  startedAt: number;
+  endedAt?: number;
+  success?: boolean;
+  error?: string;
+};
+
+type ConnectionBreakdownBuffer = {
+  attempt: number;
+  connectStartedAt: number;
+  initialImageSizeKb: number | null;
+  phases: Map<string, PhaseEntry>;
+};
+
 export class RealtimeObservability {
   private telemetryReporter: ITelemetryReporter = new NullTelemetryReporter();
   private telemetryReporterReady = false;
   private pendingTelemetryDiagnostics: PendingTelemetryDiagnostic[] = [];
   private statsCollector: WebRTCStatsCollector | null = null;
   private statsCollectorSource: StatsProvider | null = null;
+  private liveKitRoom: Room | null = null;
   private videoStalled = false;
   private stallStartMs = 0;
+  private connectionBreakdown: ConnectionBreakdownBuffer | null = null;
 
   constructor(private readonly options: RealtimeObservabilityOptions) {}
 
@@ -36,6 +58,66 @@ export class RealtimeObservability {
     this.options.logger.debug(name, data as Record<string, unknown>);
     this.options.onDiagnostic?.({ name, data } as DiagnosticEvent);
     this.addTelemetryDiagnostic(name, data, timestamp);
+  }
+
+  beginConnectionBreakdown(attempt: number, initialImageSizeKb: number | null): void {
+    this.connectionBreakdown = {
+      attempt,
+      connectStartedAt: Date.now(),
+      initialImageSizeKb,
+      phases: new Map(),
+    };
+  }
+
+  startPhase(name: string): void {
+    if (!this.connectionBreakdown) return;
+    this.connectionBreakdown.phases.set(name, { startedAt: Date.now() });
+  }
+
+  endPhase(name: string, opts: { success: boolean; error?: string }): void {
+    if (!this.connectionBreakdown) return;
+    const entry = this.connectionBreakdown.phases.get(name);
+    if (!entry) {
+      this.options.logger.warn("observability: endPhase called for unknown phase", { phase: name });
+      return;
+    }
+    entry.endedAt = Date.now();
+    entry.success = opts.success;
+    if (opts.error !== undefined) entry.error = opts.error;
+  }
+
+  finishConnectionBreakdown(opts: { success: boolean; error?: string }): void {
+    const buffer = this.connectionBreakdown;
+    if (!buffer) return;
+    this.connectionBreakdown = null;
+
+    const now = Date.now();
+    const phases: ClientSessionConnectionBreakdownPhase[] = [];
+    for (const [phase, entry] of buffer.phases) {
+      const unfinished = entry.endedAt === undefined;
+      const endedAt = entry.endedAt ?? now;
+      const success = entry.success ?? false;
+      const error = entry.error ?? (unfinished && !opts.success ? opts.error : undefined);
+      phases.push({
+        phase,
+        durationMs: endedAt - entry.startedAt,
+        success,
+        ...(error !== undefined ? { error } : {}),
+      });
+    }
+
+    this.diagnostic(
+      "client-session-connection-breakdown",
+      {
+        attempt: buffer.attempt,
+        success: opts.success,
+        totalDurationMs: now - buffer.connectStartedAt,
+        initialImageSizeKb: buffer.initialImageSizeKb,
+        phases,
+        ...(opts.error !== undefined ? { error: opts.error } : {}),
+      },
+      now,
+    );
   }
 
   sessionStarted(sessionId: string): void {
@@ -75,6 +157,7 @@ export class RealtimeObservability {
     }
 
     this.stopStats();
+    this.resetStallDetection();
     this.statsCollectorSource = source;
 
     if (!this.options.telemetryEnabled && !this.options.onStats) {
@@ -85,10 +168,26 @@ export class RealtimeObservability {
     this.statsCollector.start(source, (stats) => this.handleStats(stats));
   }
 
+  setLiveKitRoom(room: Room | null): void {
+    if (!room) {
+      this.liveKitRoom = null;
+      this.setStatsProvider(null);
+      return;
+    }
+
+    if (room === this.liveKitRoom) {
+      return;
+    }
+
+    this.setStatsProvider(createLiveKitStatsProvider(room));
+    this.liveKitRoom = room;
+  }
+
   stopStats(): void {
     this.statsCollector?.stop();
     this.statsCollector = null;
     this.statsCollectorSource = null;
+    this.liveKitRoom = null;
     this.resetStallDetection();
   }
 
@@ -98,6 +197,7 @@ export class RealtimeObservability {
     this.telemetryReporter = new NullTelemetryReporter();
     this.telemetryReporterReady = false;
     this.pendingTelemetryDiagnostics.length = 0;
+    this.connectionBreakdown = null;
   }
 
   private handleStats(stats: WebRTCStats): void {
@@ -108,11 +208,11 @@ export class RealtimeObservability {
 
   private detectVideoStall(stats: WebRTCStats): void {
     const fps = stats.video?.framesPerSecond ?? 0;
-    if (!this.videoStalled && stats.video && fps < STALL_FPS_THRESHOLD) {
+    if (!this.videoStalled && stats.video && fps < REALTIME_CONFIG.observability.stallFpsThreshold) {
       this.videoStalled = true;
       this.stallStartMs = Date.now();
       this.diagnostic("videoStall", { stalled: true, durationMs: 0 }, this.stallStartMs);
-    } else if (this.videoStalled && fps >= STALL_FPS_THRESHOLD) {
+    } else if (this.videoStalled && fps >= REALTIME_CONFIG.observability.stallFpsThreshold) {
       const durationMs = Date.now() - this.stallStartMs;
       this.videoStalled = false;
       this.diagnostic("videoStall", { stalled: false, durationMs });
