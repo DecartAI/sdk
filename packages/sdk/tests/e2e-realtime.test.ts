@@ -3,11 +3,11 @@ declare const __DECART_API_KEY__: string;
 import { createDecartClient, type DecartSDKError, models, type RealTimeModels } from "@decartai/sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
-function createSyntheticStream(fps: number, width: number, height: number): MediaStream {
+function createSyntheticStream(width: number, height: number): MediaStream {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-  return canvas.captureStream(fps);
+  return canvas.captureStream(30);
 }
 
 const REALTIME_MODELS: RealTimeModels[] = [
@@ -37,7 +37,7 @@ describe.concurrent("Realtime E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => 
   for (const modelName of REALTIME_MODELS) {
     it(modelName, async () => {
       const model = models.realtime(modelName);
-      const stream = createSyntheticStream(model.fps, model.width, model.height);
+      const stream = createSyntheticStream(model.width, model.height);
 
       let remoteStreamReceived = false;
 

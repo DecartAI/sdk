@@ -79,6 +79,16 @@ Options:
 - `"auto"` — mirror when the input track reports `facingMode: "user"` (mobile front cameras).
 - `true` — always mirror (e.g. desktop webcams).
 
+#### Output resolution
+
+```ts
+const realtimeClient = await client.realtime.connect(stream, {
+  model,
+  resolution: "1080p", // default: "720p"
+  // ...
+});
+```
+
 ### Async Processing (Queue API)
 
 For video generation jobs, use the queue API to submit jobs and poll for results:

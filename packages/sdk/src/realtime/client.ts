@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { type CustomModelDefinition, type ModelDefinition, modelDefinitionSchema } from "../shared/model";
+import {
+  type CustomModelDefinition,
+  type ModelDefinition,
+  modelDefinitionSchema,
+  resolveFpsNumber,
+} from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import type { Logger } from "../utils/logger";
@@ -100,6 +105,8 @@ const realTimeClientConnectOptionsSchema = z.object({
    * - true: always mirror.
    */
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
+  /** Output resolution. Defaults to "720p". */
+  resolution: z.enum(["720p", "1080p"]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -141,7 +148,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       throw parsedOptions.error;
     }
 
-    const { onRemoteStream, initialState } = parsedOptions.data;
+    const { onRemoteStream, initialState, resolution } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
 
     let inputStream: MediaStream = stream ?? new MediaStream();
@@ -151,7 +158,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       try {
         const firstVideoTrack = inputStream.getVideoTracks?.()[0];
         if (firstVideoTrack && (mirror === true || shouldMirrorTrack(firstVideoTrack))) {
-          mirroredStream = createMirroredStream(inputStream, { fps: options.model.fps });
+          mirroredStream = createMirroredStream(inputStream, { fps: resolveFpsNumber(options.model.fps) });
           inputStream = mirroredStream.stream;
         } else if (mirror === true && !firstVideoTrack) {
           logger.warn("mirror: true requested but no video track was found on the input stream");
@@ -189,9 +196,10 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
+      const resolutionQs = resolution ? `&resolution=${encodeURIComponent(resolution)}` : "";
 
       webrtcManager = new WebRTCManager({
-        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}`,
+        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${resolutionQs}`,
         integration,
         logger,
         observability,
