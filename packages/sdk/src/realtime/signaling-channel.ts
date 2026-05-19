@@ -70,6 +70,13 @@ type RoomInfoWait = {
   cancel: () => void;
 };
 
+type RequestOptions = {
+  message: OutgoingRealtimeMessage;
+  matchAck: (msg: IncomingRealtimeMessage) => boolean;
+  timeoutMs: number;
+  label: string;
+};
+
 export class SignalingChannel {
   private ws: WebSocket | null = null;
   private events: Emitter<SignalingChannelEvents> = mitt();
@@ -148,12 +155,12 @@ export class SignalingChannel {
   }
 
   async sendPrompt(text: string, opts: PromptSendOptions = {}): Promise<void> {
-    const ack = await this.request<PromptAckMessage>(
-      { type: "prompt", prompt: text, enhance_prompt: opts.enhance ?? true },
-      (msg) => msg.type === "prompt_ack" && msg.prompt === text,
-      opts.timeout ?? REALTIME_CONFIG.signaling.requestTimeoutMs,
-      "Prompt send",
-    );
+    const ack = await this.request<PromptAckMessage>({
+      message: { type: "prompt", prompt: text, enhance_prompt: opts.enhance ?? true },
+      matchAck: (msg) => msg.type === "prompt_ack" && msg.prompt === text,
+      timeoutMs: opts.timeout ?? REALTIME_CONFIG.signaling.requestTimeoutMs,
+      label: "Prompt send",
+    });
     if (!ack.success) throw new Error(ack.error ?? "Failed to send prompt");
   }
 
@@ -162,12 +169,12 @@ export class SignalingChannel {
     if (opts.prompt !== undefined) message.prompt = opts.prompt;
     if (opts.enhance !== undefined) message.enhance_prompt = opts.enhance;
 
-    const ack = await this.request<SetImageAckMessage>(
+    const ack = await this.request<SetImageAckMessage>({
       message,
-      (msg) => msg.type === "set_image_ack",
-      opts.timeout ?? REALTIME_CONFIG.signaling.requestTimeoutMs,
-      "Image send",
-    );
+      matchAck: (msg) => msg.type === "set_image_ack",
+      timeoutMs: opts.timeout ?? REALTIME_CONFIG.signaling.requestTimeoutMs,
+      label: "Image send",
+    });
     if (!ack.success) throw new Error(ack.error ?? "Failed to send image");
   }
 
@@ -175,6 +182,7 @@ export class SignalingChannel {
     const userAgent = encodeURIComponent(buildUserAgent(this.config.integration));
     const separator = this.config.url.includes("?") ? "&" : "?";
     const wsUrl = `${this.config.url}${separator}user_agent=${userAgent}`;
+    this.closing = false;
 
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`WebSocket open timeout (${timeout}ms)`)), timeout);
@@ -280,12 +288,12 @@ export class SignalingChannel {
     }
   }
 
-  private async request<TAck extends IncomingRealtimeMessage>(
-    message: OutgoingRealtimeMessage,
-    matchAck: (msg: IncomingRealtimeMessage) => boolean,
-    timeoutMs: number,
-    label: string,
-  ): Promise<TAck> {
+  private async request<TAck extends IncomingRealtimeMessage>({
+    message,
+    matchAck,
+    timeoutMs,
+    label,
+  }: RequestOptions): Promise<TAck> {
     return new Promise<TAck>((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();

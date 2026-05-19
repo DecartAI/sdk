@@ -229,4 +229,26 @@ describe("RealtimeObservability", () => {
     expect(firstSource.getStats).toHaveBeenCalledTimes(1);
     expect(secondSource.getStats).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps the same LiveKit room registered for deduplication", async () => {
+    const { RealtimeObservability } = await import("../src/realtime/observability/realtime-observability.js");
+
+    const observability = new RealtimeObservability({
+      telemetryEnabled: false,
+      apiKey: "test-key",
+      logger,
+      onStats: () => {},
+    });
+    const setStatsProviderSpy = vi.spyOn(observability, "setStatsProvider");
+    const room = {
+      localParticipant: { trackPublications: new Map() },
+      remoteParticipants: new Map(),
+    };
+
+    observability.setLiveKitRoom(room as never);
+    observability.setLiveKitRoom(room as never);
+    observability.stop();
+
+    expect(setStatsProviderSpy).toHaveBeenCalledTimes(1);
+  });
 });

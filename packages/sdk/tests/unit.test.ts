@@ -2318,7 +2318,7 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-2.1");
       expect(model.name).toBe("lucy-2.1");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(20);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);
     });
@@ -2327,7 +2327,7 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-2.1-vton");
       expect(model.name).toBe("lucy-2.1-vton");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(20);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);
     });
@@ -2336,7 +2336,7 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-vton-2");
       expect(model.name).toBe("lucy-vton-2");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(20);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);
     });
@@ -2344,7 +2344,7 @@ describe("Canonical Model Names", () => {
     it("lucy-restyle-2 canonical name works", () => {
       const model = models.realtime("lucy-restyle-2");
       expect(model.name).toBe("lucy-restyle-2");
-      expect(model.fps).toBe(22);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
     });
   });
 
@@ -2404,7 +2404,7 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-latest");
       expect(model.name).toBe("lucy-latest");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(20);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);
     });
@@ -2413,7 +2413,7 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-vton-latest");
       expect(model.name).toBe("lucy-vton-latest");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(20);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);
     });
@@ -2422,7 +2422,7 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-restyle-latest");
       expect(model.name).toBe("lucy-restyle-latest");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(22);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1280);
       expect(model.height).toBe(704);
     });

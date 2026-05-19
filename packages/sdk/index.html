@@ -337,6 +337,13 @@
             </select>
         </div>
         <div class="control-group">
+            <label for="resolution-select">Resolution:</label>
+            <select id="resolution-select">
+                <option value="720p" selected>720p (default)</option>
+                <option value="1080p">1080p</option>
+            </select>
+        </div>
+        <div class="control-group">
             <label for="initial-prompt">Initial Prompt (empty = passthrough):</label>
             <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
         </div>
@@ -510,6 +517,7 @@
             apiKey: document.getElementById('api-key'),
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
+            resolutionSelect: document.getElementById('resolution-select'),
             initialPrompt: document.getElementById('initial-prompt'),
             cameraFps: document.getElementById('camera-fps'),
             streamAudioToggle: document.getElementById('stream-audio-toggle'),
@@ -803,8 +811,12 @@
                     initialImage = await initialImageResponse.blob();
                 }
 
+                const resolution = elements.resolutionSelect.value;
+                addLog(`Resolution: ${resolution}`, 'info');
+
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
+                    resolution,
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;

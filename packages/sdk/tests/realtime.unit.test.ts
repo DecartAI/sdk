@@ -114,7 +114,7 @@ describe("Lucy 2.1 realtime", () => {
 
     it("has correct fps", () => {
       const lucyModel = models.realtime("lucy-2.1");
-      expect(lucyModel.fps).toBe(20);
+      expect(lucyModel.fps).toEqual({ ideal: 30, max: 30 });
     });
 
     it("is recognized as a realtime model", () => {

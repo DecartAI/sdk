@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { type CustomModelDefinition, type ModelDefinition, modelDefinitionSchema } from "../shared/model";
+import {
+  type CustomModelDefinition,
+  type ModelDefinition,
+  modelDefinitionSchema,
+  resolveFpsNumber,
+} from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
@@ -95,7 +100,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       try {
         const firstVideoTrack = inputStream.getVideoTracks?.()[0];
         if (firstVideoTrack && (mirror === true || shouldMirrorTrack(firstVideoTrack))) {
-          mirroredStream = createMirroredStream(inputStream, { fps: options.model.fps });
+          mirroredStream = createMirroredStream(inputStream, { fps: resolveFpsNumber(options.model.fps) });
           inputStream = mirroredStream.stream;
         } else if (mirror === true && !firstVideoTrack) {
           logger.warn("mirror: true requested but no video track was found on the input stream");
