@@ -84,9 +84,10 @@ Options:
 
 ### Watch a Stream
 
-A connected realtime session exposes `subscribeToken` once it reaches a connected
-state. Share that token with viewers so they can attach to the same styled
-output stream — receive-only, no camera required.
+A connected realtime session exposes an SDK `subscribeToken` once it reaches a
+connected state. Share that SDK token with viewers — `client.realtime.subscribe`
+uses it to request receive-only LiveKit credentials from Decart, then connects to
+the LiveKit room for the styled output stream. No viewer camera is required.
 
 **Producer** — capture the token from the active session:
 
@@ -100,8 +101,8 @@ const realtimeClient = await client.realtime.connect(stream, {
 
 realtimeClient.on("connectionChange", (state) => {
   if ((state === "connected" || state === "generating") && realtimeClient.subscribeToken) {
-    const token = realtimeClient.subscribeToken;
-    // Pass `token` to the viewer snippet below.
+    const subscribeToken = realtimeClient.subscribeToken;
+    // Pass `subscribeToken` to the viewer snippet below.
   }
 });
 ```
@@ -114,7 +115,7 @@ import { createDecartClient, type RealTimeSubscribeClient } from "@decartai/sdk"
 const client = createDecartClient({ apiKey: "your-api-key-here" });
 
 const subscriber: RealTimeSubscribeClient = await client.realtime.subscribe({
-  token,
+  token: subscribeToken,
   onRemoteStream: (stream) => {
     videoElement.srcObject = stream;
   },
