@@ -1,9 +1,7 @@
 import { z } from "zod";
-import type { PromptAckMessage } from "./types";
-import type { WebRTCManager } from "./webrtc-manager";
-
-const PROMPT_TIMEOUT_MS = 15 * 1000; // 15 seconds
-const UPDATE_TIMEOUT_MS = 30 * 1000;
+import { REALTIME_CONFIG } from "./config-realtime";
+import type { StreamSession } from "./stream-session";
+import type { PromptSendOptions } from "./types";
 
 const setInputSchema = z
   .object({
@@ -23,94 +21,28 @@ const setPromptInputSchema = z.object({
 export type SetInput = z.input<typeof setInputSchema>;
 
 export const realtimeMethods = (
-  webrtcManager: WebRTCManager,
+  session: StreamSession,
   imageToBase64: (image: Blob | File | string) => Promise<string>,
 ) => {
-  const assertConnected = () => {
-    const state = webrtcManager.getConnectionState();
-    if (state !== "connected" && state !== "generating") {
-      throw new Error(`Cannot send message: connection is ${state}`);
-    }
-  };
-
   const set = async (input: SetInput): Promise<void> => {
-    assertConnected();
-
     const parsed = setInputSchema.safeParse(input);
-    if (!parsed.success) {
-      throw parsed.error;
-    }
+    if (!parsed.success) throw parsed.error;
 
     const { prompt, enhance, image } = parsed.data;
+    const imageBase64 = image !== undefined && image !== null ? await imageToBase64(image) : null;
 
-    let imageBase64: string | null = null;
-    if (image !== undefined && image !== null) {
-      imageBase64 = await imageToBase64(image);
-    }
-
-    await webrtcManager.setImage(imageBase64, { prompt, enhance, timeout: UPDATE_TIMEOUT_MS });
+    await session.setImage(imageBase64, { prompt, enhance, timeout: REALTIME_CONFIG.methods.updateTimeoutMs });
   };
 
-  const setPrompt = async (prompt: string, { enhance }: { enhance?: boolean } = {}): Promise<void> => {
-    assertConnected();
+  const setPrompt = async (prompt: string, { enhance }: PromptSendOptions = {}): Promise<void> => {
+    const parsed = setPromptInputSchema.safeParse({ prompt, enhance });
+    if (!parsed.success) throw parsed.error;
 
-    const parsedInput = setPromptInputSchema.safeParse({
-      prompt,
-      enhance,
+    await session.sendPrompt(parsed.data.prompt, {
+      enhance: parsed.data.enhance,
+      timeout: REALTIME_CONFIG.methods.promptTimeoutMs,
     });
-
-    if (!parsedInput.success) {
-      throw parsedInput.error;
-    }
-
-    const emitter = webrtcManager.getWebsocketMessageEmitter();
-    let promptAckListener: ((msg: PromptAckMessage) => void) | undefined;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-    try {
-      // Set up the acknowledgment promise with listener
-      const ackPromise = new Promise<void>((resolve, reject) => {
-        promptAckListener = (promptAckMessage: PromptAckMessage) => {
-          if (promptAckMessage.prompt === parsedInput.data.prompt) {
-            if (promptAckMessage.success) {
-              resolve();
-            } else {
-              reject(new Error(promptAckMessage.error ?? "Failed to send prompt"));
-            }
-          }
-        };
-        emitter.on("promptAck", promptAckListener);
-      });
-
-      // Send the message first
-      const sent = webrtcManager.sendMessage({
-        type: "prompt",
-        prompt: parsedInput.data.prompt,
-        enhance_prompt: parsedInput.data.enhance,
-      });
-      if (!sent) {
-        throw new Error("WebSocket is not open");
-      }
-
-      // Start the timeout after sending
-      const timeoutPromise = new Promise<void>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error("Prompt timed out")), PROMPT_TIMEOUT_MS);
-      });
-
-      // Race between acknowledgment and timeout
-      await Promise.race([ackPromise, timeoutPromise]);
-    } finally {
-      if (promptAckListener) {
-        emitter.off("promptAck", promptAckListener);
-      }
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    }
   };
 
-  return {
-    set,
-    setPrompt,
-  };
+  return { set, setPrompt };
 };

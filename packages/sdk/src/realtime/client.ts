@@ -7,72 +7,17 @@ import {
 } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
-import type { Logger } from "../utils/logger";
+import { createConsoleLogger, type Logger } from "../utils/logger";
+import { imageToBase64 } from "../utils/media";
+import { isDesktopSafari } from "../utils/platform";
 import { createEventBuffer } from "./event-buffer";
 import { realtimeMethods, type SetInput } from "./methods";
 import { createMirroredStream, type MirroredStream, shouldMirrorTrack } from "./mirror-stream";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
 import type { WebRTCStats } from "./observability/webrtc-stats";
-import {
-  decodeSubscribeToken,
-  encodeSubscribeToken,
-  type RealTimeSubscribeClient,
-  type SubscribeEvents,
-  type SubscribeOptions,
-} from "./subscribe-client";
-import type { ConnectionState, GenerationTickMessage, SessionIdMessage } from "./types";
-import { WebRTCManager } from "./webrtc-manager";
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result;
-      if (typeof result !== "string") {
-        reject(new Error("FileReader did not return a string"));
-        return;
-      }
-      const base64 = result.split(",")[1];
-      if (!base64) {
-        reject(new Error("Invalid data URL format"));
-        return;
-      }
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function imageToBase64(image: Blob | File | string): Promise<string> {
-  if (typeof image === "string") {
-    let url: URL | null = null;
-    try {
-      url = new URL(image);
-    } catch {
-      // Not a valid URL, treat as raw base64
-    }
-
-    if (url?.protocol === "data:") {
-      const [, base64] = image.split(",", 2);
-      if (!base64) {
-        throw new Error("Invalid data URL image");
-      }
-      return base64;
-    }
-    if (url?.protocol === "http:" || url?.protocol === "https:") {
-      const response = await fetch(image);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
-      }
-      const imageBlob = await response.blob();
-      return blobToBase64(imageBlob);
-    }
-    return image;
-  }
-  return blobToBase64(image);
-}
+import { StreamSession } from "./stream-session";
+import type { ConnectionState, GenerationEnded, GenerationTick, ImageSetOptions, QueuePosition } from "./types";
 
 export type RealTimeClientOptions = {
   baseUrl: string;
@@ -84,28 +29,28 @@ export type RealTimeClientOptions = {
 
 const realTimeClientInitialStateSchema = modelStateSchema;
 type OnRemoteStreamFn = (stream: MediaStream) => void;
+type OnConnectionChangeFn = (state: ConnectionState) => void;
+type OnQueuePositionFn = (queuePosition: QueuePosition) => void;
 export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialStateSchema>;
-
-// ugly workaround to add an optional function to the schema
-// https://github.com/colinhacks/zod/issues/4143#issuecomment-2845134912
-const createAsyncFunctionSchema = <T extends z.core.$ZodFunction>(schema: T) =>
-  z.custom<Parameters<T["implementAsync"]>[0]>((fn) => schema.implementAsync(fn as Parameters<T["implementAsync"]>[0]));
 
 const realTimeClientConnectOptionsSchema = z.object({
   model: modelDefinitionSchema,
   onRemoteStream: z.custom<OnRemoteStreamFn>((val) => typeof val === "function", {
     message: "onRemoteStream must be a function",
   }),
+  onConnectionChange: z
+    .custom<OnConnectionChangeFn>((val) => typeof val === "function", {
+      message: "onConnectionChange must be a function",
+    })
+    .optional(),
+  onQueuePosition: z
+    .custom<OnQueuePositionFn>((val) => typeof val === "function", {
+      message: "onQueuePosition must be a function",
+    })
+    .optional(),
   initialState: realTimeClientInitialStateSchema.optional(),
-  customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
-  /**
-   * Pre-flip input video.
-   * - false (default): never mirror.
-   * - "auto": mirror when `facingMode === "user"`.
-   * - true: always mirror.
-   */
+  queryParams: z.record(z.string(), z.string()).optional(),
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
-  /** Output resolution. Defaults to "720p". */
   resolution: z.enum(["720p", "1080p"]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
@@ -114,8 +59,10 @@ export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientCon
 
 export type Events = {
   connectionChange: ConnectionState;
+  queuePosition: QueuePosition;
   error: DecartSDKError;
-  generationTick: { seconds: number };
+  generationTick: GenerationTick;
+  generationEnded: GenerationEnded;
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
 };
@@ -130,27 +77,23 @@ export type RealTimeClient = {
   off: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   sessionId: string | null;
   subscribeToken: string | null;
-  setImage: (
-    image: Blob | File | string | null,
-    options?: { prompt?: string; enhance?: boolean; timeout?: number },
-  ) => Promise<void>;
+  getSubscribeToken: () => string | null;
+  setImage: (image: Blob | File | string | null, options?: ImageSetOptions) => Promise<void>;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
-  const { baseUrl, apiKey, integration, logger } = opts;
+  const { baseUrl, apiKey, integration } = opts;
+  const logger = opts.logger ?? createConsoleLogger("info");
 
   const connect = async (
     stream: MediaStream | null,
     options: RealTimeClientConnectOptions,
   ): Promise<RealTimeClient> => {
     const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
-    if (!parsedOptions.success) {
-      throw parsedOptions.error;
-    }
+    if (!parsedOptions.success) throw parsedOptions.error;
 
-    const { onRemoteStream, initialState, resolution } = parsedOptions.data;
+    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState, resolution } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
-
     let inputStream: MediaStream = stream ?? new MediaStream();
 
     let mirroredStream: MirroredStream | undefined;
@@ -170,84 +113,91 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       }
     }
 
-    let webrtcManager: WebRTCManager | undefined;
-    const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
-
-    const observability = new RealtimeObservability({
-      telemetryEnabled: opts.telemetryEnabled,
-      apiKey,
-      model: options.model.name,
-      integration,
-      logger,
-      onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
-      onStats: opts.telemetryEnabled ? (stats) => emitOrBuffer("stats", stats) : undefined,
-    });
+    let session: StreamSession | undefined;
+    let observability: RealtimeObservability | undefined;
 
     try {
-      // Prepare initial image base64 before connection
       const initialImage = initialState?.image ? await imageToBase64(initialState.image) : undefined;
-
-      // Prepare initial prompt to send via WebSocket before WebRTC handshake
       const initialPrompt = initialState?.prompt
-        ? {
-            text: initialState.prompt.text,
-            enhance: initialState.prompt.enhance,
-          }
+        ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
         : undefined;
 
       const url = `${baseUrl}${options.model.urlPath}`;
-      const resolutionQs = resolution ? `&resolution=${encodeURIComponent(resolution)}` : "";
+      const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
 
-      webrtcManager = new WebRTCManager({
-        webrtcUrl: `${url}?api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(options.model.name)}${resolutionQs}`,
+      observability = new RealtimeObservability({
+        telemetryEnabled: opts.telemetryEnabled,
+        apiKey,
+        model: options.model.name,
         integration,
         logger,
-        observability,
-        onRemoteStream,
-        onConnectionStateChange: (state) => {
-          emitOrBuffer("connectionChange", state);
-        },
-        onError: (error) => {
-          logger.error("WebRTC error", { error: error.message });
-          emitOrBuffer("error", classifyWebrtcError(error));
-        },
-        customizeOffer: options.customizeOffer as ((offer: RTCSessionDescriptionInit) => Promise<void>) | undefined,
-        vp8MinBitrate: 300,
-        vp8StartBitrate: 600,
-        initialImage,
-        initialPrompt,
+        onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
+        onStats: (stats) => emitOrBuffer("stats", stats),
       });
 
-      const manager = webrtcManager;
+      const safariCodec = isDesktopSafari() ? "vp8" : undefined;
+
+      const queryParams = new URLSearchParams({
+        ...(safariCodec ? { livekit_server_codec: safariCodec } : {}),
+        ...(options.queryParams ?? {}),
+        api_key: apiKey,
+        model: options.model.name,
+        ...(resolution ? { resolution } : {}),
+      });
+
+      session = new StreamSession({
+        url: `${url}?${queryParams.toString()}`,
+        integration,
+        observability,
+        localStream: inputStream,
+        initialImage,
+        initialPrompt,
+        logger,
+        videoCodec: safariCodec,
+      });
 
       let sessionId: string | null = null;
       let subscribeToken: string | null = null;
 
-      const sessionIdListener = (msg: SessionIdMessage) => {
-        subscribeToken = encodeSubscribeToken(msg.session_id, msg.server_ip, msg.server_port);
-        sessionId = msg.session_id;
-        observability.sessionStarted(msg.session_id);
-      };
-      manager.getWebsocketMessageEmitter().on("sessionId", sessionIdListener);
+      session.on("remoteStream", onRemoteStream);
 
-      const tickListener = (msg: GenerationTickMessage) => {
-        emitOrBuffer("generationTick", { seconds: msg.seconds });
-      };
-      manager.getWebsocketMessageEmitter().on("generationTick", tickListener);
+      session.on("connectionChange", (state) => {
+        emitOrBuffer("connectionChange", state);
+        onConnectionChange?.(state);
+      });
 
-      await manager.connect(inputStream);
+      session.on("queuePosition", (qp) => {
+        emitOrBuffer("queuePosition", qp);
+        onQueuePosition?.(qp);
+      });
 
-      const methods = realtimeMethods(manager, imageToBase64);
+      session.on("sessionStarted", ({ sessionId: id, subscribeToken: token }) => {
+        sessionId = id;
+        subscribeToken = token;
+        observability?.sessionStarted(id);
+      });
+
+      session.on("generationTick", (e) => emitOrBuffer("generationTick", e));
+      session.on("generationEnded", (e) => emitOrBuffer("generationEnded", e));
+
+      session.on("error", (error) => {
+        logger.error("Realtime error", { error: error.message });
+        emitOrBuffer("error", classifyWebrtcError(error));
+      });
+
+      const activeSession = session;
+      await activeSession.connect();
+
+      const methods = realtimeMethods(activeSession, imageToBase64);
 
       const client: RealTimeClient = {
-        set: methods.set,
-        setPrompt: methods.setPrompt,
-        isConnected: () => manager.isConnected(),
-        getConnectionState: () => manager.getConnectionState(),
+        ...methods,
+        isConnected: () => activeSession.isConnected(),
+        getConnectionState: () => activeSession.getConnectionState(),
         disconnect: () => {
-          observability.stop();
+          observability?.stop();
           stop();
-          manager.cleanup();
+          activeSession.disconnect();
           mirroredStream?.dispose();
         },
         on: eventEmitter.on,
@@ -258,87 +208,23 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         get subscribeToken() {
           return subscribeToken;
         },
-        setImage: async (
-          image: Blob | File | string | null,
-          options?: { prompt?: string; enhance?: boolean; timeout?: number },
-        ) => {
-          if (image === null) {
-            return manager.setImage(null, options);
-          }
+        getSubscribeToken: () => subscribeToken,
+        setImage: async (image: Blob | File | string | null, imgOptions?: ImageSetOptions) => {
+          if (image === null) return activeSession.setImage(null, imgOptions);
           const base64 = await imageToBase64(image);
-          return manager.setImage(base64, options);
+          return activeSession.setImage(base64, imgOptions);
         },
       };
 
       flush();
       return client;
     } catch (error) {
-      observability.stop();
-      webrtcManager?.cleanup();
+      observability?.stop();
+      session?.disconnect();
       mirroredStream?.dispose();
       throw error;
     }
   };
 
-  const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
-    const { sid, ip, port } = decodeSubscribeToken(options.token);
-    const subscribeUrl = `${baseUrl}/subscribe/${encodeURIComponent(sid)}?IP=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}&api_key=${encodeURIComponent(apiKey)}`;
-
-    const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
-
-    let webrtcManager: WebRTCManager | undefined;
-    const observability = new RealtimeObservability({
-      telemetryEnabled: opts.telemetryEnabled,
-      apiKey,
-      integration,
-      logger,
-      onDiagnostic: (event) => emitOrBuffer("diagnostic", event as SubscribeEvents["diagnostic"]),
-      onStats: opts.telemetryEnabled ? (stats) => emitOrBuffer("stats", stats) : undefined,
-    });
-    observability.sessionStarted(sid);
-
-    try {
-      webrtcManager = new WebRTCManager({
-        webrtcUrl: subscribeUrl,
-        integration,
-        logger,
-        observability,
-        onRemoteStream: options.onRemoteStream,
-        onConnectionStateChange: (state) => {
-          emitOrBuffer("connectionChange", state);
-        },
-        onError: (error) => {
-          logger.error("WebRTC subscribe error", { error: error.message });
-          emitOrBuffer("error", classifyWebrtcError(error));
-        },
-      });
-
-      const manager = webrtcManager;
-      await manager.connect(null);
-
-      const client: RealTimeSubscribeClient = {
-        isConnected: () => manager.isConnected(),
-        getConnectionState: () => manager.getConnectionState(),
-        disconnect: () => {
-          observability.stop();
-          stop();
-          manager.cleanup();
-        },
-        on: eventEmitter.on,
-        off: eventEmitter.off,
-      };
-
-      flush();
-      return client;
-    } catch (error) {
-      observability.stop();
-      webrtcManager?.cleanup();
-      throw error;
-    }
-  };
-
-  return {
-    connect,
-    subscribe,
-  };
+  return { connect };
 };

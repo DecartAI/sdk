@@ -15,11 +15,14 @@ yarn add @decartai/sdk
 ## Documentation
 
 For complete documentation, guides, and examples, visit:
-**https://docs.platform.decart.ai/sdks/javascript**
+**[https://docs.platform.decart.ai/sdks/javascript](https://docs.platform.decart.ai/sdks/javascript)**
 
 ## Quick Start
 
 ### Real-time Video Transformation
+
+Realtime connections are LiveKit-backed in the SDK. Existing client usage stays the same: provide a
+camera `MediaStream`, choose a realtime model, and handle the transformed remote stream.
 
 ```typescript
 import { createDecartClient, models } from "@decartai/sdk";
@@ -79,14 +82,51 @@ Options:
 - `"auto"` — mirror when the input track reports `facingMode: "user"` (mobile front cameras).
 - `true` — always mirror (e.g. desktop webcams).
 
-#### Output resolution
+### Watch a Stream
 
-```ts
+A connected realtime session exposes an SDK `subscribeToken` once it reaches a
+connected state. Share that SDK token with viewers — `client.realtime.subscribe`
+uses it to request receive-only LiveKit credentials from Decart, then connects to
+the LiveKit room for the styled output stream. No viewer camera is required.
+
+**Producer** — capture the token from the active session:
+
+```typescript
 const realtimeClient = await client.realtime.connect(stream, {
   model,
-  resolution: "1080p", // default: "720p"
-  // ...
+  onRemoteStream: (transformedStream) => {
+    videoElement.srcObject = transformedStream;
+  },
 });
+
+realtimeClient.on("connectionChange", (state) => {
+  if ((state === "connected" || state === "generating") && realtimeClient.subscribeToken) {
+    const subscribeToken = realtimeClient.subscribeToken;
+    // Pass `subscribeToken` to the viewer snippet below.
+  }
+});
+```
+
+**Viewer** — attach to the producer's stream with the token:
+
+```typescript
+import { createDecartClient, type RealTimeSubscribeClient } from "@decartai/sdk";
+
+const client = createDecartClient({ apiKey: "your-api-key-here" });
+
+const subscriber: RealTimeSubscribeClient = await client.realtime.subscribe({
+  token: subscribeToken,
+  onRemoteStream: (stream) => {
+    videoElement.srcObject = stream;
+  },
+});
+
+subscriber.on("connectionChange", (state) => {
+  console.log(`Viewer state: ${state}`);
+});
+
+// Disconnect when done
+subscriber.disconnect();
 ```
 
 ### Async Processing (Queue API)
@@ -161,9 +201,9 @@ pnpm install
 
 1. **Version bump**: Run `pnpm release` to bump the version (this uses `bumpp` to create a new version tag) and push it to GitHub
 2. **Automated publish**: The GitHub Actions workflow will:
-   - Build the project
-   - Publish to npm
-   - Create a GitHub release with changelog
+  - Build the project
+  - Publish to npm
+  - Create a GitHub release with changelog
 
 The package is published to npm as `@decartai/sdk`.
 
