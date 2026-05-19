@@ -85,8 +85,8 @@ Options:
 ### Watch a Stream
 
 A connected realtime session exposes `subscribeToken` once it reaches a connected
-state. Share that token (e.g. as a URL search param) and let viewers attach to
-the same styled output stream — receive-only, no camera required.
+state. Share that token with viewers so they can attach to the same styled
+output stream — receive-only, no camera required.
 
 **Producer** — capture the token from the active session:
 
@@ -100,9 +100,8 @@ const realtimeClient = await client.realtime.connect(stream, {
 
 realtimeClient.on("connectionChange", (state) => {
   if ((state === "connected" || state === "generating") && realtimeClient.subscribeToken) {
-    const url = new URL("/watch", window.location.origin);
-    url.searchParams.set("token", realtimeClient.subscribeToken);
-    setShareUrl(url.toString());
+    const token = realtimeClient.subscribeToken;
+    // Pass `token` to the viewer snippet below.
   }
 });
 ```

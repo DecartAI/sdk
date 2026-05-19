@@ -285,6 +285,92 @@ describe("Subscribe Token", () => {
   });
 });
 
+describe("realtime.connect options", () => {
+  class FakeWebSocket {
+    static OPEN = 1;
+    static instances: FakeWebSocket[] = [];
+
+    readyState = FakeWebSocket.OPEN;
+    onopen: (() => void) | null = null;
+    onmessage: ((event: FakeWebSocketMessageEvent) => void) | null = null;
+    onclose: ((event: FakeWebSocketCloseEvent) => void) | null = null;
+
+    constructor(readonly url: string) {
+      FakeWebSocket.instances.push(this);
+      setTimeout(() => this.onopen?.(), 0);
+    }
+
+    send(data: string): void {
+      const message = JSON.parse(data);
+      if (message.type === "livekit_join") {
+        setTimeout(() => {
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: "livekit_room_info",
+              livekit_url: "wss://livekit.example.test",
+              token: "token",
+              room_name: "room",
+              session_id: "session-room",
+            }),
+          });
+        }, 0);
+      }
+    }
+    close(): void {
+      this.onclose?.({ code: 1000, reason: "closed" });
+    }
+  }
+
+  beforeEach(() => {
+    FakeWebSocket.instances = [];
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("MediaStream", FakeMediaStream);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("adds resolution to the realtime URL when provided", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const client = createRealTimeClient({
+      baseUrl: "wss://api3.decart.ai",
+      apiKey: "test-key",
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      telemetryEnabled: false,
+    });
+
+    const realtimeClient = await client.connect(null, {
+      model: models.realtime("lucy-2.1"),
+      resolution: "1080p",
+      onRemoteStream: vi.fn(),
+    });
+
+    const url = new URL(FakeWebSocket.instances[0].url);
+    expect(url.searchParams.get("resolution")).toBe("1080p");
+    realtimeClient.disconnect();
+  });
+
+  it("rejects unsupported realtime resolutions", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const client = createRealTimeClient({
+      baseUrl: "wss://api3.decart.ai",
+      apiKey: "test-key",
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      telemetryEnabled: false,
+    });
+
+    await expect(
+      client.connect(null, {
+        model: models.realtime("lucy-2.1"),
+        resolution: "480p" as never,
+        onRemoteStream: vi.fn(),
+      }),
+    ).rejects.toThrow();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+});
+
 describe("SignalingChannel initial handshake", () => {
   class FakeWebSocket {
     static OPEN = 1;

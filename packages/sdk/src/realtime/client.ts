@@ -51,6 +51,7 @@ const realTimeClientConnectOptionsSchema = z.object({
   initialState: realTimeClientInitialStateSchema.optional(),
   queryParams: z.record(z.string(), z.string()).optional(),
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
+  resolution: z.enum(["720p", "1080p"]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -91,7 +92,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
     if (!parsedOptions.success) throw parsedOptions.error;
 
-    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState } = parsedOptions.data;
+    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState, resolution } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
     let inputStream: MediaStream = stream ?? new MediaStream();
 
@@ -141,6 +142,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         ...(options.queryParams ?? {}),
         api_key: apiKey,
         model: options.model.name,
+        ...(resolution ? { resolution } : {}),
       });
 
       session = new StreamSession({
