@@ -570,7 +570,21 @@
             elements.apiKey.value = import.meta.env.VITE_DECART_API_KEY;
         }
 
-        elements.cameraFps.value = String(model.fps ?? 30);
+        function resolveCameraFps(fps, fallback = 30) {
+            if (typeof fps === 'number' && Number.isFinite(fps) && fps > 0) return fps;
+            if (!fps || typeof fps !== 'object') return fallback;
+
+            for (const key of ['ideal', 'max', 'exact', 'min']) {
+                const value = fps[key];
+                if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+                    return value;
+                }
+            }
+
+            return fallback;
+        }
+
+        elements.cameraFps.value = String(resolveCameraFps(model.fps));
 
         // Logging system
         function addLog(message, type = 'info') {
@@ -675,7 +689,7 @@
         elements.modelSelect.addEventListener('change', (e) => {
             const selectedModel = e.target.value;
             model = models.realtime(selectedModel);
-            elements.cameraFps.value = String(model.fps ?? 30);
+            elements.cameraFps.value = String(resolveCameraFps(model.fps));
             addLog(`Selected model: ${selectedModel}`, 'info');
             
             // If camera is already started, stop it so user can restart with new model settings.
@@ -694,7 +708,7 @@
             const modelHeight = model.height;
 
             const parsedFps = Number.parseInt(elements.cameraFps.value, 10);
-            const fps = Number.isFinite(parsedFps) && parsedFps > 0 ? parsedFps : (model.fps ?? 30);
+            const fps = Number.isFinite(parsedFps) && parsedFps > 0 ? parsedFps : resolveCameraFps(model.fps);
 
             return {
                 orientation,
