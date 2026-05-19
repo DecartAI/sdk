@@ -179,8 +179,8 @@ export class RealtimeObservability {
       return;
     }
 
-    this.liveKitRoom = room;
     this.setStatsProvider(createLiveKitStatsProvider(room));
+    this.liveKitRoom = room;
   }
 
   stopStats(): void {
