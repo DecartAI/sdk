@@ -42,9 +42,6 @@ async function main() {
       case "connecting":
         console.log("Connecting to server...");
         break;
-      case "pending":
-        console.log("Waiting in queue for an available realtime worker...");
-        break;
       case "connected":
         console.log("Connected! Streaming active.");
         break;
@@ -65,9 +62,9 @@ async function main() {
     console.error("Error:", error.message);
   });
 
-  // Check connection state synchronously
-  console.log("Is connected:", realtimeClient.isConnected());
-  console.log("Connection state:", realtimeClient.getConnectionState());
+  realtimeClient.on("queuePosition", ({ position, queueSize }) => {
+    console.log(`Waiting in queue: position ${position} of ${queueSize}`);
+  });
 
   // Cleanup on page unload
   window.addEventListener("beforeunload", () => {

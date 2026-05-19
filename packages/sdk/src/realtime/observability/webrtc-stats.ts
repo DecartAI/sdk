@@ -52,7 +52,7 @@ export type WebRTCStats = {
      * Std-dev of inter-frame delay (ms), computed from
      * totalInterFrameDelay + totalSquaredInterFrameDelay.
      */
-    interFrameDelayVarianceMs: number | null;
+    interFrameDelayStdDevMs: number | null;
     /** Current target delay of the jitter buffer (ms). */
     jitterBufferTargetDelayMs: number | null;
     /** Current minimum delay of the jitter buffer (ms). */
@@ -295,7 +295,7 @@ export class WebRTCStatsCollector {
         // Variance σ² = E[X²] - E[X]² ; std-dev = sqrt(σ²). Report std-dev
         // in ms — more actionable than variance for a threshold-based
         // "is the path jittery" check.
-        const interFrameDelayVarianceMs =
+        const interFrameDelayStdDevMs =
           framesDecoded > 0
             ? Math.sqrt(
                 Math.max(0, totalSquaredInterFrameDelay / framesDecoded - (totalInterFrameDelay / framesDecoded) ** 2),
@@ -332,7 +332,7 @@ export class WebRTCStatsCollector {
           avgJitterBufferMs,
           avgProcessingDelayMs,
           avgInterFrameDelayMs,
-          interFrameDelayVarianceMs,
+          interFrameDelayStdDevMs,
           jitterBufferTargetDelayMs,
           jitterBufferMinimumDelayMs,
           decoderImplementation: (r.decoderImplementation as string) ?? "",
