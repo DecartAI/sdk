@@ -18,6 +18,7 @@ import { RealtimeObservability } from "./observability/realtime-observability";
 import type { WebRTCStats } from "./observability/webrtc-stats";
 import { StreamSession } from "./stream-session";
 import type { ConnectionState, GenerationEnded, GenerationTick, ImageSetOptions, QueuePosition } from "./types";
+import type { RoomOptions, TrackPublishOptions, VideoReceiverStats, VideoSenderStats } from "livekit-client";
 
 export type RealTimeClientOptions = {
   baseUrl: string;
@@ -52,6 +53,10 @@ const realTimeClientConnectOptionsSchema = z.object({
   queryParams: z.record(z.string(), z.string()).optional(),
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
   resolution: z.enum(["720p", "1080p"]).optional(),
+  publishOptions: z
+    .custom<Partial<TrackPublishOptions>>((val) => val === undefined || typeof val === "object")
+    .optional(),
+  roomOptions: z.custom<Partial<RoomOptions>>((val) => val === undefined || typeof val === "object").optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -79,6 +84,7 @@ export type RealTimeClient = {
   subscribeToken: string | null;
   getSubscribeToken: () => string | null;
   setImage: (image: Blob | File | string | null, options?: ImageSetOptions) => Promise<void>;
+  getVideoStats: () => Promise<{ sender: VideoSenderStats[]; receiver: VideoReceiverStats[] }>;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
@@ -92,7 +98,15 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
     if (!parsedOptions.success) throw parsedOptions.error;
 
-    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState, resolution } = parsedOptions.data;
+    const {
+      onRemoteStream,
+      onConnectionChange,
+      onQueuePosition,
+      initialState,
+      resolution,
+      publishOptions,
+      roomOptions,
+    } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
     let inputStream: MediaStream = stream ?? new MediaStream();
 
@@ -154,6 +168,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialPrompt,
         logger,
         videoCodec: safariCodec,
+        publishOptions,
+        roomOptions,
       });
 
       let sessionId: string | null = null;
@@ -209,6 +225,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           return subscribeToken;
         },
         getSubscribeToken: () => subscribeToken,
+        getVideoStats: () => activeSession.getVideoStats(),
         setImage: async (image: Blob | File | string | null, imgOptions?: ImageSetOptions) => {
           if (image === null) return activeSession.setImage(null, imgOptions);
           const base64 = await imageToBase64(image);

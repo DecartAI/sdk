@@ -5,6 +5,7 @@ import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import { InitialStateGate } from "./initial-state-gate";
 import { MediaChannel, type VideoCodec } from "./media-channel";
+import type { RoomOptions, TrackPublishOptions, VideoReceiverStats, VideoSenderStats } from "livekit-client";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 import { SignalingChannel } from "./signaling-channel";
 import type {
@@ -59,6 +60,8 @@ interface StreamSessionConfig {
   initialPrompt?: InitialPrompt;
   logger?: Logger;
   videoCodec?: VideoCodec;
+  publishOptions?: Partial<TrackPublishOptions>;
+  roomOptions?: Partial<RoomOptions>;
 }
 
 export class StreamSession {
@@ -121,6 +124,10 @@ export class StreamSession {
   async sendPrompt(text: string, opts?: PromptSendOptions): Promise<void> {
     this.assertConnected();
     return this.signaling.sendPrompt(text, opts);
+  }
+
+  async getVideoStats(): Promise<{ sender: VideoSenderStats[]; receiver: VideoReceiverStats[] }> {
+    return this.media.getVideoStats();
   }
 
   async setImage(image: string | null, opts?: ImageSetOptions): Promise<void> {
@@ -307,6 +314,8 @@ export class StreamSession {
       localStream: this.config.localStream,
       logger: this.logger,
       videoCodec: this.config.videoCodec,
+      publishOptions: this.config.publishOptions,
+      roomOptions: this.config.roomOptions,
     });
     this.wireSignalingEvents();
     this.wireMediaEvents();

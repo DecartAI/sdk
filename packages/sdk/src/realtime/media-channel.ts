@@ -1,12 +1,17 @@
 import {
   type DisconnectReason,
+  LocalVideoTrack,
   type RemoteParticipant,
   type RemoteTrack,
+  RemoteVideoTrack,
   Room,
   RoomEvent,
+  type RoomOptions,
   Track,
   TrackEvent,
   type TrackPublishOptions,
+  type VideoReceiverStats,
+  type VideoSenderStats,
 } from "livekit-client";
 import mitt, { type Emitter } from "mitt";
 
@@ -16,17 +21,26 @@ import type { RealtimeObservability } from "./observability/realtime-observabili
 
 export type VideoCodec = "h264" | "vp8" | "vp9" | "av1";
 
-export function getDefaultVideoPublishOptions(videoCodec?: VideoCodec): TrackPublishOptions {
-  const videoEncoding = {
+export function getDefaultVideoPublishOptions(
+  videoCodec?: VideoCodec,
+  overrides?: Partial<TrackPublishOptions>,
+): TrackPublishOptions {
+  const defaultEncoding = {
     maxBitrate: REALTIME_CONFIG.livekit.defaultMaxVideoBitrateBps,
     maxFramerate: REALTIME_CONFIG.livekit.defaultPublishFps,
   };
 
   return {
     source: Track.Source.Camera,
-    videoCodec: videoCodec ?? REALTIME_CONFIG.livekit.defaultVideoCodec,
     simulcast: true,
-    videoEncoding,
+    videoCodec: REALTIME_CONFIG.livekit.defaultVideoCodec,
+    ...overrides,
+    // Caller-provided codec (e.g. Safari forced vp8) wins over profile overrides.
+    ...(videoCodec ? { videoCodec } : {}),
+    videoEncoding: {
+      ...defaultEncoding,
+      ...overrides?.videoEncoding,
+    },
   };
 }
 
@@ -41,6 +55,8 @@ export interface MediaChannelConfig {
   localStream: MediaStream | null;
   logger?: Logger;
   videoCodec?: VideoCodec;
+  publishOptions?: Partial<TrackPublishOptions>;
+  roomOptions?: Partial<RoomOptions>;
 }
 
 export type MediaConnectOptions = {
@@ -71,7 +87,10 @@ export class MediaChannel {
   }
 
   async connect(opts: MediaConnectOptions): Promise<void> {
-    this.room ??= new Room(REALTIME_CONFIG.livekit.roomOptions);
+    this.room ??= new Room({
+      ...REALTIME_CONFIG.livekit.roomOptions,
+      ...this.config.roomOptions,
+    });
     const room = this.room;
 
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
@@ -103,6 +122,42 @@ export class MediaChannel {
     this.config.observability?.setLiveKitRoom(room);
   }
 
+  async getVideoStats(): Promise<{ sender: VideoSenderStats[]; receiver: VideoReceiverStats[] }> {
+    const room = this.room;
+    if (!room) return { sender: [], receiver: [] };
+
+    const sender: VideoSenderStats[] = [];
+    for (const pub of room.localParticipant.videoTrackPublications.values()) {
+      const track = pub.track;
+      if (track instanceof LocalVideoTrack) {
+        try {
+          const layers = await track.getSenderStats();
+          sender.push(...layers);
+        } catch (error) {
+          this.logger.debug("getSenderStats failed", { error: (error as Error).message });
+        }
+      }
+    }
+
+    const receiver: VideoReceiverStats[] = [];
+    for (const participant of room.remoteParticipants.values()) {
+      if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) continue;
+      for (const pub of participant.videoTrackPublications.values()) {
+        const track = pub.track;
+        if (track instanceof RemoteVideoTrack) {
+          try {
+            const stats = await track.getReceiverStats();
+            if (stats) receiver.push(stats);
+          } catch (error) {
+            this.logger.debug("getReceiverStats failed", { error: (error as Error).message });
+          }
+        }
+      }
+    }
+
+    return { sender, receiver };
+  }
+
   async publishLocalTracks(): Promise<void> {
     if (!this.config.localStream) return;
     this.config.observability?.startPhase("publish-local-track");
@@ -124,7 +179,16 @@ export class MediaChannel {
     if (!this.room) return;
     for (const track of stream.getTracks()) {
       if (track.kind === "video") {
-        await this.room.localParticipant.publishTrack(track, getDefaultVideoPublishOptions(this.config.videoCodec));
+        const publishOptions = getDefaultVideoPublishOptions(this.config.videoCodec, this.config.publishOptions);
+        this.logger.info("livekit: publishing video track", {
+          videoCodec: publishOptions.videoCodec,
+          simulcast: publishOptions.simulcast,
+          scalabilityMode: publishOptions.scalabilityMode,
+          degradationPreference: publishOptions.degradationPreference,
+          maxBitrate: publishOptions.videoEncoding?.maxBitrate,
+          maxFramerate: publishOptions.videoEncoding?.maxFramerate,
+        });
+        await this.room.localParticipant.publishTrack(track, publishOptions);
       } else {
         await this.room.localParticipant.publishTrack(track);
       }

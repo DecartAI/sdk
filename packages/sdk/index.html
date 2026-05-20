@@ -344,6 +344,21 @@
             </select>
         </div>
         <div class="control-group">
+            <label for="publish-profile-select">LiveKit Publish Profile:</label>
+            <select id="publish-profile-select">
+                <option value="default" selected>Default baseline — H.264 + simulcast (current SDK default)</option>
+                <option value="A">Profile A — H.264 baseline, no simulcast (balanced)</option>
+                <option value="B">Profile B — H.264 + maintain-framerate, priority=high</option>
+                <option value="C">Profile C — VP9 SVC L1T3 (temporal only)</option>
+                <option value="D">Profile D — VP9 SVC L3T3_KEY (spatial+temporal)</option>
+                <option value="E">Profile E — AV1 SVC L3T3_KEY (compression-first)</option>
+                <option value="F">Profile F — H.264 constrained, maintain-framerate</option>
+                <option value="G">Profile G — H.264 high bitrate, maintain-framerate</option>
+                <option value="H">Profile H — H.264 adaptive receive, maintain-framerate</option>
+            </select>
+            <div id="publish-profile-description" style="margin-top: 6px; font-size: 12px; color: #555;"></div>
+        </div>
+        <div class="control-group">
             <label for="initial-prompt">Initial Prompt (empty = passthrough):</label>
             <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
         </div>
@@ -362,12 +377,20 @@
             <input type="checkbox" id="stream-audio-toggle" unchecked>
             <label for="stream-audio-toggle" style="margin: 0; font-weight: normal;">Stream microphone audio</label>
         </div>
+        <div class="control-group">
+            <label for="source-file">Or stream a looped video file (instead of camera):</label>
+            <input type="file" id="source-file" accept="video/*">
+        </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
+            <button id="start-file-source" disabled>Start File Source</button>
             <button id="connect-btn" disabled>Connect to Decart</button>
             <button id="disconnect-btn" disabled>Disconnect</button>
+            <button id="print-stats-btn" disabled>Print Avg Stats</button>
+            <span id="session-timer" style="font-size:28px; font-weight:bold; color:#2196F3; font-family:'Courier New', monospace;">0s</span>
         </div>
     </div>
+
 
     <!-- Subscribe / Viewer Mode -->
     <div class="controls">
@@ -511,6 +534,187 @@
         let currentSessionId = null;
         let currentSubscribeToken = null;
         let model = models.realtime("lucy-2.1");
+
+        // -----------------------------------------------------------------------
+        // LiveKit publish profiles for 1:1 streaming to the AI inference server.
+        // Profile A-B and F-H candidates keep H.264 and maxFramerate: 30.
+        // The default entry intentionally preserves the SDK's simulcast baseline.
+        // For a single backend consumer, single-layer H.264 is the expected best path;
+        // simulcast remains here only as a control to measure its overhead.
+        // Profiles C-E keep the VP9/AV1 SVC candidates for comparison.
+        // -----------------------------------------------------------------------
+        const PUBLISH_PROFILES = {
+            default: {
+                label: 'H.264 + simulcast (current SDK default)',
+                description: 'Same as Profile A but with simulcast enabled — represents what the SDK ships today before any profile tuning.',
+                roomOptions: {
+                    adaptiveStream: false,
+                    dynacast: false,
+                },
+                publishOptions: {
+                    videoCodec: 'h264',
+                    simulcast: true,
+                    videoEncoding: {
+                        maxBitrate: 2_500_000,
+                        maxFramerate: 30,
+                    },
+                    degradationPreference: 'balanced',
+                },
+            },
+            A: {
+                label: 'H.264 baseline, no simulcast (balanced)',
+                description: 'H.264 single layer, default degradation strategy. The control profile.',
+                roomOptions: {
+                    adaptiveStream: false,
+                    dynacast: false,
+                },
+                publishOptions: {
+                    videoCodec: 'h264',
+                    simulcast: false,
+                    videoEncoding: {
+                        maxBitrate: 2_500_000,
+                        maxFramerate: 30,
+                    },
+                    degradationPreference: 'balanced',
+                },
+            },
+            B: {
+                label: 'H.264 + maintain-framerate, priority=high',
+                description: 'H.264 single layer, drops resolution before FPS under pressure, DSCP-prioritized.',
+                roomOptions: {
+                    adaptiveStream: false,
+                    dynacast: false,
+                },
+                publishOptions: {
+                    videoCodec: 'h264',
+                    simulcast: false,
+                    videoEncoding: {
+                        maxBitrate: 3_000_000,
+                        maxFramerate: 30,
+                        priority: 'high',
+                    },
+                    degradationPreference: 'maintain-framerate',
+                },
+            },
+            C: {
+                label: 'VP9 SVC L1T3 (temporal only)',
+                description: 'VP9 with 3 temporal layers (single resolution). Loss recovery without spatial encode cost.',
+                roomOptions: {
+                    adaptiveStream: false,
+                    dynacast: false,
+                },
+                publishOptions: {
+                    videoCodec: 'vp9',
+                    scalabilityMode: 'L1T3',
+                    simulcast: false,
+                    videoEncoding: {
+                        maxBitrate: 1_500_000,
+                        maxFramerate: 30,
+                    },
+                    backupCodec: { codec: 'h264' },
+                    degradationPreference: 'maintain-framerate',
+                },
+            },
+            D: {
+                label: 'VP9 SVC L3T3_KEY (spatial+temporal)',
+                description: 'VP9 full SVC: 3 spatial x 3 temporal layers. Best resilience on bad networks.',
+                roomOptions: {
+                    adaptiveStream: false,
+                    dynacast: false,
+                },
+                publishOptions: {
+                    videoCodec: 'vp9',
+                    scalabilityMode: 'L3T3_KEY',
+                    simulcast: false,
+                    videoEncoding: {
+                        maxBitrate: 1_800_000,
+                        maxFramerate: 30,
+                    },
+                    backupCodec: { codec: 'h264' },
+                    degradationPreference: 'maintain-framerate',
+                },
+            },
+            E: {
+                label: 'AV1 SVC L3T3_KEY (compression-first)',
+                description: 'AV1 full SVC. Best compression, but watch client CPU. Falls back to H.264 if unsupported.',
+                roomOptions: {
+                    adaptiveStream: false,
+                    dynacast: false,
+                },
+                publishOptions: {
+                    videoCodec: 'av1',
+                    scalabilityMode: 'L3T3_KEY',
+                    simulcast: false,
+                    videoEncoding: {
+                        maxBitrate: 1_000_000,
+                        maxFramerate: 30,
+                    },
+                    backupCodec: { codec: 'h264' },
+                    degradationPreference: 'maintain-framerate',
+                },
+            },
+            F: {
+                label: 'H.264 constrained, maintain-framerate',
+                description: 'H.264 single layer with a lower bitrate ceiling for weaker networks; drops resolution before FPS.',
+                roomOptions: {
+                    adaptiveStream: false,
+                    dynacast: false,
+                },
+                publishOptions: {
+                    videoCodec: 'h264',
+                    simulcast: false,
+                    videoEncoding: {
+                        maxBitrate: 1_800_000,
+                        maxFramerate: 30,
+                        priority: 'high',
+                    },
+                    degradationPreference: 'maintain-framerate',
+                },
+            },
+            G: {
+                label: 'H.264 high bitrate, maintain-framerate',
+                description: 'H.264 single layer with more bitrate headroom for clean networks while still preserving FPS under pressure.',
+                roomOptions: {
+                    adaptiveStream: false,
+                    dynacast: false,
+                },
+                publishOptions: {
+                    videoCodec: 'h264',
+                    simulcast: false,
+                    videoEncoding: {
+                        maxBitrate: 2_000_000,
+                        maxFramerate: 30,
+                        priority: 'high',
+                    },
+                    degradationPreference: 'maintain-resolution',
+                },
+            },
+            H: {
+                label: 'H.264 adaptive receive, maintain-framerate',
+                description: 'H.264 single layer plus adaptiveStream for the processed-video subscription; upstream to the server remains single-layer H.264.',
+                roomOptions: {
+                    adaptiveStream: true,
+                    dynacast: false,
+                },
+                publishOptions: {
+                    videoCodec: 'h264',
+                    simulcast: false,
+                    videoEncoding: {
+                        maxBitrate: 2_500_000,
+                        maxFramerate: 30,
+                        priority: 'high',
+                    },
+                    degradationPreference: 'maintain-framerate',
+                },
+            },
+        };
+
+        function getSelectedPublishProfile() {
+            const key = elements.publishProfileSelect.value;
+            const profile = PUBLISH_PROFILES[key];
+            if (!profile) return { key: 'default', ...PUBLISH_PROFILES.default };
+            return { key, ...profile };
+        }
         
         // DOM elements
         const elements = {
@@ -518,12 +722,18 @@
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             resolutionSelect: document.getElementById('resolution-select'),
+            publishProfileSelect: document.getElementById('publish-profile-select'),
+            publishProfileDescription: document.getElementById('publish-profile-description'),
             initialPrompt: document.getElementById('initial-prompt'),
             cameraFps: document.getElementById('camera-fps'),
             streamAudioToggle: document.getElementById('stream-audio-toggle'),
+            sourceFile: document.getElementById('source-file'),
+            startFileSource: document.getElementById('start-file-source'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
             disconnectBtn: document.getElementById('disconnect-btn'),
+            printStatsBtn: document.getElementById('print-stats-btn'),
+            sessionTimer: document.getElementById('session-timer'),
             localVideo: document.getElementById('local-video'),
             remoteVideo: document.getElementById('remote-video'),
             promptInput: document.getElementById('prompt-input'),
@@ -562,7 +772,7 @@
             processStatusText: document.getElementById('process-status-text'),
             processedContainer: document.getElementById('processed-container'),
             originalVideo: document.getElementById('original-video'),
-            processedVideo: document.getElementById('processed-video')
+            processedVideo: document.getElementById('processed-video'),
         };
         
         // Pre-populate API key from environment variable if available
@@ -638,6 +848,231 @@
             };
         }
         
+        // --- Stats aggregator: tracks running sum + count per numeric field, per group key. ---
+        const STATS_POLL_INTERVAL_MS = 5000;
+        let statsPollTimer = null;
+        let statsRunCount = 0;
+        // Map<groupKey, Map<fieldName, { sum: number, count: number }>>
+        const statsAggregates = new Map();
+
+        function aggregateStatObject(groupKey, statObj) {
+            if (!statObj) return;
+            let groupAgg = statsAggregates.get(groupKey);
+            if (!groupAgg) {
+                groupAgg = new Map();
+                statsAggregates.set(groupKey, groupAgg);
+            }
+            for (const [field, value] of Object.entries(statObj)) {
+                if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+                const slot = groupAgg.get(field) ?? { sum: 0, count: 0 };
+                slot.sum += value;
+                slot.count += 1;
+                groupAgg.set(field, slot);
+            }
+        }
+
+        function formatStatsForLog(statObj) {
+            const slim = {};
+            for (const [k, v] of Object.entries(statObj)) {
+                if (v === null || v === undefined) continue;
+                if (typeof v === 'object') continue;
+                slim[k] = v;
+            }
+            return JSON.stringify(slim);
+        }
+
+        async function pollAndAggregateStats() {
+            if (!decartRealtime?.getVideoStats) return;
+            let result;
+            try {
+                result = await decartRealtime.getVideoStats();
+            } catch (error) {
+                addLog(`Stats poll failed: ${error.message}`, 'error');
+                return;
+            }
+            statsRunCount += 1;
+            const { sender = [], receiver = [] } = result;
+            if (sender.length === 0 && receiver.length === 0) {
+                addLog(`[stats #${statsRunCount}] no tracks yet`, 'info');
+                return;
+            }
+            sender.forEach((stats, idx) => {
+                const key = `sender[${stats.rid || idx}]`;
+                aggregateStatObject(key, stats);
+                addLog(`[stats #${statsRunCount}] ${key} ${formatStatsForLog(stats)}`, 'info');
+            });
+            receiver.forEach((stats, idx) => {
+                const key = `receiver[${idx}]`;
+                aggregateStatObject(key, stats);
+                addLog(`[stats #${statsRunCount}] ${key} ${formatStatsForLog(stats)}`, 'info');
+            });
+        }
+
+        // --- Session timer ---
+        let sessionTimerInterval = null;
+        let sessionStartedAt = 0;
+
+        function startSessionTimer() {
+            stopSessionTimer();
+            sessionStartedAt = Date.now();
+            elements.sessionTimer.textContent = '0s';
+            sessionTimerInterval = setInterval(() => {
+                const seconds = Math.floor((Date.now() - sessionStartedAt) / 1000);
+                elements.sessionTimer.textContent = `${seconds}s`;
+            }, 1000);
+        }
+
+        function stopSessionTimer() {
+            if (sessionTimerInterval) {
+                clearInterval(sessionTimerInterval);
+                sessionTimerInterval = null;
+            }
+        }
+
+        // --- Prompt cycler ---
+        const CYCLE_PROMPTS = [
+            'add a red baseball cap',
+            'put a black leather jacket on the person',
+            'replace the shirt with a white tank top',
+            'add round sunglasses',
+            'add a knitted winter scarf',
+            'put a yellow raincoat on the person',
+            'add a gold chain necklace',
+        ];
+        const PROMPT_CYCLE_INTERVAL_MS = 10000;
+        let promptCycleTimer = null;
+        let promptCycleIndex = 0;
+
+        function sendCyclePrompt() {
+            if (!decartRealtime || !isConnected || activeConnectionMode !== 'publisher') return;
+            const prompt = CYCLE_PROMPTS[promptCycleIndex % CYCLE_PROMPTS.length];
+            promptCycleIndex += 1;
+            try {
+                decartRealtime.setPrompt(prompt, { enhance: true });
+                addLog(`[cycle ${promptCycleIndex}/${CYCLE_PROMPTS.length}] prompt → "${prompt}"`, 'info');
+            } catch (error) {
+                addLog(`Cycle prompt failed: ${error.message}`, 'error');
+            }
+        }
+
+        function startPromptCycler() {
+            stopPromptCycler();
+            promptCycleIndex = 0;
+            sendCyclePrompt();
+            promptCycleTimer = setInterval(sendCyclePrompt, PROMPT_CYCLE_INTERVAL_MS);
+            addLog(`Started prompt cycler (${CYCLE_PROMPTS.length} prompts × ${PROMPT_CYCLE_INTERVAL_MS / 1000}s)`, 'info');
+        }
+
+        function stopPromptCycler() {
+            if (promptCycleTimer) {
+                clearInterval(promptCycleTimer);
+                promptCycleTimer = null;
+            }
+        }
+
+        function startStatsPolling() {
+            stopStatsPolling();
+            statsPollTimer = setInterval(pollAndAggregateStats, STATS_POLL_INTERVAL_MS);
+            elements.printStatsBtn.disabled = false;
+            startSessionTimer();
+            addLog(`Started stats polling every ${STATS_POLL_INTERVAL_MS / 1000}s`, 'info');
+        }
+
+        function stopStatsPolling() {
+            if (statsPollTimer) {
+                clearInterval(statsPollTimer);
+                statsPollTimer = null;
+            }
+        }
+
+        function resetStatsAggregates() {
+            statsAggregates.clear();
+            statsRunCount = 0;
+            addLog('Cleared stats aggregates', 'info');
+        }
+
+        function buildStatsSummary() {
+            const summary = { samples: statsRunCount };
+            for (const [groupKey, fields] of statsAggregates) {
+                const group = {};
+                for (const [field, { sum, count }] of fields) {
+                    group[field] = sum;
+                }
+                summary[groupKey] = group;
+            }
+            return summary;
+        }
+
+        function printStatsSummary() {
+            const summary = buildStatsSummary();
+            console.log('[Decart SDK] Stats averages:', summary);
+            addLog('Stats averages printed to console (see DevTools for full object)', 'success');
+        }
+
+        // --- MediaRecorder for the Decart remote stream ---
+        let mediaRecorder = null;
+        let recordedChunks = [];
+
+        function pickSupportedMimeType() {
+            const candidates = [
+                'video/webm;codecs=vp9,opus',
+                'video/webm;codecs=vp8,opus',
+                'video/webm;codecs=h264,opus',
+                'video/webm',
+                'video/mp4',
+            ];
+            return candidates.find((m) => window.MediaRecorder?.isTypeSupported?.(m)) || '';
+        }
+
+        function startRecording() {
+            if (mediaRecorder) return;
+            const remoteStream = elements.remoteVideo.srcObject;
+            if (!(remoteStream instanceof MediaStream) || remoteStream.getVideoTracks().length === 0) {
+                addLog('No remote stream available to record', 'error');
+                return;
+            }
+            if (!window.MediaRecorder) {
+                addLog('MediaRecorder is not supported in this browser', 'error');
+                return;
+            }
+            const mimeType = pickSupportedMimeType();
+            recordedChunks = [];
+            try {
+                mediaRecorder = new MediaRecorder(remoteStream, mimeType ? { mimeType } : undefined);
+            } catch (error) {
+                addLog(`Failed to create MediaRecorder: ${error.message}`, 'error');
+                mediaRecorder = null;
+                return;
+            }
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) recordedChunks.push(event.data);
+            };
+            mediaRecorder.onstop = () => {
+                const finalType = mediaRecorder?.mimeType || 'video/webm';
+                const blob = new Blob(recordedChunks, { type: finalType });
+                const ext = finalType.includes('mp4') ? 'mp4' : 'webm';
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `decart_remote_${Date.now()}.${ext}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                addLog(`Recording stopped. Downloaded ${(blob.size / 1024 / 1024).toFixed(2)} MB (${ext})`, 'success');
+                recordedChunks = [];
+                mediaRecorder = null;
+            };
+            mediaRecorder.start(1000);
+            addLog(`Auto-recording remote stream (${mediaRecorder.mimeType || 'default'})`, 'success');
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+        }
+
         // Update connection status
         function updateStatus(status) {
             const statusClass = {
@@ -685,6 +1120,21 @@
             setTimeout(() => waitForPublisherSubscribeToken(attemptsRemaining - 1), 250);
         }
         
+        // Publish profile selection: update the inline description and log on change.
+        function formatProfileTitle({ key, label }) {
+            return key === 'default' ? `Default baseline — ${label}` : `Profile ${key} — ${label}`;
+        }
+        function updatePublishProfileDescription() {
+            const profile = getSelectedPublishProfile();
+            elements.publishProfileDescription.textContent = `${formatProfileTitle(profile)}: ${profile.description}`;
+        }
+        elements.publishProfileSelect.addEventListener('change', () => {
+            const profile = getSelectedPublishProfile();
+            updatePublishProfileDescription();
+            addLog(`Selected publish profile: ${formatProfileTitle(profile)}`, 'info');
+        });
+        updatePublishProfileDescription();
+
         // Model selection handler
         elements.modelSelect.addEventListener('change', (e) => {
             const selectedModel = e.target.value;
@@ -696,6 +1146,7 @@
             if (localStream) {
                 stopCameraResources();
                 elements.startCamera.disabled = false;
+                elements.startFileSource.disabled = !elements.sourceFile.files[0];
                 elements.connectBtn.disabled = true;
                 addLog('Camera stopped. Please restart camera with new model settings.', 'info');
             }
@@ -730,6 +1181,71 @@
             };
         }
 
+        let fileSource = null;
+
+        function stopFileSource() {
+            if (!fileSource) return;
+            if (fileSource.rafId) cancelAnimationFrame(fileSource.rafId);
+            try { fileSource.video.pause(); } catch (_) {}
+            fileSource.video.removeAttribute('src');
+            fileSource.video.load();
+            try { URL.revokeObjectURL(fileSource.objectUrl); } catch (_) {}
+            fileSource = null;
+        }
+
+        async function beginFileSource(file) {
+            stopCameraResources();
+            stopFileSource();
+
+            const camera = getSelectedCameraSettings();
+            const video = document.createElement('video');
+            video.muted = true;
+            video.loop = true;
+            video.playsInline = true;
+            video.autoplay = true;
+            const objectUrl = URL.createObjectURL(file);
+            video.src = objectUrl;
+
+            await new Promise((resolve, reject) => {
+                video.addEventListener('loadedmetadata', resolve, { once: true });
+                video.addEventListener('error', () => reject(new Error('Failed to load video file')), { once: true });
+            });
+            await video.play();
+
+            const canvas = document.createElement('canvas');
+            canvas.width = camera.width;
+            canvas.height = camera.height;
+            const ctx = canvas.getContext('2d');
+
+            const drawCoverFrame = () => {
+                if (!fileSource) return;
+                const vw = video.videoWidth;
+                const vh = video.videoHeight;
+                if (vw && vh) {
+                    const scale = Math.max(canvas.width / vw, canvas.height / vh);
+                    const dw = vw * scale;
+                    const dh = vh * scale;
+                    const dx = (canvas.width - dw) / 2;
+                    const dy = (canvas.height - dh) / 2;
+                    ctx.drawImage(video, dx, dy, dw, dh);
+                }
+                fileSource.rafId = requestAnimationFrame(drawCoverFrame);
+            };
+
+            const stream = canvas.captureStream(camera.fps);
+            fileSource = { video, canvas, objectUrl, rafId: 0, stream };
+            drawCoverFrame();
+
+            localStream = stream;
+            elements.localVideo.srcObject = stream;
+            await elements.localVideo.play();
+
+            addLog(`File source streaming: ${file.name} → ${camera.width}×${camera.height} @ ${camera.fps}fps (looped)`, 'success');
+            elements.startCamera.disabled = true;
+            elements.startFileSource.disabled = true;
+            elements.connectBtn.disabled = false;
+        }
+
         function stopCameraResources() {
             if (localStream) {
                 localStream.getTracks().forEach((track) => {
@@ -737,6 +1253,7 @@
                 });
                 localStream = null;
             }
+            stopFileSource();
             elements.localVideo.srcObject = null;
         }
         
@@ -772,7 +1289,27 @@
                 stopCameraResources();
             }
         });
-        
+
+        elements.sourceFile.addEventListener('change', () => {
+            elements.startFileSource.disabled = !elements.sourceFile.files[0];
+        });
+
+        elements.startFileSource.addEventListener('click', async () => {
+            const file = elements.sourceFile.files[0];
+            if (!file) {
+                addLog('Please choose a video file to stream', 'error');
+                return;
+            }
+            try {
+                await beginFileSource(file);
+            } catch (error) {
+                addLog(`Failed to start file source: ${error.message}`, 'error');
+                stopCameraResources();
+            }
+        });
+
+        elements.printStatsBtn.addEventListener('click', printStatsSummary);
+
         // Connect to Decart
         elements.connectBtn.addEventListener('click', async () => {
             const apiKey = elements.apiKey.value.trim();
@@ -828,9 +1365,16 @@
                 const resolution = elements.resolutionSelect.value;
                 addLog(`Resolution: ${resolution}`, 'info');
 
+                const profile = getSelectedPublishProfile();
+                addLog(`Publish profile: ${formatProfileTitle(profile)}`, 'info');
+                addLog(`Publish options: ${JSON.stringify(profile.publishOptions)}`, 'info');
+                addLog(`Room options: ${JSON.stringify(profile.roomOptions)}`, 'info');
+
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     resolution,
+                    publishOptions: profile.publishOptions,
+                    roomOptions: profile.roomOptions,
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
@@ -839,6 +1383,10 @@
                         updateStatus(state);
                         if (state === 'connected' || state === 'generating') {
                             syncPublisherSubscribeToken();
+                        }
+                        if (state === 'generating') {
+                            startRecording();
+                            startPromptCycler();
                         }
                     },
                     onQueuePosition: (queuePosition) => {
@@ -866,7 +1414,10 @@
                     syncPublisherSubscribeToken();
                     waitForPublisherSubscribeToken();
                     elements.sessionInfo.style.display = 'block';
-                    
+
+                    resetStatsAggregates();
+                    startStatsPolling();
+
                     addLog('Successfully connected to Decart!', 'success');
                     addLog(`Session ID: ${currentSessionId || '(pending)'}`, 'success');
                 } else {
@@ -885,6 +1436,9 @@
                 elements.sessionInfo.style.display = 'none';
                 elements.publisherTokenInfo.style.display = 'none';
                 elements.subscribeBtn.disabled = false;
+                stopStatsPolling();
+                stopPromptCycler();
+                stopSessionTimer();
             }
         });
 
@@ -945,6 +1499,7 @@
                     onRemoteStream: (stream) => {
                         addLog('Received subscribed stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
+                        startRecording();
                     },
                     onConnectionChange: (state) => {
                         updateStatus(state);
@@ -966,6 +1521,8 @@
                     elements.setImage.disabled = true;
                     elements.sessionInfo.style.display = 'none';
                     elements.publisherTokenInfo.style.display = 'none';
+                    resetStatsAggregates();
+                    startStatsPolling();
                     addLog('Successfully subscribed to stream. No local media was requested or published.', 'success');
                 } else {
                     throw new Error('Subscribe established but not in connected state');
@@ -979,22 +1536,32 @@
                 activeConnectionMode = null;
                 elements.subscribeBtn.disabled = false;
                 elements.startCamera.disabled = false;
+                stopStatsPolling();
+                stopSessionTimer();
             }
         });
         
         // Disconnect
         elements.disconnectBtn.addEventListener('click', () => {
+            stopRecording();
+            stopStatsPolling();
+            stopPromptCycler();
+            stopSessionTimer();
+            if (statsAggregates.size > 0) {
+                printStatsSummary();
+            }
+
             if (decartRealtime) {
                 addLog('Disconnecting from Decart...', 'info');
                 decartRealtime.disconnect();
                 decartRealtime = null;
                 decartClient = null;
             }
-            
+
             stopCameraResources();
 
             elements.remoteVideo.srcObject = null;
-            
+
             isConnected = false;
             updateStatus('disconnected');
             currentSessionId = null;
@@ -1003,9 +1570,11 @@
             
             // Reset UI
             elements.startCamera.disabled = false;
+            elements.startFileSource.disabled = !elements.sourceFile.files[0];
             elements.connectBtn.disabled = true;
             elements.subscribeBtn.disabled = false;
             elements.disconnectBtn.disabled = true;
+            elements.printStatsBtn.disabled = true;
             elements.promptInput.disabled = true;
             elements.sendPrompt.disabled = true;
             elements.promptInput.value = '';

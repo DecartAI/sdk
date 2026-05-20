@@ -2,9 +2,11 @@ import {
   ConnectionState as LiveKitConnectionState,
   type RemoteParticipant,
   type RemoteTrack,
+  RemoteVideoTrack,
   Room,
   RoomEvent,
   Track,
+  type VideoReceiverStats,
 } from "livekit-client";
 
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
@@ -55,6 +57,7 @@ export type RealTimeSubscribeClient = {
   disconnect: () => void;
   on: <K extends keyof SubscribeEvents>(event: K, listener: (data: SubscribeEvents[K]) => void) => void;
   off: <K extends keyof SubscribeEvents>(event: K, listener: (data: SubscribeEvents[K]) => void) => void;
+  getVideoStats: () => Promise<{ sender: never[]; receiver: VideoReceiverStats[] }>;
 };
 
 export type SubscribeOptions = {
@@ -181,6 +184,24 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
         },
         on: emitter.on,
         off: emitter.off,
+        getVideoStats: async () => {
+          const receiver: VideoReceiverStats[] = [];
+          for (const participant of activeRoom.remoteParticipants.values()) {
+            if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) continue;
+            for (const pub of participant.videoTrackPublications.values()) {
+              const track = pub.track;
+              if (track instanceof RemoteVideoTrack) {
+                try {
+                  const stats = await track.getReceiverStats();
+                  if (stats) receiver.push(stats);
+                } catch (error) {
+                  logger.debug("getReceiverStats failed", { error: (error as Error).message });
+                }
+              }
+            }
+          }
+          return { sender: [], receiver };
+        },
       };
 
       flush();
