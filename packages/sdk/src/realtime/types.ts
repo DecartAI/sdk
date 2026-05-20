@@ -11,10 +11,31 @@ export type PromptAckMessage = {
   error: null | string;
 };
 
-export type ErrorMessage = {
+export type RealtimeWebSocketErrorType =
+  | "invalid_api_key"
+  | "origin_not_allowed"
+  | "invalid_model"
+  | "removed_model"
+  | "model_not_available_for_trial"
+  | "insufficient_credits"
+  | "upstream_capacity"
+  | "upstream_rejected"
+  | "upstream_timeout"
+  | "model_server_disconnected"
+  | "model_setup_timeout"
+  | "session_duration_limit"
+  | "session_not_found"
+  | "server_shutdown"
+  | "moderation_violation"
+  | "internal_error";
+
+export type RealtimeWebSocketErrorMessage = {
   type: "error";
   error: string;
-};
+  error_type?: RealtimeWebSocketErrorType;
+} & Record<string, unknown>;
+
+export type ErrorMessage = RealtimeWebSocketErrorMessage;
 
 export type SetImageMessage = {
   type: "set_image";
@@ -99,6 +120,8 @@ export type InitialPrompt = {
 
 export type ServerError = Error & {
   source?: string;
+  errorType?: RealtimeWebSocketErrorType;
+  serverPayload?: RealtimeWebSocketErrorMessage;
 };
 
 export type PromptSendOptions = {

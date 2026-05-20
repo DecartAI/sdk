@@ -519,6 +519,44 @@ describe("SignalingChannel initial handshake", () => {
     await expect(initialStateAck).rejects.toThrow("initial state failed");
   });
 
+  it("preserves typed server error payloads", async () => {
+    const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
+    const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
+    const serverErrors: ServerError[] = [];
+    channel.on("serverError", (error) => serverErrors.push(error));
+
+    const openPromise = channel.openAndJoin({
+      initialState: { image: "base64-image" },
+    });
+
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    await flushMicrotasks();
+
+    ws.receive({
+      type: "livekit_room_info",
+      livekit_url: "wss://livekit.example.test",
+      token: "token",
+      room_name: "room",
+      session_id: "session",
+    });
+
+    const { initialStateAck } = await openPromise;
+    const payload = {
+      type: "error",
+      error: "moderation_violation",
+      error_type: "moderation_violation",
+      provider_response: { category: "safety" },
+    } as const;
+    ws.receive(payload);
+
+    await expect(initialStateAck).rejects.toThrow("moderation_violation");
+    expect(serverErrors).toHaveLength(1);
+    expect(serverErrors[0].source).toBe("server");
+    expect(serverErrors[0].errorType).toBe("moderation_violation");
+    expect(serverErrors[0].serverPayload).toEqual(payload);
+  });
+
   it("rejects pending initial-state ack on close", async () => {
     const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
     const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
@@ -963,9 +1001,51 @@ describe("WebRTC Error Classification", () => {
     const { classifyWebrtcError, ERROR_CODES } = await import("../src/utils/errors.js");
     const error = new Error("Insufficient credits") as ServerError;
     error.source = "server";
+    error.errorType = "insufficient_credits";
+    error.serverPayload = {
+      type: "error",
+      error: "Insufficient credits",
+      error_type: "insufficient_credits",
+    };
     const result = classifyWebrtcError(error);
-    expect(result.code).toBe(ERROR_CODES.WEBRTC_SERVER_ERROR);
+    expect(result.code).toBe(ERROR_CODES.REALTIME_INSUFFICIENT_CREDITS);
     expect(result.message).toBe("Insufficient credits");
+    expect(result.data).toEqual({
+      errorType: "insufficient_credits",
+      serverPayload: {
+        type: "error",
+        error: "Insufficient credits",
+        error_type: "insufficient_credits",
+      },
+    });
+  });
+
+  it("classifies moderation violations with a specific realtime error code", async () => {
+    const { classifyWebrtcError, ERROR_CODES } = await import("../src/utils/errors.js");
+    const error = new Error("moderation_violation") as ServerError;
+    error.source = "server";
+    error.errorType = "moderation_violation";
+    error.serverPayload = {
+      type: "error",
+      error: "moderation_violation",
+      error_type: "moderation_violation",
+    };
+
+    const result = classifyWebrtcError(error);
+
+    expect(result.code).toBe(ERROR_CODES.REALTIME_MODERATION_VIOLATION);
+    expect(result.data?.errorType).toBe("moderation_violation");
+  });
+
+  it("keeps legacy server errors on the generic server error code", async () => {
+    const { classifyWebrtcError, ERROR_CODES } = await import("../src/utils/errors.js");
+    const error = new Error("Server overloaded") as ServerError;
+    error.source = "server";
+
+    const result = classifyWebrtcError(error);
+
+    expect(result.code).toBe(ERROR_CODES.WEBRTC_SERVER_ERROR);
+    expect(result.data).toBeUndefined();
   });
 
   it("classifies unknown errors as signaling errors", async () => {

@@ -1,8 +1,15 @@
+import type { RealtimeWebSocketErrorMessage, RealtimeWebSocketErrorType, ServerError } from "../realtime/types";
+
 export type DecartSDKError = {
   code: string;
   message: string;
   data?: Record<string, unknown>;
   cause?: Error;
+};
+
+export type RealtimeServerErrorData = {
+  errorType?: RealtimeWebSocketErrorType;
+  serverPayload?: RealtimeWebSocketErrorMessage;
 };
 
 export const ERROR_CODES = {
@@ -23,7 +30,43 @@ export const ERROR_CODES = {
   WEBRTC_TIMEOUT_ERROR: "WEBRTC_TIMEOUT_ERROR",
   WEBRTC_SERVER_ERROR: "WEBRTC_SERVER_ERROR",
   WEBRTC_SIGNALING_ERROR: "WEBRTC_SIGNALING_ERROR",
+  // Realtime server error codes
+  REALTIME_INVALID_API_KEY: "REALTIME_INVALID_API_KEY",
+  REALTIME_ORIGIN_NOT_ALLOWED: "REALTIME_ORIGIN_NOT_ALLOWED",
+  REALTIME_INVALID_MODEL: "REALTIME_INVALID_MODEL",
+  REALTIME_REMOVED_MODEL: "REALTIME_REMOVED_MODEL",
+  REALTIME_MODEL_NOT_AVAILABLE_FOR_TRIAL: "REALTIME_MODEL_NOT_AVAILABLE_FOR_TRIAL",
+  REALTIME_INSUFFICIENT_CREDITS: "REALTIME_INSUFFICIENT_CREDITS",
+  REALTIME_UPSTREAM_CAPACITY: "REALTIME_UPSTREAM_CAPACITY",
+  REALTIME_UPSTREAM_REJECTED: "REALTIME_UPSTREAM_REJECTED",
+  REALTIME_UPSTREAM_TIMEOUT: "REALTIME_UPSTREAM_TIMEOUT",
+  REALTIME_MODEL_SERVER_DISCONNECTED: "REALTIME_MODEL_SERVER_DISCONNECTED",
+  REALTIME_MODEL_SETUP_TIMEOUT: "REALTIME_MODEL_SETUP_TIMEOUT",
+  REALTIME_SESSION_DURATION_LIMIT: "REALTIME_SESSION_DURATION_LIMIT",
+  REALTIME_SESSION_NOT_FOUND: "REALTIME_SESSION_NOT_FOUND",
+  REALTIME_SERVER_SHUTDOWN: "REALTIME_SERVER_SHUTDOWN",
+  REALTIME_MODERATION_VIOLATION: "REALTIME_MODERATION_VIOLATION",
+  REALTIME_INTERNAL_ERROR: "REALTIME_INTERNAL_ERROR",
 } as const;
+
+const REALTIME_SERVER_ERROR_CODES = {
+  invalid_api_key: ERROR_CODES.REALTIME_INVALID_API_KEY,
+  origin_not_allowed: ERROR_CODES.REALTIME_ORIGIN_NOT_ALLOWED,
+  invalid_model: ERROR_CODES.REALTIME_INVALID_MODEL,
+  removed_model: ERROR_CODES.REALTIME_REMOVED_MODEL,
+  model_not_available_for_trial: ERROR_CODES.REALTIME_MODEL_NOT_AVAILABLE_FOR_TRIAL,
+  insufficient_credits: ERROR_CODES.REALTIME_INSUFFICIENT_CREDITS,
+  upstream_capacity: ERROR_CODES.REALTIME_UPSTREAM_CAPACITY,
+  upstream_rejected: ERROR_CODES.REALTIME_UPSTREAM_REJECTED,
+  upstream_timeout: ERROR_CODES.REALTIME_UPSTREAM_TIMEOUT,
+  model_server_disconnected: ERROR_CODES.REALTIME_MODEL_SERVER_DISCONNECTED,
+  model_setup_timeout: ERROR_CODES.REALTIME_MODEL_SETUP_TIMEOUT,
+  session_duration_limit: ERROR_CODES.REALTIME_SESSION_DURATION_LIMIT,
+  session_not_found: ERROR_CODES.REALTIME_SESSION_NOT_FOUND,
+  server_shutdown: ERROR_CODES.REALTIME_SERVER_SHUTDOWN,
+  moderation_violation: ERROR_CODES.REALTIME_MODERATION_VIOLATION,
+  internal_error: ERROR_CODES.REALTIME_INTERNAL_ERROR,
+} as const satisfies Record<RealtimeWebSocketErrorType, (typeof ERROR_CODES)[keyof typeof ERROR_CODES]>;
 
 export function createSDKError(
   code: string,
@@ -63,8 +106,13 @@ export function createWebrtcTimeoutError(phase: string, timeoutMs?: number, caus
   );
 }
 
-export function createWebrtcServerError(message: string): DecartSDKError {
-  return createSDKError(ERROR_CODES.WEBRTC_SERVER_ERROR, message);
+export function createWebrtcServerError(
+  message: string,
+  data?: RealtimeServerErrorData,
+  cause?: Error,
+): DecartSDKError {
+  const code = data?.errorType ? REALTIME_SERVER_ERROR_CODES[data.errorType] : ERROR_CODES.WEBRTC_SERVER_ERROR;
+  return createSDKError(code, message, data, cause);
 }
 
 export function createWebrtcSignalingError(error: Error): DecartSDKError {
@@ -76,10 +124,14 @@ export function createWebrtcSignalingError(error: Error): DecartSDKError {
  */
 export function classifyWebrtcError(error: Error): DecartSDKError {
   const msg = error.message.toLowerCase();
-  const source = (error as Error & { source?: string }).source;
+  const serverError = error as ServerError;
+  const source = serverError.source;
 
   if (source === "server") {
-    return createWebrtcServerError(error.message);
+    const data: RealtimeServerErrorData = {};
+    if (serverError.errorType) data.errorType = serverError.errorType;
+    if (serverError.serverPayload) data.serverPayload = serverError.serverPayload;
+    return createWebrtcServerError(error.message, Object.keys(data).length > 0 ? data : undefined, error);
   }
 
   if (msg.includes("websocket")) {

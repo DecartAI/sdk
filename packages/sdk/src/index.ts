@@ -41,7 +41,14 @@ export type {
   SubscribeEvents,
   SubscribeOptions,
 } from "./realtime/subscribe-client";
-export type { ConnectionState, GenerationEndedMessage, QueuePosition, QueuePositionMessage } from "./realtime/types";
+export type {
+  ConnectionState,
+  GenerationEndedMessage,
+  QueuePosition,
+  QueuePositionMessage,
+  RealtimeWebSocketErrorMessage,
+  RealtimeWebSocketErrorType,
+} from "./realtime/types";
 export {
   type CanonicalModel,
   type CustomModelDefinition,
@@ -67,7 +74,7 @@ export {
 } from "./shared/model";
 export type { ModelState } from "./shared/types";
 export type { CreateTokenOptions, CreateTokenResponse, TokensClient } from "./tokens/client";
-export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
+export { type DecartSDKError, ERROR_CODES, type RealtimeServerErrorData } from "./utils/errors";
 export { createConsoleLogger, type Logger, type LogLevel, noopLogger } from "./utils/logger";
 
 // Schema with validation to ensure proxy and apiKey are mutually exclusive

@@ -30,7 +30,7 @@ export type SignalingChannelEvents = {
   queuePosition: QueuePosition;
   generationTick: GenerationTick;
   generationEnded: GenerationEnded;
-  serverError: Error;
+  serverError: ServerError;
   closed: ConnectionClosed;
 };
 
@@ -364,7 +364,9 @@ export class SignalingChannel {
       case "error": {
         const error = new Error(msg.error) as ServerError;
         error.source = "server";
-        this.logger.error("signaling: server error received", { error: msg.error });
+        error.errorType = msg.error_type;
+        error.serverPayload = msg;
+        this.logger.error("signaling: server error received", { error: msg.error, errorType: msg.error_type });
         this.events.emit("serverError", error);
         this.rejectPendingRoomInfo(error);
         this.rejectAllPending(error);
