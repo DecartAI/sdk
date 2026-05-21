@@ -664,7 +664,7 @@
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 1_800_000,
+                        maxBitrate: 2_500_000,
                         maxFramerate: 30,
                         priority: 'high',
                     },
@@ -673,7 +673,7 @@
             },
             G: {
                 label: 'H.264 high bitrate, maintain-framerate',
-                description: 'H.264 single layer with more bitrate headroom for clean networks while still preserving FPS under pressure.',
+                description: 'H.264 single layer with more bitrate headroom for clean networks while still preserving resolution under pressure.',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: false,
@@ -682,7 +682,7 @@
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 2_000_000,
+                        maxBitrate: 2_500_000,
                         maxFramerate: 30,
                         priority: 'high',
                     },
