@@ -407,7 +407,6 @@
                 <div><canvas id="bench-chart-bitrate"></canvas></div>
                 <div><canvas id="bench-chart-rtt"></canvas></div>
                 <div><canvas id="bench-chart-loss"></canvas></div>
-                <div><canvas id="bench-chart-resolution"></canvas></div>
                 <div><canvas id="bench-chart-nack"></canvas></div>
                 <div><canvas id="bench-chart-keyframes"></canvas></div>
             </div>
@@ -416,7 +415,7 @@
     </div>
 
     <!-- Subscribe / Viewer Mode -->
-    <div class="controls">
+    <div class="controls" id="subscribe-section">
         <h3>Subscribe / Viewer Mode</h3>
         <div class="control-group">
             <label for="subscribe-token-input">Subscribe Token:</label>
@@ -735,7 +734,7 @@
         };
 
         // Chain state: array of profile keys to run sequentially, plus the index currently active.
-        const CHAIN_INTERVAL_MS = 142_000;
+        const CHAIN_INTERVAL_MS = 132_000;
         const chainedProfileKeys = ['default'];
         let chainIndex = 0;
         let chainActive = false;
@@ -800,7 +799,6 @@
             benchChartBitrate: document.getElementById('bench-chart-bitrate'),
             benchChartRtt: document.getElementById('bench-chart-rtt'),
             benchChartLoss: document.getElementById('bench-chart-loss'),
-            benchChartResolution: document.getElementById('bench-chart-resolution'),
             benchChartNack: document.getElementById('bench-chart-nack'),
             benchChartKeyframes: document.getElementById('bench-chart-keyframes'),
             benchChartSummary: document.getElementById('bench-chart-summary'),
@@ -823,6 +821,7 @@
             publisherSubscribeToken: document.getElementById('publisher-subscribe-token'),
             copySubscribeToken: document.getElementById('copy-subscribe-token'),
             subscribeTokenInput: document.getElementById('subscribe-token-input'),
+            subscribeSection: document.getElementById('subscribe-section'),
             subscribeBtn: document.getElementById('subscribe-btn'),
             logsContainer: document.getElementById('logs-container'),
             // Image reference elements
@@ -1097,11 +1096,29 @@
 
         function ensureBenchCharts() {
             if (benchCharts || typeof Chart === 'undefined') return benchCharts;
+            const sharedTooltip = {
+                mode: 'index',
+                intersect: false,
+                position: 'nearest',
+                itemSort: (a, b) => (b.parsed.y ?? -Infinity) - (a.parsed.y ?? -Infinity),
+                callbacks: {
+                    label: (ctx) => {
+                        const v = ctx.parsed.y;
+                        const value = v == null || Number.isNaN(v) ? '—' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
+                        return `${ctx.dataset.label}: ${value}`;
+                    },
+                },
+            };
+            const timeSeriesPlugins = (titleText) => ({
+                title: { display: true, text: titleText },
+                tooltip: sharedTooltip,
+                legend: { labels: { boxWidth: 10 } },
+            });
             const commonOpts = {
                 animation: false,
                 responsive: true,
                 maintainAspectRatio: true,
-                interaction: { mode: 'nearest', intersect: false },
+                interaction: { mode: 'index', intersect: false, axis: 'x' },
                 scales: {
                     x: { type: 'linear', title: { display: true, text: 't (s)' } },
                     y: { beginAtZero: true },
@@ -1111,41 +1128,32 @@
                 fps: new Chart(elements.benchChartFps, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: { title: { display: true, text: 'Receiver FPS (per second)' } } },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Receiver FPS (per second)') },
                 }),
                 bitrate: new Chart(elements.benchChartBitrate, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: { title: { display: true, text: 'Bitrate (kbps): rx solid, tx dashed' } } },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Bitrate (kbps): rx solid, tx dashed') },
                 }),
                 rtt: new Chart(elements.benchChartRtt, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: { title: { display: true, text: 'RTT (ms)' } } },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('RTT (ms)') },
                 }),
                 loss: new Chart(elements.benchChartLoss, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: { title: { display: true, text: 'Packet loss % (cumulative)' } } },
-                }),
-                resolution: new Chart(elements.benchChartResolution, {
-                    type: 'line',
-                    data: { datasets: [] },
-                    options: {
-                        ...commonOpts,
-                        plugins: { title: { display: true, text: 'Receiver frame width (px)' } },
-                        elements: { line: { stepped: 'before' } },
-                    },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Packet loss % (cumulative)') },
                 }),
                 nack: new Chart(elements.benchChartNack, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: { title: { display: true, text: 'NACKs sent by receiver (per second)' } } },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('NACKs sent by receiver (per second)') },
                 }),
                 keyframes: new Chart(elements.benchChartKeyframes, {
-                    type: 'bar',
+                    type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: { title: { display: true, text: 'Keyframes encoded (sender) per second — solid; decoded (receiver) — hatched' } } },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Keyframes total (cumulative): encoded solid, decoded dashed') },
                 }),
                 summary: new Chart(elements.benchChartSummary, {
                     type: 'bar',
@@ -1153,7 +1161,11 @@
                     options: {
                         animation: false,
                         responsive: true,
-                        plugins: { title: { display: true, text: 'Per-run summary' } },
+                        interaction: { mode: 'index', intersect: false, axis: 'x' },
+                        plugins: {
+                            title: { display: true, text: 'Per-run summary' },
+                            tooltip: sharedTooltip,
+                        },
                         scales: { y: { beginAtZero: true } },
                     },
                 }),
@@ -1169,7 +1181,7 @@
             const charts = ensureBenchCharts();
             if (!charts) return;
             const runs = [...benchmarkRuns, ...(currentBenchRun ? [currentBenchRun] : [])];
-            const datasets = { fps: [], bitrate: [], rtt: [], loss: [], resolution: [], nack: [], keyframes: [] };
+            const datasets = { fps: [], bitrate: [], rtt: [], loss: [], nack: [], keyframes: [] };
             runs.forEach((run, idx) => {
                 const color = runColor(idx);
                 const label = runLabel(run, idx);
@@ -1179,23 +1191,20 @@
                 datasets.bitrate.push({ label: `${label} tx`, borderColor: color, backgroundColor: color, borderDash: [4, 4], data: points.map((p) => ({ x: p.x, y: p.d.senderBitrateBps != null ? p.d.senderBitrateBps / 1000 : null })), spanGaps: true, pointRadius: 0 });
                 datasets.rtt.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.rtt })), spanGaps: true, pointRadius: 0 });
                 datasets.loss.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.cumulativeLossPct })), spanGaps: true, pointRadius: 0 });
-                datasets.resolution.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.frameWidth })), spanGaps: true, pointRadius: 0, stepped: 'before' });
                 datasets.nack.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.nackCountDelta })), spanGaps: true, pointRadius: 0 });
-                datasets.keyframes.push({ label: `${label} encoded`, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.keyFramesEncodedDelta })) });
-                datasets.keyframes.push({ label: `${label} decoded`, borderColor: color, backgroundColor: 'transparent', borderDash: [3, 3], data: points.map((p) => ({ x: p.x, y: p.d.keyFramesDecodedDelta })) });
+                datasets.keyframes.push({ label: `${label} encoded`, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.keyFramesEncodedTotal })), spanGaps: true, pointRadius: 0 });
+                datasets.keyframes.push({ label: `${label} decoded`, borderColor: color, backgroundColor: color, borderDash: [4, 4], data: points.map((p) => ({ x: p.x, y: p.d.keyFramesDecodedTotal })), spanGaps: true, pointRadius: 0 });
             });
             charts.fps.data.datasets = datasets.fps;
             charts.bitrate.data.datasets = datasets.bitrate;
             charts.rtt.data.datasets = datasets.rtt;
             charts.loss.data.datasets = datasets.loss;
-            charts.resolution.data.datasets = datasets.resolution;
             charts.nack.data.datasets = datasets.nack;
             charts.keyframes.data.datasets = datasets.keyframes;
             charts.fps.update();
             charts.bitrate.update();
             charts.rtt.update();
             charts.loss.update();
-            charts.resolution.update();
             charts.nack.update();
             charts.keyframes.update();
         }
@@ -1212,6 +1221,7 @@
                 { label: 'p5 FPS', data: pick((s) => s.fps.p5), backgroundColor: '#ff7f0e' },
                 { label: 'FPS σ', data: pick((s) => s.fps.stddev), backgroundColor: '#9467bd' },
                 { label: 'Avg rx kbps / 100', data: pick((s) => s.receiverBitrateBps / 100000), backgroundColor: '#17becf' },
+                { label: 'Avg tx kbps / 100', data: pick((s) => s.senderBitrateBps / 100000), backgroundColor: '#0b5d6f' },
                 { label: 'Freezes', data: pick((s) => s.freezeCount), backgroundColor: '#d62728' },
                 { label: 'Loss %', data: pick((s) => s.packetLoss * 100), backgroundColor: '#8c564b' },
             ];
@@ -2018,6 +2028,7 @@
             elements.sendPromisePrompt.disabled = false;
             elements.referenceImage.disabled = false;
             elements.subscribeBtn.disabled = true;
+            elements.subscribeSection.style.display = 'none';
 
             syncPublisherSubscribeToken();
             waitForPublisherSubscribeToken();
@@ -2089,6 +2100,7 @@
             elements.sendPromisePrompt.disabled = true;
             elements.sessionInfo.style.display = 'none';
             elements.publisherTokenInfo.style.display = 'none';
+            elements.subscribeSection.style.display = '';
             elements.publisherSubscribeToken.value = '';
             elements.copySubscribeToken.disabled = true;
             elements.referenceImage.disabled = true;
@@ -2127,6 +2139,7 @@
                 currentSubscribeToken = null;
                 elements.sessionInfo.style.display = 'none';
                 elements.publisherTokenInfo.style.display = 'none';
+                elements.subscribeSection.style.display = '';
                 elements.subscribeBtn.disabled = false;
                 stopStatsPolling();
                 stopPromptCycler();
@@ -2219,6 +2232,7 @@
                     elements.setImage.disabled = true;
                     elements.sessionInfo.style.display = 'none';
                     elements.publisherTokenInfo.style.display = 'none';
+                    elements.subscribeSection.style.display = 'none';
                     resetStatsAggregates();
                     startStatsPolling();
                     addLog('Successfully subscribed to stream. No local media was requested or published.', 'success');
@@ -2234,6 +2248,7 @@
                 activeConnectionMode = null;
                 elements.subscribeBtn.disabled = false;
                 elements.startCamera.disabled = false;
+                elements.subscribeSection.style.display = '';
                 stopStatsPolling();
                 stopSessionTimer();
                 elements.benchStart.disabled = true;
@@ -2296,6 +2311,7 @@
             elements.promiseStatus.style.display = 'none';
             elements.sessionInfo.style.display = 'none';
             elements.publisherTokenInfo.style.display = 'none';
+            elements.subscribeSection.style.display = '';
             elements.publisherSubscribeToken.value = '';
             elements.copySubscribeToken.disabled = true;
             elements.referenceImage.disabled = true;
