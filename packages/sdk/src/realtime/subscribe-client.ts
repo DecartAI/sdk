@@ -64,6 +64,7 @@ export type SubscribeOptions = {
   token: string;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionChange?: (state: ConnectionState) => void;
+  remoteVideoElement?: HTMLVideoElement;
 };
 
 export type RealTimeSubscribeClientOptions = {
@@ -150,9 +151,13 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
 
       activeRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
         if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) return;
-        if (track.kind !== Track.Kind.Video && track.kind !== Track.Kind.Audio) return;
+        if (track.kind !== Track.Kind.Video) return;
 
-        track.attach();
+        if (options.remoteVideoElement) {
+          track.attach(options.remoteVideoElement);
+        } else {
+          track.attach();
+        }
         const mediaStreamTrack = track.mediaStreamTrack;
         if (!mediaStreamTrack) return;
         remoteStream ??= new MediaStream();

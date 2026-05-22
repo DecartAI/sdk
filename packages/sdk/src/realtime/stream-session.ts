@@ -62,6 +62,7 @@ interface StreamSessionConfig {
   videoCodec?: VideoCodec;
   publishOptions?: Partial<TrackPublishOptions>;
   roomOptions?: Partial<RoomOptions>;
+  remoteVideoElement?: HTMLVideoElement;
 }
 
 export class StreamSession {
@@ -126,7 +127,12 @@ export class StreamSession {
     return this.signaling.sendPrompt(text, opts);
   }
 
-  async getVideoStats(): Promise<{ sender: VideoSenderStats[]; receiver: VideoReceiverStats[] }> {
+  async getVideoStats(): Promise<{
+    sender: VideoSenderStats[];
+    receiver: VideoReceiverStats[];
+    keyFramesEncoded: number;
+    keyFramesDecoded: number;
+  }> {
     return this.media.getVideoStats();
   }
 
@@ -316,6 +322,7 @@ export class StreamSession {
       videoCodec: this.config.videoCodec,
       publishOptions: this.config.publishOptions,
       roomOptions: this.config.roomOptions,
+      remoteVideoElement: this.config.remoteVideoElement,
     });
     this.wireSignalingEvents();
     this.wireMediaEvents();

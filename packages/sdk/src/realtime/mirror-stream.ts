@@ -39,19 +39,18 @@ export function shouldMirrorTrack(track: MediaStreamTrack): boolean {
 
 export function createMirroredStream(input: MediaStream, opts: MirroredStreamOptions): MirroredStream {
   const [sourceVideo] = input.getVideoTracks();
-  const audioTracks = input.getAudioTracks();
 
   if (!sourceVideo) {
     return { stream: input, dispose: () => {}, impl: "noop" };
   }
 
   if (isMediaStreamTrackProcessorSupported()) {
-    return createWithTrackProcessor(sourceVideo, audioTracks);
+    return createWithTrackProcessor(sourceVideo);
   }
-  return createWithCanvas(sourceVideo, audioTracks, opts.fps);
+  return createWithCanvas(sourceVideo, opts.fps);
 }
 
-function createWithTrackProcessor(sourceVideo: MediaStreamTrack, audioTracks: MediaStreamTrack[]): MirroredStream {
+function createWithTrackProcessor(sourceVideo: MediaStreamTrack): MirroredStream {
   const Processor = (globalThis as unknown as { MediaStreamTrackProcessor: MediaStreamTrackProcessorCtor })
     .MediaStreamTrackProcessor;
   const Generator = (globalThis as unknown as { MediaStreamTrackGenerator: MediaStreamTrackGeneratorCtor })
@@ -101,7 +100,7 @@ function createWithTrackProcessor(sourceVideo: MediaStreamTrack, audioTracks: Me
     .pipeTo(generator.writable)
     .catch(() => {});
 
-  const stream = new MediaStream([generator, ...audioTracks]);
+  const stream = new MediaStream([generator]);
 
   let disposed = false;
   return {
@@ -115,7 +114,7 @@ function createWithTrackProcessor(sourceVideo: MediaStreamTrack, audioTracks: Me
   };
 }
 
-function createWithCanvas(sourceVideo: MediaStreamTrack, audioTracks: MediaStreamTrack[], fps: number): MirroredStream {
+function createWithCanvas(sourceVideo: MediaStreamTrack, fps: number): MirroredStream {
   if (typeof document === "undefined") {
     throw new Error("createMirroredStream requires a DOM environment (document is undefined)");
   }
@@ -164,7 +163,7 @@ function createWithCanvas(sourceVideo: MediaStreamTrack, audioTracks: MediaStrea
   rafHandle = requestAnimationFrame(draw);
 
   return {
-    stream: new MediaStream([flippedTrack, ...audioTracks]),
+    stream: new MediaStream([flippedTrack]),
     impl: "canvas",
     dispose: () => {
       if (disposed) return;

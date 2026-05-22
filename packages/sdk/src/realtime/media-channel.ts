@@ -33,10 +33,8 @@ export function getDefaultVideoPublishOptions(
   return {
     source: Track.Source.Camera,
     simulcast: true,
-    videoCodec: REALTIME_CONFIG.livekit.defaultVideoCodec,
+    videoCodec: videoCodec ?? REALTIME_CONFIG.livekit.defaultVideoCodec,
     ...overrides,
-    // Caller-provided codec (e.g. Safari forced vp8) wins over profile overrides.
-    ...(videoCodec ? { videoCodec } : {}),
     videoEncoding: {
       ...defaultEncoding,
       ...overrides?.videoEncoding,
@@ -57,6 +55,7 @@ export interface MediaChannelConfig {
   videoCodec?: VideoCodec;
   publishOptions?: Partial<TrackPublishOptions>;
   roomOptions?: Partial<RoomOptions>;
+  remoteVideoElement?: HTMLVideoElement;
 }
 
 export type MediaConnectOptions = {
@@ -95,9 +94,13 @@ export class MediaChannel {
 
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
       if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) return;
-      if (track.kind !== Track.Kind.Video && track.kind !== Track.Kind.Audio) return;
+      if (track.kind !== Track.Kind.Video) return;
 
-      track.attach();
+      if (this.config.remoteVideoElement) {
+        track.attach(this.config.remoteVideoElement);
+      } else {
+        track.attach();
+      }
       const mediaStreamTrack = track.mediaStreamTrack;
       if (mediaStreamTrack) {
         this.remoteStream ??= new MediaStream();
@@ -122,11 +125,17 @@ export class MediaChannel {
     this.config.observability?.setLiveKitRoom(room);
   }
 
-  async getVideoStats(): Promise<{ sender: VideoSenderStats[]; receiver: VideoReceiverStats[] }> {
+  async getVideoStats(): Promise<{
+    sender: VideoSenderStats[];
+    receiver: VideoReceiverStats[];
+    keyFramesEncoded: number;
+    keyFramesDecoded: number;
+  }> {
     const room = this.room;
-    if (!room) return { sender: [], receiver: [] };
+    if (!room) return { sender: [], receiver: [], keyFramesEncoded: 0, keyFramesDecoded: 0 };
 
     const sender: VideoSenderStats[] = [];
+    let keyFramesEncoded = 0;
     for (const pub of room.localParticipant.videoTrackPublications.values()) {
       const track = pub.track;
       if (track instanceof LocalVideoTrack) {
@@ -136,10 +145,22 @@ export class MediaChannel {
         } catch (error) {
           this.logger.debug("getSenderStats failed", { error: (error as Error).message });
         }
+        try {
+          const report = await track.getRTCStatsReport();
+          report?.forEach((stat: unknown) => {
+            const s = stat as { type?: string; kind?: string; keyFramesEncoded?: number };
+            if (s.type === "outbound-rtp" && s.kind === "video" && typeof s.keyFramesEncoded === "number") {
+              keyFramesEncoded += s.keyFramesEncoded;
+            }
+          });
+        } catch (error) {
+          this.logger.debug("getRTCStatsReport (sender) failed", { error: (error as Error).message });
+        }
       }
     }
 
     const receiver: VideoReceiverStats[] = [];
+    let keyFramesDecoded = 0;
     for (const participant of room.remoteParticipants.values()) {
       if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) continue;
       for (const pub of participant.videoTrackPublications.values()) {
@@ -151,11 +172,22 @@ export class MediaChannel {
           } catch (error) {
             this.logger.debug("getReceiverStats failed", { error: (error as Error).message });
           }
+          try {
+            const report = await track.getRTCStatsReport();
+            report?.forEach((stat: unknown) => {
+              const s = stat as { type?: string; kind?: string; keyFramesDecoded?: number };
+              if (s.type === "inbound-rtp" && s.kind === "video" && typeof s.keyFramesDecoded === "number") {
+                keyFramesDecoded += s.keyFramesDecoded;
+              }
+            });
+          } catch (error) {
+            this.logger.debug("getRTCStatsReport (receiver) failed", { error: (error as Error).message });
+          }
         }
       }
     }
 
-    return { sender, receiver };
+    return { sender, receiver, keyFramesEncoded, keyFramesDecoded };
   }
 
   async publishLocalTracks(): Promise<void> {
@@ -177,21 +209,17 @@ export class MediaChannel {
 
   private async publishTracks(stream: MediaStream): Promise<void> {
     if (!this.room) return;
-    for (const track of stream.getTracks()) {
-      if (track.kind === "video") {
-        const publishOptions = getDefaultVideoPublishOptions(this.config.videoCodec, this.config.publishOptions);
-        this.logger.info("livekit: publishing video track", {
-          videoCodec: publishOptions.videoCodec,
-          simulcast: publishOptions.simulcast,
-          scalabilityMode: publishOptions.scalabilityMode,
-          degradationPreference: publishOptions.degradationPreference,
-          maxBitrate: publishOptions.videoEncoding?.maxBitrate,
-          maxFramerate: publishOptions.videoEncoding?.maxFramerate,
-        });
-        await this.room.localParticipant.publishTrack(track, publishOptions);
-      } else {
-        await this.room.localParticipant.publishTrack(track);
-      }
+    for (const track of stream.getVideoTracks()) {
+      const publishOptions = getDefaultVideoPublishOptions(this.config.videoCodec, this.config.publishOptions);
+      this.logger.info("livekit: publishing video track", {
+        videoCodec: publishOptions.videoCodec,
+        simulcast: publishOptions.simulcast,
+        scalabilityMode: publishOptions.scalabilityMode,
+        degradationPreference: publishOptions.degradationPreference,
+        maxBitrate: publishOptions.videoEncoding?.maxBitrate,
+        maxFramerate: publishOptions.videoEncoding?.maxFramerate,
+      });
+      await this.room.localParticipant.publishTrack(track, publishOptions);
     }
   }
 }

@@ -281,6 +281,7 @@
             }
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.js"></script>
 </head>
 <body>
     <h1>🎭 Decart SDK Test Page</h1>
@@ -344,18 +345,8 @@
             </select>
         </div>
         <div class="control-group">
-            <label for="publish-profile-select">LiveKit Publish Profile:</label>
-            <select id="publish-profile-select">
-                <option value="default" selected>Default baseline — H.264 + simulcast (current SDK default)</option>
-                <option value="A">Profile A — H.264 baseline, no simulcast (balanced)</option>
-                <option value="B">Profile B — H.264 + maintain-framerate, priority=high</option>
-                <option value="C">Profile C — VP9 SVC L1T3 (temporal only)</option>
-                <option value="D">Profile D — VP9 SVC L3T3_KEY (spatial+temporal)</option>
-                <option value="E">Profile E — AV1 SVC L3T3_KEY (compression-first)</option>
-                <option value="F">Profile F — H.264 constrained, maintain-framerate</option>
-                <option value="G">Profile G — H.264 high bitrate, maintain-framerate</option>
-                <option value="H">Profile H — H.264 adaptive receive, maintain-framerate</option>
-            </select>
+            <label>LiveKit Publish Profiles (chain sequentially):</label>
+            <div id="chained-profiles-container" style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;"></div>
             <div id="publish-profile-description" style="margin-top: 6px; font-size: 12px; color: #555;"></div>
         </div>
         <div class="control-group">
@@ -373,10 +364,6 @@
                 <label style="margin: 0; font-weight: normal;"><input type="radio" name="camera-orientation" value="vertical"> Vertical</label>
             </div>
         </div>
-        <div class="control-group checkbox-group">
-            <input type="checkbox" id="stream-audio-toggle" unchecked>
-            <label for="stream-audio-toggle" style="margin: 0; font-weight: normal;">Stream microphone audio</label>
-        </div>
         <div class="control-group">
             <label for="source-file">Or stream a looped video file (instead of camera):</label>
             <input type="file" id="source-file" accept="video/*">
@@ -391,6 +378,42 @@
         </div>
     </div>
 
+
+    <!-- Benchmark Dashboard -->
+    <div class="controls">
+        <h3>Benchmark Dashboard</h3>
+        <div class="control-group">
+            <label for="bench-duration">Run duration (seconds):</label>
+            <input type="number" id="bench-duration" min="10" max="600" step="10" value="120" style="width:120px;">
+        </div>
+        <div class="inline-controls">
+            <button id="bench-start" disabled>Start Benchmark</button>
+            <button id="bench-stop" disabled>Stop Benchmark</button>
+            <input type="text" id="bench-phase-name" placeholder="Phase label (e.g. bad-lte, avg-network, lte)" style="flex:1; min-width:200px;">
+            <button id="bench-mark-phase" disabled>Mark Phase</button>
+            <button id="bench-export-json" disabled>Export JSON</button>
+            <button id="bench-export-csv" disabled>Export CSV</button>
+            <button id="bench-clear" disabled>Clear Runs</button>
+        </div>
+        <div id="bench-status" style="margin-top:10px; font-family:'Courier New', monospace; font-size:13px;">
+            <strong>Status:</strong> <span id="bench-status-text">idle</span>
+            &nbsp; <strong>Elapsed:</strong> <span id="bench-elapsed-text">0s</span>
+            &nbsp; <strong>Phase:</strong> <span id="bench-phase-text">(none)</span>
+        </div>
+        <div id="bench-live" style="margin-top:6px; font-family:'Courier New', monospace; font-size:11px; color:#444;"></div>
+        <div style="margin-top:14px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div><canvas id="bench-chart-fps"></canvas></div>
+                <div><canvas id="bench-chart-bitrate"></canvas></div>
+                <div><canvas id="bench-chart-rtt"></canvas></div>
+                <div><canvas id="bench-chart-loss"></canvas></div>
+                <div><canvas id="bench-chart-resolution"></canvas></div>
+                <div><canvas id="bench-chart-nack"></canvas></div>
+                <div><canvas id="bench-chart-keyframes"></canvas></div>
+            </div>
+            <div style="margin-top:14px;"><canvas id="bench-chart-summary"></canvas></div>
+        </div>
+    </div>
 
     <!-- Subscribe / Viewer Mode -->
     <div class="controls">
@@ -545,8 +568,8 @@
         // -----------------------------------------------------------------------
         const PUBLISH_PROFILES = {
             default: {
-                label: 'H.264 + simulcast (current SDK default)',
-                description: 'Same as Profile A but with simulcast enabled — represents what the SDK ships today before any profile tuning.',
+                label: 'H.264 + simulcast (current SDK default, capped at 2 Mbps)',
+                description: 'Simulcast control at the same bitrate cap as F/G/H, so the only knob varying vs them is simulcast on/off.',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: false,
@@ -555,15 +578,16 @@
                     videoCodec: 'h264',
                     simulcast: true,
                     videoEncoding: {
-                        maxBitrate: 2_500_000,
+                        maxBitrate: 2_000_000,
                         maxFramerate: 30,
+                        priority: 'high',
                     },
                     degradationPreference: 'balanced',
                 },
             },
             A: {
-                label: 'H.264 baseline, no simulcast (balanced)',
-                description: 'H.264 single layer, default degradation strategy. The control profile.',
+                label: 'H.264 economy — 1.2 Mbps, maintain-resolution',
+                description: 'Weak-network champion. ~60% of F/G\'s budget at the same resolution and cadence target, biased to preserve pixel fidelity (drop fps before res). Tests how much bandwidth we can shave before the model\'s input quality breaks.',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: false,
@@ -572,28 +596,29 @@
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 2_500_000,
-                        maxFramerate: 30,
-                    },
-                    degradationPreference: 'balanced',
-                },
-            },
-            B: {
-                label: 'H.264 + maintain-framerate, priority=high',
-                description: 'H.264 single layer, drops resolution before FPS under pressure, DSCP-prioritized.',
-                roomOptions: {
-                    adaptiveStream: false,
-                    dynacast: false,
-                },
-                publishOptions: {
-                    videoCodec: 'h264',
-                    simulcast: false,
-                    videoEncoding: {
-                        maxBitrate: 3_000_000,
+                        maxBitrate: 1_200_000,
                         maxFramerate: 30,
                         priority: 'high',
                     },
-                    degradationPreference: 'maintain-framerate',
+                    degradationPreference: 'maintain-resolution',
+                },
+            },
+            B: {
+                label: 'H.264 sharper-frames — 2 Mbps @ 20 fps, maintain-resolution',
+                description: 'Bits-per-frame champion. Same budget as F/G but only 20 fps target, so each frame gets ~50% more bits and visibly sharper detail. Bets the inference model values per-frame fidelity over cadence — and that 20 fps is enough for its temporal needs.',
+                roomOptions: {
+                    adaptiveStream: false,
+                    dynacast: false,
+                },
+                publishOptions: {
+                    videoCodec: 'h264',
+                    simulcast: false,
+                    videoEncoding: {
+                        maxBitrate: 2_000_000,
+                        maxFramerate: 20,
+                        priority: 'high',
+                    },
+                    degradationPreference: 'maintain-resolution',
                 },
             },
             C: {
@@ -646,7 +671,7 @@
                     scalabilityMode: 'L3T3_KEY',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 1_000_000,
+                        maxBitrate: 1_500_000,
                         maxFramerate: 30,
                     },
                     backupCodec: { codec: 'h264' },
@@ -664,7 +689,7 @@
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 2_500_000,
+                        maxBitrate: 2_000_000,
                         maxFramerate: 30,
                         priority: 'high',
                     },
@@ -682,7 +707,7 @@
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 2_500_000,
+                        maxBitrate: 2_000_000,
                         maxFramerate: 30,
                         priority: 'high',
                     },
@@ -690,30 +715,55 @@
                 },
             },
             H: {
-                label: 'H.264 adaptive receive, maintain-framerate',
-                description: 'H.264 single layer plus adaptiveStream for the processed-video subscription; upstream to the server remains single-layer H.264.',
+                label: 'H.264 balanced — like F/G but no degradation bias',
+                description: 'Identical to F/G except degradationPreference=balanced — lets WebRTC pick what to drop. Control profile: tells us whether explicit maintain-framerate or maintain-resolution actually moves the needle vs the engine\'s default behaviour.',
                 roomOptions: {
-                    adaptiveStream: true,
+                    adaptiveStream: false,
                     dynacast: false,
                 },
                 publishOptions: {
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 2_500_000,
+                        maxBitrate: 2_000_000,
                         maxFramerate: 30,
                         priority: 'high',
                     },
-                    degradationPreference: 'maintain-framerate',
+                    degradationPreference: 'balanced',
                 },
             },
         };
 
+        // Chain state: array of profile keys to run sequentially, plus the index currently active.
+        const CHAIN_INTERVAL_MS = 142_000;
+        const chainedProfileKeys = ['default'];
+        let chainIndex = 0;
+        let chainActive = false;
+        let chainAdvanceTimer = null;
+
         function getSelectedPublishProfile() {
-            const key = elements.publishProfileSelect.value;
+            const key = chainedProfileKeys[chainIndex] ?? chainedProfileKeys[0] ?? 'default';
             const profile = PUBLISH_PROFILES[key];
             if (!profile) return { key: 'default', ...PUBLISH_PROFILES.default };
             return { key, ...profile };
+        }
+
+        const PROFILE_SHORT_LABELS = {
+            default: 'Default — H.264 + simulcast @ 2 Mbps',
+            A: 'A — H.264 economy 1.2 Mbps',
+            B: 'B — H.264 sharper 2 Mbps @ 20 fps',
+            C: 'C — VP9 SVC L1T3',
+            D: 'D — VP9 SVC L3T3_KEY',
+            E: 'E — AV1 SVC L3T3_KEY',
+            F: 'F — H.264 2 Mbps, maintain-framerate',
+            G: 'G — H.264 2 Mbps, maintain-resolution',
+            H: 'H — H.264 2 Mbps, balanced',
+        };
+
+        function buildProfileOptionsHtml() {
+            return Object.keys(PUBLISH_PROFILES)
+                .map((key) => `<option value="${key}">${PROFILE_SHORT_LABELS[key] ?? key}</option>`)
+                .join('');
         }
         
         // DOM elements
@@ -722,11 +772,10 @@
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             resolutionSelect: document.getElementById('resolution-select'),
-            publishProfileSelect: document.getElementById('publish-profile-select'),
+            chainedProfilesContainer: document.getElementById('chained-profiles-container'),
             publishProfileDescription: document.getElementById('publish-profile-description'),
             initialPrompt: document.getElementById('initial-prompt'),
             cameraFps: document.getElementById('camera-fps'),
-            streamAudioToggle: document.getElementById('stream-audio-toggle'),
             sourceFile: document.getElementById('source-file'),
             startFileSource: document.getElementById('start-file-source'),
             startCamera: document.getElementById('start-camera'),
@@ -734,6 +783,27 @@
             disconnectBtn: document.getElementById('disconnect-btn'),
             printStatsBtn: document.getElementById('print-stats-btn'),
             sessionTimer: document.getElementById('session-timer'),
+            // Benchmark dashboard
+            benchDuration: document.getElementById('bench-duration'),
+            benchStart: document.getElementById('bench-start'),
+            benchStop: document.getElementById('bench-stop'),
+            benchPhaseName: document.getElementById('bench-phase-name'),
+            benchMarkPhase: document.getElementById('bench-mark-phase'),
+            benchExportJson: document.getElementById('bench-export-json'),
+            benchExportCsv: document.getElementById('bench-export-csv'),
+            benchClear: document.getElementById('bench-clear'),
+            benchStatusText: document.getElementById('bench-status-text'),
+            benchElapsedText: document.getElementById('bench-elapsed-text'),
+            benchPhaseText: document.getElementById('bench-phase-text'),
+            benchLive: document.getElementById('bench-live'),
+            benchChartFps: document.getElementById('bench-chart-fps'),
+            benchChartBitrate: document.getElementById('bench-chart-bitrate'),
+            benchChartRtt: document.getElementById('bench-chart-rtt'),
+            benchChartLoss: document.getElementById('bench-chart-loss'),
+            benchChartResolution: document.getElementById('bench-chart-resolution'),
+            benchChartNack: document.getElementById('bench-chart-nack'),
+            benchChartKeyframes: document.getElementById('bench-chart-keyframes'),
+            benchChartSummary: document.getElementById('bench-chart-summary'),
             localVideo: document.getElementById('local-video'),
             remoteVideo: document.getElementById('remote-video'),
             promptInput: document.getElementById('prompt-input'),
@@ -1009,15 +1079,463 @@
             addLog('Stats averages printed to console (see DevTools for full object)', 'success');
         }
 
+        // --- Benchmark engine ---
+        const BENCH_POLL_INTERVAL_MS = 1000;
+        const BENCH_WARMUP_FPS_THRESHOLD = 28;
+        const BENCH_WARMUP_REQUIRED_SAMPLES = 3;
+        const BENCH_PALETTE = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'];
+
+        const benchmarkRuns = [];
+        let currentBenchRun = null;
+        let benchPollTimer = null;
+        let benchRunTimer = null;
+        let benchElapsedTimer = null;
+        let benchPrevRaw = null;
+        let benchCharts = null;
+
+        function nowMs() { return Date.now(); }
+
+        function ensureBenchCharts() {
+            if (benchCharts || typeof Chart === 'undefined') return benchCharts;
+            const commonOpts = {
+                animation: false,
+                responsive: true,
+                maintainAspectRatio: true,
+                interaction: { mode: 'nearest', intersect: false },
+                scales: {
+                    x: { type: 'linear', title: { display: true, text: 't (s)' } },
+                    y: { beginAtZero: true },
+                },
+            };
+            benchCharts = {
+                fps: new Chart(elements.benchChartFps, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: { ...commonOpts, plugins: { title: { display: true, text: 'Receiver FPS (per second)' } } },
+                }),
+                bitrate: new Chart(elements.benchChartBitrate, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: { ...commonOpts, plugins: { title: { display: true, text: 'Bitrate (kbps): rx solid, tx dashed' } } },
+                }),
+                rtt: new Chart(elements.benchChartRtt, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: { ...commonOpts, plugins: { title: { display: true, text: 'RTT (ms)' } } },
+                }),
+                loss: new Chart(elements.benchChartLoss, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: { ...commonOpts, plugins: { title: { display: true, text: 'Packet loss % (cumulative)' } } },
+                }),
+                resolution: new Chart(elements.benchChartResolution, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: {
+                        ...commonOpts,
+                        plugins: { title: { display: true, text: 'Receiver frame width (px)' } },
+                        elements: { line: { stepped: 'before' } },
+                    },
+                }),
+                nack: new Chart(elements.benchChartNack, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: { ...commonOpts, plugins: { title: { display: true, text: 'NACKs sent by receiver (per second)' } } },
+                }),
+                keyframes: new Chart(elements.benchChartKeyframes, {
+                    type: 'bar',
+                    data: { datasets: [] },
+                    options: { ...commonOpts, plugins: { title: { display: true, text: 'Keyframes encoded (sender) per second — solid; decoded (receiver) — hatched' } } },
+                }),
+                summary: new Chart(elements.benchChartSummary, {
+                    type: 'bar',
+                    data: { labels: [], datasets: [] },
+                    options: {
+                        animation: false,
+                        responsive: true,
+                        plugins: { title: { display: true, text: 'Per-run summary' } },
+                        scales: { y: { beginAtZero: true } },
+                    },
+                }),
+            };
+            return benchCharts;
+        }
+
+        function runColor(idx) { return BENCH_PALETTE[idx % BENCH_PALETTE.length]; }
+
+        function runLabel(run, idx) { return `#${idx + 1} ${run.profile}`; }
+
+        function refreshTimeSeriesCharts() {
+            const charts = ensureBenchCharts();
+            if (!charts) return;
+            const runs = [...benchmarkRuns, ...(currentBenchRun ? [currentBenchRun] : [])];
+            const datasets = { fps: [], bitrate: [], rtt: [], loss: [], resolution: [], nack: [], keyframes: [] };
+            runs.forEach((run, idx) => {
+                const color = runColor(idx);
+                const label = runLabel(run, idx);
+                const points = run.samples.map((s) => ({ x: +(s.tMs / 1000).toFixed(2), d: s.derived }));
+                datasets.fps.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.receiverFps })), spanGaps: true, pointRadius: 0 });
+                datasets.bitrate.push({ label: `${label} rx`, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.receiverBitrateBps != null ? p.d.receiverBitrateBps / 1000 : null })), spanGaps: true, pointRadius: 0 });
+                datasets.bitrate.push({ label: `${label} tx`, borderColor: color, backgroundColor: color, borderDash: [4, 4], data: points.map((p) => ({ x: p.x, y: p.d.senderBitrateBps != null ? p.d.senderBitrateBps / 1000 : null })), spanGaps: true, pointRadius: 0 });
+                datasets.rtt.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.rtt })), spanGaps: true, pointRadius: 0 });
+                datasets.loss.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.cumulativeLossPct })), spanGaps: true, pointRadius: 0 });
+                datasets.resolution.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.frameWidth })), spanGaps: true, pointRadius: 0, stepped: 'before' });
+                datasets.nack.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.nackCountDelta })), spanGaps: true, pointRadius: 0 });
+                datasets.keyframes.push({ label: `${label} encoded`, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.keyFramesEncodedDelta })) });
+                datasets.keyframes.push({ label: `${label} decoded`, borderColor: color, backgroundColor: 'transparent', borderDash: [3, 3], data: points.map((p) => ({ x: p.x, y: p.d.keyFramesDecodedDelta })) });
+            });
+            charts.fps.data.datasets = datasets.fps;
+            charts.bitrate.data.datasets = datasets.bitrate;
+            charts.rtt.data.datasets = datasets.rtt;
+            charts.loss.data.datasets = datasets.loss;
+            charts.resolution.data.datasets = datasets.resolution;
+            charts.nack.data.datasets = datasets.nack;
+            charts.keyframes.data.datasets = datasets.keyframes;
+            charts.fps.update();
+            charts.bitrate.update();
+            charts.rtt.update();
+            charts.loss.update();
+            charts.resolution.update();
+            charts.nack.update();
+            charts.keyframes.update();
+        }
+
+        function refreshSummaryChart() {
+            const charts = ensureBenchCharts();
+            if (!charts) return;
+            const labels = benchmarkRuns.map((r, i) => runLabel(r, i));
+            const pick = (key) => benchmarkRuns.map((r) => key(r.summary));
+            charts.summary.data.labels = labels;
+            charts.summary.data.datasets = [
+                { label: 'Warmup (s)', data: pick((s) => s.warmupMs != null ? s.warmupMs / 1000 : null), backgroundColor: '#1f77b4' },
+                { label: 'Avg FPS', data: pick((s) => s.fps.avg), backgroundColor: '#2ca02c' },
+                { label: 'p5 FPS', data: pick((s) => s.fps.p5), backgroundColor: '#ff7f0e' },
+                { label: 'FPS σ', data: pick((s) => s.fps.stddev), backgroundColor: '#9467bd' },
+                { label: 'Avg rx kbps / 100', data: pick((s) => s.receiverBitrateBps / 100000), backgroundColor: '#17becf' },
+                { label: 'Freezes', data: pick((s) => s.freezeCount), backgroundColor: '#d62728' },
+                { label: 'Loss %', data: pick((s) => s.packetLoss * 100), backgroundColor: '#8c564b' },
+            ];
+            charts.summary.update();
+        }
+
+        function deriveSampleMetrics(curr, prev) {
+            const d = {
+                receiverFps: null,
+                receiverBitrateBps: null,
+                senderBitrateBps: null,
+                senderFps: null,
+                packetsLostDelta: 0,
+                packetsReceivedDelta: 0,
+                cumulativeLossPct: null,
+                rtt: null,
+                jitter: null,
+                frameWidth: null,
+                frameHeight: null,
+                nackCountTotal: null,
+                nackCountDelta: 0,
+                keyFramesEncodedTotal: curr.keyFramesEncoded ?? 0,
+                keyFramesDecodedTotal: curr.keyFramesDecoded ?? 0,
+                keyFramesEncodedDelta: prev ? Math.max(0, (curr.keyFramesEncoded ?? 0) - (prev.keyFramesEncoded ?? 0)) : 0,
+                keyFramesDecodedDelta: prev ? Math.max(0, (curr.keyFramesDecoded ?? 0) - (prev.keyFramesDecoded ?? 0)) : 0,
+                qualityLimitationReason: null,
+            };
+            const recv = curr.receiver?.[0];
+            if (recv) {
+                d.frameWidth = recv.frameWidth ?? null;
+                d.frameHeight = recv.frameHeight ?? null;
+                d.jitter = recv.jitter ?? null;
+                d.nackCountTotal = recv.nackCount ?? null;
+                const prevRecv = prev?.receiver?.[0];
+                if (prevRecv) {
+                    const dtMs = recv.timestamp - prevRecv.timestamp;
+                    if (dtMs > 0) {
+                        d.receiverFps = ((recv.framesDecoded - prevRecv.framesDecoded) * 1000) / dtMs;
+                        d.receiverBitrateBps = ((recv.bytesReceived - prevRecv.bytesReceived) * 8 * 1000) / dtMs;
+                    }
+                    d.packetsLostDelta = Math.max(0, (recv.packetsLost ?? 0) - (prevRecv.packetsLost ?? 0));
+                    d.packetsReceivedDelta = Math.max(0, (recv.packetsReceived ?? 0) - (prevRecv.packetsReceived ?? 0));
+                    d.nackCountDelta = Math.max(0, (recv.nackCount ?? 0) - (prevRecv.nackCount ?? 0));
+                }
+                const totalLost = recv.packetsLost ?? 0;
+                const totalRecv = recv.packetsReceived ?? 0;
+                const denom = totalLost + totalRecv;
+                d.cumulativeLossPct = denom > 0 ? (totalLost / denom) * 100 : null;
+            }
+            if (curr.sender && curr.sender.length > 0) {
+                d.senderFps = curr.sender.reduce((m, s) => Math.max(m, s.framesPerSecond ?? 0), 0);
+                d.qualityLimitationReason = curr.sender[0].qualityLimitationReason ?? null;
+                let bytesNow = 0;
+                let bytesPrev = 0;
+                let dtMs = 0;
+                for (let i = 0; i < curr.sender.length; i++) {
+                    const s = curr.sender[i];
+                    bytesNow += s.bytesSent ?? 0;
+                    const p = prev?.sender?.[i];
+                    if (p) {
+                        bytesPrev += p.bytesSent ?? 0;
+                        if (!dtMs) dtMs = s.timestamp - p.timestamp;
+                    }
+                }
+                if (dtMs > 0) d.senderBitrateBps = ((bytesNow - bytesPrev) * 8 * 1000) / dtMs;
+                d.rtt = curr.sender.reduce((m, s) => Math.max(m, (s.roundTripTime ?? 0) * 1000), 0) || null;
+            }
+            return d;
+        }
+
+        function currentPhase() {
+            if (!currentBenchRun || currentBenchRun.phases.length === 0) return '(none)';
+            return currentBenchRun.phases[currentBenchRun.phases.length - 1].name;
+        }
+
+        async function collectBenchSample() {
+            if (!currentBenchRun || !decartRealtime?.getVideoStats) return;
+            let raw;
+            try { raw = await decartRealtime.getVideoStats(); } catch (err) { addLog(`Benchmark sample failed: ${err.message}`, 'error'); return; }
+            const tMs = nowMs() - currentBenchRun.startedAtMs;
+            const derived = deriveSampleMetrics(raw, benchPrevRaw);
+            const sample = { tMs, phase: currentPhase(), sender: raw.sender, receiver: raw.receiver, derived };
+            currentBenchRun.samples.push(sample);
+            benchPrevRaw = raw;
+            elements.benchLive.textContent =
+                `t=${(tMs / 1000).toFixed(0)}s phase=${sample.phase} ` +
+                `rxFps=${(derived.receiverFps ?? 0).toFixed(1)} rxKbps=${((derived.receiverBitrateBps ?? 0) / 1000).toFixed(0)} ` +
+                `txKbps=${((derived.senderBitrateBps ?? 0) / 1000).toFixed(0)} rtt=${(derived.rtt ?? 0).toFixed(0)}ms ` +
+                `res=${derived.frameWidth ?? '?'}×${derived.frameHeight ?? '?'} qLim=${derived.qualityLimitationReason ?? 'none'}`;
+            if (currentBenchRun.warmupMs === null && derived.receiverFps != null) {
+                currentBenchRun.warmupRun.push(derived.receiverFps);
+                if (currentBenchRun.warmupRun.length > BENCH_WARMUP_REQUIRED_SAMPLES) currentBenchRun.warmupRun.shift();
+                if (currentBenchRun.warmupRun.length === BENCH_WARMUP_REQUIRED_SAMPLES &&
+                    currentBenchRun.warmupRun.every((f) => f >= BENCH_WARMUP_FPS_THRESHOLD)) {
+                    currentBenchRun.warmupMs = tMs;
+                    addLog(`Warmup reached: ${(tMs / 1000).toFixed(1)}s`, 'success');
+                }
+            }
+            if (currentBenchRun.samples.length % 2 === 0) refreshTimeSeriesCharts();
+        }
+
+        function avg(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
+        function stddev(arr) {
+            if (arr.length < 2) return 0;
+            const m = avg(arr);
+            return Math.sqrt(arr.reduce((acc, v) => acc + (v - m) ** 2, 0) / arr.length);
+        }
+        function percentile(arr, p) {
+            if (!arr.length) return null;
+            const s = [...arr].sort((a, b) => a - b);
+            const i = Math.min(s.length - 1, Math.max(0, Math.floor((p / 100) * s.length)));
+            return s[i];
+        }
+
+        function computeBenchSummary(run) {
+            const fpsArr = run.samples.map((s) => s.derived.receiverFps).filter((v) => v != null && Number.isFinite(v));
+            const rxBr = run.samples.map((s) => s.derived.receiverBitrateBps).filter((v) => v != null && Number.isFinite(v));
+            const txBr = run.samples.map((s) => s.derived.senderBitrateBps).filter((v) => v != null && Number.isFinite(v));
+            const rtts = run.samples.map((s) => s.derived.rtt).filter((v) => v != null && Number.isFinite(v) && v > 0);
+            const jitters = run.samples.map((s) => s.derived.jitter).filter((v) => v != null && Number.isFinite(v));
+            const totalLost = run.samples.reduce((a, s) => a + (s.derived.packetsLostDelta || 0), 0);
+            const totalReceived = run.samples.reduce((a, s) => a + (s.derived.packetsReceivedDelta || 0), 0);
+            const loss = (totalLost + totalReceived) > 0 ? totalLost / (totalLost + totalReceived) : 0;
+            let freezeCount = 0;
+            let freezeDurMs = 0;
+            let inFreeze = false;
+            for (let i = 1; i < run.samples.length; i++) {
+                const f = run.samples[i].derived.receiverFps;
+                const isFreeze = f != null && f < 1;
+                if (isFreeze) {
+                    freezeDurMs += run.samples[i].tMs - run.samples[i - 1].tMs;
+                    if (!inFreeze) { freezeCount++; inFreeze = true; }
+                } else { inFreeze = false; }
+            }
+            const last = run.samples[run.samples.length - 1];
+            const resolution = last?.derived.frameWidth && last.derived.frameHeight
+                ? `${last.derived.frameWidth}×${last.derived.frameHeight}` : 'n/a';
+            const avgFps = avg(fpsArr);
+            const avgRx = avg(rxBr);
+            const bitratePerFrame = avgFps > 0 ? avgRx / avgFps : 0;
+            return {
+                durationMs: run.endedAtMs - run.startedAtMs,
+                samples: run.samples.length,
+                warmupMs: run.warmupMs,
+                fps: {
+                    avg: avgFps,
+                    min: fpsArr.length ? Math.min(...fpsArr) : null,
+                    p5: percentile(fpsArr, 5),
+                    p95: percentile(fpsArr, 95),
+                    stddev: stddev(fpsArr),
+                    largestDip: fpsArr.length ? avgFps - Math.min(...fpsArr) : null,
+                },
+                senderBitrateBps: avg(txBr),
+                receiverBitrateBps: avgRx,
+                bytesPerFrame: bitratePerFrame / 8,
+                rttMs: avg(rtts),
+                jitter: avg(jitters),
+                packetLoss: loss,
+                freezeCount,
+                totalFreezesDurationMs: freezeDurMs,
+                resolution,
+            };
+        }
+
+        function startBenchmark() {
+            if (currentBenchRun) { addLog('Benchmark already running', 'error'); return; }
+            if (!decartRealtime?.getVideoStats) { addLog('Not connected — cannot start benchmark', 'error'); return; }
+            const profileKey = getSelectedPublishProfile().key;
+            const durationSeconds = Math.max(10, Math.min(600, Number(elements.benchDuration.value) || 120));
+            currentBenchRun = {
+                profile: profileKey,
+                sessionId: currentSessionId,
+                durationMs: durationSeconds * 1000,
+                startedAtMs: nowMs(),
+                endedAtMs: null,
+                phases: [{ name: 'start', tMs: 0 }],
+                samples: [],
+                warmupMs: null,
+                warmupRun: [],
+            };
+            benchPrevRaw = null;
+            elements.benchStart.disabled = true;
+            elements.benchStop.disabled = false;
+            elements.benchMarkPhase.disabled = false;
+            elements.benchExportJson.disabled = false;
+            elements.benchExportCsv.disabled = false;
+            elements.benchClear.disabled = false;
+            elements.benchStatusText.textContent = `running (profile=${profileKey})`;
+            elements.benchPhaseText.textContent = 'start';
+            elements.benchElapsedText.textContent = '0s';
+            benchPollTimer = setInterval(collectBenchSample, BENCH_POLL_INTERVAL_MS);
+            benchRunTimer = setTimeout(stopBenchmark, durationSeconds * 1000);
+            benchElapsedTimer = setInterval(() => {
+                const s = Math.floor((nowMs() - currentBenchRun.startedAtMs) / 1000);
+                elements.benchElapsedText.textContent = `${s}s / ${durationSeconds}s`;
+            }, 1000);
+            addLog(`Benchmark started: profile=${profileKey} duration=${durationSeconds}s pollInterval=${BENCH_POLL_INTERVAL_MS}ms`, 'success');
+        }
+
+        function stopBenchmark() {
+            if (!currentBenchRun) return;
+            if (benchPollTimer) { clearInterval(benchPollTimer); benchPollTimer = null; }
+            if (benchRunTimer) { clearTimeout(benchRunTimer); benchRunTimer = null; }
+            if (benchElapsedTimer) { clearInterval(benchElapsedTimer); benchElapsedTimer = null; }
+            currentBenchRun.endedAtMs = nowMs();
+            currentBenchRun.summary = computeBenchSummary(currentBenchRun);
+            benchmarkRuns.push(currentBenchRun);
+            console.log('[Benchmark] Run complete:', currentBenchRun);
+            addLog(`Benchmark stopped. profile=${currentBenchRun.profile} warmup=${currentBenchRun.summary.warmupMs != null ? (currentBenchRun.summary.warmupMs / 1000).toFixed(1) + 's' : 'n/a'} avgFps=${currentBenchRun.summary.fps.avg.toFixed(1)} p5Fps=${(currentBenchRun.summary.fps.p5 ?? 0).toFixed(1)}`, 'success');
+            const finished = currentBenchRun;
+            currentBenchRun = null;
+            elements.benchStart.disabled = !decartRealtime?.getVideoStats;
+            elements.benchStop.disabled = true;
+            elements.benchMarkPhase.disabled = true;
+            elements.benchStatusText.textContent = `idle (last: ${finished.profile})`;
+            refreshTimeSeriesCharts();
+            refreshSummaryChart();
+        }
+
+        function markBenchPhase() {
+            if (!currentBenchRun) return;
+            const raw = elements.benchPhaseName.value.trim();
+            const name = raw || `phase-${currentBenchRun.phases.length}`;
+            const tMs = nowMs() - currentBenchRun.startedAtMs;
+            currentBenchRun.phases.push({ name, tMs });
+            elements.benchPhaseName.value = '';
+            elements.benchPhaseText.textContent = name;
+            addLog(`Phase "${name}" marked at ${(tMs / 1000).toFixed(1)}s`, 'info');
+        }
+
+        function triggerDownload(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        function exportBenchJson() {
+            const payload = { exportedAt: new Date().toISOString(), runs: benchmarkRuns };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            triggerDownload(blob, `benchmark_${Date.now()}.json`);
+            addLog(`Exported ${benchmarkRuns.length} run(s) as JSON`, 'success');
+        }
+
+        function exportBenchCsv() {
+            const header = [
+                'run', 'profile', 'sessionId', 'tMs', 'phase',
+                'receiverFps', 'receiverKbps', 'senderKbps', 'senderFps',
+                'rttMs', 'jitter', 'packetsLostDelta', 'packetsReceivedDelta',
+                'cumulativeLossPct', 'frameWidth', 'frameHeight',
+                'nackCountTotal', 'nackCountDelta',
+                'keyFramesEncodedTotal', 'keyFramesEncodedDelta',
+                'keyFramesDecodedTotal', 'keyFramesDecodedDelta',
+                'qualityLimitationReason',
+            ];
+            const rows = [header.join(',')];
+            benchmarkRuns.forEach((run, idx) => {
+                run.samples.forEach((s) => {
+                    const d = s.derived;
+                    rows.push([
+                        idx + 1,
+                        run.profile,
+                        run.sessionId ?? '',
+                        s.tMs,
+                        JSON.stringify(s.phase),
+                        d.receiverFps?.toFixed(3) ?? '',
+                        d.receiverBitrateBps != null ? (d.receiverBitrateBps / 1000).toFixed(2) : '',
+                        d.senderBitrateBps != null ? (d.senderBitrateBps / 1000).toFixed(2) : '',
+                        d.senderFps?.toFixed(3) ?? '',
+                        d.rtt?.toFixed(2) ?? '',
+                        d.jitter ?? '',
+                        d.packetsLostDelta ?? '',
+                        d.packetsReceivedDelta ?? '',
+                        d.cumulativeLossPct?.toFixed(4) ?? '',
+                        d.frameWidth ?? '',
+                        d.frameHeight ?? '',
+                        d.nackCountTotal ?? '',
+                        d.nackCountDelta ?? '',
+                        d.keyFramesEncodedTotal ?? '',
+                        d.keyFramesEncodedDelta ?? '',
+                        d.keyFramesDecodedTotal ?? '',
+                        d.keyFramesDecodedDelta ?? '',
+                        d.qualityLimitationReason ?? '',
+                    ].join(','));
+                });
+            });
+            const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+            triggerDownload(blob, `benchmark_${Date.now()}.csv`);
+            addLog(`Exported ${benchmarkRuns.length} run(s) as CSV`, 'success');
+        }
+
+        function clearBenchRuns() {
+            if (currentBenchRun) { addLog('Stop the current benchmark first', 'error'); return; }
+            benchmarkRuns.length = 0;
+            elements.benchExportJson.disabled = true;
+            elements.benchExportCsv.disabled = true;
+            elements.benchClear.disabled = true;
+            elements.benchLive.textContent = '';
+            elements.benchStatusText.textContent = 'idle';
+            refreshTimeSeriesCharts();
+            refreshSummaryChart();
+            addLog('Benchmark runs cleared', 'info');
+        }
+
+        elements.benchStart.addEventListener('click', startBenchmark);
+        elements.benchStop.addEventListener('click', stopBenchmark);
+        elements.benchMarkPhase.addEventListener('click', markBenchPhase);
+        elements.benchExportJson.addEventListener('click', exportBenchJson);
+        elements.benchExportCsv.addEventListener('click', exportBenchCsv);
+        elements.benchClear.addEventListener('click', clearBenchRuns);
+
         // --- MediaRecorder for the Decart remote stream ---
         let mediaRecorder = null;
         let recordedChunks = [];
 
         function pickSupportedMimeType() {
             const candidates = [
-                'video/webm;codecs=vp9,opus',
-                'video/webm;codecs=vp8,opus',
-                'video/webm;codecs=h264,opus',
+                'video/webm;codecs=vp9',
+                'video/webm;codecs=vp8',
+                'video/webm;codecs=h264',
                 'video/webm',
                 'video/mp4',
             ];
@@ -1051,6 +1569,14 @@
                 const finalType = mediaRecorder?.mimeType || 'video/webm';
                 const blob = new Blob(recordedChunks, { type: finalType });
                 const ext = finalType.includes('mp4') ? 'mp4' : 'webm';
+                const sizeMb = (blob.size / 1024 / 1024).toFixed(2);
+                recordedChunks = [];
+                mediaRecorder = null;
+                const shouldDownload = window.confirm(`Download recorded remote stream? (${sizeMb} MB ${ext})`);
+                if (!shouldDownload) {
+                    addLog(`Recording stopped. Discarded ${sizeMb} MB (user declined download)`, 'info');
+                    return;
+                }
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -1059,9 +1585,7 @@
                 a.click();
                 document.body.removeChild(a);
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
-                addLog(`Recording stopped. Downloaded ${(blob.size / 1024 / 1024).toFixed(2)} MB (${ext})`, 'success');
-                recordedChunks = [];
-                mediaRecorder = null;
+                addLog(`Recording stopped. Downloaded ${sizeMb} MB (${ext})`, 'success');
             };
             mediaRecorder.start(1000);
             addLog(`Auto-recording remote stream (${mediaRecorder.mimeType || 'default'})`, 'success');
@@ -1120,19 +1644,90 @@
             setTimeout(() => waitForPublisherSubscribeToken(attemptsRemaining - 1), 250);
         }
         
-        // Publish profile selection: update the inline description and log on change.
         function formatProfileTitle({ key, label }) {
             return key === 'default' ? `Default baseline — ${label}` : `Profile ${key} — ${label}`;
         }
+
         function updatePublishProfileDescription() {
-            const profile = getSelectedPublishProfile();
-            elements.publishProfileDescription.textContent = `${formatProfileTitle(profile)}: ${profile.description}`;
+            const lines = chainedProfileKeys.map((key, idx) => {
+                const profile = PUBLISH_PROFILES[key];
+                const title = profile ? formatProfileTitle({ key, label: profile.label }) : `${key} (unknown)`;
+                const desc = profile?.description ?? '';
+                const marker = chainActive && idx === chainIndex ? '▶ ' : `${idx + 1}. `;
+                return `${marker}${title}: ${desc}`;
+            });
+            elements.publishProfileDescription.innerHTML = lines.join('<br>');
         }
-        elements.publishProfileSelect.addEventListener('change', () => {
-            const profile = getSelectedPublishProfile();
+
+        function renderChainedProfiles() {
+            const container = elements.chainedProfilesContainer;
+            container.innerHTML = '';
+            const optionsHtml = buildProfileOptionsHtml();
+
+            chainedProfileKeys.forEach((key, idx) => {
+                const wrapper = document.createElement('span');
+                wrapper.style.display = 'inline-flex';
+                wrapper.style.alignItems = 'center';
+                wrapper.style.gap = '4px';
+
+                if (chainedProfileKeys.length > 1) {
+                    const badge = document.createElement('span');
+                    badge.textContent = `${idx + 1}`;
+                    badge.style.fontFamily = "'Courier New', monospace";
+                    badge.style.fontSize = '12px';
+                    badge.style.color = chainActive && idx === chainIndex ? '#4CAF50' : '#888';
+                    badge.style.fontWeight = 'bold';
+                    wrapper.appendChild(badge);
+                }
+
+                const select = document.createElement('select');
+                select.innerHTML = optionsHtml;
+                select.value = key;
+                select.style.width = 'auto';
+                select.style.minWidth = '280px';
+                select.style.fontSize = '13px';
+                select.style.padding = '6px 8px';
+                select.disabled = chainActive;
+                select.addEventListener('change', () => {
+                    chainedProfileKeys[idx] = select.value;
+                    updatePublishProfileDescription();
+                    addLog(`Chain slot ${idx + 1}: ${select.value}`, 'info');
+                });
+                wrapper.appendChild(select);
+                container.appendChild(wrapper);
+            });
+
+            const addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.textContent = '+';
+            addBtn.title = 'Add another profile to the chain';
+            addBtn.style.width = '32px';
+            addBtn.style.minWidth = '32px';
+            addBtn.style.padding = '6px 8px';
+            addBtn.style.fontSize = '16px';
+            addBtn.style.marginRight = '0';
+            addBtn.style.marginBottom = '0';
+            addBtn.disabled = chainActive;
+            addBtn.addEventListener('click', () => {
+                const last = chainedProfileKeys[chainedProfileKeys.length - 1] ?? 'default';
+                chainedProfileKeys.push(last);
+                renderChainedProfiles();
+                updatePublishProfileDescription();
+                addLog(`Chain extended to ${chainedProfileKeys.length} profiles`, 'info');
+            });
+            container.appendChild(addBtn);
+        }
+
+        function setChainUiLocked(locked) {
+            chainActive = locked;
+            elements.apiKey.disabled = locked;
+            elements.realtimeBaseUrl.disabled = locked;
+            elements.modelSelect.disabled = locked;
+            renderChainedProfiles();
             updatePublishProfileDescription();
-            addLog(`Selected publish profile: ${formatProfileTitle(profile)}`, 'info');
-        });
+        }
+
+        renderChainedProfiles();
         updatePublishProfileDescription();
 
         // Model selection handler
@@ -1182,6 +1777,8 @@
         }
 
         let fileSource = null;
+        let lastSourceMode = null;
+        let lastSourceFile = null;
 
         function stopFileSource() {
             if (!fileSource) return;
@@ -1240,10 +1837,42 @@
             elements.localVideo.srcObject = stream;
             await elements.localVideo.play();
 
+            lastSourceMode = 'file';
+            lastSourceFile = file;
             addLog(`File source streaming: ${file.name} → ${camera.width}×${camera.height} @ ${camera.fps}fps (looped)`, 'success');
             elements.startCamera.disabled = true;
             elements.startFileSource.disabled = true;
             elements.connectBtn.disabled = false;
+        }
+
+        async function acquireCamera() {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                throw new Error('Camera API is not available in this browser/context');
+            }
+            const camera = getSelectedCameraSettings();
+            const constraints = {
+                video: getCameraVideoConstraints(camera),
+                audio: false,
+            };
+            addLog(`Camera target: ${camera.orientation}, ${camera.width}×${camera.height} @ ${camera.fps}fps`, 'info');
+            stopCameraResources();
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            elements.localVideo.srcObject = localStream;
+            await elements.localVideo.play();
+            lastSourceMode = 'camera';
+            lastSourceFile = null;
+        }
+
+        async function refreshSourceForChain() {
+            if (lastSourceMode === 'file' && lastSourceFile) {
+                addLog('Restarting file source for next chain step', 'info');
+                await beginFileSource(lastSourceFile);
+                return;
+            }
+            if (lastSourceMode === 'camera') {
+                addLog('Re-acquiring camera for next chain step', 'info');
+                await acquireCamera();
+            }
         }
 
         function stopCameraResources() {
@@ -1257,32 +1886,12 @@
             elements.localVideo.srcObject = null;
         }
         
-        // Start camera
         elements.startCamera.addEventListener('click', async () => {
             try {
-                if (!navigator.mediaDevices?.getUserMedia) {
-                    throw new Error('Camera API is not available in this browser/context');
-                }
-
                 addLog('Requesting camera access...', 'info');
-                const streamAudio = elements.streamAudioToggle.checked;
-                const camera = getSelectedCameraSettings();
-                const constraints = {
-                    video: getCameraVideoConstraints(camera),
-                    audio: streamAudio
-                        ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-                        : false,
-                };
-
-                addLog(`Camera target: ${camera.orientation}, ${camera.width}×${camera.height} @ ${camera.fps}fps`, 'info');
-                addLog(`Microphone audio: ${streamAudio ? 'enabled' : 'disabled'}`, 'info');
-
-                localStream = await navigator.mediaDevices.getUserMedia(constraints);
-                elements.localVideo.srcObject = localStream;
-                await elements.localVideo.play();
+                await acquireCamera();
                 elements.startCamera.disabled = true;
                 elements.connectBtn.disabled = false;
-
                 addLog('Camera access granted successfully', 'success');
             } catch (error) {
                 addLog(`Failed to access camera: ${error.message}`, 'error');
@@ -1310,120 +1919,203 @@
 
         elements.printStatsBtn.addEventListener('click', printStatsSummary);
 
-        // Connect to Decart
+        function scheduleAutoStartBenchmark() {
+            setTimeout(() => {
+                if (currentBenchRun) return;
+                if (!decartRealtime?.getVideoStats) return;
+                if (!isConnected) return;
+                addLog('Auto-starting benchmark (3s after remote stream)', 'info');
+                startBenchmark();
+            }, 3000);
+        }
+
+        async function connectPublisher() {
+            const apiKey = elements.apiKey.value.trim();
+            if (!apiKey) throw new Error('API key required');
+            if (!localStream) throw new Error('Camera not started');
+
+            updateStatus('connecting');
+            elements.connectBtn.disabled = true;
+            elements.subscribeBtn.disabled = true;
+            activeConnectionMode = 'publisher';
+
+            addLog(`Initializing Decart client (chain slot ${chainIndex + 1}/${chainedProfileKeys.length})...`, 'info');
+
+            const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
+            decartClient = createDecartClient({
+                apiKey,
+                ...(realtimeBaseUrl && { realtimeBaseUrl }),
+                logger: createDemoLogger("debug"),
+            });
+
+            addLog('Connecting to Decart server via LiveKit...', 'info');
+
+            const initialPromptText = elements.initialPrompt.value.trim();
+            const promptValue = initialPromptText ? { text: initialPromptText } : undefined;
+            if (promptValue) {
+                addLog(`Initial prompt: "${initialPromptText}"`, 'info');
+            } else {
+                addLog('Initial prompt: passthrough (no prompt)', 'info');
+            }
+
+            let initialImage;
+            if (promptValue && (model.name === 'lucy-2.1' || model.name === 'mirage_v2')) {
+                const initialImageResponse = await fetch('./tests/fixtures/image.png');
+                initialImage = await initialImageResponse.blob();
+            }
+
+            const resolution = elements.resolutionSelect.value;
+            const profile = getSelectedPublishProfile();
+            addLog(`Resolution: ${resolution}`, 'info');
+            addLog(`Publish profile: ${formatProfileTitle(profile)}`, 'info');
+            addLog(`Publish options: ${JSON.stringify(profile.publishOptions)}`, 'info');
+            addLog(`Room options: ${JSON.stringify(profile.roomOptions)}`, 'info');
+
+            decartRealtime = await decartClient.realtime.connect(localStream, {
+                model,
+                resolution,
+                publishOptions: profile.publishOptions,
+                roomOptions: profile.roomOptions,
+                remoteVideoElement: elements.remoteVideo,
+                onRemoteStream: (stream) => {
+                    addLog('Received remote stream from Decart', 'success');
+                    elements.remoteVideo.srcObject = stream;
+                    if (!chainActive) startRecording();
+                    startPromptCycler();
+                    elements.benchStart.disabled = false;
+                    scheduleAutoStartBenchmark();
+                    if (chainActive) {
+                        if (chainAdvanceTimer) clearTimeout(chainAdvanceTimer);
+                        chainAdvanceTimer = setTimeout(advanceChain, CHAIN_INTERVAL_MS);
+                        addLog(`Chain advance armed in ${CHAIN_INTERVAL_MS / 1000}s`, 'info');
+                    }
+                },
+                onConnectionChange: (state) => {
+                    updateStatus(state);
+                    if (state === 'connected' || state === 'generating') {
+                        syncPublisherSubscribeToken();
+                    }
+                },
+                onQueuePosition: (queuePosition) => {
+                    addLog(`Queue position: ${queuePosition.position}/${queuePosition.queueSize}`, 'info');
+                },
+                initialState: {
+                    ...(promptValue && { prompt: promptValue }),
+                    ...(initialImage && { image: initialImage }),
+                },
+            });
+
+            if (!decartRealtime.isConnected()) {
+                throw new Error('Connection established but not in connected state');
+            }
+
+            isConnected = true;
+            updateStatus('connected');
+            elements.disconnectBtn.disabled = false;
+            elements.promptInput.disabled = false;
+            elements.sendPrompt.disabled = false;
+            elements.promisePromptInput.disabled = false;
+            elements.sendPromisePrompt.disabled = false;
+            elements.referenceImage.disabled = false;
+            elements.subscribeBtn.disabled = true;
+
+            syncPublisherSubscribeToken();
+            waitForPublisherSubscribeToken();
+            elements.sessionInfo.style.display = 'block';
+
+            resetStatsAggregates();
+            startStatsPolling();
+
+            addLog('Successfully connected to Decart!', 'success');
+            addLog(`Session ID: ${currentSessionId || '(pending)'}`, 'success');
+        }
+
+        function teardownRealtimeKeepingCamera() {
+            stopRecording();
+            stopStatsPolling();
+            stopPromptCycler();
+            stopSessionTimer();
+            if (currentBenchRun) stopBenchmark();
+            if (decartRealtime) {
+                try { decartRealtime.disconnect(); } catch (_) {}
+            }
+            decartRealtime = null;
+            decartClient = null;
+            isConnected = false;
+            elements.remoteVideo.srcObject = null;
+            updateStatus('disconnected');
+        }
+
+        async function advanceChain() {
+            chainAdvanceTimer = null;
+            addLog(`Chain interval elapsed for profile ${chainedProfileKeys[chainIndex]}`, 'info');
+            teardownRealtimeKeepingCamera();
+            chainIndex += 1;
+            if (chainIndex >= chainedProfileKeys.length) {
+                addLog(`Chain complete — ran ${chainedProfileKeys.length} profile(s)`, 'success');
+                finishChain();
+                return;
+            }
+            addLog(`Reconnecting with profile ${chainedProfileKeys[chainIndex]} (slot ${chainIndex + 1}/${chainedProfileKeys.length})`, 'info');
+            updatePublishProfileDescription();
+            renderChainedProfiles();
+            try {
+                await refreshSourceForChain();
+                await connectPublisher();
+            } catch (err) {
+                addLog(`Chain advance failed: ${err.message}`, 'error');
+                finishChain();
+            }
+        }
+
+        function finishChain() {
+            if (chainAdvanceTimer) {
+                clearTimeout(chainAdvanceTimer);
+                chainAdvanceTimer = null;
+            }
+            chainIndex = 0;
+            setChainUiLocked(false);
+            activeConnectionMode = null;
+            currentSessionId = null;
+            currentSubscribeToken = null;
+            elements.startCamera.disabled = !!localStream;
+            elements.connectBtn.disabled = !localStream;
+            elements.subscribeBtn.disabled = false;
+            elements.disconnectBtn.disabled = true;
+            elements.printStatsBtn.disabled = true;
+            elements.promptInput.disabled = true;
+            elements.sendPrompt.disabled = true;
+            elements.promisePromptInput.disabled = true;
+            elements.sendPromisePrompt.disabled = true;
+            elements.sessionInfo.style.display = 'none';
+            elements.publisherTokenInfo.style.display = 'none';
+            elements.publisherSubscribeToken.value = '';
+            elements.copySubscribeToken.disabled = true;
+            elements.referenceImage.disabled = true;
+            elements.setImage.disabled = true;
+            elements.benchStart.disabled = true;
+            elements.benchMarkPhase.disabled = true;
+            if (benchmarkRuns.length > 0) {
+                addLog(`Aggregated ${benchmarkRuns.length} benchmark run(s) — export JSON/CSV to review`, 'success');
+            }
+        }
+
         elements.connectBtn.addEventListener('click', async () => {
             const apiKey = elements.apiKey.value.trim();
-            if (!apiKey) {
-                addLog('Please enter an API key', 'error');
-                return;
-            }
-            
-            if (!localStream) {
-                addLog('Please start camera first', 'error');
-                return;
+            if (!apiKey) { addLog('Please enter an API key', 'error'); return; }
+            if (!localStream) { addLog('Please start camera first', 'error'); return; }
+            if (isConnected) { addLog('Already connected. Disconnect before starting another mode.', 'error'); return; }
+
+            chainIndex = 0;
+            if (chainedProfileKeys.length > 1) {
+                setChainUiLocked(true);
+                addLog(`Starting chain of ${chainedProfileKeys.length} profiles × ${CHAIN_INTERVAL_MS / 1000}s = ${(chainedProfileKeys.length * CHAIN_INTERVAL_MS / 1000)}s total`, 'success');
+            } else {
+                setChainUiLocked(false);
             }
 
-            if (isConnected) {
-                addLog('Already connected. Disconnect before starting another mode.', 'error');
-                return;
-            }
-            
             try {
-                updateStatus('connecting');
-                elements.connectBtn.disabled = true;
-                elements.subscribeBtn.disabled = true;
-                activeConnectionMode = 'publisher';
-                
-                addLog('Initializing Decart client...', 'info');
-                
-                const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
-                decartClient = createDecartClient({
-                    apiKey,
-                    ...(realtimeBaseUrl && { realtimeBaseUrl }),
-                    logger: createDemoLogger("debug"),
-                });
-                
-                addLog('Connecting to Decart server via LiveKit...', 'info');
-                
-                // Build initial prompt from text field (empty / null toggle = passthrough)
-                const initialPromptText = elements.initialPrompt.value.trim();
-                const promptValue = initialPromptText ? { text: initialPromptText } : undefined;
-
-                if (promptValue) {
-                    addLog(`Initial prompt: "${initialPromptText}"`, 'info');
-                } else {
-                    addLog('Initial prompt: passthrough (no prompt)', 'info');
-                }
-
-                // Load initial reference image only when there's an actual prompt
-                let initialImage;
-                if (promptValue && (model.name === 'lucy-2.1' || model.name === 'mirage_v2')) {
-                    const initialImageResponse = await fetch('./tests/fixtures/image.png');
-                    initialImage = await initialImageResponse.blob();
-                }
-
-                const resolution = elements.resolutionSelect.value;
-                addLog(`Resolution: ${resolution}`, 'info');
-
-                const profile = getSelectedPublishProfile();
-                addLog(`Publish profile: ${formatProfileTitle(profile)}`, 'info');
-                addLog(`Publish options: ${JSON.stringify(profile.publishOptions)}`, 'info');
-                addLog(`Room options: ${JSON.stringify(profile.roomOptions)}`, 'info');
-
-                decartRealtime = await decartClient.realtime.connect(localStream, {
-                    model,
-                    resolution,
-                    publishOptions: profile.publishOptions,
-                    roomOptions: profile.roomOptions,
-                    onRemoteStream: (stream) => {
-                        addLog('Received remote stream from Decart', 'success');
-                        elements.remoteVideo.srcObject = stream;
-                    },
-                    onConnectionChange: (state) => {
-                        updateStatus(state);
-                        if (state === 'connected' || state === 'generating') {
-                            syncPublisherSubscribeToken();
-                        }
-                        if (state === 'generating') {
-                            startRecording();
-                            startPromptCycler();
-                        }
-                    },
-                    onQueuePosition: (queuePosition) => {
-                        addLog(`Queue position: ${queuePosition.position}/${queuePosition.queueSize}`, 'info');
-                    },
-                    initialState: {
-                        ...(promptValue && { prompt: promptValue }),
-                        ...(initialImage && { image: initialImage }),
-                    },
-                });
-                
-                // Check connection status
-                if (decartRealtime.isConnected()) {
-                    isConnected = true;
-                    updateStatus('connected');
-                    elements.disconnectBtn.disabled = false;
-                    elements.promptInput.disabled = false;
-                    elements.sendPrompt.disabled = false;
-                    elements.promisePromptInput.disabled = false;
-                    elements.sendPromisePrompt.disabled = false;
-                    elements.referenceImage.disabled = false;
-                    elements.subscribeBtn.disabled = true;
-
-                    // Show session ID
-                    syncPublisherSubscribeToken();
-                    waitForPublisherSubscribeToken();
-                    elements.sessionInfo.style.display = 'block';
-
-                    resetStatsAggregates();
-                    startStatsPolling();
-
-                    addLog('Successfully connected to Decart!', 'success');
-                    addLog(`Session ID: ${currentSessionId || '(pending)'}`, 'success');
-                } else {
-                    throw new Error('Connection established but not in connected state');
-                }
-                
+                await connectPublisher();
             } catch (error) {
                 addLog(`Failed to connect: ${error.message}`, 'error');
                 updateStatus('disconnected');
@@ -1439,6 +2131,9 @@
                 stopStatsPolling();
                 stopPromptCycler();
                 stopSessionTimer();
+                elements.benchStart.disabled = true;
+                elements.benchMarkPhase.disabled = true;
+                if (chainActive) finishChain();
             }
         });
 
@@ -1496,10 +2191,13 @@
 
                 decartRealtime = await decartClient.realtime.subscribe({
                     token,
+                    remoteVideoElement: elements.remoteVideo,
                     onRemoteStream: (stream) => {
                         addLog('Received subscribed stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
                         startRecording();
+                        elements.benchStart.disabled = false;
+                        scheduleAutoStartBenchmark();
                     },
                     onConnectionChange: (state) => {
                         updateStatus(state);
@@ -1538,15 +2236,29 @@
                 elements.startCamera.disabled = false;
                 stopStatsPolling();
                 stopSessionTimer();
+                elements.benchStart.disabled = true;
+                elements.benchMarkPhase.disabled = true;
             }
         });
         
         // Disconnect
         elements.disconnectBtn.addEventListener('click', () => {
+            if (chainAdvanceTimer) {
+                clearTimeout(chainAdvanceTimer);
+                chainAdvanceTimer = null;
+            }
+            if (chainActive) {
+                addLog('Chain cancelled by user', 'info');
+                setChainUiLocked(false);
+                chainIndex = 0;
+            }
             stopRecording();
             stopStatsPolling();
             stopPromptCycler();
             stopSessionTimer();
+            if (currentBenchRun) stopBenchmark();
+            elements.benchStart.disabled = true;
+            elements.benchMarkPhase.disabled = true;
             if (statsAggregates.size > 0) {
                 printStatsSummary();
             }

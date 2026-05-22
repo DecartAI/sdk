@@ -57,6 +57,11 @@ const realTimeClientConnectOptionsSchema = z.object({
     .custom<Partial<TrackPublishOptions>>((val) => val === undefined || typeof val === "object")
     .optional(),
   roomOptions: z.custom<Partial<RoomOptions>>((val) => val === undefined || typeof val === "object").optional(),
+  remoteVideoElement: z
+    .custom<HTMLVideoElement>(
+      (val) => val === undefined || (typeof val === "object" && val !== null && "srcObject" in val),
+    )
+    .optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -84,7 +89,12 @@ export type RealTimeClient = {
   subscribeToken: string | null;
   getSubscribeToken: () => string | null;
   setImage: (image: Blob | File | string | null, options?: ImageSetOptions) => Promise<void>;
-  getVideoStats: () => Promise<{ sender: VideoSenderStats[]; receiver: VideoReceiverStats[] }>;
+  getVideoStats: () => Promise<{
+    sender: VideoSenderStats[];
+    receiver: VideoReceiverStats[];
+    keyFramesEncoded: number;
+    keyFramesDecoded: number;
+  }>;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
@@ -106,6 +116,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       resolution,
       publishOptions,
       roomOptions,
+      remoteVideoElement,
     } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
     let inputStream: MediaStream = stream ?? new MediaStream();
@@ -170,6 +181,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         videoCodec: safariCodec,
         publishOptions,
         roomOptions,
+        remoteVideoElement,
       });
 
       let sessionId: string | null = null;
