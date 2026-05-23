@@ -282,6 +282,7 @@
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.umd.min.js"></script>
 </head>
 <body>
     <h1>🎭 Decart SDK Test Page</h1>
@@ -405,6 +406,8 @@
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
                 <div><canvas id="bench-chart-fps"></canvas></div>
                 <div><canvas id="bench-chart-bitrate"></canvas></div>
+                <div><canvas id="bench-chart-qp"></canvas></div>
+                <div><canvas id="bench-chart-bpp"></canvas></div>
                 <div><canvas id="bench-chart-rtt"></canvas></div>
                 <div><canvas id="bench-chart-loss"></canvas></div>
                 <div><canvas id="bench-chart-nack"></canvas></div>
@@ -566,36 +569,18 @@
         // Profiles C-E keep the VP9/AV1 SVC candidates for comparison.
         // -----------------------------------------------------------------------
         const PUBLISH_PROFILES = {
-            default: {
-                label: 'H.264 + simulcast (current SDK default, capped at 2 Mbps)',
-                description: 'Simulcast control at the same bitrate cap as F/G/H, so the only knob varying vs them is simulcast on/off.',
-                roomOptions: {
-                    adaptiveStream: false,
-                    dynacast: false,
-                },
-                publishOptions: {
-                    videoCodec: 'h264',
-                    simulcast: true,
-                    videoEncoding: {
-                        maxBitrate: 2_000_000,
-                        maxFramerate: 30,
-                        priority: 'high',
-                    },
-                    degradationPreference: 'balanced',
-                },
-            },
             A: {
-                label: 'H.264 economy — 1.2 Mbps, maintain-resolution',
+                label: 'H.264 economy — 1.6 Mbps, maintain-resolution',
                 description: 'Weak-network champion. ~60% of F/G\'s budget at the same resolution and cadence target, biased to preserve pixel fidelity (drop fps before res). Tests how much bandwidth we can shave before the model\'s input quality breaks.',
                 roomOptions: {
                     adaptiveStream: false,
-                    dynacast: false,
+                    dynacast: true,
                 },
                 publishOptions: {
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 1_200_000,
+                        maxBitrate: 1_600_000,
                         maxFramerate: 30,
                         priority: 'high',
                     },
@@ -603,18 +588,18 @@
                 },
             },
             B: {
-                label: 'H.264 sharper-frames — 2 Mbps @ 20 fps, maintain-resolution',
+                label: 'H.264 sharper-frames — 2 Mbps @ 24 fps, maintain-resolution',
                 description: 'Bits-per-frame champion. Same budget as F/G but only 20 fps target, so each frame gets ~50% more bits and visibly sharper detail. Bets the inference model values per-frame fidelity over cadence — and that 20 fps is enough for its temporal needs.',
                 roomOptions: {
                     adaptiveStream: false,
-                    dynacast: false,
+                    dynacast: true,
                 },
                 publishOptions: {
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
                         maxBitrate: 2_000_000,
-                        maxFramerate: 20,
+                        maxFramerate: 24,
                         priority: 'high',
                     },
                     degradationPreference: 'maintain-resolution',
@@ -733,22 +718,29 @@
             },
         };
 
+        const DEFAULT_PROFILE_KEY = Object.keys(PUBLISH_PROFILES)[0];
+
         // Chain state: array of profile keys to run sequentially, plus the index currently active.
-        const CHAIN_INTERVAL_MS = 132_000;
-        const chainedProfileKeys = ['default'];
+        // Read lazily so it tracks the current bench-duration input value at chain time.
+        function getChainIntervalMs() {
+            const durationSeconds = Number(elements?.benchDuration?.value);
+            return Number.isFinite(durationSeconds) && durationSeconds > 0
+                ? (durationSeconds * 1000) + 6000
+                : 127_000;
+        }
+        const chainedProfileKeys = [DEFAULT_PROFILE_KEY];
         let chainIndex = 0;
         let chainActive = false;
         let chainAdvanceTimer = null;
 
         function getSelectedPublishProfile() {
-            const key = chainedProfileKeys[chainIndex] ?? chainedProfileKeys[0] ?? 'default';
+            const key = chainedProfileKeys[chainIndex] ?? chainedProfileKeys[0] ?? DEFAULT_PROFILE_KEY;
             const profile = PUBLISH_PROFILES[key];
-            if (!profile) return { key: 'default', ...PUBLISH_PROFILES.default };
+            if (!profile) return { key: DEFAULT_PROFILE_KEY, ...PUBLISH_PROFILES[DEFAULT_PROFILE_KEY] };
             return { key, ...profile };
         }
 
         const PROFILE_SHORT_LABELS = {
-            default: 'Default — H.264 + simulcast @ 2 Mbps',
             A: 'A — H.264 economy 1.2 Mbps',
             B: 'B — H.264 sharper 2 Mbps @ 20 fps',
             C: 'C — VP9 SVC L1T3',
@@ -797,6 +789,8 @@
             benchLive: document.getElementById('bench-live'),
             benchChartFps: document.getElementById('bench-chart-fps'),
             benchChartBitrate: document.getElementById('bench-chart-bitrate'),
+            benchChartQp: document.getElementById('bench-chart-qp'),
+            benchChartBpp: document.getElementById('bench-chart-bpp'),
             benchChartRtt: document.getElementById('bench-chart-rtt'),
             benchChartLoss: document.getElementById('bench-chart-loss'),
             benchChartNack: document.getElementById('bench-chart-nack'),
@@ -1081,7 +1075,7 @@
         // --- Benchmark engine ---
         const BENCH_POLL_INTERVAL_MS = 1000;
         const BENCH_WARMUP_FPS_THRESHOLD = 28;
-        const BENCH_WARMUP_REQUIRED_SAMPLES = 3;
+        const BENCH_WARMUP_REQUIRED_SAMPLES = 1;
         const BENCH_PALETTE = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'];
 
         const benchmarkRuns = [];
@@ -1089,13 +1083,50 @@
         let benchPollTimer = null;
         let benchRunTimer = null;
         let benchElapsedTimer = null;
-        let benchPrevRaw = null;
         let benchCharts = null;
 
         function nowMs() { return Date.now(); }
 
+        let annotationPluginRegistered = false;
+        function ensureAnnotationPlugin() {
+            if (annotationPluginRegistered || typeof Chart === 'undefined') return;
+            const plugin = window['chartjs-plugin-annotation'];
+            if (plugin) {
+                Chart.register(plugin);
+                annotationPluginRegistered = true;
+            }
+        }
+
+        const QP_MAX = { H264: 51, VP8: 127, VP9: 255, AV1: 255 };
+        function normalizeQp(qp, codec) {
+            if (qp == null || !Number.isFinite(qp)) return null;
+            const key = (codec || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const max = QP_MAX[key] ?? 51;
+            return Math.max(0, Math.min(100, (qp / max) * 100));
+        }
+
+        const stripePatternCache = new Map();
+        function makeStripePattern(color) {
+            if (stripePatternCache.has(color)) return stripePatternCache.get(color);
+            const c = document.createElement('canvas');
+            c.width = 8; c.height = 8;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, 8, 8);
+            ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-2, 6); ctx.lineTo(6, -2);
+            ctx.moveTo(2, 10); ctx.lineTo(10, 2);
+            ctx.stroke();
+            const pattern = ctx.createPattern(c, 'repeat');
+            stripePatternCache.set(color, pattern);
+            return pattern;
+        }
+
         function ensureBenchCharts() {
             if (benchCharts || typeof Chart === 'undefined') return benchCharts;
+            ensureAnnotationPlugin();
             const sharedTooltip = {
                 mode: 'index',
                 intersect: false,
@@ -1133,7 +1164,7 @@
                 bitrate: new Chart(elements.benchChartBitrate, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: timeSeriesPlugins('Bitrate (kbps): rx solid, tx dashed') },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Bitrate (kbps): tx solid (out), rx dashed (in)') },
                 }),
                 rtt: new Chart(elements.benchChartRtt, {
                     type: 'line',
@@ -1148,12 +1179,90 @@
                 nack: new Chart(elements.benchChartNack, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: timeSeriesPlugins('NACKs sent by receiver (per second)') },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('NACKs per sample: out solid (NACKs received by sender), in dashed (NACKs sent by receiver)') },
                 }),
                 keyframes: new Chart(elements.benchChartKeyframes, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: timeSeriesPlugins('Keyframes total (cumulative): encoded solid, decoded dashed') },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Keyframes per sample: out solid (sender), in dashed (receiver / PLI storms)') },
+                }),
+                qp: new Chart(elements.benchChartQp, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: {
+                        animation: false,
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        interaction: { mode: 'index', intersect: false, axis: 'x' },
+                        scales: {
+                            x: { type: 'linear', title: { display: true, text: 't (s)' } },
+                            y: {
+                                type: 'linear',
+                                position: 'left',
+                                min: 0,
+                                max: 100,
+                                title: { display: true, text: 'Avg QP % (0–100, lower = better)' },
+                            },
+                        },
+                        plugins: {
+                            title: { display: true, text: 'Avg QP % per frame — out solid, in dashed (normalized across codecs)' },
+                            tooltip: {
+                                ...sharedTooltip,
+                                callbacks: {
+                                    label(ctx) {
+                                        const ds = ctx.dataset;
+                                        const v = ctx.parsed.y;
+                                        const value = v == null || Number.isNaN(v) ? '—' : Number(v).toFixed(1);
+                                        if (ds._qpRaw) {
+                                            const raw = ds._qpRaw[ctx.dataIndex];
+                                            const codec = ds._qpCodec;
+                                            const rawStr = raw != null && Number.isFinite(raw) ? raw.toFixed(1) : '—';
+                                            return `${ds.label}: ${value}%  (raw ${rawStr} ${codec ?? '?'})`;
+                                        }
+                                        return `${ds.label}: ${value}`;
+                                    },
+                                },
+                            },
+                            legend: { labels: { boxWidth: 10 } },
+                            annotation: {
+                                annotations: {
+                                    qpGreen: { type: 'box', yScaleID: 'y', yMin: 0, yMax: 40, backgroundColor: 'rgba(76, 175, 80, 0.06)', borderWidth: 0 },
+                                    qpYellow: { type: 'box', yScaleID: 'y', yMin: 40, yMax: 65, backgroundColor: 'rgba(255, 193, 7, 0.08)', borderWidth: 0 },
+                                    qpRed: { type: 'box', yScaleID: 'y', yMin: 65, yMax: 100, backgroundColor: 'rgba(244, 67, 54, 0.08)', borderWidth: 0 },
+                                },
+                            },
+                        },
+                    },
+                }),
+                bpp: new Chart(elements.benchChartBpp, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: {
+                        animation: false,
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        interaction: { mode: 'index', intersect: false, axis: 'x' },
+                        scales: {
+                            x: { type: 'linear', title: { display: true, text: 't (s)' } },
+                            y: {
+                                type: 'linear',
+                                position: 'left',
+                                beginAtZero: true,
+                                title: { display: true, text: 'BPP (bits per pixel)' },
+                            },
+                        },
+                        plugins: {
+                            title: { display: true, text: 'BPP — out solid (sender), in dashed (receiver), 0.07–0.15 reference' },
+                            tooltip: sharedTooltip,
+                            legend: { labels: { boxWidth: 10 } },
+                            annotation: {
+                                annotations: {
+                                    bppLow: { type: 'line', yScaleID: 'y', yMin: 0.07, yMax: 0.07, borderColor: 'rgba(0,0,0,0.4)', borderWidth: 1, borderDash: [4, 4], label: { display: true, content: '0.07', position: 'end', backgroundColor: 'rgba(0,0,0,0.0)', color: 'rgba(0,0,0,0.6)' } },
+                                    bppHigh: { type: 'line', yScaleID: 'y', yMin: 0.15, yMax: 0.15, borderColor: 'rgba(0,0,0,0.4)', borderWidth: 1, borderDash: [4, 4], label: { display: true, content: '0.15', position: 'end', backgroundColor: 'rgba(0,0,0,0.0)', color: 'rgba(0,0,0,0.6)' } },
+                                },
+                            },
+                        },
+                    },
                 }),
                 summary: new Chart(elements.benchChartSummary, {
                     type: 'bar',
@@ -1164,7 +1273,25 @@
                         interaction: { mode: 'index', intersect: false, axis: 'x' },
                         plugins: {
                             title: { display: true, text: 'Per-run summary' },
-                            tooltip: sharedTooltip,
+                            tooltip: {
+                                ...sharedTooltip,
+                                callbacks: {
+                                    label(ctx) {
+                                        const ds = ctx.dataset;
+                                        const v = ctx.parsed.y;
+                                        const value = v == null || Number.isNaN(v)
+                                            ? '—'
+                                            : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
+                                        if (ds._qpRaw) {
+                                            const raw = ds._qpRaw[ctx.dataIndex];
+                                            const codec = ds._qpCodec[ctx.dataIndex];
+                                            const rawStr = raw != null && Number.isFinite(raw) ? raw.toFixed(1) : '—';
+                                            return `${ds.label}: ${value}%  (raw ${rawStr} ${codec ?? '?'})`;
+                                        }
+                                        return `${ds.label}: ${value}`;
+                                    },
+                                },
+                            },
                         },
                         scales: { y: { beginAtZero: true } },
                     },
@@ -1181,19 +1308,49 @@
             const charts = ensureBenchCharts();
             if (!charts) return;
             const runs = [...benchmarkRuns, ...(currentBenchRun ? [currentBenchRun] : [])];
-            const datasets = { fps: [], bitrate: [], rtt: [], loss: [], nack: [], keyframes: [] };
+            const datasets = { fps: [], bitrate: [], rtt: [], loss: [], nack: [], keyframes: [], qp: [], bpp: [] };
             runs.forEach((run, idx) => {
                 const color = runColor(idx);
                 const label = runLabel(run, idx);
                 const points = run.samples.map((s) => ({ x: +(s.tMs / 1000).toFixed(2), d: s.derived }));
+                const outCodec = points.find((p) => p.d.outboundCodec)?.d.outboundCodec ?? '?';
+                const inCodec = points.find((p) => p.d.inboundCodec)?.d.inboundCodec ?? '?';
                 datasets.fps.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.receiverFps })), spanGaps: true, pointRadius: 0 });
-                datasets.bitrate.push({ label: `${label} rx`, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.receiverBitrateBps != null ? p.d.receiverBitrateBps / 1000 : null })), spanGaps: true, pointRadius: 0 });
-                datasets.bitrate.push({ label: `${label} tx`, borderColor: color, backgroundColor: color, borderDash: [4, 4], data: points.map((p) => ({ x: p.x, y: p.d.senderBitrateBps != null ? p.d.senderBitrateBps / 1000 : null })), spanGaps: true, pointRadius: 0 });
+                datasets.bitrate.push({ label: `${label} tx`, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.senderBitrateBps != null ? p.d.senderBitrateBps / 1000 : null })), spanGaps: true, pointRadius: 0 });
+                datasets.bitrate.push({ label: `${label} rx`, borderColor: color, backgroundColor: color, borderDash: [4, 4], data: points.map((p) => ({ x: p.x, y: p.d.receiverBitrateBps != null ? p.d.receiverBitrateBps / 1000 : null })), spanGaps: true, pointRadius: 0 });
                 datasets.rtt.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.rtt })), spanGaps: true, pointRadius: 0 });
                 datasets.loss.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.cumulativeLossPct })), spanGaps: true, pointRadius: 0 });
-                datasets.nack.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.nackCountDelta })), spanGaps: true, pointRadius: 0 });
-                datasets.keyframes.push({ label: `${label} encoded`, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.keyFramesEncodedTotal })), spanGaps: true, pointRadius: 0 });
-                datasets.keyframes.push({ label: `${label} decoded`, borderColor: color, backgroundColor: color, borderDash: [4, 4], data: points.map((p) => ({ x: p.x, y: p.d.keyFramesDecodedTotal })), spanGaps: true, pointRadius: 0 });
+                datasets.nack.push({ label: `${label} out`, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.nackOutDelta })), spanGaps: true, pointRadius: 0 });
+                datasets.nack.push({ label: `${label} in`, borderColor: color, backgroundColor: color, borderDash: [4, 4], data: points.map((p) => ({ x: p.x, y: p.d.nackInDelta })), spanGaps: true, pointRadius: 0 });
+                datasets.keyframes.push({ label: `${label} out`, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.keyFramesOutDelta })), spanGaps: true, pointRadius: 0 });
+                datasets.keyframes.push({ label: `${label} in`, borderColor: color, backgroundColor: color, borderDash: [4, 4], data: points.map((p) => ({ x: p.x, y: p.d.keyFramesInDelta })), spanGaps: true, pointRadius: 0 });
+                const qpOutRawSeries = points.map((p) => p.d.avgQpOut);
+                const qpInRawSeries = points.map((p) => p.d.avgQpIn);
+                datasets.qp.push({
+                    label: `${label} out (${outCodec})`,
+                    borderColor: color,
+                    backgroundColor: color,
+                    yAxisID: 'y',
+                    data: points.map((p) => ({ x: p.x, y: normalizeQp(p.d.avgQpOut, outCodec) })),
+                    spanGaps: true,
+                    pointRadius: 0,
+                    _qpRaw: qpOutRawSeries,
+                    _qpCodec: outCodec,
+                });
+                datasets.qp.push({
+                    label: `${label} in (${inCodec})`,
+                    borderColor: color,
+                    backgroundColor: color,
+                    borderDash: [4, 4],
+                    yAxisID: 'y',
+                    data: points.map((p) => ({ x: p.x, y: normalizeQp(p.d.avgQpIn, inCodec) })),
+                    spanGaps: true,
+                    pointRadius: 0,
+                    _qpRaw: qpInRawSeries,
+                    _qpCodec: inCodec,
+                });
+                datasets.bpp.push({ label: `${label} out`, borderColor: color, backgroundColor: color, yAxisID: 'y', data: points.map((p) => ({ x: p.x, y: p.d.bppOut })), spanGaps: true, pointRadius: 0 });
+                datasets.bpp.push({ label: `${label} in`, borderColor: color, backgroundColor: color, borderDash: [4, 4], yAxisID: 'y', data: points.map((p) => ({ x: p.x, y: p.d.bppIn })), spanGaps: true, pointRadius: 0 });
             });
             charts.fps.data.datasets = datasets.fps;
             charts.bitrate.data.datasets = datasets.bitrate;
@@ -1201,12 +1358,16 @@
             charts.loss.data.datasets = datasets.loss;
             charts.nack.data.datasets = datasets.nack;
             charts.keyframes.data.datasets = datasets.keyframes;
+            charts.qp.data.datasets = datasets.qp;
+            charts.bpp.data.datasets = datasets.bpp;
             charts.fps.update();
             charts.bitrate.update();
             charts.rtt.update();
             charts.loss.update();
             charts.nack.update();
             charts.keyframes.update();
+            charts.qp.update();
+            charts.bpp.update();
         }
 
         function refreshSummaryChart() {
@@ -1214,47 +1375,154 @@
             if (!charts) return;
             const labels = benchmarkRuns.map((r, i) => runLabel(r, i));
             const pick = (key) => benchmarkRuns.map((r) => key(r.summary));
+
+            const BITRATE_COLOR = '#17becf';
+            const BPP_COLOR = '#b15928';
+            const QP_COLOR = '#6a3d9a';
+
+            const qpInRaw = pick((s) => s.avgQpIn);
+            const qpOutRaw = pick((s) => s.avgQpOut);
+            const qpInCodec = pick((s) => s.inboundCodec);
+            const qpOutCodec = pick((s) => s.outboundCodec);
+
             charts.summary.data.labels = labels;
             charts.summary.data.datasets = [
-                { label: 'Warmup (s)', data: pick((s) => s.warmupMs != null ? s.warmupMs / 1000 : null), backgroundColor: '#1f77b4' },
                 { label: 'Avg FPS', data: pick((s) => s.fps.avg), backgroundColor: '#2ca02c' },
                 { label: 'p5 FPS', data: pick((s) => s.fps.p5), backgroundColor: '#ff7f0e' },
                 { label: 'FPS σ', data: pick((s) => s.fps.stddev), backgroundColor: '#9467bd' },
-                { label: 'Avg rx kbps / 100', data: pick((s) => s.receiverBitrateBps / 100000), backgroundColor: '#17becf' },
-                { label: 'Avg tx kbps / 100', data: pick((s) => s.senderBitrateBps / 100000), backgroundColor: '#0b5d6f' },
-                { label: 'Freezes', data: pick((s) => s.freezeCount), backgroundColor: '#d62728' },
-                { label: 'Loss %', data: pick((s) => s.packetLoss * 100), backgroundColor: '#8c564b' },
+
+                {
+                    label: 'Avg tx kbps / 100',
+                    data: pick((s) => s.senderBitrateBps / 100000),
+                    backgroundColor: BITRATE_COLOR,
+                    borderColor: BITRATE_COLOR,
+                },
+                {
+                    label: 'Avg rx kbps / 100',
+                    data: pick((s) => s.receiverBitrateBps / 100000),
+                    backgroundColor: makeStripePattern(BITRATE_COLOR),
+                    borderColor: BITRATE_COLOR,
+                    borderWidth: 1,
+                },
+
+                {
+                    label: 'Avg QP % out',
+                    data: qpOutRaw.map((q, i) => normalizeQp(q, qpOutCodec[i])),
+                    backgroundColor: QP_COLOR,
+                    borderColor: QP_COLOR,
+                    _qpRaw: qpOutRaw,
+                    _qpCodec: qpOutCodec,
+                },
+                {
+                    label: 'Avg QP % in',
+                    data: qpInRaw.map((q, i) => normalizeQp(q, qpInCodec[i])),
+                    backgroundColor: makeStripePattern(QP_COLOR),
+                    borderColor: QP_COLOR,
+                    borderWidth: 1,
+                    _qpRaw: qpInRaw,
+                    _qpCodec: qpInCodec,
+                },
+
+                {
+                    label: 'Avg BPP out × 100',
+                    data: pick((s) => s.avgBppOut != null ? s.avgBppOut * 100 : null),
+                    backgroundColor: BPP_COLOR,
+                    borderColor: BPP_COLOR,
+                },
+                {
+                    label: 'Avg BPP in × 100',
+                    data: pick((s) => s.avgBppIn != null ? s.avgBppIn * 100 : null),
+                    backgroundColor: makeStripePattern(BPP_COLOR),
+                    borderColor: BPP_COLOR,
+                    borderWidth: 1,
+                },
+
+                { label: 'Freezes total', data: pick((s) => s.freezeCount), backgroundColor: '#d62728' },
             ];
             charts.summary.update();
         }
 
+        function sumLayerField(layers, field) {
+            let total = 0;
+            let seen = false;
+            for (const layer of layers ?? []) {
+                const value = layer?.[field];
+                if (typeof value === 'number' && Number.isFinite(value)) {
+                    total += value;
+                    seen = true;
+                }
+            }
+            return seen ? total : null;
+        }
+
+        function safeDelta(currTotal, prevTotal) {
+            if (currTotal == null || prevTotal == null) return null;
+            const delta = currTotal - prevTotal;
+            return Number.isFinite(delta) && delta >= 0 ? delta : null;
+        }
+
+        function firstCodec(items) {
+            for (const item of items ?? []) {
+                if (item?.codecMimeType) return item.codecMimeType;
+            }
+            return null;
+        }
+
         function deriveSampleMetrics(curr, prev) {
             const d = {
+                outboundCodec: null,
+                inboundCodec: null,
                 receiverFps: null,
                 receiverBitrateBps: null,
                 senderBitrateBps: null,
                 senderFps: null,
                 packetsLostDelta: 0,
-                packetsReceivedDelta: 0,
                 cumulativeLossPct: null,
                 rtt: null,
-                jitter: null,
-                frameWidth: null,
-                frameHeight: null,
-                nackCountTotal: null,
-                nackCountDelta: 0,
-                keyFramesEncodedTotal: curr.keyFramesEncoded ?? 0,
-                keyFramesDecodedTotal: curr.keyFramesDecoded ?? 0,
-                keyFramesEncodedDelta: prev ? Math.max(0, (curr.keyFramesEncoded ?? 0) - (prev.keyFramesEncoded ?? 0)) : 0,
-                keyFramesDecodedDelta: prev ? Math.max(0, (curr.keyFramesDecoded ?? 0) - (prev.keyFramesDecoded ?? 0)) : 0,
-                qualityLimitationReason: null,
+                outFrameWidth: null,
+                outFrameHeight: null,
+                inFrameWidth: null,
+                inFrameHeight: null,
+                inFps: null,
+                nackOutDelta: 0,
+                nackInDelta: 0,
+                keyFramesOutTotal: null,
+                keyFramesOutDelta: 0,
+                keyFramesInTotal: null,
+                keyFramesInDelta: 0,
+                qlReasonOut: null,
+                bppOut: null,
+                bppIn: null,
+                qpSumOutTotal: null,
+                framesEncodedTotal: null,
+                avgQpOut: null,
+                totalEncodeTimeSec: null,
+                avgEncodeMs: null,
+                qpSumInTotal: null,
+                framesDecodedTotal: null,
+                avgQpIn: null,
+                freezeCountTotal: null,
+                freezeCountDelta: 0,
+                totalFreezesDurationSec: null,
+                pauseCountTotal: null,
+                pauseCountDelta: 0,
+                framesDroppedInTotal: null,
+                framesDroppedInDelta: 0,
             };
+
             const recv = curr.receiver?.[0];
             if (recv) {
-                d.frameWidth = recv.frameWidth ?? null;
-                d.frameHeight = recv.frameHeight ?? null;
-                d.jitter = recv.jitter ?? null;
-                d.nackCountTotal = recv.nackCount ?? null;
+                d.inFrameWidth = recv.frameWidth ?? null;
+                d.inFrameHeight = recv.frameHeight ?? null;
+                d.inFps = typeof recv.framesPerSecond === 'number' ? recv.framesPerSecond : null;
+                d.qpSumInTotal = recv.qpSum ?? null;
+                d.framesDecodedTotal = recv.framesDecoded ?? null;
+                d.keyFramesInTotal = recv.keyFramesDecoded ?? null;
+                d.freezeCountTotal = recv.freezeCount ?? null;
+                d.pauseCountTotal = recv.pauseCount ?? null;
+                d.framesDroppedInTotal = recv.framesDropped ?? null;
+                d.totalFreezesDurationSec = recv.totalFreezesDuration ?? null;
+
                 const prevRecv = prev?.receiver?.[0];
                 if (prevRecv) {
                     const dtMs = recv.timestamp - prevRecv.timestamp;
@@ -1263,17 +1531,35 @@
                         d.receiverBitrateBps = ((recv.bytesReceived - prevRecv.bytesReceived) * 8 * 1000) / dtMs;
                     }
                     d.packetsLostDelta = Math.max(0, (recv.packetsLost ?? 0) - (prevRecv.packetsLost ?? 0));
-                    d.packetsReceivedDelta = Math.max(0, (recv.packetsReceived ?? 0) - (prevRecv.packetsReceived ?? 0));
-                    d.nackCountDelta = Math.max(0, (recv.nackCount ?? 0) - (prevRecv.nackCount ?? 0));
+                    d.nackInDelta = Math.max(0, (recv.nackCount ?? 0) - (prevRecv.nackCount ?? 0));
+                    d.freezeCountDelta = Math.max(0, (recv.freezeCount ?? 0) - (prevRecv.freezeCount ?? 0));
+                    d.pauseCountDelta = Math.max(0, (recv.pauseCount ?? 0) - (prevRecv.pauseCount ?? 0));
+                    d.framesDroppedInDelta = Math.max(0, (recv.framesDropped ?? 0) - (prevRecv.framesDropped ?? 0));
+                    d.keyFramesInDelta = Math.max(0, (recv.keyFramesDecoded ?? 0) - (prevRecv.keyFramesDecoded ?? 0));
+
+                    const qpDelta = safeDelta(recv.qpSum, prevRecv.qpSum);
+                    const decodedDelta = safeDelta(recv.framesDecoded, prevRecv.framesDecoded);
+                    if (qpDelta != null && decodedDelta && decodedDelta > 0) {
+                        d.avgQpIn = qpDelta / decodedDelta;
+                    }
                 }
                 const totalLost = recv.packetsLost ?? 0;
                 const totalRecv = recv.packetsReceived ?? 0;
                 const denom = totalLost + totalRecv;
                 d.cumulativeLossPct = denom > 0 ? (totalLost / denom) * 100 : null;
             }
+
             if (curr.sender && curr.sender.length > 0) {
                 d.senderFps = curr.sender.reduce((m, s) => Math.max(m, s.framesPerSecond ?? 0), 0);
-                d.qualityLimitationReason = curr.sender[0].qualityLimitationReason ?? null;
+                d.qlReasonOut = curr.sender[0].qualityLimitationReason ?? null;
+                d.outFrameWidth = curr.sender[0].frameWidth ?? null;
+                d.outFrameHeight = curr.sender[0].frameHeight ?? null;
+                d.qpSumOutTotal = sumLayerField(curr.sender, 'qpSum');
+                d.framesEncodedTotal = sumLayerField(curr.sender, 'framesEncoded');
+                d.totalEncodeTimeSec = sumLayerField(curr.sender, 'totalEncodeTime');
+                d.keyFramesOutTotal = sumLayerField(curr.sender, 'keyFramesEncoded');
+                const nackOutTotal = sumLayerField(curr.sender, 'nackCount');
+
                 let bytesNow = 0;
                 let bytesPrev = 0;
                 let dtMs = 0;
@@ -1288,7 +1574,51 @@
                 }
                 if (dtMs > 0) d.senderBitrateBps = ((bytesNow - bytesPrev) * 8 * 1000) / dtMs;
                 d.rtt = curr.sender.reduce((m, s) => Math.max(m, (s.roundTripTime ?? 0) * 1000), 0) || null;
+
+                if (prev?.sender) {
+                    const prevQpOut = sumLayerField(prev.sender, 'qpSum');
+                    const prevFramesEncoded = sumLayerField(prev.sender, 'framesEncoded');
+                    const prevTotalEncodeTime = sumLayerField(prev.sender, 'totalEncodeTime');
+                    const prevKeyFramesEncoded = sumLayerField(prev.sender, 'keyFramesEncoded');
+                    const prevNackOut = sumLayerField(prev.sender, 'nackCount');
+
+                    const qpDelta = safeDelta(d.qpSumOutTotal, prevQpOut);
+                    const framesEncodedDelta = safeDelta(d.framesEncodedTotal, prevFramesEncoded);
+                    const totalEncodeTimeDelta = safeDelta(d.totalEncodeTimeSec, prevTotalEncodeTime);
+
+                    if (qpDelta != null && framesEncodedDelta && framesEncodedDelta > 0) {
+                        d.avgQpOut = qpDelta / framesEncodedDelta;
+                    }
+                    if (totalEncodeTimeDelta != null && framesEncodedDelta && framesEncodedDelta > 0) {
+                        d.avgEncodeMs = (totalEncodeTimeDelta * 1000) / framesEncodedDelta;
+                    }
+                    d.keyFramesOutDelta = safeDelta(d.keyFramesOutTotal, prevKeyFramesEncoded) ?? 0;
+                    d.nackOutDelta = safeDelta(nackOutTotal, prevNackOut) ?? 0;
+                }
             }
+
+            d.outboundCodec = firstCodec(curr.sender);
+            d.inboundCodec = firstCodec(curr.receiver);
+
+            let senderPixelsPerSec = 0;
+            for (const s of curr.sender ?? []) {
+                const w = s.frameWidth;
+                const h = s.frameHeight;
+                const fps = s.framesPerSecond;
+                if (w && h && fps) senderPixelsPerSec += w * h * fps;
+            }
+            if (senderPixelsPerSec > 0 && d.senderBitrateBps != null && d.senderBitrateBps > 0) {
+                d.bppOut = d.senderBitrateBps / senderPixelsPerSec;
+            }
+
+            const inFpsForBpp = d.inFps && d.inFps > 0 ? d.inFps : d.receiverFps;
+            if (
+                d.inFrameWidth && d.inFrameHeight && inFpsForBpp && inFpsForBpp > 0 &&
+                d.receiverBitrateBps != null && d.receiverBitrateBps > 0
+            ) {
+                d.bppIn = d.receiverBitrateBps / (d.inFrameWidth * d.inFrameHeight * inFpsForBpp);
+            }
+
             return d;
         }
 
@@ -1302,15 +1632,18 @@
             let raw;
             try { raw = await decartRealtime.getVideoStats(); } catch (err) { addLog(`Benchmark sample failed: ${err.message}`, 'error'); return; }
             const tMs = nowMs() - currentBenchRun.startedAtMs;
-            const derived = deriveSampleMetrics(raw, benchPrevRaw);
-            const sample = { tMs, phase: currentPhase(), sender: raw.sender, receiver: raw.receiver, derived };
+            const derived = deriveSampleMetrics(raw, currentBenchRun.prevRaw);
+            const sample = { tMs, sender: raw.sender, receiver: raw.receiver, derived };
             currentBenchRun.samples.push(sample);
-            benchPrevRaw = raw;
+            currentBenchRun.prevRaw = raw;
             elements.benchLive.textContent =
-                `t=${(tMs / 1000).toFixed(0)}s phase=${sample.phase} ` +
+                `t=${(tMs / 1000).toFixed(0)}s ` +
                 `rxFps=${(derived.receiverFps ?? 0).toFixed(1)} rxKbps=${((derived.receiverBitrateBps ?? 0) / 1000).toFixed(0)} ` +
                 `txKbps=${((derived.senderBitrateBps ?? 0) / 1000).toFixed(0)} rtt=${(derived.rtt ?? 0).toFixed(0)}ms ` +
-                `res=${derived.frameWidth ?? '?'}×${derived.frameHeight ?? '?'} qLim=${derived.qualityLimitationReason ?? 'none'}`;
+                `out=${derived.outFrameWidth ?? '?'}×${derived.outFrameHeight ?? '?'} (${derived.outboundCodec ?? '?'}) ` +
+                `in=${derived.inFrameWidth ?? '?'}×${derived.inFrameHeight ?? '?'} (${derived.inboundCodec ?? '?'}) ` +
+                `qpOut=${derived.avgQpOut?.toFixed?.(1) ?? '?'} qpIn=${derived.avgQpIn?.toFixed?.(1) ?? '?'} ` +
+                `bppOut=${derived.bppOut?.toFixed?.(3) ?? '?'} bppIn=${derived.bppIn?.toFixed?.(3) ?? '?'}`;
             if (currentBenchRun.warmupMs === null && derived.receiverFps != null) {
                 currentBenchRun.warmupRun.push(derived.receiverFps);
                 if (currentBenchRun.warmupRun.length > BENCH_WARMUP_REQUIRED_SAMPLES) currentBenchRun.warmupRun.shift();
@@ -1336,32 +1669,46 @@
             return s[i];
         }
 
+        function meanIgnoringNulls(arr) {
+            const filtered = arr.filter((v) => v != null && Number.isFinite(v));
+            return filtered.length ? filtered.reduce((a, b) => a + b, 0) / filtered.length : null;
+        }
+
         function computeBenchSummary(run) {
             const fpsArr = run.samples.map((s) => s.derived.receiverFps).filter((v) => v != null && Number.isFinite(v));
             const rxBr = run.samples.map((s) => s.derived.receiverBitrateBps).filter((v) => v != null && Number.isFinite(v));
             const txBr = run.samples.map((s) => s.derived.senderBitrateBps).filter((v) => v != null && Number.isFinite(v));
             const rtts = run.samples.map((s) => s.derived.rtt).filter((v) => v != null && Number.isFinite(v) && v > 0);
-            const jitters = run.samples.map((s) => s.derived.jitter).filter((v) => v != null && Number.isFinite(v));
             const totalLost = run.samples.reduce((a, s) => a + (s.derived.packetsLostDelta || 0), 0);
-            const totalReceived = run.samples.reduce((a, s) => a + (s.derived.packetsReceivedDelta || 0), 0);
-            const loss = (totalLost + totalReceived) > 0 ? totalLost / (totalLost + totalReceived) : 0;
-            let freezeCount = 0;
-            let freezeDurMs = 0;
-            let inFreeze = false;
-            for (let i = 1; i < run.samples.length; i++) {
-                const f = run.samples[i].derived.receiverFps;
-                const isFreeze = f != null && f < 1;
-                if (isFreeze) {
-                    freezeDurMs += run.samples[i].tMs - run.samples[i - 1].tMs;
-                    if (!inFreeze) { freezeCount++; inFreeze = true; }
-                } else { inFreeze = false; }
-            }
-            const last = run.samples[run.samples.length - 1];
-            const resolution = last?.derived.frameWidth && last.derived.frameHeight
-                ? `${last.derived.frameWidth}×${last.derived.frameHeight}` : 'n/a';
+            const totalReceived = run.samples.reduce(
+                (a, s) => a + ((s.receiver?.[0]?.packetsReceived ?? 0) - (a > 0 ? 0 : 0)),
+                0,
+            );
+            const lastRecv = run.samples[run.samples.length - 1]?.receiver?.[0];
+            const firstRecv = run.samples.find((s) => s.receiver?.[0])?.receiver?.[0];
+            const denom = (lastRecv?.packetsReceived ?? 0) - (firstRecv?.packetsReceived ?? 0)
+                + (lastRecv?.packetsLost ?? 0) - (firstRecv?.packetsLost ?? 0);
+            const loss = denom > 0 ? totalLost / denom : 0;
+
+            const lastSample = run.samples[run.samples.length - 1];
+            const firstSampleWithFreeze = run.samples.find((s) => s.derived.freezeCountTotal != null);
+            const freezeCount = lastSample?.derived.freezeCountTotal != null
+                ? lastSample.derived.freezeCountTotal - (firstSampleWithFreeze?.derived.freezeCountTotal ?? 0)
+                : 0;
+            const freezeDurSec = lastSample?.derived.totalFreezesDurationSec != null
+                ? lastSample.derived.totalFreezesDurationSec - (firstSampleWithFreeze?.derived.totalFreezesDurationSec ?? 0)
+                : 0;
+
+            const outResolution = lastSample?.derived.outFrameWidth && lastSample.derived.outFrameHeight
+                ? `${lastSample.derived.outFrameWidth}×${lastSample.derived.outFrameHeight}` : 'n/a';
+            const inResolution = lastSample?.derived.inFrameWidth && lastSample.derived.inFrameHeight
+                ? `${lastSample.derived.inFrameWidth}×${lastSample.derived.inFrameHeight}` : 'n/a';
             const avgFps = avg(fpsArr);
             const avgRx = avg(rxBr);
             const bitratePerFrame = avgFps > 0 ? avgRx / avgFps : 0;
+            const outboundCodec = run.samples.find((s) => s.derived.outboundCodec)?.derived.outboundCodec ?? null;
+            const inboundCodec = run.samples.find((s) => s.derived.inboundCodec)?.derived.inboundCodec ?? null;
+            const sumDeltas = (key) => run.samples.reduce((a, s) => a + (s.derived[key] || 0), 0);
             return {
                 durationMs: run.endedAtMs - run.startedAtMs,
                 samples: run.samples.length,
@@ -1378,11 +1725,22 @@
                 receiverBitrateBps: avgRx,
                 bytesPerFrame: bitratePerFrame / 8,
                 rttMs: avg(rtts),
-                jitter: avg(jitters),
                 packetLoss: loss,
                 freezeCount,
-                totalFreezesDurationMs: freezeDurMs,
-                resolution,
+                totalFreezesDurationSec: freezeDurSec,
+                outResolution,
+                inResolution,
+                outboundCodec,
+                inboundCodec,
+                avgQpOut: meanIgnoringNulls(run.samples.map((s) => s.derived.avgQpOut)),
+                avgQpIn: meanIgnoringNulls(run.samples.map((s) => s.derived.avgQpIn)),
+                avgBppOut: meanIgnoringNulls(run.samples.map((s) => s.derived.bppOut)),
+                avgBppIn: meanIgnoringNulls(run.samples.map((s) => s.derived.bppIn)),
+                avgEncodeMs: meanIgnoringNulls(run.samples.map((s) => s.derived.avgEncodeMs)),
+                keyFramesOutDeltaTotal: sumDeltas('keyFramesOutDelta'),
+                keyFramesInDeltaTotal: sumDeltas('keyFramesInDelta'),
+                nackOutDeltaTotal: sumDeltas('nackOutDelta'),
+                nackInDeltaTotal: sumDeltas('nackInDelta'),
             };
         }
 
@@ -1401,8 +1759,8 @@
                 samples: [],
                 warmupMs: null,
                 warmupRun: [],
+                prevRaw: null,
             };
-            benchPrevRaw = null;
             elements.benchStart.disabled = true;
             elements.benchStop.disabled = false;
             elements.benchMarkPhase.disabled = false;
@@ -1472,14 +1830,21 @@
 
         function exportBenchCsv() {
             const header = [
-                'run', 'profile', 'sessionId', 'tMs', 'phase',
+                'run', 'profile', 'sessionId', 'tMs',
+                'outboundCodec', 'inboundCodec',
                 'receiverFps', 'receiverKbps', 'senderKbps', 'senderFps',
-                'rttMs', 'jitter', 'packetsLostDelta', 'packetsReceivedDelta',
-                'cumulativeLossPct', 'frameWidth', 'frameHeight',
-                'nackCountTotal', 'nackCountDelta',
-                'keyFramesEncodedTotal', 'keyFramesEncodedDelta',
-                'keyFramesDecodedTotal', 'keyFramesDecodedDelta',
-                'qualityLimitationReason',
+                'outFrameWidth', 'outFrameHeight', 'inFrameWidth', 'inFrameHeight', 'inFps',
+                'bppOut', 'bppIn',
+                'qpSumOutTotal', 'framesEncodedTotal', 'avgQpOut',
+                'qpSumInTotal', 'framesDecodedTotal', 'avgQpIn',
+                'totalEncodeTimeSec', 'avgEncodeMs',
+                'rttMs', 'packetsLostDelta', 'cumulativeLossPct',
+                'nackOutDelta', 'nackInDelta',
+                'keyFramesOutTotal', 'keyFramesOutDelta', 'keyFramesInTotal', 'keyFramesInDelta',
+                'framesDroppedInTotal', 'framesDroppedInDelta',
+                'freezeCountTotal', 'freezeCountDelta', 'totalFreezesDurationSec',
+                'pauseCountTotal', 'pauseCountDelta',
+                'qlReasonOut',
             ];
             const rows = [header.join(',')];
             benchmarkRuns.forEach((run, idx) => {
@@ -1490,25 +1855,44 @@
                         run.profile,
                         run.sessionId ?? '',
                         s.tMs,
-                        JSON.stringify(s.phase),
+                        d.outboundCodec ?? '',
+                        d.inboundCodec ?? '',
                         d.receiverFps?.toFixed(3) ?? '',
                         d.receiverBitrateBps != null ? (d.receiverBitrateBps / 1000).toFixed(2) : '',
                         d.senderBitrateBps != null ? (d.senderBitrateBps / 1000).toFixed(2) : '',
                         d.senderFps?.toFixed(3) ?? '',
+                        d.outFrameWidth ?? '',
+                        d.outFrameHeight ?? '',
+                        d.inFrameWidth ?? '',
+                        d.inFrameHeight ?? '',
+                        d.inFps != null ? d.inFps.toFixed(3) : '',
+                        d.bppOut != null ? d.bppOut.toFixed(6) : '',
+                        d.bppIn != null ? d.bppIn.toFixed(6) : '',
+                        d.qpSumOutTotal ?? '',
+                        d.framesEncodedTotal ?? '',
+                        d.avgQpOut != null ? d.avgQpOut.toFixed(3) : '',
+                        d.qpSumInTotal ?? '',
+                        d.framesDecodedTotal ?? '',
+                        d.avgQpIn != null ? d.avgQpIn.toFixed(3) : '',
+                        d.totalEncodeTimeSec != null ? d.totalEncodeTimeSec.toFixed(4) : '',
+                        d.avgEncodeMs != null ? d.avgEncodeMs.toFixed(3) : '',
                         d.rtt?.toFixed(2) ?? '',
-                        d.jitter ?? '',
                         d.packetsLostDelta ?? '',
-                        d.packetsReceivedDelta ?? '',
                         d.cumulativeLossPct?.toFixed(4) ?? '',
-                        d.frameWidth ?? '',
-                        d.frameHeight ?? '',
-                        d.nackCountTotal ?? '',
-                        d.nackCountDelta ?? '',
-                        d.keyFramesEncodedTotal ?? '',
-                        d.keyFramesEncodedDelta ?? '',
-                        d.keyFramesDecodedTotal ?? '',
-                        d.keyFramesDecodedDelta ?? '',
-                        d.qualityLimitationReason ?? '',
+                        d.nackOutDelta ?? '',
+                        d.nackInDelta ?? '',
+                        d.keyFramesOutTotal ?? '',
+                        d.keyFramesOutDelta ?? '',
+                        d.keyFramesInTotal ?? '',
+                        d.keyFramesInDelta ?? '',
+                        d.framesDroppedInTotal ?? '',
+                        d.framesDroppedInDelta ?? '',
+                        d.freezeCountTotal ?? '',
+                        d.freezeCountDelta ?? '',
+                        d.totalFreezesDurationSec != null ? d.totalFreezesDurationSec.toFixed(3) : '',
+                        d.pauseCountTotal ?? '',
+                        d.pauseCountDelta ?? '',
+                        d.qlReasonOut ?? '',
                     ].join(','));
                 });
             });
@@ -1655,7 +2039,7 @@
         }
         
         function formatProfileTitle({ key, label }) {
-            return key === 'default' ? `Default baseline — ${label}` : `Profile ${key} — ${label}`;
+            return `Profile ${key} — ${label}`;
         }
 
         function updatePublishProfileDescription() {
@@ -1719,7 +2103,7 @@
             addBtn.style.marginBottom = '0';
             addBtn.disabled = chainActive;
             addBtn.addEventListener('click', () => {
-                const last = chainedProfileKeys[chainedProfileKeys.length - 1] ?? 'default';
+                const last = chainedProfileKeys[chainedProfileKeys.length - 1] ?? DEFAULT_PROFILE_KEY;
                 chainedProfileKeys.push(last);
                 renderChainedProfiles();
                 updatePublishProfileDescription();
@@ -1936,7 +2320,7 @@
                 if (!isConnected) return;
                 addLog('Auto-starting benchmark (3s after remote stream)', 'info');
                 startBenchmark();
-            }, 3000);
+            }, 1500);
         }
 
         async function connectPublisher() {
@@ -1996,8 +2380,9 @@
                     scheduleAutoStartBenchmark();
                     if (chainActive) {
                         if (chainAdvanceTimer) clearTimeout(chainAdvanceTimer);
-                        chainAdvanceTimer = setTimeout(advanceChain, CHAIN_INTERVAL_MS);
-                        addLog(`Chain advance armed in ${CHAIN_INTERVAL_MS / 1000}s`, 'info');
+                        const chainIntervalMs = getChainIntervalMs();
+                        chainAdvanceTimer = setTimeout(advanceChain, chainIntervalMs);
+                        addLog(`Chain advance armed in ${chainIntervalMs / 1000}s`, 'info');
                     }
                 },
                 onConnectionChange: (state) => {
@@ -2121,7 +2506,8 @@
             chainIndex = 0;
             if (chainedProfileKeys.length > 1) {
                 setChainUiLocked(true);
-                addLog(`Starting chain of ${chainedProfileKeys.length} profiles × ${CHAIN_INTERVAL_MS / 1000}s = ${(chainedProfileKeys.length * CHAIN_INTERVAL_MS / 1000)}s total`, 'success');
+                const chainIntervalMs = getChainIntervalMs();
+                addLog(`Starting chain of ${chainedProfileKeys.length} profiles × ${chainIntervalMs / 1000}s = ${(chainedProfileKeys.length * chainIntervalMs / 1000)}s total`, 'success');
             } else {
                 setChainUiLocked(false);
             }

@@ -4,8 +4,8 @@ import pRetry, { AbortError } from "p-retry";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import { InitialStateGate } from "./initial-state-gate";
-import { MediaChannel, type VideoCodec } from "./media-channel";
-import type { RoomOptions, TrackPublishOptions, VideoReceiverStats, VideoSenderStats } from "livekit-client";
+import { MediaChannel, type RealtimeVideoStats, type VideoCodec } from "./media-channel";
+import type { RoomOptions, TrackPublishOptions } from "livekit-client";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 import { SignalingChannel } from "./signaling-channel";
 import type {
@@ -127,12 +127,7 @@ export class StreamSession {
     return this.signaling.sendPrompt(text, opts);
   }
 
-  async getVideoStats(): Promise<{
-    sender: VideoSenderStats[];
-    receiver: VideoReceiverStats[];
-    keyFramesEncoded: number;
-    keyFramesDecoded: number;
-  }> {
+  async getVideoStats(): Promise<RealtimeVideoStats> {
     return this.media.getVideoStats();
   }
 

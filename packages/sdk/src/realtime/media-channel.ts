@@ -21,6 +21,111 @@ import type { RealtimeObservability } from "./observability/realtime-observabili
 
 export type VideoCodec = "h264" | "vp8" | "vp9" | "av1";
 
+export interface RealtimeVideoSenderStats extends VideoSenderStats {
+  qpSum?: number;
+  framesEncoded?: number;
+  totalEncodeTime?: number;
+  keyFramesEncoded?: number;
+  codecMimeType?: string;
+}
+
+export interface RealtimeVideoReceiverStats extends VideoReceiverStats {
+  qpSum?: number;
+  freezeCount?: number;
+  totalFreezesDuration?: number;
+  pauseCount?: number;
+  totalPausesDuration?: number;
+  keyFramesDecoded?: number;
+  framesPerSecond?: number;
+  codecMimeType?: string;
+}
+
+export interface RealtimeVideoStats {
+  sender: RealtimeVideoSenderStats[];
+  receiver: RealtimeVideoReceiverStats[];
+}
+
+type RawOutboundRtp = {
+  type?: string;
+  kind?: string;
+  rid?: string;
+  ssrc?: number;
+  qpSum?: number;
+  framesEncoded?: number;
+  totalEncodeTime?: number;
+  keyFramesEncoded?: number;
+  codecId?: string;
+};
+
+type RawInboundRtp = {
+  type?: string;
+  kind?: string;
+  qpSum?: number;
+  framesDropped?: number;
+  freezeCount?: number;
+  totalFreezesDuration?: number;
+  pauseCount?: number;
+  totalPausesDuration?: number;
+  keyFramesDecoded?: number;
+  framesPerSecond?: number;
+  codecId?: string;
+};
+
+type RawCodec = { type?: string; id?: string; mimeType?: string };
+
+function shortCodecName(mimeType: string | undefined): string | undefined {
+  if (!mimeType) return undefined;
+  const slash = mimeType.indexOf("/");
+  return slash >= 0 ? mimeType.slice(slash + 1).toUpperCase() : mimeType.toUpperCase();
+}
+
+function collectCodecMimeMap(report: RTCStatsReport | null): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!report) return map;
+  report.forEach((stat: unknown) => {
+    const c = stat as RawCodec;
+    if (c.type === "codec" && c.id && typeof c.mimeType === "string") {
+      map.set(c.id, c.mimeType);
+    }
+  });
+  return map;
+}
+
+function mergeSenderLayer(
+  layer: VideoSenderStats,
+  outbound: RawOutboundRtp | undefined,
+  codecMime: Map<string, string>,
+): RealtimeVideoSenderStats {
+  return {
+    ...layer,
+    qpSum: outbound?.qpSum,
+    framesEncoded: outbound?.framesEncoded,
+    totalEncodeTime: outbound?.totalEncodeTime,
+    keyFramesEncoded: outbound?.keyFramesEncoded,
+    codecMimeType: shortCodecName(outbound?.codecId ? codecMime.get(outbound.codecId) : undefined),
+  };
+}
+
+function mergeReceiver(
+  base: VideoReceiverStats,
+  inbound: RawInboundRtp | undefined,
+  codecMime: Map<string, string>,
+): RealtimeVideoReceiverStats {
+  const merged: RealtimeVideoReceiverStats = {
+    ...base,
+    qpSum: inbound?.qpSum,
+    freezeCount: inbound?.freezeCount,
+    totalFreezesDuration: inbound?.totalFreezesDuration,
+    pauseCount: inbound?.pauseCount,
+    totalPausesDuration: inbound?.totalPausesDuration,
+    keyFramesDecoded: inbound?.keyFramesDecoded,
+    framesPerSecond: inbound?.framesPerSecond,
+    codecMimeType: shortCodecName(inbound?.codecId ? codecMime.get(inbound.codecId) : undefined),
+  };
+  if (typeof inbound?.framesDropped === "number") merged.framesDropped = inbound.framesDropped;
+  return merged;
+}
+
 export function getDefaultVideoPublishOptions(
   videoCodec?: VideoCodec,
   overrides?: Partial<TrackPublishOptions>,
@@ -125,69 +230,76 @@ export class MediaChannel {
     this.config.observability?.setLiveKitRoom(room);
   }
 
-  async getVideoStats(): Promise<{
-    sender: VideoSenderStats[];
-    receiver: VideoReceiverStats[];
-    keyFramesEncoded: number;
-    keyFramesDecoded: number;
-  }> {
+  async getVideoStats(): Promise<RealtimeVideoStats> {
     const room = this.room;
-    if (!room) return { sender: [], receiver: [], keyFramesEncoded: 0, keyFramesDecoded: 0 };
+    if (!room) return { sender: [], receiver: [] };
 
-    const sender: VideoSenderStats[] = [];
-    let keyFramesEncoded = 0;
+    const sender: RealtimeVideoSenderStats[] = [];
     for (const pub of room.localParticipant.videoTrackPublications.values()) {
       const track = pub.track;
-      if (track instanceof LocalVideoTrack) {
-        try {
-          const layers = await track.getSenderStats();
-          sender.push(...layers);
-        } catch (error) {
-          this.logger.debug("getSenderStats failed", { error: (error as Error).message });
-        }
-        try {
-          const report = await track.getRTCStatsReport();
-          report?.forEach((stat: unknown) => {
-            const s = stat as { type?: string; kind?: string; keyFramesEncoded?: number };
-            if (s.type === "outbound-rtp" && s.kind === "video" && typeof s.keyFramesEncoded === "number") {
-              keyFramesEncoded += s.keyFramesEncoded;
-            }
-          });
-        } catch (error) {
-          this.logger.debug("getRTCStatsReport (sender) failed", { error: (error as Error).message });
-        }
+      if (!(track instanceof LocalVideoTrack)) continue;
+
+      let layers: VideoSenderStats[] = [];
+      try {
+        layers = await track.getSenderStats();
+      } catch (error) {
+        this.logger.debug("getSenderStats failed", { error: (error as Error).message });
+      }
+
+      let report: RTCStatsReport | null = null;
+      try {
+        report = (await track.getRTCStatsReport()) ?? null;
+      } catch (error) {
+        this.logger.debug("getRTCStatsReport (sender) failed", { error: (error as Error).message });
+      }
+
+      const codecMime = collectCodecMimeMap(report);
+      const outbounds: RawOutboundRtp[] = [];
+      report?.forEach((stat: unknown) => {
+        const s = stat as RawOutboundRtp;
+        if (s.type === "outbound-rtp" && s.kind === "video") outbounds.push(s);
+      });
+
+      for (const layer of layers) {
+        const match = outbounds.find((o) => (o.rid ?? "") === (layer.rid ?? "")) ?? outbounds[0];
+        sender.push(mergeSenderLayer(layer, match, codecMime));
       }
     }
 
-    const receiver: VideoReceiverStats[] = [];
-    let keyFramesDecoded = 0;
+    const receiver: RealtimeVideoReceiverStats[] = [];
     for (const participant of room.remoteParticipants.values()) {
       if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) continue;
       for (const pub of participant.videoTrackPublications.values()) {
         const track = pub.track;
-        if (track instanceof RemoteVideoTrack) {
-          try {
-            const stats = await track.getReceiverStats();
-            if (stats) receiver.push(stats);
-          } catch (error) {
-            this.logger.debug("getReceiverStats failed", { error: (error as Error).message });
-          }
-          try {
-            const report = await track.getRTCStatsReport();
-            report?.forEach((stat: unknown) => {
-              const s = stat as { type?: string; kind?: string; keyFramesDecoded?: number };
-              if (s.type === "inbound-rtp" && s.kind === "video" && typeof s.keyFramesDecoded === "number") {
-                keyFramesDecoded += s.keyFramesDecoded;
-              }
-            });
-          } catch (error) {
-            this.logger.debug("getRTCStatsReport (receiver) failed", { error: (error as Error).message });
-          }
+        if (!(track instanceof RemoteVideoTrack)) continue;
+
+        let stats: VideoReceiverStats | undefined;
+        try {
+          stats = await track.getReceiverStats();
+        } catch (error) {
+          this.logger.debug("getReceiverStats failed", { error: (error as Error).message });
         }
+        if (!stats) continue;
+
+        let report: RTCStatsReport | null = null;
+        try {
+          report = (await track.getRTCStatsReport()) ?? null;
+        } catch (error) {
+          this.logger.debug("getRTCStatsReport (receiver) failed", { error: (error as Error).message });
+        }
+
+        const codecMime = collectCodecMimeMap(report);
+        let inbound: RawInboundRtp | undefined;
+        report?.forEach((stat: unknown) => {
+          const s = stat as RawInboundRtp;
+          if (!inbound && s.type === "inbound-rtp" && s.kind === "video") inbound = s;
+        });
+
+        receiver.push(mergeReceiver(stats, inbound, codecMime));
       }
     }
 
-    return { sender, receiver, keyFramesEncoded, keyFramesDecoded };
+    return { sender, receiver };
   }
 
   async publishLocalTracks(): Promise<void> {

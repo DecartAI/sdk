@@ -18,7 +18,9 @@ import { RealtimeObservability } from "./observability/realtime-observability";
 import type { WebRTCStats } from "./observability/webrtc-stats";
 import { StreamSession } from "./stream-session";
 import type { ConnectionState, GenerationEnded, GenerationTick, ImageSetOptions, QueuePosition } from "./types";
-import type { RoomOptions, TrackPublishOptions, VideoReceiverStats, VideoSenderStats } from "livekit-client";
+import type { RoomOptions, TrackPublishOptions } from "livekit-client";
+
+import type { RealtimeVideoStats } from "./media-channel";
 
 export type RealTimeClientOptions = {
   baseUrl: string;
@@ -89,12 +91,7 @@ export type RealTimeClient = {
   subscribeToken: string | null;
   getSubscribeToken: () => string | null;
   setImage: (image: Blob | File | string | null, options?: ImageSetOptions) => Promise<void>;
-  getVideoStats: () => Promise<{
-    sender: VideoSenderStats[];
-    receiver: VideoReceiverStats[];
-    keyFramesEncoded: number;
-    keyFramesDecoded: number;
-  }>;
+  getVideoStats: () => Promise<RealtimeVideoStats>;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {

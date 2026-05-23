@@ -6,13 +6,13 @@ import {
   Room,
   RoomEvent,
   Track,
-  type VideoReceiverStats,
 } from "livekit-client";
 
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import { createEventBuffer } from "./event-buffer";
+import type { RealtimeVideoReceiverStats, RealtimeVideoStats } from "./media-channel";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
 import type { ConnectionState } from "./types";
@@ -57,7 +57,7 @@ export type RealTimeSubscribeClient = {
   disconnect: () => void;
   on: <K extends keyof SubscribeEvents>(event: K, listener: (data: SubscribeEvents[K]) => void) => void;
   off: <K extends keyof SubscribeEvents>(event: K, listener: (data: SubscribeEvents[K]) => void) => void;
-  getVideoStats: () => Promise<{ sender: never[]; receiver: VideoReceiverStats[] }>;
+  getVideoStats: () => Promise<RealtimeVideoStats>;
 };
 
 export type SubscribeOptions = {
@@ -190,18 +190,24 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
         on: emitter.on,
         off: emitter.off,
         getVideoStats: async () => {
-          const receiver: VideoReceiverStats[] = [];
+          const receiver: RealtimeVideoReceiverStats[] = [];
           for (const participant of activeRoom.remoteParticipants.values()) {
             if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) continue;
             for (const pub of participant.videoTrackPublications.values()) {
               const track = pub.track;
-              if (track instanceof RemoteVideoTrack) {
+              if (!(track instanceof RemoteVideoTrack)) continue;
+              try {
+                const stats = await track.getReceiverStats();
+                if (!stats) continue;
+                let report: RTCStatsReport | null = null;
                 try {
-                  const stats = await track.getReceiverStats();
-                  if (stats) receiver.push(stats);
+                  report = (await track.getRTCStatsReport()) ?? null;
                 } catch (error) {
-                  logger.debug("getReceiverStats failed", { error: (error as Error).message });
+                  logger.debug("getRTCStatsReport (receiver) failed", { error: (error as Error).message });
                 }
+                receiver.push(enrichReceiverFromReport(stats, report));
+              } catch (error) {
+                logger.debug("getReceiverStats failed", { error: (error as Error).message });
               }
             }
           }
@@ -224,3 +230,47 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
 
   return { subscribe };
 };
+
+function enrichReceiverFromReport(
+  base: import("livekit-client").VideoReceiverStats,
+  report: RTCStatsReport | null,
+): RealtimeVideoReceiverStats {
+  if (!report) return { ...base };
+  const codecMime = new Map<string, string>();
+  type RawInbound = {
+    type?: string;
+    kind?: string;
+    qpSum?: number;
+    framesDropped?: number;
+    freezeCount?: number;
+    totalFreezesDuration?: number;
+    pauseCount?: number;
+    totalPausesDuration?: number;
+    keyFramesDecoded?: number;
+    codecId?: string;
+    id?: string;
+    mimeType?: string;
+  };
+  let inbound: RawInbound | undefined;
+  report.forEach((stat: unknown) => {
+    const s = stat as { type?: string; id?: string; mimeType?: string } & RawInbound;
+    if (s.type === "codec" && s.id && typeof s.mimeType === "string") {
+      codecMime.set(s.id, s.mimeType);
+    } else if (!inbound && s.type === "inbound-rtp" && s.kind === "video") {
+      inbound = s;
+    }
+  });
+  const mime = inbound?.codecId ? codecMime.get(inbound.codecId) : undefined;
+  const merged: RealtimeVideoReceiverStats = {
+    ...base,
+    qpSum: inbound?.qpSum,
+    freezeCount: inbound?.freezeCount,
+    totalFreezesDuration: inbound?.totalFreezesDuration,
+    pauseCount: inbound?.pauseCount,
+    totalPausesDuration: inbound?.totalPausesDuration,
+    keyFramesDecoded: inbound?.keyFramesDecoded,
+    codecMimeType: mime ? mime.slice(mime.indexOf("/") + 1).toUpperCase() : undefined,
+  };
+  if (typeof inbound?.framesDropped === "number") merged.framesDropped = inbound.framesDropped;
+  return merged;
+}
