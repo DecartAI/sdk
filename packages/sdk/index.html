@@ -283,6 +283,7 @@
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body>
     <h1>🎭 Decart SDK Test Page</h1>
@@ -381,7 +382,7 @@
 
 
     <!-- Benchmark Dashboard -->
-    <div class="controls">
+    <div class="controls" id="bench-dashboard">
         <h3>Benchmark Dashboard</h3>
         <div class="control-group">
             <label for="bench-duration">Run duration (seconds):</label>
@@ -390,16 +391,17 @@
         <div class="inline-controls">
             <button id="bench-start" disabled>Start Benchmark</button>
             <button id="bench-stop" disabled>Stop Benchmark</button>
-            <input type="text" id="bench-phase-name" placeholder="Phase label (e.g. bad-lte, avg-network, lte)" style="flex:1; min-width:200px;">
-            <button id="bench-mark-phase" disabled>Mark Phase</button>
-            <button id="bench-export-json" disabled>Export JSON</button>
-            <button id="bench-export-csv" disabled>Export CSV</button>
+            <input type="text" id="recording-name" placeholder="Recording name (used for CSV / charts / video)" style="flex:1; min-width:240px;">
+            <div class="checkbox-group">
+                <input type="checkbox" id="include-recording-toggle">
+                <label for="include-recording-toggle" style="margin:0; font-weight:normal;">Include chain video recording</label>
+            </div>
+            <button id="bench-export-all" disabled>Export All</button>
             <button id="bench-clear" disabled>Clear Runs</button>
         </div>
         <div id="bench-status" style="margin-top:10px; font-family:'Courier New', monospace; font-size:13px;">
             <strong>Status:</strong> <span id="bench-status-text">idle</span>
             &nbsp; <strong>Elapsed:</strong> <span id="bench-elapsed-text">0s</span>
-            &nbsp; <strong>Phase:</strong> <span id="bench-phase-text">(none)</span>
         </div>
         <div id="bench-live" style="margin-top:6px; font-family:'Courier New', monospace; font-size:11px; color:#444;"></div>
         <div style="margin-top:14px;">
@@ -570,8 +572,8 @@
         // -----------------------------------------------------------------------
         const PUBLISH_PROFILES = {
             A: {
-                label: 'H.264 economy — 1.6 Mbps, maintain-resolution',
-                description: 'Weak-network champion. ~60% of F/G\'s budget at the same resolution and cadence target, biased to preserve pixel fidelity (drop fps before res). Tests how much bandwidth we can shave before the model\'s input quality breaks.',
+                label: 'H.264 economy — 1.6 Mbps @ 30 fps, maintain-resolution',
+                description: 'Bandwidth-shave candidate. ~89% of F\'s budget and 80% of G\'s, same resolution and 30 fps target, biased to preserve pixel fidelity (drop fps before res). Tests how much bitrate we can shave before model input quality breaks.',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: true,
@@ -589,7 +591,7 @@
             },
             B: {
                 label: 'H.264 sharper-frames — 2 Mbps @ 24 fps, maintain-resolution',
-                description: 'Bits-per-frame champion. Same budget as F/G but only 20 fps target, so each frame gets ~50% more bits and visibly sharper detail. Bets the inference model values per-frame fidelity over cadence — and that 20 fps is enough for its temporal needs.',
+                description: 'Bits-per-frame candidate. Same 2 Mbps as G but at 24 fps, so each frame gets ~25% more bits and visibly sharper detail. Bets the inference model values per-frame fidelity over cadence — and that 24 fps is enough for its temporal needs.',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: true,
@@ -663,8 +665,8 @@
                 },
             },
             F: {
-                label: 'H.264 constrained, maintain-framerate',
-                description: 'H.264 single layer with a lower bitrate ceiling for weaker networks; drops resolution before FPS.',
+                label: 'H.264 constrained — 1.8 Mbps @ 24 fps, maintain-framerate',
+                description: 'H.264 single layer with a lower bitrate ceiling for weaker networks; drops resolution before FPS (preserves 24 fps cadence under pressure).',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: false,
@@ -673,16 +675,16 @@
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 2_000_000,
-                        maxFramerate: 30,
+                        maxBitrate: 1_800_000,
+                        maxFramerate: 24,
                         priority: 'high',
                     },
                     degradationPreference: 'maintain-framerate',
                 },
             },
             G: {
-                label: 'H.264 high bitrate, maintain-framerate',
-                description: 'H.264 single layer with more bitrate headroom for clean networks while still preserving resolution under pressure.',
+                label: 'H.264 high bitrate — 2 Mbps @ 30 fps, maintain-resolution',
+                description: 'H.264 single layer with more bitrate headroom for clean networks while still preserving resolution under pressure (drops fps before resolution).',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: false,
@@ -699,8 +701,8 @@
                 },
             },
             H: {
-                label: 'H.264 balanced — like F/G but no degradation bias',
-                description: 'Identical to F/G except degradationPreference=balanced — lets WebRTC pick what to drop. Control profile: tells us whether explicit maintain-framerate or maintain-resolution actually moves the needle vs the engine\'s default behaviour.',
+                label: 'H.264 balanced — 1.8 Mbps @ 30 fps, default degradation',
+                description: 'H.264 single layer matching F\'s bitrate ceiling but at 30 fps, with no explicit degradationPreference so the browser picks its default trade-off (typically balanced) between resolution and framerate under pressure.',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: false,
@@ -709,16 +711,42 @@
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 2_000_000,
+                        maxBitrate: 1_800_000,
                         maxFramerate: 30,
                         priority: 'high',
                     },
-                    degradationPreference: 'balanced',
+                },
+            },
+            L: {
+                label: 'H.264 headroom — 2.8 Mbps @ 24 fps, default degradation',
+                description: 'H.264 single layer with the largest bitrate ceiling in the set, paired with a 24 fps target. No explicit degradationPreference; tests how the browser auto-balances when there\'s plenty of budget on a clean link.',
+                roomOptions: {
+                    adaptiveStream: false,
+                    dynacast: false,
+                },
+                publishOptions: {
+                    videoCodec: 'h264',
+                    simulcast: false,
+                    videoEncoding: {
+                        maxBitrate: 2_800_000,
+                        maxFramerate: 24,
+                        priority: 'high',
+                    },
                 },
             },
         };
 
         const DEFAULT_PROFILE_KEY = Object.keys(PUBLISH_PROFILES)[0];
+        const DEFAULT_CHAIN_PROFILE_KEYS = ['A', 'B', 'F', 'G', 'H', 'L'];
+
+        function shuffledDefaultChain() {
+            const keys = DEFAULT_CHAIN_PROFILE_KEYS.filter((k) => k in PUBLISH_PROFILES);
+            for (let i = keys.length - 1; i > 0; i -= 1) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [keys[i], keys[j]] = [keys[j], keys[i]];
+            }
+            return keys;
+        }
 
         // Chain state: array of profile keys to run sequentially, plus the index currently active.
         // Read lazily so it tracks the current bench-duration input value at chain time.
@@ -728,7 +756,7 @@
                 ? (durationSeconds * 1000) + 6000
                 : 127_000;
         }
-        const chainedProfileKeys = [DEFAULT_PROFILE_KEY];
+        const chainedProfileKeys = shuffledDefaultChain();
         let chainIndex = 0;
         let chainActive = false;
         let chainAdvanceTimer = null;
@@ -741,14 +769,15 @@
         }
 
         const PROFILE_SHORT_LABELS = {
-            A: 'A — H.264 economy 1.2 Mbps',
-            B: 'B — H.264 sharper 2 Mbps @ 20 fps',
+            A: 'A — H.264 1.6 Mbps @ 30 fps, maintain-resolution',
+            B: 'B — H.264 2 Mbps @ 24 fps, maintain-resolution',
             C: 'C — VP9 SVC L1T3',
             D: 'D — VP9 SVC L3T3_KEY',
             E: 'E — AV1 SVC L3T3_KEY',
-            F: 'F — H.264 2 Mbps, maintain-framerate',
-            G: 'G — H.264 2 Mbps, maintain-resolution',
-            H: 'H — H.264 2 Mbps, balanced',
+            F: 'F — H.264 1.8 Mbps @ 24 fps, maintain-framerate',
+            G: 'G — H.264 2 Mbps @ 30 fps, maintain-resolution',
+            H: 'H — H.264 1.8 Mbps @ 30 fps, default',
+            L: 'L — H.264 2.8 Mbps @ 24 fps, default',
         };
 
         function buildProfileOptionsHtml() {
@@ -778,14 +807,13 @@
             benchDuration: document.getElementById('bench-duration'),
             benchStart: document.getElementById('bench-start'),
             benchStop: document.getElementById('bench-stop'),
-            benchPhaseName: document.getElementById('bench-phase-name'),
-            benchMarkPhase: document.getElementById('bench-mark-phase'),
-            benchExportJson: document.getElementById('bench-export-json'),
-            benchExportCsv: document.getElementById('bench-export-csv'),
+            recordingName: document.getElementById('recording-name'),
+            includeRecordingToggle: document.getElementById('include-recording-toggle'),
+            benchExportAll: document.getElementById('bench-export-all'),
+            benchDashboard: document.getElementById('bench-dashboard'),
             benchClear: document.getElementById('bench-clear'),
             benchStatusText: document.getElementById('bench-status-text'),
             benchElapsedText: document.getElementById('bench-elapsed-text'),
-            benchPhaseText: document.getElementById('bench-phase-text'),
             benchLive: document.getElementById('bench-live'),
             benchChartFps: document.getElementById('bench-chart-fps'),
             benchChartBitrate: document.getElementById('bench-chart-bitrate'),
@@ -1074,8 +1102,6 @@
 
         // --- Benchmark engine ---
         const BENCH_POLL_INTERVAL_MS = 1000;
-        const BENCH_WARMUP_FPS_THRESHOLD = 28;
-        const BENCH_WARMUP_REQUIRED_SAMPLES = 1;
         const BENCH_PALETTE = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'];
 
         const benchmarkRuns = [];
@@ -1098,10 +1124,19 @@
         }
 
         const QP_MAX = { H264: 51, VP8: 127, VP9: 255, AV1: 255 };
+        function qpMaxForCodec(codec) {
+            const key = (codec || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            if (key.includes('H264') || key.includes('AVC')) return QP_MAX.H264;
+            if (key.includes('VP8')) return QP_MAX.VP8;
+            if (key.includes('VP9')) return QP_MAX.VP9;
+            if (key.includes('AV1')) return QP_MAX.AV1;
+            return null;
+        }
+
         function normalizeQp(qp, codec) {
             if (qp == null || !Number.isFinite(qp)) return null;
-            const key = (codec || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-            const max = QP_MAX[key] ?? 51;
+            const max = qpMaxForCodec(codec);
+            if (!max) return null;
             return Math.max(0, Math.min(100, (qp / max) * 100));
         }
 
@@ -1622,10 +1657,6 @@
             return d;
         }
 
-        function currentPhase() {
-            if (!currentBenchRun || currentBenchRun.phases.length === 0) return '(none)';
-            return currentBenchRun.phases[currentBenchRun.phases.length - 1].name;
-        }
 
         async function collectBenchSample() {
             if (!currentBenchRun || !decartRealtime?.getVideoStats) return;
@@ -1644,15 +1675,6 @@
                 `in=${derived.inFrameWidth ?? '?'}×${derived.inFrameHeight ?? '?'} (${derived.inboundCodec ?? '?'}) ` +
                 `qpOut=${derived.avgQpOut?.toFixed?.(1) ?? '?'} qpIn=${derived.avgQpIn?.toFixed?.(1) ?? '?'} ` +
                 `bppOut=${derived.bppOut?.toFixed?.(3) ?? '?'} bppIn=${derived.bppIn?.toFixed?.(3) ?? '?'}`;
-            if (currentBenchRun.warmupMs === null && derived.receiverFps != null) {
-                currentBenchRun.warmupRun.push(derived.receiverFps);
-                if (currentBenchRun.warmupRun.length > BENCH_WARMUP_REQUIRED_SAMPLES) currentBenchRun.warmupRun.shift();
-                if (currentBenchRun.warmupRun.length === BENCH_WARMUP_REQUIRED_SAMPLES &&
-                    currentBenchRun.warmupRun.every((f) => f >= BENCH_WARMUP_FPS_THRESHOLD)) {
-                    currentBenchRun.warmupMs = tMs;
-                    addLog(`Warmup reached: ${(tMs / 1000).toFixed(1)}s`, 'success');
-                }
-            }
             if (currentBenchRun.samples.length % 2 === 0) refreshTimeSeriesCharts();
         }
 
@@ -1672,6 +1694,24 @@
         function meanIgnoringNulls(arr) {
             const filtered = arr.filter((v) => v != null && Number.isFinite(v));
             return filtered.length ? filtered.reduce((a, b) => a + b, 0) / filtered.length : null;
+        }
+
+        function averageFromRunDeltas(samples, totalKey, countKey) {
+            const first = samples.find((s) =>
+                typeof s.derived[totalKey] === 'number' &&
+                Number.isFinite(s.derived[totalKey]) &&
+                typeof s.derived[countKey] === 'number' &&
+                Number.isFinite(s.derived[countKey])
+            )?.derived;
+            const last = [...samples].reverse().find((s) =>
+                typeof s.derived[totalKey] === 'number' &&
+                Number.isFinite(s.derived[totalKey]) &&
+                typeof s.derived[countKey] === 'number' &&
+                Number.isFinite(s.derived[countKey])
+            )?.derived;
+            const totalDelta = safeDelta(last?.[totalKey], first?.[totalKey]);
+            const countDelta = safeDelta(last?.[countKey], first?.[countKey]);
+            return totalDelta != null && countDelta != null && countDelta > 0 ? totalDelta / countDelta : null;
         }
 
         function computeBenchSummary(run) {
@@ -1712,7 +1752,6 @@
             return {
                 durationMs: run.endedAtMs - run.startedAtMs,
                 samples: run.samples.length,
-                warmupMs: run.warmupMs,
                 fps: {
                     avg: avgFps,
                     min: fpsArr.length ? Math.min(...fpsArr) : null,
@@ -1732,8 +1771,8 @@
                 inResolution,
                 outboundCodec,
                 inboundCodec,
-                avgQpOut: meanIgnoringNulls(run.samples.map((s) => s.derived.avgQpOut)),
-                avgQpIn: meanIgnoringNulls(run.samples.map((s) => s.derived.avgQpIn)),
+                avgQpOut: averageFromRunDeltas(run.samples, 'qpSumOutTotal', 'framesEncodedTotal'),
+                avgQpIn: averageFromRunDeltas(run.samples, 'qpSumInTotal', 'framesDecodedTotal'),
                 avgBppOut: meanIgnoringNulls(run.samples.map((s) => s.derived.bppOut)),
                 avgBppIn: meanIgnoringNulls(run.samples.map((s) => s.derived.bppIn)),
                 avgEncodeMs: meanIgnoringNulls(run.samples.map((s) => s.derived.avgEncodeMs)),
@@ -1755,20 +1794,14 @@
                 durationMs: durationSeconds * 1000,
                 startedAtMs: nowMs(),
                 endedAtMs: null,
-                phases: [{ name: 'start', tMs: 0 }],
                 samples: [],
-                warmupMs: null,
-                warmupRun: [],
                 prevRaw: null,
             };
             elements.benchStart.disabled = true;
             elements.benchStop.disabled = false;
-            elements.benchMarkPhase.disabled = false;
-            elements.benchExportJson.disabled = false;
-            elements.benchExportCsv.disabled = false;
+            elements.benchExportAll.disabled = false;
             elements.benchClear.disabled = false;
             elements.benchStatusText.textContent = `running (profile=${profileKey})`;
-            elements.benchPhaseText.textContent = 'start';
             elements.benchElapsedText.textContent = '0s';
             benchPollTimer = setInterval(collectBenchSample, BENCH_POLL_INTERVAL_MS);
             benchRunTimer = setTimeout(stopBenchmark, durationSeconds * 1000);
@@ -1788,26 +1821,20 @@
             currentBenchRun.summary = computeBenchSummary(currentBenchRun);
             benchmarkRuns.push(currentBenchRun);
             console.log('[Benchmark] Run complete:', currentBenchRun);
-            addLog(`Benchmark stopped. profile=${currentBenchRun.profile} warmup=${currentBenchRun.summary.warmupMs != null ? (currentBenchRun.summary.warmupMs / 1000).toFixed(1) + 's' : 'n/a'} avgFps=${currentBenchRun.summary.fps.avg.toFixed(1)} p5Fps=${(currentBenchRun.summary.fps.p5 ?? 0).toFixed(1)}`, 'success');
+            addLog(`Benchmark stopped. profile=${currentBenchRun.profile} avgFps=${currentBenchRun.summary.fps.avg.toFixed(1)} p5Fps=${(currentBenchRun.summary.fps.p5 ?? 0).toFixed(1)}`, 'success');
             const finished = currentBenchRun;
             currentBenchRun = null;
             elements.benchStart.disabled = !decartRealtime?.getVideoStats;
             elements.benchStop.disabled = true;
-            elements.benchMarkPhase.disabled = true;
             elements.benchStatusText.textContent = `idle (last: ${finished.profile})`;
             refreshTimeSeriesCharts();
             refreshSummaryChart();
         }
 
-        function markBenchPhase() {
-            if (!currentBenchRun) return;
-            const raw = elements.benchPhaseName.value.trim();
-            const name = raw || `phase-${currentBenchRun.phases.length}`;
-            const tMs = nowMs() - currentBenchRun.startedAtMs;
-            currentBenchRun.phases.push({ name, tMs });
-            elements.benchPhaseName.value = '';
-            elements.benchPhaseText.textContent = name;
-            addLog(`Phase "${name}" marked at ${(tMs / 1000).toFixed(1)}s`, 'info');
+        function sanitizeFileName(raw) {
+            const trimmed = (raw || '').trim();
+            if (!trimmed) return `decart_export_${Date.now()}`;
+            return trimmed.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').slice(0, 120);
         }
 
         function triggerDownload(blob, filename) {
@@ -1821,14 +1848,25 @@
             setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
 
-        function exportBenchJson() {
-            const payload = { exportedAt: new Date().toISOString(), runs: benchmarkRuns };
-            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-            triggerDownload(blob, `benchmark_${Date.now()}.json`);
-            addLog(`Exported ${benchmarkRuns.length} run(s) as JSON`, 'success');
+        async function exportChartsBlob() {
+            if (typeof html2canvas !== 'function') {
+                throw new Error('html2canvas not loaded');
+            }
+            const target = elements.benchDashboard;
+            if (!target) throw new Error('Benchmark dashboard element not found');
+            const canvas = await html2canvas(target, {
+                backgroundColor: '#ffffff',
+                scale: window.devicePixelRatio > 1 ? 2 : 1,
+                useCORS: true,
+                logging: false,
+            });
+            const blob = await new Promise((resolve, reject) => {
+                canvas.toBlob((b) => b ? resolve(b) : reject(new Error('toBlob returned null')), 'image/png');
+            });
+            return { blob, width: canvas.width, height: canvas.height };
         }
 
-        function exportBenchCsv() {
+        function buildCsvBlob() {
             const header = [
                 'run', 'profile', 'sessionId', 'tMs',
                 'outboundCodec', 'inboundCodec',
@@ -1897,15 +1935,55 @@
                 });
             });
             const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-            triggerDownload(blob, `benchmark_${Date.now()}.csv`);
-            addLog(`Exported ${benchmarkRuns.length} run(s) as CSV`, 'success');
+            return blob;
+        }
+
+        async function exportAll() {
+            const btn = elements.benchExportAll;
+            const prev = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Exporting…';
+            const baseName = sanitizeFileName(elements.recordingName.value);
+            const ts = Date.now();
+            try {
+                if (benchmarkRuns.length > 0) {
+                    const csvBlob = buildCsvBlob();
+                    triggerDownload(csvBlob, `${baseName}_${ts}.csv`);
+                    addLog(`Exported ${benchmarkRuns.length} run(s) as CSV → ${baseName}_${ts}.csv`, 'success');
+                } else {
+                    addLog('No benchmark runs to export as CSV', 'info');
+                }
+                try {
+                    const { blob: pngBlob, width, height } = await exportChartsBlob();
+                    triggerDownload(pngBlob, `${baseName}_${ts}.png`);
+                    addLog(`Exported benchmark dashboard as PNG (${width}×${height}) → ${baseName}_${ts}.png`, 'success');
+                } catch (err) {
+                    addLog(`Chart export failed: ${err?.message ?? err}`, 'error');
+                }
+                if (!elements.includeRecordingToggle.checked) {
+                    addLog('Chain recording skipped in export (checkbox off)', 'info');
+                } else if (chainRecorder.blobUrl) {
+                    const ext = chainRecorder.lastExt || 'webm';
+                    const a = document.createElement('a');
+                    a.href = chainRecorder.blobUrl;
+                    a.download = `${baseName}_${ts}.${ext}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    addLog(`Exported chain recording → ${baseName}_${ts}.${ext}`, 'success');
+                } else {
+                    addLog('No chain recording available to export', 'info');
+                }
+            } finally {
+                btn.disabled = false;
+                btn.textContent = prev;
+            }
         }
 
         function clearBenchRuns() {
             if (currentBenchRun) { addLog('Stop the current benchmark first', 'error'); return; }
             benchmarkRuns.length = 0;
-            elements.benchExportJson.disabled = true;
-            elements.benchExportCsv.disabled = true;
+            elements.benchExportAll.disabled = true;
             elements.benchClear.disabled = true;
             elements.benchLive.textContent = '';
             elements.benchStatusText.textContent = 'idle';
@@ -1916,9 +1994,7 @@
 
         elements.benchStart.addEventListener('click', startBenchmark);
         elements.benchStop.addEventListener('click', stopBenchmark);
-        elements.benchMarkPhase.addEventListener('click', markBenchPhase);
-        elements.benchExportJson.addEventListener('click', exportBenchJson);
-        elements.benchExportCsv.addEventListener('click', exportBenchCsv);
+        elements.benchExportAll.addEventListener('click', exportAll);
         elements.benchClear.addEventListener('click', clearBenchRuns);
 
         // --- MediaRecorder for the Decart remote stream ---
@@ -1989,6 +2065,116 @@
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
                 mediaRecorder.stop();
             }
+        }
+
+        // --- Chain-scoped recorder: one continuous MediaRecorder for the whole chain.
+        // Mirrors the remote <video> element to an offscreen canvas via requestAnimationFrame
+        // and records canvas.captureStream(). The canvas keeps drawing whatever frame the
+        // <video> currently shows, so per-profile reconnects (which momentarily clear srcObject)
+        // don't terminate the recording.
+        const chainRecorder = {
+            canvas: null,
+            ctx: null,
+            stream: null,
+            recorder: null,
+            chunks: [],
+            rafId: 0,
+            mimeType: '',
+            blobUrl: null,
+            lastExt: '',
+            startedAtMs: 0,
+        };
+
+        function chainRecorderDrawLoop() {
+            const r = chainRecorder;
+            if (!r.canvas) return;
+            const video = elements.remoteVideo;
+            const vw = video?.videoWidth || 0;
+            const vh = video?.videoHeight || 0;
+            const hasFrame = vw > 0 && vh > 0 && !video.paused && video.readyState >= 2;
+            if (hasFrame) {
+                if (r.canvas.width !== vw || r.canvas.height !== vh) {
+                    r.canvas.width = vw;
+                    r.canvas.height = vh;
+                }
+                try {
+                    r.ctx.drawImage(video, 0, 0, r.canvas.width, r.canvas.height);
+                    r.hasEverDrawn = true;
+                } catch (_) {}
+            }
+            r.rafId = requestAnimationFrame(chainRecorderDrawLoop);
+        }
+
+        function startChainRecording() {
+            const r = chainRecorder;
+            if (r.recorder) return;
+            if (!window.MediaRecorder) {
+                addLog('MediaRecorder is not supported in this browser; cannot record chain', 'error');
+                return;
+            }
+            if (r.blobUrl) {
+                try { URL.revokeObjectURL(r.blobUrl); } catch (_) {}
+                r.blobUrl = null;
+            }
+            r.canvas = document.createElement('canvas');
+            r.canvas.width = 1088;
+            r.canvas.height = 624;
+            r.ctx = r.canvas.getContext('2d');
+            r.ctx.fillStyle = '#000';
+            r.ctx.fillRect(0, 0, r.canvas.width, r.canvas.height);
+            const captureFps = 30;
+            r.stream = r.canvas.captureStream(captureFps);
+            r.chunks = [];
+            r.mimeType = pickSupportedMimeType();
+            try {
+                r.recorder = new MediaRecorder(r.stream, r.mimeType ? { mimeType: r.mimeType } : undefined);
+            } catch (error) {
+                addLog(`Failed to create chain recorder: ${error.message}`, 'error');
+                r.recorder = null;
+                return;
+            }
+            r.recorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) r.chunks.push(event.data);
+            };
+            r.recorder.onstop = () => {
+                const finalType = r.recorder?.mimeType || r.mimeType || 'video/webm';
+                const blob = new Blob(r.chunks, { type: finalType });
+                if (r.blobUrl) {
+                    try { URL.revokeObjectURL(r.blobUrl); } catch (_) {}
+                }
+                r.blobUrl = URL.createObjectURL(blob);
+                const sizeMb = (blob.size / 1024 / 1024).toFixed(2);
+                r.lastExt = finalType.includes('mp4') ? 'mp4' : 'webm';
+                addLog(`Chain recording finalized: ${sizeMb} MB ${r.lastExt} (download via "Export All")`, 'success');
+            };
+            r.recorder.start(1000);
+            r.startedAtMs = Date.now();
+            r.rafId = requestAnimationFrame(chainRecorderDrawLoop);
+            addLog(`Chain recording started (${r.recorder.mimeType || 'default'})`, 'success');
+        }
+
+        function logChainSegmentBoundary(profileKey, slotIndex, totalSlots) {
+            const r = chainRecorder;
+            if (!r.recorder) return;
+            const tSec = ((Date.now() - r.startedAtMs) / 1000).toFixed(1);
+            addLog(`Chain segment ${slotIndex}/${totalSlots} → profile ${profileKey} at t+${tSec}s`, 'info');
+        }
+
+        function stopChainRecording() {
+            const r = chainRecorder;
+            if (r.rafId) {
+                cancelAnimationFrame(r.rafId);
+                r.rafId = 0;
+            }
+            if (r.recorder && r.recorder.state !== 'inactive') {
+                try { r.recorder.stop(); } catch (_) {}
+            }
+            if (r.stream) {
+                r.stream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
+            }
+            r.stream = null;
+            r.canvas = null;
+            r.ctx = null;
         }
 
         // Update connection status
@@ -2453,6 +2639,7 @@
                 return;
             }
             addLog(`Reconnecting with profile ${chainedProfileKeys[chainIndex]} (slot ${chainIndex + 1}/${chainedProfileKeys.length})`, 'info');
+            logChainSegmentBoundary(chainedProfileKeys[chainIndex], chainIndex + 1, chainedProfileKeys.length);
             updatePublishProfileDescription();
             renderChainedProfiles();
             try {
@@ -2469,6 +2656,7 @@
                 clearTimeout(chainAdvanceTimer);
                 chainAdvanceTimer = null;
             }
+            stopChainRecording();
             chainIndex = 0;
             setChainUiLocked(false);
             activeConnectionMode = null;
@@ -2491,9 +2679,8 @@
             elements.referenceImage.disabled = true;
             elements.setImage.disabled = true;
             elements.benchStart.disabled = true;
-            elements.benchMarkPhase.disabled = true;
             if (benchmarkRuns.length > 0) {
-                addLog(`Aggregated ${benchmarkRuns.length} benchmark run(s) — export JSON/CSV to review`, 'success');
+                addLog(`Aggregated ${benchmarkRuns.length} benchmark run(s) — export charts/CSV to review`, 'success');
             }
         }
 
@@ -2508,6 +2695,12 @@
                 setChainUiLocked(true);
                 const chainIntervalMs = getChainIntervalMs();
                 addLog(`Starting chain of ${chainedProfileKeys.length} profiles × ${chainIntervalMs / 1000}s = ${(chainedProfileKeys.length * chainIntervalMs / 1000)}s total`, 'success');
+                if (elements.includeRecordingToggle.checked) {
+                    startChainRecording();
+                    logChainSegmentBoundary(chainedProfileKeys[0], 1, chainedProfileKeys.length);
+                } else {
+                    addLog('Chain recording skipped (checkbox off)', 'info');
+                }
             } else {
                 setChainUiLocked(false);
             }
@@ -2531,7 +2724,6 @@
                 stopPromptCycler();
                 stopSessionTimer();
                 elements.benchStart.disabled = true;
-                elements.benchMarkPhase.disabled = true;
                 if (chainActive) finishChain();
             }
         });
@@ -2638,7 +2830,6 @@
                 stopStatsPolling();
                 stopSessionTimer();
                 elements.benchStart.disabled = true;
-                elements.benchMarkPhase.disabled = true;
             }
         });
         
@@ -2650,6 +2841,7 @@
             }
             if (chainActive) {
                 addLog('Chain cancelled by user', 'info');
+                stopChainRecording();
                 setChainUiLocked(false);
                 chainIndex = 0;
             }
@@ -2659,7 +2851,6 @@
             stopSessionTimer();
             if (currentBenchRun) stopBenchmark();
             elements.benchStart.disabled = true;
-            elements.benchMarkPhase.disabled = true;
             if (statsAggregates.size > 0) {
                 printStatsSummary();
             }
