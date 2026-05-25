@@ -74,7 +74,7 @@ export const createFilesClient = (opts: FilesClientOptions): FilesClient => {
       headers: buildAuthHeaders({ apiKey, integration }),
     });
 
-    if (!response.ok && response.status !== 204) {
+    if (!response.ok) {
       const errorText = await response.text().catch(() => "Unknown error");
       throw createSDKError("FILES_DELETE_ERROR", `Failed to delete file: ${response.status} - ${errorText}`, {
         status: response.status,
