@@ -17,7 +17,7 @@
         
         .container {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr;
             gap: 12px;
             margin-bottom: 16px;
         }
@@ -406,14 +406,20 @@
         <div id="bench-live" style="margin-top:6px; font-family:'Courier New', monospace; font-size:11px; color:#444;"></div>
         <div style="margin-top:14px;">
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                <div><canvas id="bench-chart-fps"></canvas></div>
-                <div><canvas id="bench-chart-bitrate"></canvas></div>
-                <div><canvas id="bench-chart-qp"></canvas></div>
-                <div><canvas id="bench-chart-bpp"></canvas></div>
+                <div><canvas id="bench-chart-fps-tx"></canvas></div>
+                <div><canvas id="bench-chart-fps-rx"></canvas></div>
+                <div><canvas id="bench-chart-bitrate-tx"></canvas></div>
+                <div><canvas id="bench-chart-bitrate-rx"></canvas></div>
+                <div><canvas id="bench-chart-qp-tx"></canvas></div>
+                <div><canvas id="bench-chart-qp-rx"></canvas></div>
+                <div><canvas id="bench-chart-bpp-tx"></canvas></div>
+                <div><canvas id="bench-chart-bpp-rx"></canvas></div>
                 <div><canvas id="bench-chart-rtt"></canvas></div>
                 <div><canvas id="bench-chart-loss"></canvas></div>
-                <div><canvas id="bench-chart-nack"></canvas></div>
-                <div><canvas id="bench-chart-keyframes"></canvas></div>
+                <div><canvas id="bench-chart-nack-tx"></canvas></div>
+                <div><canvas id="bench-chart-nack-rx"></canvas></div>
+                <div><canvas id="bench-chart-keyframes-tx"></canvas></div>
+                <div><canvas id="bench-chart-keyframes-rx"></canvas></div>
             </div>
             <div style="margin-top:14px;"><canvas id="bench-chart-summary"></canvas></div>
         </div>
@@ -526,12 +532,12 @@
     
     <!-- Processed Video Display -->
     <div class="container" id="processed-container" style="display: none;">
-        <div class="video-section">
+        <!-- <div class="video-section">
             <h3>📹 Original Video</h3>
             <div class="video-frame">
                 <video id="original-video" controls></video>
             </div>
-        </div>
+        </div> -->
         <div class="video-section">
             <h3>✨ Processed Video</h3>
             <div class="video-frame">
@@ -572,8 +578,8 @@
         // -----------------------------------------------------------------------
         const PUBLISH_PROFILES = {
             A: {
-                label: 'H.264 economy — 1.6 Mbps @ 30 fps, maintain-resolution',
-                description: 'Bandwidth-shave candidate. ~89% of F\'s budget and 80% of G\'s, same resolution and 30 fps target, biased to preserve pixel fidelity (drop fps before res). Tests how much bitrate we can shave before model input quality breaks.',
+                label: 'H.264 economy — 2.1 Mbps @ 30 fps, maintain-resolution',
+                description: 'Bandwidth-shave candidate. ~91% of F\'s budget and 84% of G\'s, same resolution and 30 fps target, biased to preserve pixel fidelity (drop fps before res). Tests how much bitrate we can shave before model input quality breaks.',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: true,
@@ -582,7 +588,7 @@
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 1_600_000,
+                        maxBitrate: 2_100_000,
                         maxFramerate: 30,
                         priority: 'high',
                     },
@@ -590,8 +596,8 @@
                 },
             },
             B: {
-                label: 'H.264 sharper-frames — 2 Mbps @ 24 fps, maintain-resolution',
-                description: 'Bits-per-frame candidate. Same 2 Mbps as G but at 24 fps, so each frame gets ~25% more bits and visibly sharper detail. Bets the inference model values per-frame fidelity over cadence — and that 24 fps is enough for its temporal needs.',
+                label: 'H.264 sharper-frames — 2.5 Mbps @ 24 fps, maintain-resolution',
+                description: 'Bits-per-frame candidate. Same 2.5 Mbps as G but at 24 fps, so each frame gets ~25% more bits and visibly sharper detail. Bets the inference model values per-frame fidelity over cadence — and that 24 fps is enough for its temporal needs.',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: true,
@@ -600,7 +606,7 @@
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 2_000_000,
+                        maxBitrate: 2_500_000,
                         maxFramerate: 24,
                         priority: 'high',
                     },
@@ -619,7 +625,7 @@
                     scalabilityMode: 'L1T3',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 1_500_000,
+                        maxBitrate: 2_000_000,
                         maxFramerate: 30,
                     },
                     backupCodec: { codec: 'h264' },
@@ -638,7 +644,7 @@
                     scalabilityMode: 'L3T3_KEY',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 1_800_000,
+                        maxBitrate: 2_300_000,
                         maxFramerate: 30,
                     },
                     backupCodec: { codec: 'h264' },
@@ -657,7 +663,7 @@
                     scalabilityMode: 'L3T3_KEY',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 1_500_000,
+                        maxBitrate: 2_000_000,
                         maxFramerate: 30,
                     },
                     backupCodec: { codec: 'h264' },
@@ -665,7 +671,7 @@
                 },
             },
             F: {
-                label: 'H.264 constrained — 1.8 Mbps @ 24 fps, maintain-framerate',
+                label: 'H.264 constrained — 2.3 Mbps @ 24 fps, maintain-framerate',
                 description: 'H.264 single layer with a lower bitrate ceiling for weaker networks; drops resolution before FPS (preserves 24 fps cadence under pressure).',
                 roomOptions: {
                     adaptiveStream: false,
@@ -675,7 +681,7 @@
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 1_800_000,
+                        maxBitrate: 2_300_000,
                         maxFramerate: 24,
                         priority: 'high',
                     },
@@ -683,7 +689,7 @@
                 },
             },
             G: {
-                label: 'H.264 high bitrate — 2 Mbps @ 30 fps, maintain-resolution',
+                label: 'H.264 high bitrate — 2.5 Mbps @ 30 fps, maintain-resolution',
                 description: 'H.264 single layer with more bitrate headroom for clean networks while still preserving resolution under pressure (drops fps before resolution).',
                 roomOptions: {
                     adaptiveStream: false,
@@ -693,51 +699,17 @@
                     videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 2_000_000,
+                        maxBitrate: 2_500_000,
                         maxFramerate: 30,
                         priority: 'high',
                     },
                     degradationPreference: 'maintain-resolution',
                 },
             },
-            H: {
-                label: 'H.264 balanced — 1.8 Mbps @ 30 fps, default degradation',
-                description: 'H.264 single layer matching F\'s bitrate ceiling but at 30 fps, with no explicit degradationPreference so the browser picks its default trade-off (typically balanced) between resolution and framerate under pressure.',
-                roomOptions: {
-                    adaptiveStream: false,
-                    dynacast: false,
-                },
-                publishOptions: {
-                    videoCodec: 'h264',
-                    simulcast: false,
-                    videoEncoding: {
-                        maxBitrate: 1_800_000,
-                        maxFramerate: 30,
-                        priority: 'high',
-                    },
-                },
-            },
-            L: {
-                label: 'H.264 headroom — 2.8 Mbps @ 24 fps, default degradation',
-                description: 'H.264 single layer with the largest bitrate ceiling in the set, paired with a 24 fps target. No explicit degradationPreference; tests how the browser auto-balances when there\'s plenty of budget on a clean link.',
-                roomOptions: {
-                    adaptiveStream: false,
-                    dynacast: false,
-                },
-                publishOptions: {
-                    videoCodec: 'h264',
-                    simulcast: false,
-                    videoEncoding: {
-                        maxBitrate: 2_800_000,
-                        maxFramerate: 24,
-                        priority: 'high',
-                    },
-                },
-            },
         };
 
         const DEFAULT_PROFILE_KEY = Object.keys(PUBLISH_PROFILES)[0];
-        const DEFAULT_CHAIN_PROFILE_KEYS = ['A', 'B', 'F', 'G', 'H', 'L'];
+        const DEFAULT_CHAIN_PROFILE_KEYS = ['A', 'B', 'F', 'G'];
 
         function shuffledDefaultChain() {
             const keys = DEFAULT_CHAIN_PROFILE_KEYS.filter((k) => k in PUBLISH_PROFILES);
@@ -769,15 +741,13 @@
         }
 
         const PROFILE_SHORT_LABELS = {
-            A: 'A — H.264 1.6 Mbps @ 30 fps, maintain-resolution',
-            B: 'B — H.264 2 Mbps @ 24 fps, maintain-resolution',
+            A: 'A — H.264 2.1 Mbps @ 30 fps, maintain-resolution',
+            B: 'B — H.264 2.5 Mbps @ 24 fps, maintain-resolution',
             C: 'C — VP9 SVC L1T3',
             D: 'D — VP9 SVC L3T3_KEY',
             E: 'E — AV1 SVC L3T3_KEY',
-            F: 'F — H.264 1.8 Mbps @ 24 fps, maintain-framerate',
-            G: 'G — H.264 2 Mbps @ 30 fps, maintain-resolution',
-            H: 'H — H.264 1.8 Mbps @ 30 fps, default',
-            L: 'L — H.264 2.8 Mbps @ 24 fps, default',
+            F: 'F — H.264 2.3 Mbps @ 24 fps, maintain-framerate',
+            G: 'G — H.264 2.5 Mbps @ 30 fps, maintain-resolution',
         };
 
         function buildProfileOptionsHtml() {
@@ -815,14 +785,20 @@
             benchStatusText: document.getElementById('bench-status-text'),
             benchElapsedText: document.getElementById('bench-elapsed-text'),
             benchLive: document.getElementById('bench-live'),
-            benchChartFps: document.getElementById('bench-chart-fps'),
-            benchChartBitrate: document.getElementById('bench-chart-bitrate'),
-            benchChartQp: document.getElementById('bench-chart-qp'),
-            benchChartBpp: document.getElementById('bench-chart-bpp'),
+            benchChartFpsTx: document.getElementById('bench-chart-fps-tx'),
+            benchChartFpsRx: document.getElementById('bench-chart-fps-rx'),
+            benchChartBitrateTx: document.getElementById('bench-chart-bitrate-tx'),
+            benchChartBitrateRx: document.getElementById('bench-chart-bitrate-rx'),
+            benchChartQpTx: document.getElementById('bench-chart-qp-tx'),
+            benchChartQpRx: document.getElementById('bench-chart-qp-rx'),
+            benchChartBppTx: document.getElementById('bench-chart-bpp-tx'),
+            benchChartBppRx: document.getElementById('bench-chart-bpp-rx'),
             benchChartRtt: document.getElementById('bench-chart-rtt'),
             benchChartLoss: document.getElementById('bench-chart-loss'),
-            benchChartNack: document.getElementById('bench-chart-nack'),
-            benchChartKeyframes: document.getElementById('bench-chart-keyframes'),
+            benchChartNackTx: document.getElementById('bench-chart-nack-tx'),
+            benchChartNackRx: document.getElementById('bench-chart-nack-rx'),
+            benchChartKeyframesTx: document.getElementById('bench-chart-keyframes-tx'),
+            benchChartKeyframesRx: document.getElementById('bench-chart-keyframes-rx'),
             benchChartSummary: document.getElementById('bench-chart-summary'),
             localVideo: document.getElementById('local-video'),
             remoteVideo: document.getElementById('remote-video'),
@@ -1190,16 +1166,96 @@
                     y: { beginAtZero: true },
                 },
             };
+            const buildQpChartOptions = (titleText) => ({
+                animation: false,
+                responsive: true,
+                maintainAspectRatio: true,
+                interaction: { mode: 'index', intersect: false, axis: 'x' },
+                scales: {
+                    x: { type: 'linear', title: { display: true, text: 't (s)' } },
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        min: 0,
+                        max: 100,
+                        title: { display: true, text: 'Avg QP % (0–100, lower = better)' },
+                    },
+                },
+                plugins: {
+                    title: { display: true, text: titleText },
+                    tooltip: {
+                        ...sharedTooltip,
+                        callbacks: {
+                            label(ctx) {
+                                const ds = ctx.dataset;
+                                const v = ctx.parsed.y;
+                                const value = v == null || Number.isNaN(v) ? '—' : Number(v).toFixed(1);
+                                if (ds._qpRaw) {
+                                    const raw = ds._qpRaw[ctx.dataIndex];
+                                    const codec = ds._qpCodec;
+                                    const rawStr = raw != null && Number.isFinite(raw) ? raw.toFixed(1) : '—';
+                                    return `${ds.label}: ${value}%  (raw ${rawStr} ${codec ?? '?'})`;
+                                }
+                                return `${ds.label}: ${value}`;
+                            },
+                        },
+                    },
+                    legend: { labels: { boxWidth: 10 } },
+                    annotation: {
+                        annotations: {
+                            qpGreen: { type: 'box', yScaleID: 'y', yMin: 0, yMax: 40, backgroundColor: 'rgba(76, 175, 80, 0.06)', borderWidth: 0 },
+                            qpYellow: { type: 'box', yScaleID: 'y', yMin: 40, yMax: 65, backgroundColor: 'rgba(255, 193, 7, 0.08)', borderWidth: 0 },
+                            qpRed: { type: 'box', yScaleID: 'y', yMin: 65, yMax: 100, backgroundColor: 'rgba(244, 67, 54, 0.08)', borderWidth: 0 },
+                        },
+                    },
+                },
+            });
+            const buildBppChartOptions = (titleText) => ({
+                animation: false,
+                responsive: true,
+                maintainAspectRatio: true,
+                interaction: { mode: 'index', intersect: false, axis: 'x' },
+                scales: {
+                    x: { type: 'linear', title: { display: true, text: 't (s)' } },
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        beginAtZero: true,
+                        title: { display: true, text: 'BPP (bits per pixel)' },
+                    },
+                },
+                plugins: {
+                    title: { display: true, text: titleText },
+                    tooltip: sharedTooltip,
+                    legend: { labels: { boxWidth: 10 } },
+                    annotation: {
+                        annotations: {
+                            bppLow: { type: 'line', yScaleID: 'y', yMin: 0.07, yMax: 0.07, borderColor: 'rgba(0,0,0,0.4)', borderWidth: 1, borderDash: [4, 4], label: { display: true, content: '0.07', position: 'end', backgroundColor: 'rgba(0,0,0,0.0)', color: 'rgba(0,0,0,0.6)' } },
+                            bppHigh: { type: 'line', yScaleID: 'y', yMin: 0.15, yMax: 0.15, borderColor: 'rgba(0,0,0,0.4)', borderWidth: 1, borderDash: [4, 4], label: { display: true, content: '0.15', position: 'end', backgroundColor: 'rgba(0,0,0,0.0)', color: 'rgba(0,0,0,0.6)' } },
+                        },
+                    },
+                },
+            });
             benchCharts = {
-                fps: new Chart(elements.benchChartFps, {
+                fpsTx: new Chart(elements.benchChartFpsTx, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: timeSeriesPlugins('Receiver FPS (per second)') },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Sender FPS (tx, per second)') },
                 }),
-                bitrate: new Chart(elements.benchChartBitrate, {
+                fpsRx: new Chart(elements.benchChartFpsRx, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: timeSeriesPlugins('Bitrate (kbps): tx solid (out), rx dashed (in)') },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Receiver FPS (rx, per second)') },
+                }),
+                bitrateTx: new Chart(elements.benchChartBitrateTx, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Sender bitrate (tx, kbps)') },
+                }),
+                bitrateRx: new Chart(elements.benchChartBitrateRx, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Receiver bitrate (rx, kbps)') },
                 }),
                 rtt: new Chart(elements.benchChartRtt, {
                     type: 'line',
@@ -1211,93 +1267,45 @@
                     data: { datasets: [] },
                     options: { ...commonOpts, plugins: timeSeriesPlugins('Packet loss % (cumulative)') },
                 }),
-                nack: new Chart(elements.benchChartNack, {
+                nackTx: new Chart(elements.benchChartNackTx, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: timeSeriesPlugins('NACKs per sample: out solid (NACKs received by sender), in dashed (NACKs sent by receiver)') },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('NACKs received by sender (tx, per sample)') },
                 }),
-                keyframes: new Chart(elements.benchChartKeyframes, {
+                nackRx: new Chart(elements.benchChartNackRx, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: { ...commonOpts, plugins: timeSeriesPlugins('Keyframes per sample: out solid (sender), in dashed (receiver / PLI storms)') },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('NACKs sent by receiver (rx, per sample)') },
                 }),
-                qp: new Chart(elements.benchChartQp, {
+                keyframesTx: new Chart(elements.benchChartKeyframesTx, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: {
-                        animation: false,
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        interaction: { mode: 'index', intersect: false, axis: 'x' },
-                        scales: {
-                            x: { type: 'linear', title: { display: true, text: 't (s)' } },
-                            y: {
-                                type: 'linear',
-                                position: 'left',
-                                min: 0,
-                                max: 100,
-                                title: { display: true, text: 'Avg QP % (0–100, lower = better)' },
-                            },
-                        },
-                        plugins: {
-                            title: { display: true, text: 'Avg QP % per frame — out solid, in dashed (normalized across codecs)' },
-                            tooltip: {
-                                ...sharedTooltip,
-                                callbacks: {
-                                    label(ctx) {
-                                        const ds = ctx.dataset;
-                                        const v = ctx.parsed.y;
-                                        const value = v == null || Number.isNaN(v) ? '—' : Number(v).toFixed(1);
-                                        if (ds._qpRaw) {
-                                            const raw = ds._qpRaw[ctx.dataIndex];
-                                            const codec = ds._qpCodec;
-                                            const rawStr = raw != null && Number.isFinite(raw) ? raw.toFixed(1) : '—';
-                                            return `${ds.label}: ${value}%  (raw ${rawStr} ${codec ?? '?'})`;
-                                        }
-                                        return `${ds.label}: ${value}`;
-                                    },
-                                },
-                            },
-                            legend: { labels: { boxWidth: 10 } },
-                            annotation: {
-                                annotations: {
-                                    qpGreen: { type: 'box', yScaleID: 'y', yMin: 0, yMax: 40, backgroundColor: 'rgba(76, 175, 80, 0.06)', borderWidth: 0 },
-                                    qpYellow: { type: 'box', yScaleID: 'y', yMin: 40, yMax: 65, backgroundColor: 'rgba(255, 193, 7, 0.08)', borderWidth: 0 },
-                                    qpRed: { type: 'box', yScaleID: 'y', yMin: 65, yMax: 100, backgroundColor: 'rgba(244, 67, 54, 0.08)', borderWidth: 0 },
-                                },
-                            },
-                        },
-                    },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Keyframes sent (tx, per sample)') },
                 }),
-                bpp: new Chart(elements.benchChartBpp, {
+                keyframesRx: new Chart(elements.benchChartKeyframesRx, {
                     type: 'line',
                     data: { datasets: [] },
-                    options: {
-                        animation: false,
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        interaction: { mode: 'index', intersect: false, axis: 'x' },
-                        scales: {
-                            x: { type: 'linear', title: { display: true, text: 't (s)' } },
-                            y: {
-                                type: 'linear',
-                                position: 'left',
-                                beginAtZero: true,
-                                title: { display: true, text: 'BPP (bits per pixel)' },
-                            },
-                        },
-                        plugins: {
-                            title: { display: true, text: 'BPP — out solid (sender), in dashed (receiver), 0.07–0.15 reference' },
-                            tooltip: sharedTooltip,
-                            legend: { labels: { boxWidth: 10 } },
-                            annotation: {
-                                annotations: {
-                                    bppLow: { type: 'line', yScaleID: 'y', yMin: 0.07, yMax: 0.07, borderColor: 'rgba(0,0,0,0.4)', borderWidth: 1, borderDash: [4, 4], label: { display: true, content: '0.07', position: 'end', backgroundColor: 'rgba(0,0,0,0.0)', color: 'rgba(0,0,0,0.6)' } },
-                                    bppHigh: { type: 'line', yScaleID: 'y', yMin: 0.15, yMax: 0.15, borderColor: 'rgba(0,0,0,0.4)', borderWidth: 1, borderDash: [4, 4], label: { display: true, content: '0.15', position: 'end', backgroundColor: 'rgba(0,0,0,0.0)', color: 'rgba(0,0,0,0.6)' } },
-                                },
-                            },
-                        },
-                    },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Keyframes received (rx, per sample / PLI storms)') },
+                }),
+                qpTx: new Chart(elements.benchChartQpTx, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: buildQpChartOptions('Avg QP % per frame — sender (tx, normalized across codecs)'),
+                }),
+                qpRx: new Chart(elements.benchChartQpRx, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: buildQpChartOptions('Avg QP % per frame — receiver (rx, normalized across codecs)'),
+                }),
+                bppTx: new Chart(elements.benchChartBppTx, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: buildBppChartOptions('BPP — sender (tx, bits per pixel), 0.07–0.15 reference'),
+                }),
+                bppRx: new Chart(elements.benchChartBppRx, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: buildBppChartOptions('BPP — receiver (rx, bits per pixel), 0.07–0.15 reference'),
                 }),
                 summary: new Chart(elements.benchChartSummary, {
                     type: 'bar',
@@ -1343,66 +1351,58 @@
             const charts = ensureBenchCharts();
             if (!charts) return;
             const runs = [...benchmarkRuns, ...(currentBenchRun ? [currentBenchRun] : [])];
-            const datasets = { fps: [], bitrate: [], rtt: [], loss: [], nack: [], keyframes: [], qp: [], bpp: [] };
+            const datasets = {
+                fpsTx: [], fpsRx: [],
+                bitrateTx: [], bitrateRx: [],
+                rtt: [], loss: [],
+                nackTx: [], nackRx: [],
+                keyframesTx: [], keyframesRx: [],
+                qpTx: [], qpRx: [],
+                bppTx: [], bppRx: [],
+            };
             runs.forEach((run, idx) => {
                 const color = runColor(idx);
                 const label = runLabel(run, idx);
                 const points = run.samples.map((s) => ({ x: +(s.tMs / 1000).toFixed(2), d: s.derived }));
                 const outCodec = points.find((p) => p.d.outboundCodec)?.d.outboundCodec ?? '?';
                 const inCodec = points.find((p) => p.d.inboundCodec)?.d.inboundCodec ?? '?';
-                datasets.fps.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.receiverFps })), spanGaps: true, pointRadius: 0 });
-                datasets.bitrate.push({ label: `${label} tx`, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.senderBitrateBps != null ? p.d.senderBitrateBps / 1000 : null })), spanGaps: true, pointRadius: 0 });
-                datasets.bitrate.push({ label: `${label} rx`, borderColor: color, backgroundColor: color, borderDash: [4, 4], data: points.map((p) => ({ x: p.x, y: p.d.receiverBitrateBps != null ? p.d.receiverBitrateBps / 1000 : null })), spanGaps: true, pointRadius: 0 });
-                datasets.rtt.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.rtt })), spanGaps: true, pointRadius: 0 });
-                datasets.loss.push({ label, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.cumulativeLossPct })), spanGaps: true, pointRadius: 0 });
-                datasets.nack.push({ label: `${label} out`, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.nackOutDelta })), spanGaps: true, pointRadius: 0 });
-                datasets.nack.push({ label: `${label} in`, borderColor: color, backgroundColor: color, borderDash: [4, 4], data: points.map((p) => ({ x: p.x, y: p.d.nackInDelta })), spanGaps: true, pointRadius: 0 });
-                datasets.keyframes.push({ label: `${label} out`, borderColor: color, backgroundColor: color, data: points.map((p) => ({ x: p.x, y: p.d.keyFramesOutDelta })), spanGaps: true, pointRadius: 0 });
-                datasets.keyframes.push({ label: `${label} in`, borderColor: color, backgroundColor: color, borderDash: [4, 4], data: points.map((p) => ({ x: p.x, y: p.d.keyFramesInDelta })), spanGaps: true, pointRadius: 0 });
+                const lineBase = { borderColor: color, backgroundColor: color, spanGaps: true, pointRadius: 0 };
+                datasets.fpsTx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.senderFps })) });
+                datasets.fpsRx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.receiverFps })) });
+                datasets.bitrateTx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.senderBitrateBps != null ? p.d.senderBitrateBps / 1000 : null })) });
+                datasets.bitrateRx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.receiverBitrateBps != null ? p.d.receiverBitrateBps / 1000 : null })) });
+                datasets.rtt.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.rtt })) });
+                datasets.loss.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.cumulativeLossPct })) });
+                datasets.nackTx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.nackOutDelta })) });
+                datasets.nackRx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.nackInDelta })) });
+                datasets.keyframesTx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.keyFramesOutDelta })) });
+                datasets.keyframesRx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.keyFramesInDelta })) });
                 const qpOutRawSeries = points.map((p) => p.d.avgQpOut);
                 const qpInRawSeries = points.map((p) => p.d.avgQpIn);
-                datasets.qp.push({
-                    label: `${label} out (${outCodec})`,
-                    borderColor: color,
-                    backgroundColor: color,
+                datasets.qpTx.push({
+                    label: `${label} (${outCodec})`,
+                    ...lineBase,
                     yAxisID: 'y',
                     data: points.map((p) => ({ x: p.x, y: normalizeQp(p.d.avgQpOut, outCodec) })),
-                    spanGaps: true,
-                    pointRadius: 0,
                     _qpRaw: qpOutRawSeries,
                     _qpCodec: outCodec,
                 });
-                datasets.qp.push({
-                    label: `${label} in (${inCodec})`,
-                    borderColor: color,
-                    backgroundColor: color,
-                    borderDash: [4, 4],
+                datasets.qpRx.push({
+                    label: `${label} (${inCodec})`,
+                    ...lineBase,
                     yAxisID: 'y',
                     data: points.map((p) => ({ x: p.x, y: normalizeQp(p.d.avgQpIn, inCodec) })),
-                    spanGaps: true,
-                    pointRadius: 0,
                     _qpRaw: qpInRawSeries,
                     _qpCodec: inCodec,
                 });
-                datasets.bpp.push({ label: `${label} out`, borderColor: color, backgroundColor: color, yAxisID: 'y', data: points.map((p) => ({ x: p.x, y: p.d.bppOut })), spanGaps: true, pointRadius: 0 });
-                datasets.bpp.push({ label: `${label} in`, borderColor: color, backgroundColor: color, borderDash: [4, 4], yAxisID: 'y', data: points.map((p) => ({ x: p.x, y: p.d.bppIn })), spanGaps: true, pointRadius: 0 });
+                datasets.bppTx.push({ label, ...lineBase, yAxisID: 'y', data: points.map((p) => ({ x: p.x, y: p.d.bppOut })) });
+                datasets.bppRx.push({ label, ...lineBase, yAxisID: 'y', data: points.map((p) => ({ x: p.x, y: p.d.bppIn })) });
             });
-            charts.fps.data.datasets = datasets.fps;
-            charts.bitrate.data.datasets = datasets.bitrate;
-            charts.rtt.data.datasets = datasets.rtt;
-            charts.loss.data.datasets = datasets.loss;
-            charts.nack.data.datasets = datasets.nack;
-            charts.keyframes.data.datasets = datasets.keyframes;
-            charts.qp.data.datasets = datasets.qp;
-            charts.bpp.data.datasets = datasets.bpp;
-            charts.fps.update();
-            charts.bitrate.update();
-            charts.rtt.update();
-            charts.loss.update();
-            charts.nack.update();
-            charts.keyframes.update();
-            charts.qp.update();
-            charts.bpp.update();
+            Object.keys(datasets).forEach((key) => {
+                if (!charts[key]) return;
+                charts[key].data.datasets = datasets[key];
+                charts[key].update();
+            });
         }
 
         function refreshSummaryChart() {
