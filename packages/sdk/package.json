@@ -35,6 +35,7 @@
     "test": "vitest unit",
     "test:e2e": "vitest e2e",
     "test:e2e:realtime": "vitest --config vitest.config.e2e-realtime.ts",
+    "test:e2e:image-ref": "vitest --config vitest.config.e2e-image-ref.ts",
     "typecheck": "tsc --noEmit",
     "format": "biome format --write",
     "format:check": "biome check",

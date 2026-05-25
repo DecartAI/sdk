@@ -18,6 +18,7 @@ import type {
   PromptSendOptions,
   QueuePosition,
   SessionStarted,
+  SetImagePayload,
 } from "./types";
 
 type RetryAttemptError = Error & {
@@ -56,6 +57,7 @@ interface StreamSessionConfig {
   observability?: RealtimeObservability;
   localStream: MediaStream | null;
   initialImage?: string;
+  initialImageRef?: string;
   initialPrompt?: InitialPrompt;
   logger?: Logger;
   videoCodec?: VideoCodec;
@@ -123,9 +125,9 @@ export class StreamSession {
     return this.signaling.sendPrompt(text, opts);
   }
 
-  async setImage(image: string | null, opts?: ImageSetOptions): Promise<void> {
+  async setImage(payload: SetImagePayload, opts?: ImageSetOptions): Promise<void> {
     this.assertConnected();
-    return this.signaling.setImage(image, opts);
+    return this.signaling.setImage(payload, opts);
   }
 
   disconnect(): void {
@@ -218,6 +220,14 @@ export class StreamSession {
   }
 
   private getInitialState(): InitialState | undefined {
+    if (this.config.initialImageRef !== undefined) {
+      return {
+        imageRef: this.config.initialImageRef,
+        prompt: this.config.initialPrompt?.text,
+        enhance: this.config.initialPrompt?.enhance,
+      };
+    }
+
     if (this.config.initialImage !== undefined) {
       return {
         image: this.config.initialImage,
