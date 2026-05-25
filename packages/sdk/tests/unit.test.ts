@@ -1191,6 +1191,45 @@ describe("Files API", () => {
 
       await expect(decart.files.upload(new Blob(["x"]))).rejects.toThrow("Failed to upload file");
     });
+
+    it("forwards a numeric ttlSeconds", async () => {
+      let receivedForm: FormData | null = null;
+      server.use(
+        http.post("http://localhost/v1/files", async ({ request }) => {
+          receivedForm = await request.formData();
+          return HttpResponse.json({
+            id: "file_abc",
+            filename: null,
+            mime_type: "image/png",
+            size_bytes: 1,
+            created_at: "2026-01-01T00:00:00Z",
+            expires_at: "2026-01-01T01:00:00Z",
+          });
+        }),
+      );
+      await decart.files.upload(new Blob(["x"]), { ttlSeconds: 3600 });
+      expect(receivedForm?.get("ttl_seconds")).toBe("3600");
+    });
+
+    it('forwards ttlSeconds="persistent" verbatim', async () => {
+      let receivedForm: FormData | null = null;
+      server.use(
+        http.post("http://localhost/v1/files", async ({ request }) => {
+          receivedForm = await request.formData();
+          return HttpResponse.json({
+            id: "file_abc",
+            filename: null,
+            mime_type: "image/png",
+            size_bytes: 1,
+            created_at: "2026-01-01T00:00:00Z",
+            expires_at: null,
+          });
+        }),
+      );
+      const ref = await decart.files.upload(new Blob(["x"]), { ttlSeconds: "persistent" });
+      expect(receivedForm?.get("ttl_seconds")).toBe("persistent");
+      expect(ref.expires_at).toBeNull();
+    });
   });
 
   describe("get", () => {

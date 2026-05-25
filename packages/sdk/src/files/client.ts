@@ -10,6 +10,13 @@ export type FilesClientOptions = {
 
 export type UploadFileOptions = {
   signal?: AbortSignal;
+  /**
+   * Expiration:
+   * - omit → platform default (24 h)
+   * - a positive integer → TTL in seconds (60 .. 2_592_000)
+   * - `"persistent"` → never expires
+   */
+  ttlSeconds?: number | "persistent";
 };
 
 export type FilesClient = {
@@ -36,6 +43,7 @@ export const createFilesClient = (opts: FilesClientOptions): FilesClient => {
   const upload = async (file: FileUploadInput, options?: UploadFileOptions): Promise<FileReference> => {
     const formData = new FormData();
     formData.append("file", file as Blob);
+    if (options?.ttlSeconds !== undefined) formData.append("ttl_seconds", String(options.ttlSeconds));
 
     const response = await fetch(`${baseUrl}/v1/files`, {
       method: "POST",

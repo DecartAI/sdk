@@ -11,7 +11,8 @@ export const isFileRefId = (value: unknown): value is string =>
  * Metadata for a previously-uploaded file. Returned by `client.files.upload(...)`.
  * Pass `ref.id` to `realtime.set({ image })` / `setImage(...)` to reuse it.
  *
- * Files expire after a server-configured TTL (currently 24 h).
+ * Files expire after a server-configured TTL (default 24 h). `expires_at` is
+ * `null` when the upload was created with `persistent: true`.
  */
 export interface FileReference {
   id: string;
@@ -19,7 +20,7 @@ export interface FileReference {
   mime_type: string;
   size_bytes: number;
   created_at: string;
-  expires_at: string;
+  expires_at: string | null;
 }
 
 export type FileUploadInput = File | Blob | ReactNativeFile;
