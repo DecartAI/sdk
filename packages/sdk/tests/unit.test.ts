@@ -1192,6 +1192,27 @@ describe("Files API", () => {
       await expect(decart.files.upload(new Blob(["x"]))).rejects.toThrow("Failed to upload file");
     });
 
+    it("rejects bad ttlSeconds locally without hitting the network", async () => {
+      let hit = false;
+      server.use(
+        http.post("http://localhost/v1/files", () => {
+          hit = true;
+          return HttpResponse.json({}, { status: 200 });
+        }),
+      );
+
+      await expect(
+        // @ts-expect-error – intentionally invalid value
+        decart.files.upload(new Blob(["x"]), { ttlSeconds: "forever" }),
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+
+      await expect(decart.files.upload(new Blob(["x"]), { ttlSeconds: 30 })).rejects.toMatchObject({
+        code: "INVALID_INPUT",
+      });
+
+      expect(hit).toBe(false);
+    });
+
     it("forwards a numeric ttlSeconds", async () => {
       let receivedForm: FormData | null = null;
       server.use(

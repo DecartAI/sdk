@@ -1,6 +1,11 @@
+import { z } from "zod";
 import { buildAuthHeaders } from "../shared/request";
-import { createSDKError } from "../utils/errors";
+import { createInvalidInputError, createSDKError } from "../utils/errors";
 import type { FileReference, FileUploadInput } from "./types";
+
+const MAX_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days; matches the bouncer's ceiling.
+
+const ttlSecondsSchema = z.union([z.number().int().min(60).max(MAX_TTL_SECONDS), z.literal("persistent")]);
 
 export type FilesClientOptions = {
   baseUrl: string;
@@ -41,6 +46,15 @@ export const createFilesClient = (opts: FilesClientOptions): FilesClient => {
   const { baseUrl, apiKey, integration } = opts;
 
   const upload = async (file: FileUploadInput, options?: UploadFileOptions): Promise<FileReference> => {
+    if (options?.ttlSeconds !== undefined) {
+      const parsed = ttlSecondsSchema.safeParse(options.ttlSeconds);
+      if (!parsed.success) {
+        throw createInvalidInputError(
+          `ttlSeconds must be an integer in [60, ${MAX_TTL_SECONDS}] or the literal "persistent"`,
+        );
+      }
+    }
+
     const formData = new FormData();
     formData.append("file", file as Blob);
     if (options?.ttlSeconds !== undefined) formData.append("ttl_seconds", String(options.ttlSeconds));
