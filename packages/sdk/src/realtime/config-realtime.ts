@@ -33,6 +33,7 @@ export const REALTIME_CONFIG = {
     },
     defaultVideoCodec: "h264",
     defaultMaxVideoBitrateBps: 3_500_000,
+    vp9MaxVideoBitrateBps: 3_000_000,
     defaultPublishFps: 30,
   },
   observability: {
