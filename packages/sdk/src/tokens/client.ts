@@ -1,4 +1,4 @@
-import { type Model } from "../shared/model";
+import type { Model } from "../shared/model";
 import { buildAuthHeaders } from "../shared/request";
 import { createSDKError } from "../utils/errors";
 

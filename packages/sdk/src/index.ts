@@ -1,12 +1,16 @@
 import { z } from "zod";
+import { createFilesClient } from "./files/client";
 import { createProcessClient } from "./process/client";
 import { createQueueClient } from "./queue/client";
 import { createRealTimeClient } from "./realtime/client";
+import { createRealTimeSubscribeClient } from "./realtime/subscribe-client";
 import { createTokensClient } from "./tokens/client";
 import { readEnv } from "./utils/env";
 import { createInvalidApiKeyError, createInvalidBaseUrlError } from "./utils/errors";
-import { type Logger, noopLogger } from "./utils/logger";
+import { createConsoleLogger, type Logger } from "./utils/logger";
 
+export type { FilesClient, UploadFileOptions } from "./files/client";
+export type { FileReference, FileUploadInput } from "./files/types";
 export type { ProcessClient } from "./process/client";
 export type { FileInput, ProcessOptions, ReactNativeFile } from "./process/types";
 export type { QueueClient } from "./queue/client";
@@ -24,28 +28,23 @@ export type {
   RealTimeClientConnectOptions,
   RealTimeClientInitialState,
 } from "./realtime/client";
+export type { SetInput } from "./realtime/methods";
 export type {
-  ConnectionPhase,
+  ClientSessionConnectionBreakdownEvent,
+  ClientSessionConnectionBreakdownPhase,
   DiagnosticEvent,
   DiagnosticEventName,
   DiagnosticEvents,
-  IceCandidateEvent,
-  IceStateEvent,
-  PeerConnectionStateEvent,
-  PhaseTimingEvent,
   ReconnectEvent,
-  SelectedCandidatePairEvent,
-  SignalingStateEvent,
   VideoStallEvent,
-} from "./realtime/diagnostics";
-export type { SetInput } from "./realtime/methods";
+} from "./realtime/observability/diagnostics";
+export type { WebRTCStats } from "./realtime/observability/webrtc-stats";
 export type {
   RealTimeSubscribeClient,
   SubscribeEvents,
   SubscribeOptions,
 } from "./realtime/subscribe-client";
-export type { ConnectionState } from "./realtime/types";
-export type { WebRTCStats } from "./realtime/webrtc-stats";
+export type { ConnectionState, GenerationEndedMessage, QueuePosition, QueuePositionMessage } from "./realtime/types";
 export {
   type CanonicalModel,
   type CustomModelDefinition,
@@ -131,6 +130,8 @@ export type DecartClientOptions =
  * @param options.realtimeBaseUrl - Override the default WebSocket base URL for realtime connections.
  * @param options.integration - Optional integration identifier.
  *
+ * Realtime media uses LiveKit only (inference must enable it in `TRANSPORTS_ENABLED`).
+ *
  * @example
  * ```ts
  * //  (direct API access)Option 1: Explicit API key
@@ -187,19 +188,27 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     baseUrl = parsedOptions.data.baseUrl || "https://api.decart.ai";
   }
   const { integration } = parsedOptions.data;
-  const logger = "logger" in options && options.logger ? options.logger : noopLogger;
-  const telemetryEnabled = "telemetry" in options && options.telemetry === false ? false : true;
+  const logger = "logger" in options && options.logger ? options.logger : createConsoleLogger("info");
+  const telemetryEnabled = !("telemetry" in options && options.telemetry === false);
 
   // Realtime (WebRTC) always requires direct API access with API key
   // Proxy mode is only for HTTP endpoints (process, queue, tokens)
   // Note: Realtime will fail at connection time if no API key is provided
   const wsBaseUrl = parsedOptions.data.realtimeBaseUrl || "wss://api3.decart.ai";
-  const realtime = createRealTimeClient({
+  const realtimePublish = createRealTimeClient({
     baseUrl: wsBaseUrl,
     apiKey: apiKey || "",
     integration,
     logger,
     telemetryEnabled,
+  });
+  const hasExplicitBaseUrl = isProxyMode || parsedOptions.data.baseUrl !== undefined;
+  const subscribeBaseUrl = hasExplicitBaseUrl ? baseUrl : wsBaseUrl.replace(/^wss?:\/\//i, "https://");
+  const realtimeSubscribe = createRealTimeSubscribeClient({
+    baseUrl: subscribeBaseUrl,
+    apiKey: apiKey || "",
+    integration,
+    logger,
   });
 
   const process = createProcessClient({
@@ -220,8 +229,18 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     integration,
   });
 
+  const files = createFilesClient({
+    baseUrl,
+    apiKey: apiKey || "",
+    integration,
+  });
+
   return {
-    realtime,
+    realtime: {
+      connect: realtimePublish.connect,
+      subscribe: realtimeSubscribe.subscribe,
+    },
+
     /**
      * Client for synchronous image generation.
      * Only image models support the sync/process API.
@@ -295,5 +314,16 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
      * ```
      */
     tokens,
+    /**
+     * Upload files once and reuse them across generations.
+     *
+     * @example
+     * ```ts
+     * const ref = await client.files.upload(blob);
+     * await rt.set({ image: ref.id, prompt: "make it cinematic" });
+     * await rt.set({ image: ref.id, prompt: "now in noir" });
+     * ```
+     */
+    files,
   };
 };

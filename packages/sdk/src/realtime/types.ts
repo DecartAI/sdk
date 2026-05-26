@@ -1,22 +1,3 @@
-export type OfferMessage = {
-  type: "offer";
-  sdp: string;
-};
-
-export type AnswerMessage = {
-  type: "answer";
-  sdp: string;
-};
-
-export type IceCandidateMessage = {
-  type: "ice-candidate";
-  candidate: RTCIceCandidateInit | null;
-};
-
-export type ReadyMessage = {
-  type: "ready";
-};
-
 export type PromptMessage = {
   type: "prompt";
   prompt: string;
@@ -35,13 +16,17 @@ export type ErrorMessage = {
   error: string;
 };
 
-export type SetAvatarImageMessage = {
+/** Wire shape: one of `image_data` or `image_ref` is set, not both. */
+export type SetImageMessage = {
   type: "set_image";
-  image_data: string | null; // Base64-encoded image data, or null to clear/use placeholder
-  prompt?: string | null; // Optional prompt to send with the image, null for passthrough
-  enhance_prompt?: boolean; // Optional flag to enhance the prompt
-  sample_frame_data?: string | null; // Optional base64-encoded sample frame (e.g. current camera frame) to give prompt enhancement extra context
+  image_data?: string | null;
+  image_ref?: string;
+  prompt?: string | null;
+  enhance_prompt?: boolean;
+  sample_frame_data?: string | null;
 };
+
+export type SetImagePayload = { kind: "data"; data: string | null } | { kind: "ref"; ref: string };
 
 export type SetImageAckMessage = {
   type: "set_image_ack";
@@ -49,50 +34,105 @@ export type SetImageAckMessage = {
   error: null | string;
 };
 
-export type GenerationStartedMessage = {
-  type: "generation_started";
-};
-
-export type GenerationTickMessage = {
+export type GenerationTickMessage = GenerationTick & {
   type: "generation_tick";
-  seconds: number;
 };
 
-export type GenerationEndedMessage = {
+export type GenerationEndedMessage = GenerationEnded & {
   type: "generation_ended";
-  seconds: number;
-  reason: string;
 };
 
-export type SessionIdMessage = {
-  type: "session_id";
+export type LiveKitJoinMessage = {
+  type: "livekit_join";
+};
+
+export type LiveKitRoomInfoMessage = {
+  type: "livekit_room_info";
+  livekit_url: string;
+  token: string;
+  room_name: string;
   session_id: string;
-  server_ip: string;
-  server_port: number;
+};
+
+export type QueuePositionMessage = {
+  type: "queue_position";
+  position: number;
+  queue_size: number;
+};
+
+export type QueuePosition = {
+  position: number;
+  queueSize: number;
 };
 
 export type ConnectionState = "connecting" | "connected" | "generating" | "disconnected" | "reconnecting";
 
+export type ConnectionStatus = {
+  connection: ConnectionState;
+  queue: QueuePosition | null;
+};
+
+export type GenerationTick = {
+  seconds: number;
+};
+
+export type GenerationEnded = {
+  seconds: number;
+  reason: string;
+};
+
+export type ConnectionClosed = {
+  code: number;
+  reason: string;
+};
+
+export type SessionStarted = {
+  sessionId: string;
+  subscribeToken: string;
+};
+
+export type InitialState = {
+  /** Pre-encoded base64 image; one of image/imageRef. */
+  image?: string | null;
+  /** Server file reference id; one of image/imageRef. */
+  imageRef?: string;
+  prompt?: string | null;
+  enhance?: boolean;
+};
+
+export type InitialPrompt = {
+  text: string;
+  enhance?: boolean;
+};
+
+export type ServerError = Error & {
+  source?: string;
+};
+
+export type PromptSendOptions = {
+  enhance?: boolean;
+  timeout?: number;
+};
+
+export type ImageSetOptions = {
+  prompt?: string | null;
+  enhance?: boolean;
+  timeout?: number;
+  /** Optional base64-encoded sample frame (e.g. current camera frame) for prompt-enhancement context. */
+  sampleFrameData?: string | null;
+};
+
 // Incoming message types (from server)
-export type IncomingWebRTCMessage =
-  | ReadyMessage
-  | OfferMessage
-  | AnswerMessage
-  | IceCandidateMessage
+export type IncomingRealtimeMessage =
   | PromptAckMessage
   | ErrorMessage
   | SetImageAckMessage
-  | GenerationStartedMessage
   | GenerationTickMessage
   | GenerationEndedMessage
-  | SessionIdMessage;
+  | LiveKitRoomInfoMessage
+  | QueuePositionMessage;
 
 // Outgoing message types (to server)
-export type OutgoingWebRTCMessage =
-  | OfferMessage
-  | AnswerMessage
-  | IceCandidateMessage
-  | PromptMessage
-  | SetAvatarImageMessage;
+export type OutgoingRealtimeMessage = LiveKitJoinMessage | PromptMessage | SetImageMessage;
 
-export type OutgoingMessage = PromptMessage | SetAvatarImageMessage;
+export type OutgoingMessage = PromptMessage | SetImageMessage;

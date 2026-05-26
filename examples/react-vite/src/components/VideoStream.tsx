@@ -46,6 +46,7 @@ export function VideoStream({ prompt }: VideoStreamProps) {
 
         const realtimeClient = await client.realtime.connect(stream, {
           model,
+          mirror: "auto",
           onRemoteStream: (transformedStream: MediaStream) => {
             if (outputRef.current) {
               outputRef.current.srcObject = transformedStream;

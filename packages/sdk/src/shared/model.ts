@@ -282,15 +282,22 @@ export const modelInputSchemas = {
 
 export type ModelInputSchemas = typeof modelInputSchemas;
 
+export type ModelFps = number | { max?: number; min?: number; ideal?: number; exact?: number };
+
 export type ModelDefinition<T extends Model = Model> = {
   name: T;
   urlPath: string;
   queueUrlPath?: string;
-  fps: number;
+  fps: ModelFps;
   width: number;
   height: number;
   inputSchema: T extends keyof ModelInputSchemas ? ModelInputSchemas[T] : z.ZodTypeAny;
 };
+
+export function resolveFpsNumber(fps: ModelFps, fallback = 30): number {
+  if (typeof fps === "number") return fps;
+  return fps.ideal ?? fps.max ?? fps.exact ?? fps.min ?? fallback;
+}
 
 /**
  * A model definition with an arbitrary (non-registry) model name.
@@ -306,20 +313,28 @@ export type CustomModelDefinition = Omit<ModelDefinition, "name" | "inputSchema"
  * Only image models support the sync/process API.
  * Requires `queueUrlPath` to distinguish from realtime definitions of the same model name.
  */
-export type ImageModelDefinition = ModelDefinition<ImageModels> & { queueUrlPath: string };
+export type ImageModelDefinition = ModelDefinition<ImageModels> & { fps: number; queueUrlPath: string };
 
 /**
  * Type alias for model definitions that support queue processing.
  * Only video models support the queue API.
  * Requires `queueUrlPath` to distinguish from realtime definitions of the same model name.
  */
-export type VideoModelDefinition = ModelDefinition<VideoModels> & { queueUrlPath: string };
+export type VideoModelDefinition = ModelDefinition<VideoModels> & { fps: number; queueUrlPath: string };
 
 export const modelDefinitionSchema = z.object({
   name: z.string(),
   urlPath: z.string(),
   queueUrlPath: z.string().optional(),
-  fps: z.number().min(1),
+  fps: z.union([
+    z.number().min(1),
+    z.object({
+      max: z.number().min(1).optional(),
+      min: z.number().min(1).optional(),
+      ideal: z.number().min(1).optional(),
+      exact: z.number().min(1).optional(),
+    }),
+  ]),
   width: z.number().min(1),
   height: z.number().min(1),
   inputSchema: z.any().optional(),
@@ -331,7 +346,7 @@ const _models = {
     "lucy-2.1": {
       urlPath: "/v1/stream",
       name: "lucy-2.1" as const,
-      fps: 20,
+      fps: { ideal: 30, max: 30 },
       width: 1088,
       height: 624,
       inputSchema: z.object({}),
@@ -347,7 +362,7 @@ const _models = {
     "lucy-2.1-vton": {
       urlPath: "/v1/stream",
       name: "lucy-2.1-vton" as const,
-      fps: 20,
+      fps: { ideal: 30, max: 30 },
       width: 1088,
       height: 624,
       inputSchema: z.object({}),
@@ -355,7 +370,7 @@ const _models = {
     "lucy-vton-2": {
       urlPath: "/v1/stream",
       name: "lucy-vton-2" as const,
-      fps: 20,
+      fps: { ideal: 30, max: 30 },
       width: 1088,
       height: 624,
       inputSchema: z.object({}),
@@ -363,7 +378,7 @@ const _models = {
     "lucy-restyle-2": {
       urlPath: "/v1/stream",
       name: "lucy-restyle-2" as const,
-      fps: 22,
+      fps: { ideal: 30, max: 30 },
       width: 1280,
       height: 704,
       inputSchema: z.object({}),
@@ -372,7 +387,7 @@ const _models = {
     "lucy-latest": {
       urlPath: "/v1/stream",
       name: "lucy-latest" as const,
-      fps: 20,
+      fps: { ideal: 30, max: 30 },
       width: 1088,
       height: 624,
       inputSchema: z.object({}),
@@ -381,7 +396,7 @@ const _models = {
     "lucy-vton-latest": {
       urlPath: "/v1/stream",
       name: "lucy-vton-latest" as const,
-      fps: 20,
+      fps: { ideal: 30, max: 30 },
       width: 1088,
       height: 624,
       inputSchema: z.object({}),
@@ -389,7 +404,7 @@ const _models = {
     "lucy-restyle-latest": {
       urlPath: "/v1/stream",
       name: "lucy-restyle-latest" as const,
-      fps: 22,
+      fps: { ideal: 30, max: 30 },
       width: 1280,
       height: 704,
       inputSchema: z.object({}),
@@ -398,7 +413,7 @@ const _models = {
     mirage_v2: {
       urlPath: "/v1/stream",
       name: "mirage_v2" as const,
-      fps: 22,
+      fps: { ideal: 30, max: 30 },
       width: 1280,
       height: 704,
       inputSchema: z.object({}),
@@ -406,7 +421,7 @@ const _models = {
     "lucy-vton": {
       urlPath: "/v1/stream",
       name: "lucy-vton" as const,
-      fps: 20,
+      fps: { ideal: 30, max: 30 },
       width: 1088,
       height: 624,
       inputSchema: z.object({}),
@@ -414,7 +429,7 @@ const _models = {
     "lucy-2.1-vton-2": {
       urlPath: "/v1/stream",
       name: "lucy-2.1-vton-2" as const,
-      fps: 20,
+      fps: { ideal: 30, max: 30 },
       width: 1088,
       height: 624,
       inputSchema: z.object({}),
@@ -634,13 +649,13 @@ export const models = {
    *   - `"lucy-vton-2"` - Virtual try-on 2 video editing
    *   - `"lucy-restyle-2"` - Video restyling
    */
-  video: <T extends VideoModels>(model: T): ModelDefinition<T> & { queueUrlPath: string } => {
+  video: <T extends VideoModels>(model: T): ModelDefinition<T> & { fps: number; queueUrlPath: string } => {
     warnDeprecated(model);
     const modelDefinition = _models.video[model];
     if (!modelDefinition) {
       throw createModelNotFoundError(model);
     }
-    return modelDefinition as ModelDefinition<T> & { queueUrlPath: string };
+    return modelDefinition as ModelDefinition<T> & { fps: number; queueUrlPath: string };
   },
   /**
    * Get an image model identifier.
@@ -648,12 +663,12 @@ export const models = {
    * Available options:
    *   - `"lucy-image-2"` - Image-to-image editing
    */
-  image: <T extends ImageModels>(model: T): ModelDefinition<T> & { queueUrlPath: string } => {
+  image: <T extends ImageModels>(model: T): ModelDefinition<T> & { fps: number; queueUrlPath: string } => {
     warnDeprecated(model);
     const modelDefinition = _models.image[model];
     if (!modelDefinition) {
       throw createModelNotFoundError(model);
     }
-    return modelDefinition as ModelDefinition<T> & { queueUrlPath: string };
+    return modelDefinition as ModelDefinition<T> & { fps: number; queueUrlPath: string };
   },
 };

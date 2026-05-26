@@ -7,50 +7,68 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 12px;
             background: #f0f2f5;
         }
+        
+        h1 { font-size: 22px; margin: 0 0 12px 0; }
         
         .container {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 30px;
+            gap: 12px;
+            margin-bottom: 16px;
         }
         
         .video-section {
             background: white;
-            border-radius: 12px;
-            padding: 20px;
+            border-radius: 10px;
+            padding: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
         .video-section h3 {
-            margin: 0 0 15px 0;
+            margin: 0 0 8px 0;
             color: #333;
-            font-size: 18px;
+            font-size: 15px;
         }
         
-        video {
+        /* Fixed 16:10 (wide) on desktop, 10:16 (tall) on mobile; video letterboxed inside */
+        .video-frame {
+            position: relative;
             width: 100%;
-            max-width: 400px;
-            height: auto;
-            border-radius: 8px;
+            aspect-ratio: 16 / 10;
             background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .video-frame > video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            object-position: center;
+            display: block;
         }
         
         .controls {
             background: white;
-            border-radius: 12px;
-            padding: 25px;
+            border-radius: 10px;
+            padding: 14px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+            margin-bottom: 12px;
+        }
+        
+        .controls h3 {
+            margin: 0 0 10px 0;
+            font-size: 15px;
         }
         
         .control-group {
-            margin-bottom: 20px;
+            margin-bottom: 10px;
         }
         
         .control-group:last-child {
@@ -59,21 +77,27 @@
         
         label {
             display: block;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
             font-weight: bold;
             color: #333;
+            font-size: 13px;
         }
         
-        input[type="text"], input[type="password"], select {
+        input[type="text"], input[type="password"], input[type="number"], select {
             width: 100%;
-            padding: 12px;
+            padding: 8px 10px;
             border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 16px;
+            border-radius: 6px;
+            font-size: 14px;
             box-sizing: border-box;
         }
+
+        input[readonly] {
+            background: #f8f9fa;
+            color: #555;
+        }
         
-        input[type="text"]:focus, input[type="password"]:focus, select:focus {
+        input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus, select:focus {
             outline: none;
             border-color: #4CAF50;
         }
@@ -87,12 +111,12 @@
             background: #4CAF50;
             color: white;
             border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 16px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
             cursor: pointer;
-            margin-right: 10px;
-            margin-bottom: 10px;
+            margin-right: 8px;
+            margin-bottom: 6px;
             transition: background-color 0.3s;
         }
         
@@ -115,18 +139,23 @@
         
         .status {
             background: white;
-            border-radius: 12px;
-            padding: 20px;
+            border-radius: 10px;
+            padding: 12px 14px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+            margin-bottom: 12px;
+        }
+        
+        .status h3 {
+            margin: 0 0 6px 0;
+            font-size: 15px;
         }
         
         .status-indicator {
             display: inline-block;
-            width: 12px;
-            height: 12px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
-            margin-right: 8px;
+            margin-right: 6px;
         }
         
         .status-connected {
@@ -150,23 +179,24 @@
         
         .logs {
             background: white;
-            border-radius: 12px;
-            padding: 20px;
+            border-radius: 10px;
+            padding: 14px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            max-height: 300px;
+            max-height: 250px;
             overflow-y: auto;
         }
         
         .logs h3 {
-            margin: 0 0 15px 0;
+            margin: 0 0 10px 0;
             color: #333;
+            font-size: 15px;
         }
         
         .log-entry {
             font-family: 'Courier New', monospace;
-            font-size: 12px;
-            margin: 5px 0;
-            padding: 5px;
+            font-size: 11px;
+            margin: 3px 0;
+            padding: 4px 6px;
             background: #f8f9fa;
             border-radius: 4px;
             border-left: 3px solid #ddd;
@@ -189,7 +219,7 @@
         
         .inline-controls {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             flex-wrap: wrap;
             align-items: center;
         }
@@ -197,12 +227,58 @@
         .checkbox-group {
             display: flex;
             align-items: center;
+            gap: 6px;
+        }
+
+        .token-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
             gap: 8px;
+            align-items: center;
         }
         
         input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
+            width: 16px;
+            height: 16px;
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 8px; }
+            h1 { font-size: 18px; }
+
+            .container {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+            
+            .video-section { padding: 8px; }
+            .controls { padding: 10px; }
+            .status { padding: 10px; }
+            .logs { padding: 10px; max-height: 180px; }
+            
+            button {
+                padding: 8px 12px;
+                font-size: 13px;
+                width: 100%;
+                margin-right: 0;
+            }
+            
+            .inline-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .checkbox-group {
+                justify-content: center;
+            }
+
+            .token-row {
+                grid-template-columns: 1fr;
+            }
+
+            .video-frame {
+                aspect-ratio: 10 / 16;
+            }
         }
     </style>
 </head>
@@ -218,6 +294,13 @@
         </div>
         <div id="session-info" style="display: none; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 14px;">
             <strong>Session ID:</strong> <span id="session-id-text">-</span>
+        </div>
+        <div id="publisher-token-info" style="display: none; margin-top: 10px;">
+            <label for="publisher-subscribe-token">Publisher Subscribe Token:</label>
+            <div class="token-row">
+                <input type="text" id="publisher-subscribe-token" readonly placeholder="Connect as publisher to generate a token">
+                <button id="copy-subscribe-token" class="secondary" disabled>Copy Subscribe Token</button>
+            </div>
         </div>
     </div>
     
@@ -255,8 +338,30 @@
             </select>
         </div>
         <div class="control-group">
+            <label for="resolution-select">Resolution:</label>
+            <select id="resolution-select">
+                <option value="720p" selected>720p (default)</option>
+                <option value="1080p">1080p</option>
+            </select>
+        </div>
+        <div class="control-group">
             <label for="initial-prompt">Initial Prompt (empty = passthrough):</label>
             <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
+        </div>
+        <div class="control-group">
+            <label for="camera-fps">Camera FPS:</label>
+            <input type="number" id="camera-fps" min="1" max="120" step="1">
+        </div>
+        <div class="control-group">
+            <label>Camera Orientation:</label>
+            <div class="inline-controls">
+                <label style="margin: 0; font-weight: normal;"><input type="radio" name="camera-orientation" value="horizontal" checked> Horizontal</label>
+                <label style="margin: 0; font-weight: normal;"><input type="radio" name="camera-orientation" value="vertical"> Vertical</label>
+            </div>
+        </div>
+        <div class="control-group checkbox-group">
+            <input type="checkbox" id="stream-audio-toggle" unchecked>
+            <label for="stream-audio-toggle" style="margin: 0; font-weight: normal;">Stream microphone audio</label>
         </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
@@ -264,16 +369,32 @@
             <button id="disconnect-btn" disabled>Disconnect</button>
         </div>
     </div>
+
+    <!-- Subscribe / Viewer Mode -->
+    <div class="controls">
+        <h3>Subscribe / Viewer Mode</h3>
+        <div class="control-group">
+            <label for="subscribe-token-input">Subscribe Token:</label>
+            <input type="text" id="subscribe-token-input" placeholder="Paste token from publisher tab">
+        </div>
+        <div class="inline-controls">
+            <button id="subscribe-btn" class="secondary">Subscribe to Stream</button>
+        </div>
+    </div>
     
     <!-- Video Streams -->
     <div class="container">
         <div class="video-section">
             <h3>📹 Local Camera</h3>
-            <video id="local-video" autoplay muted playsinline></video>
+            <div class="video-frame">
+                <video id="local-video" autoplay muted playsinline></video>
+            </div>
         </div>
         <div class="video-section">
             <h3>🤖 Decart Output</h3>
-            <video id="remote-video" autoplay playsinline></video>
+            <div class="video-frame">
+                <video id="remote-video" autoplay playsinline></video>
+            </div>
         </div>
     </div>
     
@@ -336,6 +457,50 @@
         </div>
     </div>
 
+    <!-- Files API (Upload & Reuse) -->
+    <div class="controls">
+        <h3>Files API (Upload &amp; Reuse Refs)</h3>
+        <div class="control-group">
+            <label for="upload-file">Select a file to upload:</label>
+            <input type="file" id="upload-file" accept="image/*">
+        </div>
+        <div class="control-group">
+            <label for="ttl-mode">TTL:</label>
+            <select id="ttl-mode">
+                <option value="default" selected>Default (server-side, 24h)</option>
+                <option value="persistent">Persistent (never expires)</option>
+                <option value="custom">Custom (seconds)</option>
+            </select>
+        </div>
+        <div class="control-group" id="ttl-custom-group" style="display: none;">
+            <label for="ttl-custom">TTL seconds (60 – 2,592,000):</label>
+            <input type="number" id="ttl-custom" min="60" max="2592000" value="3600">
+        </div>
+        <div class="inline-controls">
+            <button id="upload-file-btn" disabled>Upload File</button>
+        </div>
+        <div id="upload-status" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 6px; display: none;">
+            <strong>Status:</strong> <span id="upload-status-text">Ready</span>
+        </div>
+        <div class="control-group" style="margin-top: 10px;">
+            <label for="file-ref-id">File Ref ID (auto-filled after upload, or paste an existing id):</label>
+            <input type="text" id="file-ref-id" placeholder="file_...">
+        </div>
+        <div id="file-ref-info" style="margin-top: 8px; padding: 8px 10px; background: #f8f9fa; border-radius: 6px; font-family: 'Courier New', monospace; font-size: 12px; color: #333; display: none;">
+            <div><strong>id:</strong> <span id="ref-id-text">-</span></div>
+            <div><strong>filename:</strong> <span id="ref-filename-text">-</span></div>
+            <div><strong>mime_type:</strong> <span id="ref-mime-text">-</span></div>
+            <div><strong>size_bytes:</strong> <span id="ref-size-text">-</span></div>
+            <div><strong>created_at:</strong> <span id="ref-created-text">-</span></div>
+            <div><strong>expires_at:</strong> <span id="ref-expires-text">-</span></div>
+        </div>
+        <div class="inline-controls" style="margin-top: 10px;">
+            <button id="get-file-btn" class="secondary">Get</button>
+            <button id="delete-file-btn" class="secondary">Delete</button>
+            <button id="use-ref-as-image-btn" disabled>Use as Realtime Image Ref</button>
+        </div>
+    </div>
+
     <!-- Video File Processing -->
     <div class="controls">
         <h3>Video File Processing</h3>
@@ -364,11 +529,15 @@
     <div class="container" id="processed-container" style="display: none;">
         <div class="video-section">
             <h3>📹 Original Video</h3>
-            <video id="original-video" controls></video>
+            <div class="video-frame">
+                <video id="original-video" controls></video>
+            </div>
         </div>
         <div class="video-section">
             <h3>✨ Processed Video</h3>
-            <video id="processed-video" controls></video>
+            <div class="video-frame">
+                <video id="processed-video" controls></video>
+            </div>
         </div>
     </div>
     
@@ -380,7 +549,7 @@
     
     <script type="module">
         // Import the Decart SDK (with cache busting timestamp)
-        import { createDecartClient, models } from './dist/index.js';
+        import { createConsoleLogger, createDecartClient, models } from './dist/index.js';
 
         
         // State management
@@ -421,8 +590,10 @@
             });
         }
         let isConnected = false;
+        let activeConnectionMode = null;
         let processedVideoUrl = null;
         let currentSessionId = null;
+        let currentSubscribeToken = null;
         let model = models.realtime("lucy-2.1");
         
         // DOM elements
@@ -430,7 +601,10 @@
             apiKey: document.getElementById('api-key'),
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
+            resolutionSelect: document.getElementById('resolution-select'),
             initialPrompt: document.getElementById('initial-prompt'),
+            cameraFps: document.getElementById('camera-fps'),
+            streamAudioToggle: document.getElementById('stream-audio-toggle'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
             disconnectBtn: document.getElementById('disconnect-btn'),
@@ -449,6 +623,11 @@
             statusText: document.getElementById('status-text'),
             sessionInfo: document.getElementById('session-info'),
             sessionIdText: document.getElementById('session-id-text'),
+            publisherTokenInfo: document.getElementById('publisher-token-info'),
+            publisherSubscribeToken: document.getElementById('publisher-subscribe-token'),
+            copySubscribeToken: document.getElementById('copy-subscribe-token'),
+            subscribeTokenInput: document.getElementById('subscribe-token-input'),
+            subscribeBtn: document.getElementById('subscribe-btn'),
             logsContainer: document.getElementById('logs-container'),
             // Image reference elements
             referenceImage: document.getElementById('reference-image'),
@@ -468,13 +647,48 @@
             processStatusText: document.getElementById('process-status-text'),
             processedContainer: document.getElementById('processed-container'),
             originalVideo: document.getElementById('original-video'),
-            processedVideo: document.getElementById('processed-video')
+            processedVideo: document.getElementById('processed-video'),
+            // Files API elements
+            uploadFile: document.getElementById('upload-file'),
+            ttlMode: document.getElementById('ttl-mode'),
+            ttlCustomGroup: document.getElementById('ttl-custom-group'),
+            ttlCustom: document.getElementById('ttl-custom'),
+            uploadFileBtn: document.getElementById('upload-file-btn'),
+            uploadStatus: document.getElementById('upload-status'),
+            uploadStatusText: document.getElementById('upload-status-text'),
+            fileRefId: document.getElementById('file-ref-id'),
+            fileRefInfo: document.getElementById('file-ref-info'),
+            refIdText: document.getElementById('ref-id-text'),
+            refFilenameText: document.getElementById('ref-filename-text'),
+            refMimeText: document.getElementById('ref-mime-text'),
+            refSizeText: document.getElementById('ref-size-text'),
+            refCreatedText: document.getElementById('ref-created-text'),
+            refExpiresText: document.getElementById('ref-expires-text'),
+            getFileBtn: document.getElementById('get-file-btn'),
+            deleteFileBtn: document.getElementById('delete-file-btn'),
+            useRefAsImageBtn: document.getElementById('use-ref-as-image-btn'),
         };
         
         // Pre-populate API key from environment variable if available
         if (import.meta.env.VITE_DECART_API_KEY) {
             elements.apiKey.value = import.meta.env.VITE_DECART_API_KEY;
         }
+
+        function resolveCameraFps(fps, fallback = 30) {
+            if (typeof fps === 'number' && Number.isFinite(fps) && fps > 0) return fps;
+            if (!fps || typeof fps !== 'object') return fallback;
+
+            for (const key of ['ideal', 'max', 'exact', 'min']) {
+                const value = fps[key];
+                if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+                    return value;
+                }
+            }
+
+            return fallback;
+        }
+
+        elements.cameraFps.value = String(resolveCameraFps(model.fps));
 
         // Logging system
         function addLog(message, type = 'info') {
@@ -488,56 +702,178 @@
             // Also log to browser console
             console.log(`[Decart SDK] ${message}`);
         }
+
+        /**
+         * Logger for createDecartClient: mirrors to on-page log + [DecartSDK] in DevTools
+         * (createConsoleLogger alone only shows in the browser console, not in #logs-container.)
+         */
+        function createDemoLogger(minLevel = "info") {
+            const logLevels = { debug: 0, info: 1, warn: 2, error: 3 };
+            const threshold = logLevels[minLevel] ?? logLevels.info;
+            const toPage = (label, message, data) => {
+                if (logLevels[label] < threshold) return;
+                const line =
+                    data !== undefined
+                        ? `${message} ${typeof data === "object" ? JSON.stringify(data) : String(data)}`
+                        : message;
+                addLog(
+                    `[SDK ${label}] ${line}`,
+                    label === "error" ? "error" : "info",
+                );
+            };
+            const c = createConsoleLogger(minLevel);
+            return {
+                debug: (msg, data) => {
+                    c.debug(msg, data);
+                    toPage("debug", msg, data);
+                },
+                info: (msg, data) => {
+                    c.info(msg, data);
+                    toPage("info", msg, data);
+                },
+                warn: (msg, data) => {
+                    c.warn(msg, data);
+                    toPage("warn", msg, data);
+                },
+                error: (msg, data) => {
+                    c.error(msg, data);
+                    toPage("error", msg, data);
+                },
+            };
+        }
         
         // Update connection status
         function updateStatus(status) {
             const statusClass = {
                 'connected': 'status-connected',
+                'generating': 'status-connected',
                 'connecting': 'status-connecting',
+                'reconnecting': 'status-connecting',
                 'disconnected': 'status-disconnected'
             };
             
-            elements.statusIndicator.className = `status-indicator ${statusClass[status]}`;
+            elements.statusIndicator.className = `status-indicator ${statusClass[status] || statusClass.disconnected}`;
             elements.statusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
+
+        function syncPublisherSubscribeToken() {
+            if (activeConnectionMode !== 'publisher' || !decartRealtime?.getSubscribeToken) {
+                return null;
+            }
+
+            currentSessionId = decartRealtime.sessionId;
+            elements.sessionIdText.textContent = currentSessionId || '-';
+
+            const previousSubscribeToken = currentSubscribeToken;
+            currentSubscribeToken = decartRealtime.getSubscribeToken();
+            elements.publisherSubscribeToken.value = currentSubscribeToken || '';
+            elements.copySubscribeToken.disabled = !currentSubscribeToken;
+            elements.publisherTokenInfo.style.display = 'block';
+
+            if (!previousSubscribeToken && currentSubscribeToken) {
+                addLog('Subscribe token ready. Copy it into another tab to test viewer mode.', 'success');
+            }
+
+            return currentSubscribeToken;
+        }
+
+        function waitForPublisherSubscribeToken(attemptsRemaining = 20) {
+            const token = syncPublisherSubscribeToken();
+            if (token || attemptsRemaining <= 0 || activeConnectionMode !== 'publisher') {
+                if (!token && activeConnectionMode === 'publisher') {
+                    addLog('Subscribe token is not available yet', 'info');
+                }
+                return;
+            }
+
+            setTimeout(() => waitForPublisherSubscribeToken(attemptsRemaining - 1), 250);
         }
         
         // Model selection handler
         elements.modelSelect.addEventListener('change', (e) => {
             const selectedModel = e.target.value;
             model = models.realtime(selectedModel);
+            elements.cameraFps.value = String(resolveCameraFps(model.fps));
             addLog(`Selected model: ${selectedModel}`, 'info');
             
-            // If camera is already started, stop it so user can restart with new model settings
+            // If camera is already started, stop it so user can restart with new model settings.
             if (localStream) {
-                localStream.getTracks().forEach(track => { track.stop(); });
-                localStream = null;
-                elements.localVideo.srcObject = null;
+                stopCameraResources();
                 elements.startCamera.disabled = false;
                 elements.connectBtn.disabled = true;
                 addLog('Camera stopped. Please restart camera with new model settings.', 'info');
             }
         });
+
+        function getSelectedCameraSettings() {
+            const orientation = document.querySelector('input[name="camera-orientation"]:checked').value;
+            const isVertical = orientation === 'vertical';
+            const modelWidth = model.width;
+            const modelHeight = model.height;
+
+            const parsedFps = Number.parseInt(elements.cameraFps.value, 10);
+            const fps = Number.isFinite(parsedFps) && parsedFps > 0 ? parsedFps : resolveCameraFps(model.fps);
+
+            return {
+                orientation,
+                width: isVertical ? modelHeight : modelWidth,
+                height: isVertical ? modelWidth : modelHeight,
+                fps,
+            };
+        }
+
+        function getCameraVideoConstraints(camera) {
+            const enforceDimensions = window.matchMedia('(min-width: 769px)').matches;
+            const dimensionConstraint = (value) => enforceDimensions ? { exact: value } : { ideal: value };
+
+            return {
+                width: dimensionConstraint(camera.width),
+                height: dimensionConstraint(camera.height),
+                frameRate: { ideal: camera.fps },
+                resizeMode: 'crop-and-scale',
+            };
+        }
+
+        function stopCameraResources() {
+            if (localStream) {
+                localStream.getTracks().forEach((track) => {
+                    try { track.stop(); } catch (_) {}
+                });
+                localStream = null;
+            }
+            elements.localVideo.srcObject = null;
+        }
         
         // Start camera
         elements.startCamera.addEventListener('click', async () => {
             try {
+                if (!navigator.mediaDevices?.getUserMedia) {
+                    throw new Error('Camera API is not available in this browser/context');
+                }
+
                 addLog('Requesting camera access...', 'info');
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        frameRate: model.fps,
-                        width: model.width,
-                        height: model.height,
-                    },
-                    audio: true
-                });
-                
+                const streamAudio = elements.streamAudioToggle.checked;
+                const camera = getSelectedCameraSettings();
+                const constraints = {
+                    video: getCameraVideoConstraints(camera),
+                    audio: streamAudio
+                        ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+                        : false,
+                };
+
+                addLog(`Camera target: ${camera.orientation}, ${camera.width}×${camera.height} @ ${camera.fps}fps`, 'info');
+                addLog(`Microphone audio: ${streamAudio ? 'enabled' : 'disabled'}`, 'info');
+
+                localStream = await navigator.mediaDevices.getUserMedia(constraints);
                 elements.localVideo.srcObject = localStream;
+                await elements.localVideo.play();
                 elements.startCamera.disabled = true;
                 elements.connectBtn.disabled = false;
-                
+
                 addLog('Camera access granted successfully', 'success');
             } catch (error) {
                 addLog(`Failed to access camera: ${error.message}`, 'error');
+                stopCameraResources();
             }
         });
         
@@ -553,10 +889,17 @@
                 addLog('Please start camera first', 'error');
                 return;
             }
+
+            if (isConnected) {
+                addLog('Already connected. Disconnect before starting another mode.', 'error');
+                return;
+            }
             
             try {
                 updateStatus('connecting');
                 elements.connectBtn.disabled = true;
+                elements.subscribeBtn.disabled = true;
+                activeConnectionMode = 'publisher';
                 
                 addLog('Initializing Decart client...', 'info');
                 
@@ -564,9 +907,10 @@
                 decartClient = createDecartClient({
                     apiKey,
                     ...(realtimeBaseUrl && { realtimeBaseUrl }),
+                    logger: createDemoLogger("debug"),
                 });
                 
-                addLog('Connecting to Decart server...', 'info');
+                addLog('Connecting to Decart server via LiveKit...', 'info');
                 
                 // Build initial prompt from text field (empty / null toggle = passthrough)
                 const initialPromptText = elements.initialPrompt.value.trim();
@@ -585,16 +929,29 @@
                     initialImage = await initialImageResponse.blob();
                 }
 
+                const resolution = elements.resolutionSelect.value;
+                addLog(`Resolution: ${resolution}`, 'info');
+
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
+                    resolution,
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
                     },
+                    onConnectionChange: (state) => {
+                        updateStatus(state);
+                        if (state === 'connected' || state === 'generating') {
+                            syncPublisherSubscribeToken();
+                        }
+                    },
+                    onQueuePosition: (queuePosition) => {
+                        addLog(`Queue position: ${queuePosition.position}/${queuePosition.queueSize}`, 'info');
+                    },
                     initialState: {
                         ...(promptValue && { prompt: promptValue }),
                         ...(initialImage && { image: initialImage }),
-                    }
+                    },
                 });
                 
                 // Check connection status
@@ -607,14 +964,16 @@
                     elements.promisePromptInput.disabled = false;
                     elements.sendPromisePrompt.disabled = false;
                     elements.referenceImage.disabled = false;
+                    elements.subscribeBtn.disabled = true;
 
                     // Show session ID
-                    currentSessionId = decartRealtime.sessionId;
-                    elements.sessionIdText.textContent = currentSessionId;
+                    syncPublisherSubscribeToken();
+                    waitForPublisherSubscribeToken();
                     elements.sessionInfo.style.display = 'block';
                     
                     addLog('Successfully connected to Decart!', 'success');
-                    addLog(`Session ID: ${currentSessionId}`, 'success');
+                    addLog(`Session ID: ${currentSessionId || '(pending)'}`, 'success');
+                    updateUseRefAsImageBtnState();
                 } else {
                     throw new Error('Connection established but not in connected state');
                 }
@@ -625,8 +984,106 @@
                 elements.connectBtn.disabled = false;
                 decartClient = null;
                 isConnected = false;
+                activeConnectionMode = null;
                 currentSessionId = null;
+                currentSubscribeToken = null;
                 elements.sessionInfo.style.display = 'none';
+                elements.publisherTokenInfo.style.display = 'none';
+                elements.subscribeBtn.disabled = false;
+            }
+        });
+
+        elements.copySubscribeToken.addEventListener('click', async () => {
+            const token = syncPublisherSubscribeToken();
+            if (!token) {
+                addLog('No subscribe token available to copy yet', 'error');
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(token);
+                addLog('Subscribe token copied to clipboard', 'success');
+            } catch {
+                elements.publisherSubscribeToken.select();
+                document.execCommand('copy');
+                addLog('Subscribe token copied using fallback selection', 'success');
+            }
+        });
+
+        elements.subscribeBtn.addEventListener('click', async () => {
+            const apiKey = elements.apiKey.value.trim();
+            if (!apiKey) {
+                addLog('Please enter an API key', 'error');
+                return;
+            }
+
+            const token = elements.subscribeTokenInput.value.trim();
+            if (!token) {
+                addLog('Please paste a subscribe token', 'error');
+                return;
+            }
+
+            if (isConnected) {
+                addLog('Already connected. Disconnect before starting another mode.', 'error');
+                return;
+            }
+
+            try {
+                updateStatus('connecting');
+                activeConnectionMode = 'subscriber';
+                elements.subscribeBtn.disabled = true;
+                elements.startCamera.disabled = true;
+                elements.connectBtn.disabled = true;
+                stopCameraResources();
+
+                const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
+                decartClient = createDecartClient({
+                    apiKey,
+                    ...(realtimeBaseUrl && { realtimeBaseUrl }),
+                    logger: createDemoLogger("debug"),
+                });
+
+                addLog('Subscribing to Decart stream via LiveKit...', 'info');
+
+                decartRealtime = await decartClient.realtime.subscribe({
+                    token,
+                    onRemoteStream: (stream) => {
+                        addLog('Received subscribed stream from Decart', 'success');
+                        elements.remoteVideo.srcObject = stream;
+                    },
+                    onConnectionChange: (state) => {
+                        updateStatus(state);
+                    },
+                    onQueuePosition: (queuePosition) => {
+                        addLog(`Queue position: ${queuePosition.position}/${queuePosition.queueSize}`, 'info');
+                    },
+                });
+
+                if (decartRealtime.isConnected()) {
+                    isConnected = true;
+                    updateStatus('connected');
+                    elements.disconnectBtn.disabled = false;
+                    elements.promptInput.disabled = true;
+                    elements.sendPrompt.disabled = true;
+                    elements.promisePromptInput.disabled = true;
+                    elements.sendPromisePrompt.disabled = true;
+                    elements.referenceImage.disabled = true;
+                    elements.setImage.disabled = true;
+                    elements.sessionInfo.style.display = 'none';
+                    elements.publisherTokenInfo.style.display = 'none';
+                    addLog('Successfully subscribed to stream. No local media was requested or published.', 'success');
+                } else {
+                    throw new Error('Subscribe established but not in connected state');
+                }
+            } catch (error) {
+                addLog(`Failed to subscribe: ${error.message}`, 'error');
+                updateStatus('disconnected');
+                decartRealtime = null;
+                decartClient = null;
+                isConnected = false;
+                activeConnectionMode = null;
+                elements.subscribeBtn.disabled = false;
+                elements.startCamera.disabled = false;
             }
         });
         
@@ -639,21 +1096,20 @@
                 decartClient = null;
             }
             
-            if (localStream) {
-                localStream.getTracks().forEach(track => { track.stop(); });
-                localStream = null;
-                elements.localVideo.srcObject = null;
-            }
-            
+            stopCameraResources();
+
             elements.remoteVideo.srcObject = null;
             
             isConnected = false;
             updateStatus('disconnected');
             currentSessionId = null;
+            currentSubscribeToken = null;
+            activeConnectionMode = null;
             
             // Reset UI
             elements.startCamera.disabled = false;
             elements.connectBtn.disabled = true;
+            elements.subscribeBtn.disabled = false;
             elements.disconnectBtn.disabled = true;
             elements.promptInput.disabled = true;
             elements.sendPrompt.disabled = true;
@@ -663,11 +1119,15 @@
             elements.promisePromptInput.value = '';
             elements.promiseStatus.style.display = 'none';
             elements.sessionInfo.style.display = 'none';
+            elements.publisherTokenInfo.style.display = 'none';
+            elements.publisherSubscribeToken.value = '';
+            elements.copySubscribeToken.disabled = true;
             elements.referenceImage.disabled = true;
             elements.setImage.disabled = true;
             elements.referenceImage.value = '';
             elements.imageStatus.style.display = 'none';
             elements.imagePreview.style.display = 'none';
+            updateUseRefAsImageBtnState();
 
             addLog('Disconnected successfully', 'info');
         });
@@ -680,8 +1140,8 @@
                 return;
             }
             
-            if (!decartRealtime || !isConnected) {
-                addLog('Not connected to Decart', 'error');
+            if (!decartRealtime || !isConnected || activeConnectionMode !== 'publisher') {
+                addLog('Not connected to Decart as a publisher', 'error');
                 return;
             }
             
@@ -714,8 +1174,8 @@
                 return;
             }
             
-            if (!decartRealtime || !isConnected) {
-                addLog('Not connected to Decart', 'error');
+            if (!decartRealtime || !isConnected || activeConnectionMode !== 'publisher') {
+                addLog('Not connected to Decart as a publisher', 'error');
                 return;
             }
             
@@ -784,8 +1244,8 @@
                 return;
             }
 
-            if (!decartRealtime || !isConnected) {
-                addLog('Not connected to Decart', 'error');
+            if (!decartRealtime || !isConnected || activeConnectionMode !== 'publisher') {
+                addLog('Not connected to Decart as a publisher', 'error');
                 return;
             }
 
@@ -872,6 +1332,7 @@
                     decartClient = createDecartClient({
                         apiKey,
                         ...(realtimeBaseUrl && { realtimeBaseUrl }),
+                        logger: createDemoLogger("debug"),
                     });
                     addLog('Initialized Decart client for processing', 'info');
                 }
@@ -942,6 +1403,161 @@
             }
         });
         
+        // ---------- Files API (Upload & Reuse Refs) ----------
+
+        function ensureDecartClient() {
+            if (decartClient) return decartClient;
+            const apiKey = elements.apiKey.value.trim();
+            if (!apiKey) {
+                addLog('Please enter an API key', 'error');
+                return null;
+            }
+            const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
+            decartClient = createDecartClient({
+                apiKey,
+                ...(realtimeBaseUrl && { realtimeBaseUrl }),
+                logger: createDemoLogger("debug"),
+            });
+            addLog('Initialized Decart client (for files API)', 'info');
+            return decartClient;
+        }
+
+        function updateUseRefAsImageBtnState() {
+            const hasRef = elements.fileRefId.value.trim().length > 0;
+            const canSetImage = isConnected && activeConnectionMode === 'publisher';
+            elements.useRefAsImageBtn.disabled = !hasRef || !canSetImage;
+        }
+
+        function getTtlOption() {
+            const mode = elements.ttlMode.value;
+            if (mode === 'default') return undefined;
+            if (mode === 'persistent') return 'persistent';
+            const n = Number.parseInt(elements.ttlCustom.value, 10);
+            return Number.isFinite(n) && n > 0 ? n : undefined;
+        }
+
+        function setRefInfo(ref) {
+            elements.fileRefId.value = ref.id;
+            elements.refIdText.textContent = ref.id;
+            elements.refFilenameText.textContent = ref.filename ?? '(null)';
+            elements.refMimeText.textContent = ref.mime_type;
+            elements.refSizeText.textContent = `${ref.size_bytes} bytes`;
+            elements.refCreatedText.textContent = ref.created_at;
+            elements.refExpiresText.textContent = ref.expires_at ?? 'persistent (never expires)';
+            elements.fileRefInfo.style.display = 'block';
+            updateUseRefAsImageBtnState();
+        }
+
+        elements.ttlMode.addEventListener('change', () => {
+            elements.ttlCustomGroup.style.display = elements.ttlMode.value === 'custom' ? 'block' : 'none';
+        });
+
+        elements.uploadFile.addEventListener('change', (e) => {
+            elements.uploadFileBtn.disabled = !e.target.files[0];
+        });
+
+        elements.fileRefId.addEventListener('input', updateUseRefAsImageBtnState);
+
+        elements.uploadFileBtn.addEventListener('click', async () => {
+            const file = elements.uploadFile.files[0];
+            if (!file) {
+                addLog('Please select a file first', 'error');
+                return;
+            }
+            const client = ensureDecartClient();
+            if (!client) return;
+
+            const ttlSeconds = getTtlOption();
+
+            try {
+                elements.uploadStatus.style.display = 'block';
+                elements.uploadStatusText.textContent = '⏳ Uploading...';
+                elements.uploadStatusText.style.color = '#ff9800';
+                elements.uploadFileBtn.disabled = true;
+
+                addLog(`Uploading ${file.name} (${file.size} bytes), ttlSeconds=${ttlSeconds ?? 'default'}`, 'info');
+                const ref = await client.files.upload(
+                    file,
+                    ttlSeconds !== undefined ? { ttlSeconds } : undefined,
+                );
+
+                setRefInfo(ref);
+                elements.uploadStatusText.textContent = `✅ Uploaded: ${ref.id}`;
+                elements.uploadStatusText.style.color = '#4CAF50';
+                addLog(`File uploaded: ${ref.id} (expires ${ref.expires_at ?? 'never'})`, 'success');
+            } catch (error) {
+                elements.uploadStatusText.textContent = `❌ Failed: ${error.message ?? error}`;
+                elements.uploadStatusText.style.color = '#f44336';
+                addLog(`Upload failed: ${error.message ?? error}`, 'error');
+            } finally {
+                elements.uploadFileBtn.disabled = false;
+            }
+        });
+
+        elements.getFileBtn.addEventListener('click', async () => {
+            const id = elements.fileRefId.value.trim();
+            if (!id) {
+                addLog('Please enter or upload a file ref id first', 'error');
+                return;
+            }
+            const client = ensureDecartClient();
+            if (!client) return;
+
+            try {
+                addLog(`Fetching file ${id}...`, 'info');
+                const ref = await client.files.get(id);
+                setRefInfo(ref);
+                addLog(`Got file ${id}`, 'success');
+            } catch (error) {
+                addLog(`Get failed: ${error.message ?? error}`, 'error');
+            }
+        });
+
+        elements.deleteFileBtn.addEventListener('click', async () => {
+            const id = elements.fileRefId.value.trim();
+            if (!id) {
+                addLog('Please enter or upload a file ref id first', 'error');
+                return;
+            }
+            const client = ensureDecartClient();
+            if (!client) return;
+
+            if (!confirm(`Delete file ${id}? This cannot be undone.`)) return;
+
+            try {
+                addLog(`Deleting file ${id}...`, 'info');
+                await client.files.delete(id);
+                addLog(`Deleted file ${id}`, 'success');
+                elements.fileRefInfo.style.display = 'none';
+                elements.fileRefId.value = '';
+                updateUseRefAsImageBtnState();
+            } catch (error) {
+                addLog(`Delete failed: ${error.message ?? error}`, 'error');
+            }
+        });
+
+        elements.useRefAsImageBtn.addEventListener('click', async () => {
+            const id = elements.fileRefId.value.trim();
+            if (!id) {
+                addLog('No file ref id to send', 'error');
+                return;
+            }
+            if (!decartRealtime || !isConnected || activeConnectionMode !== 'publisher') {
+                addLog('Not connected to Decart as a publisher', 'error');
+                return;
+            }
+            try {
+                elements.useRefAsImageBtn.disabled = true;
+                addLog(`Setting realtime image to ref ${id}...`, 'info');
+                await decartRealtime.setImage(id);
+                addLog(`Realtime image set to ref ${id}`, 'success');
+            } catch (error) {
+                addLog(`Failed to set image ref: ${error.message ?? error}`, 'error');
+            } finally {
+                updateUseRefAsImageBtnState();
+            }
+        });
+
         // Initialize
         addLog('Decart SDK Test Page loaded', 'info');
         addLog('Click "Start Camera" for real-time or select a video file for processing', 'info');
