@@ -3,7 +3,7 @@ import { buildAuthHeaders } from "../shared/request";
 import { createInvalidInputError, createSDKError } from "../utils/errors";
 import type { FileReference, FileUploadInput } from "./types";
 
-const MAX_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days; matches the bouncer's ceiling.
+const MAX_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 const ttlSecondsSchema = z.union([z.number().int().min(60).max(MAX_TTL_SECONDS), z.literal("persistent")]);
 
