@@ -54,6 +54,7 @@ const realTimeClientConnectOptionsSchema = z.object({
   queryParams: z.record(z.string(), z.string()).optional(),
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
   resolution: z.enum(["720p", "1080p"]).optional(),
+  /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp9"]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
@@ -148,9 +149,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       });
 
       const safariCodec = isDesktopSafari() ? "vp8" : undefined;
-      if (safariCodec && preferredVideoCodec) {
-        logger.warn("preferredVideoCodec ignored on Desktop Safari; using vp8");
-      }
       const publishCodec: VideoCodec | undefined = safariCodec ?? preferredVideoCodec;
 
       const queryParams = new URLSearchParams({
