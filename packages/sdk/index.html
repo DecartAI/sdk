@@ -53,6 +53,18 @@
             object-position: center;
             display: block;
         }
+        .latency-readout {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            padding: 4px 10px;
+            background: rgba(0, 0, 0, 0.65);
+            color: #fff;
+            font: 600 13px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            border-radius: 6px;
+            pointer-events: none;
+            z-index: 2;
+        }
         
         .controls {
             background: white;
@@ -282,6 +294,7 @@
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
@@ -420,6 +433,7 @@
                 <div><canvas id="bench-chart-nack-rx"></canvas></div>
                 <div><canvas id="bench-chart-keyframes-tx"></canvas></div>
                 <div><canvas id="bench-chart-keyframes-rx"></canvas></div>
+                <div style="grid-column:1 / -1;"><canvas id="bench-chart-ocr-latency"></canvas></div>
             </div>
             <div style="margin-top:14px;"><canvas id="bench-chart-summary"></canvas></div>
         </div>
@@ -449,6 +463,7 @@
             <h3>🤖 Decart Output</h3>
             <div class="video-frame">
                 <video id="remote-video" autoplay playsinline></video>
+                <div id="latency-readout" class="latency-readout">latency: — ms (Δ — f)</div>
             </div>
         </div>
     </div>
@@ -799,7 +814,9 @@
             benchChartNackRx: document.getElementById('bench-chart-nack-rx'),
             benchChartKeyframesTx: document.getElementById('bench-chart-keyframes-tx'),
             benchChartKeyframesRx: document.getElementById('bench-chart-keyframes-rx'),
+            benchChartOcrLatency: document.getElementById('bench-chart-ocr-latency'),
             benchChartSummary: document.getElementById('bench-chart-summary'),
+            latencyReadout: document.getElementById('latency-readout'),
             localVideo: document.getElementById('local-video'),
             remoteVideo: document.getElementById('remote-video'),
             promptInput: document.getElementById('prompt-input'),
@@ -864,15 +881,16 @@
         elements.cameraFps.value = String(resolveCameraFps(model.fps));
 
         // Logging system
+        const MAX_LOG_ENTRIES = 200;
         function addLog(message, type = 'info') {
             const timestamp = new Date().toLocaleTimeString();
             const logEntry = document.createElement('div');
             logEntry.className = `log-entry log-${type}`;
             logEntry.textContent = `[${timestamp}] ${message}`;
-            elements.logsContainer.appendChild(logEntry);
-            elements.logsContainer.scrollTop = elements.logsContainer.scrollHeight;
-            
-            // Also log to browser console
+            const container = elements.logsContainer;
+            container.appendChild(logEntry);
+            while (container.childElementCount > MAX_LOG_ENTRIES) container.removeChild(container.firstElementChild);
+            container.scrollTop = container.scrollHeight;
             console.log(`[Decart SDK] ${message}`);
         }
 
@@ -960,18 +978,15 @@
             statsRunCount += 1;
             const { sender = [], receiver = [] } = result;
             if (sender.length === 0 && receiver.length === 0) {
-                addLog(`[stats #${statsRunCount}] no tracks yet`, 'info');
                 return;
             }
             sender.forEach((stats, idx) => {
                 const key = `sender[${stats.rid || idx}]`;
                 aggregateStatObject(key, stats);
-                addLog(`[stats #${statsRunCount}] ${key} ${formatStatsForLog(stats)}`, 'info');
             });
             receiver.forEach((stats, idx) => {
                 const key = `receiver[${idx}]`;
                 aggregateStatObject(key, stats);
-                addLog(`[stats #${statsRunCount}] ${key} ${formatStatsForLog(stats)}`, 'info');
             });
         }
 
@@ -1016,7 +1031,6 @@
             promptCycleIndex += 1;
             try {
                 decartRealtime.setPrompt(prompt, { enhance: true });
-                addLog(`[cycle ${promptCycleIndex}/${CYCLE_PROMPTS.length}] prompt → "${prompt}"`, 'info');
             } catch (error) {
                 addLog(`Cycle prompt failed: ${error.message}`, 'error');
             }
@@ -1027,7 +1041,6 @@
             promptCycleIndex = 0;
             sendCyclePrompt();
             promptCycleTimer = setInterval(sendCyclePrompt, PROMPT_CYCLE_INTERVAL_MS);
-            addLog(`Started prompt cycler (${CYCLE_PROMPTS.length} prompts × ${PROMPT_CYCLE_INTERVAL_MS / 1000}s)`, 'info');
         }
 
         function stopPromptCycler() {
@@ -1042,7 +1055,6 @@
             statsPollTimer = setInterval(pollAndAggregateStats, STATS_POLL_INTERVAL_MS);
             elements.printStatsBtn.disabled = false;
             startSessionTimer();
-            addLog(`Started stats polling every ${STATS_POLL_INTERVAL_MS / 1000}s`, 'info');
         }
 
         function stopStatsPolling() {
@@ -1136,6 +1148,7 @@
         }
 
         function ensureBenchCharts() {
+            initBenchVisibilityObserver();
             if (benchCharts || typeof Chart === 'undefined') return benchCharts;
             ensureAnnotationPlugin();
             const sharedTooltip = {
@@ -1307,6 +1320,11 @@
                     data: { datasets: [] },
                     options: buildBppChartOptions('BPP — receiver (rx, bits per pixel), 0.07–0.15 reference'),
                 }),
+                ocrLatency: new Chart(elements.benchChartOcrLatency, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('End-to-end latency via QR scan (ms)') },
+                }),
                 summary: new Chart(elements.benchChartSummary, {
                     type: 'bar',
                     data: { labels: [], datasets: [] },
@@ -1347,61 +1365,93 @@
 
         function runLabel(run, idx) { return `#${idx + 1} ${run.profile}`; }
 
-        function refreshTimeSeriesCharts() {
+        let _refreshTsRafId = 0;
+        let _refreshTsLastAt = 0;
+        let _refreshTsPendingWhileHidden = false;
+        let _benchDashboardVisible = true;
+        const TS_MIN_INTERVAL_MS = 3000;
+        let _benchVisibilityObserverInited = false;
+        function initBenchVisibilityObserver() {
+            if (_benchVisibilityObserverInited) return;
+            if (!('IntersectionObserver' in window) || !elements.benchDashboard) return;
+            _benchVisibilityObserverInited = true;
+            const io = new IntersectionObserver((entries) => {
+                _benchDashboardVisible = entries[0].isIntersecting;
+                if (_benchDashboardVisible && _refreshTsPendingWhileHidden) {
+                    _refreshTsPendingWhileHidden = false;
+                    scheduleTimeSeriesRefresh();
+                }
+            }, { threshold: 0.01 });
+            io.observe(elements.benchDashboard);
+        }
+        function scheduleTimeSeriesRefresh() {
+            if (!_benchDashboardVisible) { _refreshTsPendingWhileHidden = true; return; }
+            if (_refreshTsRafId) return;
+            const now = performance.now();
+            const wait = Math.max(0, _refreshTsLastAt + TS_MIN_INTERVAL_MS - now);
+            const run = () => {
+                _refreshTsRafId = 0;
+                _refreshTsLastAt = performance.now();
+                refreshTimeSeriesChartsNow();
+            };
+            if (wait > 0) {
+                _refreshTsRafId = setTimeout(() => requestAnimationFrame(run), wait);
+            } else {
+                _refreshTsRafId = requestAnimationFrame(run);
+            }
+        }
+        let computeWorker = null;
+        let computeReqSeq = 0;
+        const computePending = new Map();
+
+        function ensureComputeWorker() {
+            if (computeWorker) return computeWorker;
+            computeWorker = new Worker('./compute-worker.js');
+            computeWorker.onmessage = (e) => {
+                const { kind, requestId } = e.data;
+                const resolve = computePending.get(requestId);
+                if (resolve) {
+                    computePending.delete(requestId);
+                    resolve(e.data);
+                }
+            };
+            computeWorker.onerror = (e) => addLog(`Compute worker error: ${e.message}`, 'error');
+            return computeWorker;
+        }
+
+        function computeRequest(kind, payload) {
+            const w = ensureComputeWorker();
+            const requestId = ++computeReqSeq;
+            return new Promise((resolve) => {
+                computePending.set(requestId, resolve);
+                w.postMessage({ kind, requestId, ...payload });
+            });
+        }
+
+        function snapshotRunsForWorker() {
+            const all = [...benchmarkRuns, ...(currentBenchRun ? [currentBenchRun] : [])];
+            return all.map((run, idx) => ({
+                profile: run.profile,
+                sessionId: run.sessionId,
+                startedAtMs: run.startedAtMs,
+                samples: run.samples,
+                ocrLatency: run.ocrLatency,
+                label: runLabel(run, idx),
+                color: runColor(idx),
+            }));
+        }
+
+        function refreshTimeSeriesCharts() { scheduleTimeSeriesRefresh(); }
+        async function refreshTimeSeriesChartsNow() {
             const charts = ensureBenchCharts();
             if (!charts) return;
-            const runs = [...benchmarkRuns, ...(currentBenchRun ? [currentBenchRun] : [])];
-            const datasets = {
-                fpsTx: [], fpsRx: [],
-                bitrateTx: [], bitrateRx: [],
-                rtt: [], loss: [],
-                nackTx: [], nackRx: [],
-                keyframesTx: [], keyframesRx: [],
-                qpTx: [], qpRx: [],
-                bppTx: [], bppRx: [],
-            };
-            runs.forEach((run, idx) => {
-                const color = runColor(idx);
-                const label = runLabel(run, idx);
-                const points = run.samples.map((s) => ({ x: +(s.tMs / 1000).toFixed(2), d: s.derived }));
-                const outCodec = points.find((p) => p.d.outboundCodec)?.d.outboundCodec ?? '?';
-                const inCodec = points.find((p) => p.d.inboundCodec)?.d.inboundCodec ?? '?';
-                const lineBase = { borderColor: color, backgroundColor: color, spanGaps: true, pointRadius: 0 };
-                datasets.fpsTx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.senderFps })) });
-                datasets.fpsRx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.receiverFps })) });
-                datasets.bitrateTx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.senderBitrateBps != null ? p.d.senderBitrateBps / 1000 : null })) });
-                datasets.bitrateRx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.receiverBitrateBps != null ? p.d.receiverBitrateBps / 1000 : null })) });
-                datasets.rtt.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.rtt })) });
-                datasets.loss.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.cumulativeLossPct })) });
-                datasets.nackTx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.nackOutDelta })) });
-                datasets.nackRx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.nackInDelta })) });
-                datasets.keyframesTx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.keyFramesOutDelta })) });
-                datasets.keyframesRx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.keyFramesInDelta })) });
-                const qpOutRawSeries = points.map((p) => p.d.avgQpOut);
-                const qpInRawSeries = points.map((p) => p.d.avgQpIn);
-                datasets.qpTx.push({
-                    label: `${label} (${outCodec})`,
-                    ...lineBase,
-                    yAxisID: 'y',
-                    data: points.map((p) => ({ x: p.x, y: normalizeQp(p.d.avgQpOut, outCodec) })),
-                    _qpRaw: qpOutRawSeries,
-                    _qpCodec: outCodec,
-                });
-                datasets.qpRx.push({
-                    label: `${label} (${inCodec})`,
-                    ...lineBase,
-                    yAxisID: 'y',
-                    data: points.map((p) => ({ x: p.x, y: normalizeQp(p.d.avgQpIn, inCodec) })),
-                    _qpRaw: qpInRawSeries,
-                    _qpCodec: inCodec,
-                });
-                datasets.bppTx.push({ label, ...lineBase, yAxisID: 'y', data: points.map((p) => ({ x: p.x, y: p.d.bppOut })) });
-                datasets.bppRx.push({ label, ...lineBase, yAxisID: 'y', data: points.map((p) => ({ x: p.x, y: p.d.bppIn })) });
-            });
+            const runs = snapshotRunsForWorker();
+            const res = await computeRequest('datasets', { runs });
+            const datasets = res.datasets;
             Object.keys(datasets).forEach((key) => {
                 if (!charts[key]) return;
                 charts[key].data.datasets = datasets[key];
-                charts[key].update();
+                charts[key].update('none');
             });
         }
 
@@ -1474,7 +1524,7 @@
 
                 { label: 'Freezes total', data: pick((s) => s.freezeCount), backgroundColor: '#d62728' },
             ];
-            charts.summary.update();
+            charts.summary.update('none');
         }
 
         function sumLayerField(layers, field) {
@@ -1660,8 +1710,10 @@
 
         async function collectBenchSample() {
             if (!currentBenchRun || !decartRealtime?.getVideoStats) return;
+            const runAtStart = currentBenchRun;
             let raw;
             try { raw = await decartRealtime.getVideoStats(); } catch (err) { addLog(`Benchmark sample failed: ${err.message}`, 'error'); return; }
+            if (currentBenchRun !== runAtStart) return;
             const tMs = nowMs() - currentBenchRun.startedAtMs;
             const derived = deriveSampleMetrics(raw, currentBenchRun.prevRaw);
             const sample = { tMs, sender: raw.sender, receiver: raw.receiver, derived };
@@ -1796,6 +1848,7 @@
                 endedAtMs: null,
                 samples: [],
                 prevRaw: null,
+                ocrLatency: [],
             };
             elements.benchStart.disabled = true;
             elements.benchStop.disabled = false;
@@ -1827,8 +1880,134 @@
             elements.benchStart.disabled = !decartRealtime?.getVideoStats;
             elements.benchStop.disabled = true;
             elements.benchStatusText.textContent = `idle (last: ${finished.profile})`;
-            refreshTimeSeriesCharts();
+            refreshTimeSeriesChartsNow();
             refreshSummaryChart();
+        }
+
+        // QR-based latency measurement
+        const OCR_SAMPLE_INTERVAL_MS = 2000;
+        const OCR_FRAME_DELTA_MAX = 600;
+        const OCR_CROP_LOCAL = { x: 0, y: 0, w: 280, h: 280 };
+        const OCR_CHART_MAX_POINTS = 600;
+
+        let ocrWorker = null;
+        let ocrWorkerReady = false;
+        let ocrBusy = false;
+        let ocrIntervalId = null;
+        let ocrRequestSeq = 0;
+        let ocrEpochMs = 0;
+        const ocrLatencySeries = [];
+
+        function getActivePipeline() { return cameraPipeline || fileSource || null; }
+
+        function ensureOcrWorker() {
+            if (ocrWorker) return ocrWorker;
+            ocrWorker = new Worker('./barcode-worker.js');
+            ocrWorker.onmessage = (e) => handleOcrMessage(e.data);
+            ocrWorker.onerror = (e) => addLog(`Barcode worker error: ${e.message}`, 'error');
+            ocrWorker.postMessage({ kind: 'init' });
+            return ocrWorker;
+        }
+
+        function startOcrLatencyLoop() {
+            stopOcrLatencyLoop();
+            ensureOcrWorker();
+            ocrEpochMs = Date.now();
+            ocrLatencySeries.length = 0;
+            renderLatencyReadout(null);
+            scheduleTimeSeriesRefresh();
+            ocrIntervalId = setInterval(sampleOcrLatency, OCR_SAMPLE_INTERVAL_MS);
+        }
+
+        function stopOcrLatencyLoop() {
+            if (ocrIntervalId) { clearInterval(ocrIntervalId); ocrIntervalId = null; }
+            ocrBusy = false;
+        }
+
+        async function sampleOcrLatency() {
+            if (ocrBusy) return;
+            const pipeline = getActivePipeline();
+            if (!pipeline || !pipeline.canvas) return;
+            const remoteVideo = elements.remoteVideo;
+            if (!remoteVideo || remoteVideo.readyState < 2 || !remoteVideo.videoWidth) return;
+
+            const sampledAt = performance.now();
+            const localN = pipeline.frameCount;
+            const scale = remoteVideo.videoWidth / pipeline.canvas.width;
+            const rx = OCR_CROP_LOCAL.x * scale;
+            const ry = OCR_CROP_LOCAL.y * scale;
+            const rw = Math.min(OCR_CROP_LOCAL.w * scale, remoteVideo.videoWidth - rx);
+            const rh = Math.min(OCR_CROP_LOCAL.h * scale, remoteVideo.videoHeight - ry);
+            if (rw <= 0 || rh <= 0) return;
+
+            let bitmap;
+            try {
+                bitmap = await createImageBitmap(remoteVideo, rx, ry, rw, rh, { resizeWidth: 400, resizeQuality: 'high' });
+            } catch (err) {
+                return;
+            }
+
+            ocrBusy = true;
+            const requestId = ++ocrRequestSeq;
+            ocrWorker.postMessage(
+                { kind: 'recognize', requestId, sampledAt, localN, bitmap },
+                [bitmap],
+            );
+        }
+
+        let ocrDropStats = { notFound: 0, badDelta: 0, accepted: 0 };
+        let _ocrDropReportT = 0;
+        function reportOcrStats() {
+            const now = performance.now();
+            if (now - _ocrDropReportT < 20000) return;
+            _ocrDropReportT = now;
+            const s = ocrDropStats;
+            if (s.notFound + s.badDelta + s.accepted === 0) return;
+            addLog(`QR 20s: accepted=${s.accepted} notFound=${s.notFound} badDelta=${s.badDelta}`, 'info');
+            ocrDropStats = { notFound: 0, badDelta: 0, accepted: 0 };
+        }
+
+        function handleOcrMessage(msg) {
+            if (msg.kind === 'ready') { ocrWorkerReady = true; addLog('Barcode worker ready', 'success'); return; }
+            if (msg.kind === 'dropped') { ocrBusy = false; return; }
+            if (msg.kind === 'error') {
+                ocrBusy = false;
+                if (msg.error) addLog(`Barcode: ${msg.error}`, 'error');
+                return;
+            }
+            if (msg.kind !== 'result') return;
+            ocrBusy = false;
+
+            const { sampledAt, localN, remoteN, found } = msg;
+            if (!found || !Number.isFinite(remoteN)) { ocrDropStats.notFound++; reportOcrStats(); return; }
+            const frameDelta = localN - remoteN;
+            if (frameDelta < 0 || frameDelta > OCR_FRAME_DELTA_MAX) { ocrDropStats.badDelta++; reportOcrStats(); return; }
+            ocrDropStats.accepted++;
+            reportOcrStats();
+
+            const fps = getSelectedCameraSettings().fps || 30;
+            const latencyMs = frameDelta * (1000 / fps);
+            const nowAbs = Date.now();
+            const entry = {
+                tMsAbs: nowAbs,
+                tMs: nowAbs - ocrEpochMs,
+                localN, remoteN, frameDelta, latencyMs, conf: 100,
+            };
+            ocrLatencySeries.push(entry);
+            if (ocrLatencySeries.length > OCR_CHART_MAX_POINTS) ocrLatencySeries.shift();
+            if (currentBenchRun) {
+                if (!currentBenchRun.ocrLatency) currentBenchRun.ocrLatency = [];
+                currentBenchRun.ocrLatency.push(entry);
+            }
+            renderLatencyReadout(entry);
+            scheduleTimeSeriesRefresh();
+        }
+
+        function renderLatencyReadout(entry) {
+            const el = elements.latencyReadout;
+            if (!el) return;
+            if (!entry) { el.textContent = 'latency: — ms (Δ — f)'; return; }
+            el.textContent = `latency: ${entry.latencyMs.toFixed(0)} ms (Δ ${entry.frameDelta} f)`;
         }
 
         function sanitizeFileName(raw) {
@@ -1866,76 +2045,16 @@
             return { blob, width: canvas.width, height: canvas.height };
         }
 
-        function buildCsvBlob() {
-            const header = [
-                'run', 'profile', 'sessionId', 'tMs',
-                'outboundCodec', 'inboundCodec',
-                'receiverFps', 'receiverKbps', 'senderKbps', 'senderFps',
-                'outFrameWidth', 'outFrameHeight', 'inFrameWidth', 'inFrameHeight', 'inFps',
-                'bppOut', 'bppIn',
-                'qpSumOutTotal', 'framesEncodedTotal', 'avgQpOut',
-                'qpSumInTotal', 'framesDecodedTotal', 'avgQpIn',
-                'totalEncodeTimeSec', 'avgEncodeMs',
-                'rttMs', 'packetsLostDelta', 'cumulativeLossPct',
-                'nackOutDelta', 'nackInDelta',
-                'keyFramesOutTotal', 'keyFramesOutDelta', 'keyFramesInTotal', 'keyFramesInDelta',
-                'framesDroppedInTotal', 'framesDroppedInDelta',
-                'freezeCountTotal', 'freezeCountDelta', 'totalFreezesDurationSec',
-                'pauseCountTotal', 'pauseCountDelta',
-                'qlReasonOut',
-            ];
-            const rows = [header.join(',')];
-            benchmarkRuns.forEach((run, idx) => {
-                run.samples.forEach((s) => {
-                    const d = s.derived;
-                    rows.push([
-                        idx + 1,
-                        run.profile,
-                        run.sessionId ?? '',
-                        s.tMs,
-                        d.outboundCodec ?? '',
-                        d.inboundCodec ?? '',
-                        d.receiverFps?.toFixed(3) ?? '',
-                        d.receiverBitrateBps != null ? (d.receiverBitrateBps / 1000).toFixed(2) : '',
-                        d.senderBitrateBps != null ? (d.senderBitrateBps / 1000).toFixed(2) : '',
-                        d.senderFps?.toFixed(3) ?? '',
-                        d.outFrameWidth ?? '',
-                        d.outFrameHeight ?? '',
-                        d.inFrameWidth ?? '',
-                        d.inFrameHeight ?? '',
-                        d.inFps != null ? d.inFps.toFixed(3) : '',
-                        d.bppOut != null ? d.bppOut.toFixed(6) : '',
-                        d.bppIn != null ? d.bppIn.toFixed(6) : '',
-                        d.qpSumOutTotal ?? '',
-                        d.framesEncodedTotal ?? '',
-                        d.avgQpOut != null ? d.avgQpOut.toFixed(3) : '',
-                        d.qpSumInTotal ?? '',
-                        d.framesDecodedTotal ?? '',
-                        d.avgQpIn != null ? d.avgQpIn.toFixed(3) : '',
-                        d.totalEncodeTimeSec != null ? d.totalEncodeTimeSec.toFixed(4) : '',
-                        d.avgEncodeMs != null ? d.avgEncodeMs.toFixed(3) : '',
-                        d.rtt?.toFixed(2) ?? '',
-                        d.packetsLostDelta ?? '',
-                        d.cumulativeLossPct?.toFixed(4) ?? '',
-                        d.nackOutDelta ?? '',
-                        d.nackInDelta ?? '',
-                        d.keyFramesOutTotal ?? '',
-                        d.keyFramesOutDelta ?? '',
-                        d.keyFramesInTotal ?? '',
-                        d.keyFramesInDelta ?? '',
-                        d.framesDroppedInTotal ?? '',
-                        d.framesDroppedInDelta ?? '',
-                        d.freezeCountTotal ?? '',
-                        d.freezeCountDelta ?? '',
-                        d.totalFreezesDurationSec != null ? d.totalFreezesDurationSec.toFixed(3) : '',
-                        d.pauseCountTotal ?? '',
-                        d.pauseCountDelta ?? '',
-                        d.qlReasonOut ?? '',
-                    ].join(','));
-                });
-            });
-            const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-            return blob;
+        async function buildCsvBlob() {
+            const runs = benchmarkRuns.map((run) => ({
+                profile: run.profile,
+                sessionId: run.sessionId,
+                startedAtMs: run.startedAtMs,
+                samples: run.samples,
+                ocrLatency: run.ocrLatency,
+            }));
+            const res = await computeRequest('csv', { runs });
+            return new Blob([res.text], { type: 'text/csv' });
         }
 
         async function exportAll() {
@@ -1947,11 +2066,9 @@
             const ts = Date.now();
             try {
                 if (benchmarkRuns.length > 0) {
-                    const csvBlob = buildCsvBlob();
+                    const csvBlob = await buildCsvBlob();
                     triggerDownload(csvBlob, `${baseName}_${ts}.csv`);
                     addLog(`Exported ${benchmarkRuns.length} run(s) as CSV → ${baseName}_${ts}.csv`, 'success');
-                } else {
-                    addLog('No benchmark runs to export as CSV', 'info');
                 }
                 try {
                     const { blob: pngBlob, width, height } = await exportChartsBlob();
@@ -1987,7 +2104,7 @@
             elements.benchClear.disabled = true;
             elements.benchLive.textContent = '';
             elements.benchStatusText.textContent = 'idle';
-            refreshTimeSeriesCharts();
+            refreshTimeSeriesChartsNow();
             refreshSummaryChart();
             addLog('Benchmark runs cleared', 'info');
         }
@@ -2315,7 +2432,6 @@
             const selectedModel = e.target.value;
             model = models.realtime(selectedModel);
             elements.cameraFps.value = String(resolveCameraFps(model.fps));
-            addLog(`Selected model: ${selectedModel}`, 'info');
             
             // If camera is already started, stop it so user can restart with new model settings.
             if (localStream) {
@@ -2356,13 +2472,96 @@
             };
         }
 
+        const FRAME_COUNTER_FONT_PX = 80;
+        function scheduleVideoDraw(video, fn) {
+            if (typeof video.requestVideoFrameCallback === 'function') {
+                return { type: 'vfc', id: video.requestVideoFrameCallback(fn) };
+            }
+            return { type: 'raf', id: requestAnimationFrame(fn) };
+        }
+        function cancelVideoDraw(video, handle) {
+            if (!handle) return;
+            if (handle.type === 'vfc' && typeof video.cancelVideoFrameCallback === 'function') {
+                video.cancelVideoFrameCallback(handle.id);
+            } else if (handle.type === 'raf') {
+                cancelAnimationFrame(handle.id);
+            }
+        }
+
+        const QR_BOX_SIZE = 220;
+        const QR_PADDING = 12;
+        const QR_X = 24;
+        const QR_Y = 24;
+        let _lastQrCount = -1;
+        let _lastQrMatrix = null;
+        let _lastQrModuleCount = 0;
+        function getQrMatrix(count) {
+            if (count === _lastQrCount && _lastQrMatrix) return { matrix: _lastQrMatrix, modules: _lastQrModuleCount };
+            if (typeof qrcode !== 'function') return null;
+            const q = qrcode(0, 'H');
+            q.addData(String(count));
+            q.make();
+            const modules = q.getModuleCount();
+            const matrix = new Uint8Array(modules * modules);
+            for (let r = 0; r < modules; r++) {
+                for (let c = 0; c < modules; c++) {
+                    matrix[r * modules + c] = q.isDark(r, c) ? 1 : 0;
+                }
+            }
+            _lastQrCount = count;
+            _lastQrMatrix = matrix;
+            _lastQrModuleCount = modules;
+            return { matrix, modules };
+        }
+
+        function drawFrameCounter(ctx, count) {
+            ctx.save();
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(QR_X - QR_PADDING, QR_Y - QR_PADDING, QR_BOX_SIZE + QR_PADDING * 2, QR_BOX_SIZE + QR_PADDING * 2);
+            const qr = getQrMatrix(count);
+            if (qr) {
+                const cell = QR_BOX_SIZE / qr.modules;
+                ctx.fillStyle = '#000';
+                for (let r = 0; r < qr.modules; r++) {
+                    for (let c = 0; c < qr.modules; c++) {
+                        if (qr.matrix[r * qr.modules + c]) {
+                            ctx.fillRect(QR_X + c * cell, QR_Y + r * cell, cell + 0.5, cell + 0.5);
+                        }
+                    }
+                }
+            }
+            ctx.font = 'bold 32px Arial, sans-serif';
+            ctx.textBaseline = 'top';
+            ctx.textAlign = 'left';
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#000';
+            ctx.fillStyle = '#fff';
+            const ty = QR_Y + QR_BOX_SIZE + QR_PADDING + 4;
+            ctx.strokeText(String(count), QR_X, ty);
+            ctx.fillText(String(count), QR_X, ty);
+            ctx.restore();
+        }
+
+        let cameraPipeline = null;
         let fileSource = null;
         let lastSourceMode = null;
         let lastSourceFile = null;
 
+        function stopCameraPipeline() {
+            if (!cameraPipeline) return;
+            cancelVideoDraw(cameraPipeline.video, cameraPipeline.drawHandle);
+            try { cameraPipeline.video.pause(); } catch (_) {}
+            cameraPipeline.video.srcObject = null;
+            if (cameraPipeline.rawStream) {
+                cameraPipeline.rawStream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
+            }
+            cameraPipeline = null;
+        }
+
         function stopFileSource() {
             if (!fileSource) return;
-            if (fileSource.rafId) cancelAnimationFrame(fileSource.rafId);
+            cancelVideoDraw(fileSource.video, fileSource.drawHandle);
             try { fileSource.video.pause(); } catch (_) {}
             fileSource.video.removeAttribute('src');
             fileSource.video.load();
@@ -2405,12 +2604,14 @@
                     const dx = (canvas.width - dw) / 2;
                     const dy = (canvas.height - dh) / 2;
                     ctx.drawImage(video, dx, dy, dw, dh);
+                    fileSource.frameCount = Math.floor((performance.now() - fileSource.startedAt) * fileSource.fps / 1000);
+                    drawFrameCounter(ctx, fileSource.frameCount);
                 }
-                fileSource.rafId = requestAnimationFrame(drawCoverFrame);
+                fileSource.drawHandle = scheduleVideoDraw(video, drawCoverFrame);
             };
 
             const stream = canvas.captureStream(camera.fps);
-            fileSource = { video, canvas, objectUrl, rafId: 0, stream };
+            fileSource = { video, canvas, objectUrl, drawHandle: null, stream, frameCount: 0, startedAt: performance.now(), fps: camera.fps };
             drawCoverFrame();
 
             localStream = stream;
@@ -2434,10 +2635,44 @@
                 video: getCameraVideoConstraints(camera),
                 audio: false,
             };
-            addLog(`Camera target: ${camera.orientation}, ${camera.width}×${camera.height} @ ${camera.fps}fps`, 'info');
             stopCameraResources();
-            localStream = await navigator.mediaDevices.getUserMedia(constraints);
-            elements.localVideo.srcObject = localStream;
+            const rawStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+            const sourceVideo = document.createElement('video');
+            sourceVideo.muted = true;
+            sourceVideo.playsInline = true;
+            sourceVideo.autoplay = true;
+            sourceVideo.srcObject = rawStream;
+            await sourceVideo.play();
+
+            const canvas = document.createElement('canvas');
+            canvas.width = camera.width;
+            canvas.height = camera.height;
+            const ctx = canvas.getContext('2d');
+
+            const draw = () => {
+                if (!cameraPipeline) return;
+                const vw = sourceVideo.videoWidth;
+                const vh = sourceVideo.videoHeight;
+                if (vw && vh) {
+                    const scale = Math.max(canvas.width / vw, canvas.height / vh);
+                    const dw = vw * scale;
+                    const dh = vh * scale;
+                    const dx = (canvas.width - dw) / 2;
+                    const dy = (canvas.height - dh) / 2;
+                    ctx.drawImage(sourceVideo, dx, dy, dw, dh);
+                    cameraPipeline.frameCount = Math.floor((performance.now() - cameraPipeline.startedAt) * cameraPipeline.fps / 1000);
+                    drawFrameCounter(ctx, cameraPipeline.frameCount);
+                }
+                cameraPipeline.drawHandle = scheduleVideoDraw(sourceVideo, draw);
+            };
+
+            const stream = canvas.captureStream(camera.fps);
+            cameraPipeline = { video: sourceVideo, canvas, rawStream, stream, drawHandle: null, frameCount: 0, startedAt: performance.now(), fps: camera.fps };
+            draw();
+
+            localStream = stream;
+            elements.localVideo.srcObject = stream;
             await elements.localVideo.play();
             lastSourceMode = 'camera';
             lastSourceFile = null;
@@ -2462,6 +2697,7 @@
                 });
                 localStream = null;
             }
+            stopCameraPipeline();
             stopFileSource();
             elements.localVideo.srcObject = null;
         }
@@ -2546,10 +2782,7 @@
 
             const resolution = elements.resolutionSelect.value;
             const profile = getSelectedPublishProfile();
-            addLog(`Resolution: ${resolution}`, 'info');
-            addLog(`Publish profile: ${formatProfileTitle(profile)}`, 'info');
-            addLog(`Publish options: ${JSON.stringify(profile.publishOptions)}`, 'info');
-            addLog(`Room options: ${JSON.stringify(profile.roomOptions)}`, 'info');
+            addLog(`Publish profile: ${formatProfileTitle(profile)} @ ${resolution}`, 'info');
 
             decartRealtime = await decartClient.realtime.connect(localStream, {
                 model,
@@ -2564,6 +2797,7 @@
                     startPromptCycler();
                     elements.benchStart.disabled = false;
                     scheduleAutoStartBenchmark();
+                    startOcrLatencyLoop();
                     if (chainActive) {
                         if (chainAdvanceTimer) clearTimeout(chainAdvanceTimer);
                         const chainIntervalMs = getChainIntervalMs();
@@ -2617,6 +2851,7 @@
             stopStatsPolling();
             stopPromptCycler();
             stopSessionTimer();
+            stopOcrLatencyLoop();
             if (currentBenchRun) stopBenchmark();
             if (decartRealtime) {
                 try { decartRealtime.disconnect(); } catch (_) {}
@@ -2849,6 +3084,7 @@
             stopStatsPolling();
             stopPromptCycler();
             stopSessionTimer();
+            stopOcrLatencyLoop();
             if (currentBenchRun) stopBenchmark();
             elements.benchStart.disabled = true;
             if (statsAggregates.size > 0) {
