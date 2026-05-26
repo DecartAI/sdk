@@ -13,6 +13,7 @@ import { imageToBase64 } from "../utils/media";
 import { isDesktopSafari } from "../utils/platform";
 import { createEventBuffer } from "./event-buffer";
 import { realtimeMethods, type SetInput } from "./methods";
+import type { VideoCodec } from "./media-channel";
 import { createMirroredStream, type MirroredStream, shouldMirrorTrack } from "./mirror-stream";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
@@ -53,6 +54,7 @@ const realTimeClientConnectOptionsSchema = z.object({
   queryParams: z.record(z.string(), z.string()).optional(),
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
   resolution: z.enum(["720p", "1080p"]).optional(),
+  preferredVideoCodec: z.enum(["h264", "vp9"]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -99,7 +101,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
     if (!parsedOptions.success) throw parsedOptions.error;
 
-    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState, resolution } = parsedOptions.data;
+    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState, resolution, preferredVideoCodec } =
+      parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
     let inputStream: MediaStream = stream ?? new MediaStream();
 
@@ -145,6 +148,10 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       });
 
       const safariCodec = isDesktopSafari() ? "vp8" : undefined;
+      if (safariCodec && preferredVideoCodec) {
+        logger.warn("preferredVideoCodec ignored on Desktop Safari; using vp8");
+      }
+      const publishCodec: VideoCodec | undefined = safariCodec ?? preferredVideoCodec;
 
       const queryParams = new URLSearchParams({
         ...(safariCodec ? { livekit_server_codec: safariCodec } : {}),
@@ -163,7 +170,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialImageRef,
         initialPrompt,
         logger,
-        videoCodec: safariCodec,
+        videoCodec: publishCodec,
       });
 
       let sessionId: string | null = null;

@@ -17,16 +17,20 @@ import type { RealtimeObservability } from "./observability/realtime-observabili
 export type VideoCodec = "h264" | "vp8" | "vp9" | "av1";
 
 export function getDefaultVideoPublishOptions(videoCodec?: VideoCodec): TrackPublishOptions {
-  const videoEncoding = {
-    maxBitrate: REALTIME_CONFIG.livekit.defaultMaxVideoBitrateBps,
-    maxFramerate: REALTIME_CONFIG.livekit.defaultPublishFps,
-  };
+  const resolvedCodec = videoCodec ?? REALTIME_CONFIG.livekit.defaultVideoCodec;
+  const maxBitrate =
+    resolvedCodec === "vp9"
+      ? REALTIME_CONFIG.livekit.vp9MaxVideoBitrateBps
+      : REALTIME_CONFIG.livekit.defaultMaxVideoBitrateBps;
 
   return {
     source: Track.Source.Camera,
-    videoCodec: videoCodec ?? REALTIME_CONFIG.livekit.defaultVideoCodec,
-    simulcast: true,
-    videoEncoding,
+    videoCodec: resolvedCodec,
+    simulcast: false,
+    videoEncoding: {
+      maxBitrate,
+      maxFramerate: REALTIME_CONFIG.livekit.defaultPublishFps,
+    },
   };
 }
 

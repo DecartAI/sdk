@@ -344,6 +344,14 @@
             </select>
         </div>
         <div class="control-group">
+            <label for="codec-select">Preferred Video Codec:</label>
+            <select id="codec-select">
+                <option value="" selected>Default (h264)</option>
+                <option value="h264">h264</option>
+                <option value="vp9">vp9</option>
+            </select>
+        </div>
+        <div class="control-group">
             <label for="initial-prompt">Initial Prompt (empty = passthrough):</label>
             <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
         </div>
@@ -562,6 +570,7 @@
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             resolutionSelect: document.getElementById('resolution-select'),
+            codecSelect: document.getElementById('codec-select'),
             initialPrompt: document.getElementById('initial-prompt'),
             cameraFps: document.getElementById('camera-fps'),
             streamAudioToggle: document.getElementById('stream-audio-toggle'),
@@ -891,9 +900,15 @@
                 const resolution = elements.resolutionSelect.value;
                 addLog(`Resolution: ${resolution}`, 'info');
 
+                const preferredVideoCodec = elements.codecSelect.value || undefined;
+                if (preferredVideoCodec) {
+                    addLog(`Preferred video codec: ${preferredVideoCodec}`, 'info');
+                }
+
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     resolution,
+                    ...(preferredVideoCodec && { preferredVideoCodec }),
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
