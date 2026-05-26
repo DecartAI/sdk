@@ -16,12 +16,16 @@ export type ErrorMessage = {
   error: string;
 };
 
+/** Wire shape: one of `image_data` or `image_ref` is set, not both. */
 export type SetImageMessage = {
   type: "set_image";
-  image_data: string | null;
+  image_data?: string | null;
+  image_ref?: string;
   prompt?: string | null;
   enhance_prompt?: boolean;
 };
+
+export type SetImagePayload = { kind: "data"; data: string | null } | { kind: "ref"; ref: string };
 
 export type SetImageAckMessage = {
   type: "set_image_ack";
@@ -87,7 +91,10 @@ export type SessionStarted = {
 };
 
 export type InitialState = {
+  /** Pre-encoded base64 image; one of image/imageRef. */
   image?: string | null;
+  /** Server file reference id; one of image/imageRef. */
+  imageRef?: string;
   prompt?: string | null;
   enhance?: boolean;
 };

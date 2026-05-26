@@ -450,6 +450,50 @@
         </div>
     </div>
 
+    <!-- Files API (Upload & Reuse) -->
+    <div class="controls">
+        <h3>Files API (Upload &amp; Reuse Refs)</h3>
+        <div class="control-group">
+            <label for="upload-file">Select a file to upload:</label>
+            <input type="file" id="upload-file" accept="image/*">
+        </div>
+        <div class="control-group">
+            <label for="ttl-mode">TTL:</label>
+            <select id="ttl-mode">
+                <option value="default" selected>Default (server-side, 24h)</option>
+                <option value="persistent">Persistent (never expires)</option>
+                <option value="custom">Custom (seconds)</option>
+            </select>
+        </div>
+        <div class="control-group" id="ttl-custom-group" style="display: none;">
+            <label for="ttl-custom">TTL seconds (60 – 2,592,000):</label>
+            <input type="number" id="ttl-custom" min="60" max="2592000" value="3600">
+        </div>
+        <div class="inline-controls">
+            <button id="upload-file-btn" disabled>Upload File</button>
+        </div>
+        <div id="upload-status" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 6px; display: none;">
+            <strong>Status:</strong> <span id="upload-status-text">Ready</span>
+        </div>
+        <div class="control-group" style="margin-top: 10px;">
+            <label for="file-ref-id">File Ref ID (auto-filled after upload, or paste an existing id):</label>
+            <input type="text" id="file-ref-id" placeholder="file_...">
+        </div>
+        <div id="file-ref-info" style="margin-top: 8px; padding: 8px 10px; background: #f8f9fa; border-radius: 6px; font-family: 'Courier New', monospace; font-size: 12px; color: #333; display: none;">
+            <div><strong>id:</strong> <span id="ref-id-text">-</span></div>
+            <div><strong>filename:</strong> <span id="ref-filename-text">-</span></div>
+            <div><strong>mime_type:</strong> <span id="ref-mime-text">-</span></div>
+            <div><strong>size_bytes:</strong> <span id="ref-size-text">-</span></div>
+            <div><strong>created_at:</strong> <span id="ref-created-text">-</span></div>
+            <div><strong>expires_at:</strong> <span id="ref-expires-text">-</span></div>
+        </div>
+        <div class="inline-controls" style="margin-top: 10px;">
+            <button id="get-file-btn" class="secondary">Get</button>
+            <button id="delete-file-btn" class="secondary">Delete</button>
+            <button id="use-ref-as-image-btn" disabled>Use as Realtime Image Ref</button>
+        </div>
+    </div>
+
     <!-- Video File Processing -->
     <div class="controls">
         <h3>Video File Processing</h3>
@@ -562,7 +606,26 @@
             processStatusText: document.getElementById('process-status-text'),
             processedContainer: document.getElementById('processed-container'),
             originalVideo: document.getElementById('original-video'),
-            processedVideo: document.getElementById('processed-video')
+            processedVideo: document.getElementById('processed-video'),
+            // Files API elements
+            uploadFile: document.getElementById('upload-file'),
+            ttlMode: document.getElementById('ttl-mode'),
+            ttlCustomGroup: document.getElementById('ttl-custom-group'),
+            ttlCustom: document.getElementById('ttl-custom'),
+            uploadFileBtn: document.getElementById('upload-file-btn'),
+            uploadStatus: document.getElementById('upload-status'),
+            uploadStatusText: document.getElementById('upload-status-text'),
+            fileRefId: document.getElementById('file-ref-id'),
+            fileRefInfo: document.getElementById('file-ref-info'),
+            refIdText: document.getElementById('ref-id-text'),
+            refFilenameText: document.getElementById('ref-filename-text'),
+            refMimeText: document.getElementById('ref-mime-text'),
+            refSizeText: document.getElementById('ref-size-text'),
+            refCreatedText: document.getElementById('ref-created-text'),
+            refExpiresText: document.getElementById('ref-expires-text'),
+            getFileBtn: document.getElementById('get-file-btn'),
+            deleteFileBtn: document.getElementById('delete-file-btn'),
+            useRefAsImageBtn: document.getElementById('use-ref-as-image-btn'),
         };
         
         // Pre-populate API key from environment variable if available
@@ -869,6 +932,7 @@
                     
                     addLog('Successfully connected to Decart!', 'success');
                     addLog(`Session ID: ${currentSessionId || '(pending)'}`, 'success');
+                    updateUseRefAsImageBtnState();
                 } else {
                     throw new Error('Connection established but not in connected state');
                 }
@@ -1022,6 +1086,7 @@
             elements.referenceImage.value = '';
             elements.imageStatus.style.display = 'none';
             elements.imagePreview.style.display = 'none';
+            updateUseRefAsImageBtnState();
 
             addLog('Disconnected successfully', 'info');
         });
@@ -1287,6 +1352,161 @@
             }
         });
         
+        // ---------- Files API (Upload & Reuse Refs) ----------
+
+        function ensureDecartClient() {
+            if (decartClient) return decartClient;
+            const apiKey = elements.apiKey.value.trim();
+            if (!apiKey) {
+                addLog('Please enter an API key', 'error');
+                return null;
+            }
+            const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
+            decartClient = createDecartClient({
+                apiKey,
+                ...(realtimeBaseUrl && { realtimeBaseUrl }),
+                logger: createDemoLogger("debug"),
+            });
+            addLog('Initialized Decart client (for files API)', 'info');
+            return decartClient;
+        }
+
+        function updateUseRefAsImageBtnState() {
+            const hasRef = elements.fileRefId.value.trim().length > 0;
+            const canSetImage = isConnected && activeConnectionMode === 'publisher';
+            elements.useRefAsImageBtn.disabled = !hasRef || !canSetImage;
+        }
+
+        function getTtlOption() {
+            const mode = elements.ttlMode.value;
+            if (mode === 'default') return undefined;
+            if (mode === 'persistent') return 'persistent';
+            const n = Number.parseInt(elements.ttlCustom.value, 10);
+            return Number.isFinite(n) && n > 0 ? n : undefined;
+        }
+
+        function setRefInfo(ref) {
+            elements.fileRefId.value = ref.id;
+            elements.refIdText.textContent = ref.id;
+            elements.refFilenameText.textContent = ref.filename ?? '(null)';
+            elements.refMimeText.textContent = ref.mime_type;
+            elements.refSizeText.textContent = `${ref.size_bytes} bytes`;
+            elements.refCreatedText.textContent = ref.created_at;
+            elements.refExpiresText.textContent = ref.expires_at ?? 'persistent (never expires)';
+            elements.fileRefInfo.style.display = 'block';
+            updateUseRefAsImageBtnState();
+        }
+
+        elements.ttlMode.addEventListener('change', () => {
+            elements.ttlCustomGroup.style.display = elements.ttlMode.value === 'custom' ? 'block' : 'none';
+        });
+
+        elements.uploadFile.addEventListener('change', (e) => {
+            elements.uploadFileBtn.disabled = !e.target.files[0];
+        });
+
+        elements.fileRefId.addEventListener('input', updateUseRefAsImageBtnState);
+
+        elements.uploadFileBtn.addEventListener('click', async () => {
+            const file = elements.uploadFile.files[0];
+            if (!file) {
+                addLog('Please select a file first', 'error');
+                return;
+            }
+            const client = ensureDecartClient();
+            if (!client) return;
+
+            const ttlSeconds = getTtlOption();
+
+            try {
+                elements.uploadStatus.style.display = 'block';
+                elements.uploadStatusText.textContent = '⏳ Uploading...';
+                elements.uploadStatusText.style.color = '#ff9800';
+                elements.uploadFileBtn.disabled = true;
+
+                addLog(`Uploading ${file.name} (${file.size} bytes), ttlSeconds=${ttlSeconds ?? 'default'}`, 'info');
+                const ref = await client.files.upload(
+                    file,
+                    ttlSeconds !== undefined ? { ttlSeconds } : undefined,
+                );
+
+                setRefInfo(ref);
+                elements.uploadStatusText.textContent = `✅ Uploaded: ${ref.id}`;
+                elements.uploadStatusText.style.color = '#4CAF50';
+                addLog(`File uploaded: ${ref.id} (expires ${ref.expires_at ?? 'never'})`, 'success');
+            } catch (error) {
+                elements.uploadStatusText.textContent = `❌ Failed: ${error.message ?? error}`;
+                elements.uploadStatusText.style.color = '#f44336';
+                addLog(`Upload failed: ${error.message ?? error}`, 'error');
+            } finally {
+                elements.uploadFileBtn.disabled = false;
+            }
+        });
+
+        elements.getFileBtn.addEventListener('click', async () => {
+            const id = elements.fileRefId.value.trim();
+            if (!id) {
+                addLog('Please enter or upload a file ref id first', 'error');
+                return;
+            }
+            const client = ensureDecartClient();
+            if (!client) return;
+
+            try {
+                addLog(`Fetching file ${id}...`, 'info');
+                const ref = await client.files.get(id);
+                setRefInfo(ref);
+                addLog(`Got file ${id}`, 'success');
+            } catch (error) {
+                addLog(`Get failed: ${error.message ?? error}`, 'error');
+            }
+        });
+
+        elements.deleteFileBtn.addEventListener('click', async () => {
+            const id = elements.fileRefId.value.trim();
+            if (!id) {
+                addLog('Please enter or upload a file ref id first', 'error');
+                return;
+            }
+            const client = ensureDecartClient();
+            if (!client) return;
+
+            if (!confirm(`Delete file ${id}? This cannot be undone.`)) return;
+
+            try {
+                addLog(`Deleting file ${id}...`, 'info');
+                await client.files.delete(id);
+                addLog(`Deleted file ${id}`, 'success');
+                elements.fileRefInfo.style.display = 'none';
+                elements.fileRefId.value = '';
+                updateUseRefAsImageBtnState();
+            } catch (error) {
+                addLog(`Delete failed: ${error.message ?? error}`, 'error');
+            }
+        });
+
+        elements.useRefAsImageBtn.addEventListener('click', async () => {
+            const id = elements.fileRefId.value.trim();
+            if (!id) {
+                addLog('No file ref id to send', 'error');
+                return;
+            }
+            if (!decartRealtime || !isConnected || activeConnectionMode !== 'publisher') {
+                addLog('Not connected to Decart as a publisher', 'error');
+                return;
+            }
+            try {
+                elements.useRefAsImageBtn.disabled = true;
+                addLog(`Setting realtime image to ref ${id}...`, 'info');
+                await decartRealtime.setImage(id);
+                addLog(`Realtime image set to ref ${id}`, 'success');
+            } catch (error) {
+                addLog(`Failed to set image ref: ${error.message ?? error}`, 'error');
+            } finally {
+                updateUseRefAsImageBtnState();
+            }
+        });
+
         // Initialize
         addLog('Decart SDK Test Page loaded', 'info');
         addLog('Click "Start Camera" for real-time or select a video file for processing', 'info');

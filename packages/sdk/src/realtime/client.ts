@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isFileRefId } from "../files/types";
 import {
   type CustomModelDefinition,
   type ModelDefinition,
@@ -78,6 +79,12 @@ export type RealTimeClient = {
   sessionId: string | null;
   subscribeToken: string | null;
   getSubscribeToken: () => string | null;
+  /**
+   * Set the reference image for the session.
+   * - `Blob`/`File`/data URL/http(s) URL/base64 string: bytes traverse the wire as base64.
+   * - `"file_..."` id (from `client.files.upload(...).id`): sent as a server-side reference.
+   * - `null`: clear the current image.
+   */
   setImage: (image: Blob | File | string | null, options?: ImageSetOptions) => Promise<void>;
 };
 
@@ -117,7 +124,9 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     let observability: RealtimeObservability | undefined;
 
     try {
-      const initialImage = initialState?.image ? await imageToBase64(initialState.image) : undefined;
+      const initialImageRef = isFileRefId(initialState?.image) ? initialState.image : undefined;
+      const initialImage =
+        initialImageRef === undefined && initialState?.image ? await imageToBase64(initialState.image) : undefined;
       const initialPrompt = initialState?.prompt
         ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
         : undefined;
@@ -151,6 +160,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         observability,
         localStream: inputStream,
         initialImage,
+        initialImageRef,
         initialPrompt,
         logger,
         videoCodec: safariCodec,
@@ -210,9 +220,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         },
         getSubscribeToken: () => subscribeToken,
         setImage: async (image: Blob | File | string | null, imgOptions?: ImageSetOptions) => {
-          if (image === null) return activeSession.setImage(null, imgOptions);
+          if (isFileRefId(image)) {
+            return activeSession.setImage({ kind: "ref", ref: image }, imgOptions);
+          }
+          if (image === null) return activeSession.setImage({ kind: "data", data: null }, imgOptions);
           const base64 = await imageToBase64(image);
-          return activeSession.setImage(base64, imgOptions);
+          return activeSession.setImage({ kind: "data", data: base64 }, imgOptions);
         },
       };
 

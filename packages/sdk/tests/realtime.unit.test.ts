@@ -207,20 +207,26 @@ describe("set()", () => {
 
   it("sends only prompt when no image provided", async () => {
     await methods.set({ prompt: "a cat" });
-    expect(mockSession.setImage).toHaveBeenCalledWith(null, {
-      prompt: "a cat",
-      enhance: true,
-      timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
-    });
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: null },
+      {
+        prompt: "a cat",
+        enhance: true,
+        timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+      },
+    );
   });
 
   it("sends prompt with enhance flag", async () => {
     await methods.set({ prompt: "a cat", enhance: true });
-    expect(mockSession.setImage).toHaveBeenCalledWith(null, {
-      prompt: "a cat",
-      enhance: true,
-      timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
-    });
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: null },
+      {
+        prompt: "a cat",
+        enhance: true,
+        timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+      },
+    );
   });
 
   it("sends only image when no prompt provided", async () => {
@@ -228,22 +234,28 @@ describe("set()", () => {
     await methods.set({ image: "rawbase64data" });
 
     expect(mockImageToBase64).toHaveBeenCalledWith("rawbase64data");
-    expect(mockSession.setImage).toHaveBeenCalledWith("convertedbase64", {
-      prompt: undefined,
-      enhance: true,
-      timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
-    });
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: "convertedbase64" },
+      {
+        prompt: undefined,
+        enhance: true,
+        timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+      },
+    );
   });
 
   it("sends prompt and image together", async () => {
     mockImageToBase64.mockResolvedValue("convertedbase64");
     await methods.set({ prompt: "a cat", enhance: false, image: "rawbase64" });
 
-    expect(mockSession.setImage).toHaveBeenCalledWith("convertedbase64", {
-      prompt: "a cat",
-      enhance: false,
-      timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
-    });
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: "convertedbase64" },
+      {
+        prompt: "a cat",
+        enhance: false,
+        timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+      },
+    );
   });
 
   it("converts Blob image to base64", async () => {
@@ -252,11 +264,39 @@ describe("set()", () => {
     await methods.set({ image: testBlob });
 
     expect(mockImageToBase64).toHaveBeenCalledWith(testBlob);
-    expect(mockSession.setImage).toHaveBeenCalledWith("blobbase64", {
-      prompt: undefined,
-      enhance: true,
-      timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
-    });
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: "blobbase64" },
+      {
+        prompt: undefined,
+        enhance: true,
+        timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+      },
+    );
+  });
+
+  it("treats a 'file_*' string as a server-side reference id, no base64 encoding", async () => {
+    await methods.set({ image: "file_abc123", prompt: "make it cinematic" });
+
+    expect(mockImageToBase64).not.toHaveBeenCalled();
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "ref", ref: "file_abc123" },
+      {
+        prompt: "make it cinematic",
+        enhance: true,
+        timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+      },
+    );
+  });
+
+  it("still treats non-'file_' strings as base64/URL inputs (encoded via imageToBase64)", async () => {
+    mockImageToBase64.mockResolvedValue("convertedbase64");
+    await methods.set({ image: "rawbase64data" });
+
+    expect(mockImageToBase64).toHaveBeenCalledWith("rawbase64data");
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: "convertedbase64" },
+      expect.objectContaining({ timeout: REALTIME_CONFIG.methods.updateTimeoutMs }),
+    );
   });
 });
 

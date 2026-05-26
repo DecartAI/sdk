@@ -17,6 +17,7 @@ import type {
   QueuePosition,
   ServerError,
   SetImageAckMessage,
+  SetImagePayload,
 } from "./types";
 
 export type RoomInfo = {
@@ -164,8 +165,11 @@ export class SignalingChannel {
     if (!ack.success) throw new Error(ack.error ?? "Failed to send prompt");
   }
 
-  async setImage(image: string | null, opts: ImageSetOptions = {}): Promise<void> {
-    const message: OutgoingRealtimeMessage = { type: "set_image", image_data: image };
+  async setImage(payload: SetImagePayload, opts: ImageSetOptions = {}): Promise<void> {
+    const message: OutgoingRealtimeMessage =
+      payload.kind === "ref"
+        ? { type: "set_image", image_ref: payload.ref }
+        : { type: "set_image", image_data: payload.data };
     if (opts.prompt !== undefined) message.prompt = opts.prompt;
     if (opts.enhance !== undefined) message.enhance_prompt = opts.enhance;
 
@@ -275,11 +279,19 @@ export class SignalingChannel {
   private async sendInitialState(initialState?: InitialState): Promise<void> {
     if (!initialState) return;
 
+    if (initialState.imageRef !== undefined) {
+      await this.setImage(
+        { kind: "ref", ref: initialState.imageRef },
+        { prompt: initialState.prompt, enhance: initialState.enhance },
+      );
+      return;
+    }
+
     if (initialState.image !== undefined) {
-      await this.setImage(initialState.image, {
-        prompt: initialState.prompt,
-        enhance: initialState.enhance,
-      });
+      await this.setImage(
+        { kind: "data", data: initialState.image },
+        { prompt: initialState.prompt, enhance: initialState.enhance },
+      );
       return;
     }
 
