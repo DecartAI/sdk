@@ -328,11 +328,18 @@ export class StreamSession {
       logger: this.logger,
       videoCodec: this.config.videoCodec,
     });
+    // Forward client-side diagnostics + WebRTC stats back over the
+    // realtime WS so bouncer can log them to Datadog under the
+    // session's existing log context.
+    this.config.observability?.setObservabilityForwarder((payload) => {
+      this.signaling.sendObservability(payload);
+    });
     this.wireSignalingEvents();
     this.wireMediaEvents();
   }
 
   private tearDown(): void {
+    this.config.observability?.setObservabilityForwarder(null);
     this.signaling.close();
     this.media.disconnect();
     this.initialStateGate.reset();
