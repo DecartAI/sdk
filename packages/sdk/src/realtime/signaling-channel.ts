@@ -355,10 +355,19 @@ export class SignalingChannel {
   private writeMessage(message: OutgoingRealtimeMessage): boolean {
     if (this.ws?.readyState !== WebSocket.OPEN) return false;
     this.ws.send(JSON.stringify(message));
+    // Best-effort signaling-trace for non-self-referential messages
+    // (don't trace our own observability frames or we recurse).
+    if (message.type !== "observability") {
+      this.config.observability?.emitInstrumentationEvent("signaling-sent", {
+        type: message.type,
+        size: 0,
+      });
+    }
     return true;
   }
 
   private handleMessage(msg: IncomingRealtimeMessage): void {
+    this.config.observability?.emitInstrumentationEvent("signaling-received", { type: msg.type });
     for (const ack of [...this.pendingAcks]) {
       if (ack.matches(msg)) {
         ack.onMatch(msg);
