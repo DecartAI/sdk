@@ -51,13 +51,26 @@ export class RealtimeObservability {
   private videoStalled = false;
   private stallStartMs = 0;
   private connectionBreakdown: ConnectionBreakdownBuffer | null = null;
+  /**
+   * Sink for forwarding diagnostics and stats over the existing realtime
+   * WebSocket (bouncer logs them to Datadog under the session's context).
+   * Set by `StreamSession` after the signaling channel is created;
+   * cleared on tearDown.
+   */
+  private observabilityForwarder: ((payload: unknown) => void) | null = null;
 
   constructor(private readonly options: RealtimeObservabilityOptions) {}
+
+  /** Wire/unwire the WebSocket-side observability sink. Idempotent. */
+  setObservabilityForwarder(fn: ((payload: unknown) => void) | null): void {
+    this.observabilityForwarder = fn;
+  }
 
   diagnostic<K extends DiagnosticEventName>(name: K, data: DiagnosticEvents[K], timestamp: number = Date.now()): void {
     this.options.logger.debug(name, data as Record<string, unknown>);
     this.options.onDiagnostic?.({ name, data } as DiagnosticEvent);
     this.addTelemetryDiagnostic(name, data, timestamp);
+    this.observabilityForwarder?.({ kind: "diagnostic", name, data, timestamp });
   }
 
   beginConnectionBreakdown(attempt: number, initialImageSizeKb: number | null): void {
@@ -204,6 +217,7 @@ export class RealtimeObservability {
     this.options.onStats?.(stats);
     this.telemetryReporter.addStats(stats);
     this.detectVideoStall(stats);
+    this.observabilityForwarder?.({ kind: "stats", stats });
   }
 
   private detectVideoStall(stats: WebRTCStats): void {

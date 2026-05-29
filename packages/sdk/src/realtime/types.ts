@@ -129,7 +129,19 @@ export type IncomingRealtimeMessage =
   | LiveKitRoomInfoMessage
   | QueuePositionMessage;
 
+// Client-side WebRTC / ICE / networking observability events. Free-form
+// payload; logged by bouncer under the session's existing log context and
+// not forwarded upstream.
+export type ObservabilityMessage = {
+  type: "observability";
+  data: unknown;
+};
+
 // Outgoing message types (to server)
-export type OutgoingRealtimeMessage = LiveKitJoinMessage | PromptMessage | SetImageMessage;
+export type OutgoingRealtimeMessage =
+  | LiveKitJoinMessage
+  | PromptMessage
+  | SetImageMessage
+  | ObservabilityMessage;
 
 export type OutgoingMessage = PromptMessage | SetImageMessage;

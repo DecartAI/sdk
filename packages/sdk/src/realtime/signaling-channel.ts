@@ -165,6 +165,21 @@ export class SignalingChannel {
     if (!ack.success) throw new Error(ack.error ?? "Failed to send prompt");
   }
 
+  /**
+   * Fire-and-forget client-side observability event. Goes out over the
+   * existing realtime WebSocket as `{type: "observability", data}` and is
+   * logged by bouncer under the current session's log context. Never
+   * throws; quietly drops if the socket isn't open.
+   */
+  sendObservability(data: unknown): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    try {
+      this.writeMessage({ type: "observability", data });
+    } catch {
+      // Best-effort; never disrupt the session for a telemetry hiccup.
+    }
+  }
+
   async setImage(payload: SetImagePayload, opts: ImageSetOptions = {}): Promise<void> {
     const message: OutgoingRealtimeMessage =
       payload.kind === "ref"
