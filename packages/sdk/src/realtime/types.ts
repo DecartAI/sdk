@@ -144,10 +144,6 @@ export type ObservabilityMessage = {
 };
 
 // Outgoing message types (to server)
-export type OutgoingRealtimeMessage =
-  | LiveKitJoinMessage
-  | PromptMessage
-  | SetImageMessage
-  | ObservabilityMessage;
+export type OutgoingRealtimeMessage = LiveKitJoinMessage | PromptMessage | SetImageMessage | ObservabilityMessage;
 
 export type OutgoingMessage = PromptMessage | SetImageMessage;
