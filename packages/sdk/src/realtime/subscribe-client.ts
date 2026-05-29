@@ -62,14 +62,12 @@ export type SubscribeOptions = {
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionChange?: (state: ConnectionState) => void;
   /**
-   * Play remote audio tracks published by the server. Default `false`.
+   * Play remote audio tracks. Default `false`.
    *
-   * Mirrors the publisher-side `realtime.connect()` option. When `false`,
-   * audio tracks subscribed from the inference server are dropped on the
-   * client: livekit-client's `track.attach()` is skipped (so no hidden
-   * `<audio>` element is created) and the track is not added to the stream
-   * passed to `onRemoteStream`. Set `true` for viewers of avatar / V2V /
-   * voice-driven sessions where the server-side audio is meaningful.
+   * When `false`, any audio the model emits is dropped on the client — no
+   * playback element is attached and audio is not added to the stream
+   * passed to `onRemoteStream`. Set `true` when the model emits audio you
+   * want the viewer to hear.
    */
   playRemoteAudio?: boolean;
 };

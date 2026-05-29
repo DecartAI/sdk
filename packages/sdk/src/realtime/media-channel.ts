@@ -46,14 +46,12 @@ export interface MediaChannelConfig {
   logger?: Logger;
   videoCodec?: VideoCodec;
   /**
-   * Play remote audio tracks published by the server. Default `false`.
+   * Play remote audio tracks. Default `false`.
    *
-   * When `false`, audio tracks subscribed from the server are dropped on the
-   * client: livekit-client's `track.attach()` is skipped (so no hidden
-   * `<audio>` element is created) and the track is not added to the remote
-   * stream. Set to `true` for models that emit meaningful audio output
-   * (avatars, voice-driven sessions, or V2V where the input audio should
-   * round-trip to subscribers).
+   * When `false`, any audio tracks delivered to this room are dropped on the
+   * client: no playback element is attached and the track is not added to
+   * the stream emitted on `remoteStream`. Set to `true` when the model emits
+   * audio you want the user to hear.
    */
   playRemoteAudio?: boolean;
 }

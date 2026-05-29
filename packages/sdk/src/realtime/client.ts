@@ -57,13 +57,12 @@ const realTimeClientConnectOptionsSchema = z.object({
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp9"]).optional(),
   /**
-   * Play remote audio tracks published by the server. Default `false`.
+   * Play remote audio tracks. Default `false`.
    *
-   * Set `true` for models that emit meaningful audio (avatars, voice
-   * sessions, V2V passthrough where input audio should round-trip). When
-   * `false`, audio tracks are dropped on the client — no hidden `<audio>`
-   * element is created by livekit-client and audio is not added to the
-   * stream passed to `onRemoteStream`.
+   * When `false`, any audio the model emits is dropped on the client — no
+   * playback element is attached and audio is not added to the stream
+   * passed to `onRemoteStream`. Set `true` when the model emits audio you
+   * want the user to hear.
    */
   playRemoteAudio: z.boolean().optional(),
 });
