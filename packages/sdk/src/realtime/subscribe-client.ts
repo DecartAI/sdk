@@ -61,6 +61,17 @@ export type SubscribeOptions = {
   token: string;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionChange?: (state: ConnectionState) => void;
+  /**
+   * Play remote audio tracks published by the server. Default `false`.
+   *
+   * Mirrors the publisher-side `realtime.connect()` option. When `false`,
+   * audio tracks subscribed from the inference server are dropped on the
+   * client: livekit-client's `track.attach()` is skipped (so no hidden
+   * `<audio>` element is created) and the track is not added to the stream
+   * passed to `onRemoteStream`. Set `true` for viewers of avatar / V2V /
+   * voice-driven sessions where the server-side audio is meaningful.
+   */
+  playRemoteAudio?: boolean;
 };
 
 export type RealTimeSubscribeClientOptions = {
@@ -148,6 +159,7 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
       activeRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
         if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) return;
         if (track.kind !== Track.Kind.Video && track.kind !== Track.Kind.Audio) return;
+        if (track.kind === Track.Kind.Audio && !options.playRemoteAudio) return;
 
         track.attach();
         const mediaStreamTrack = track.mediaStreamTrack;
