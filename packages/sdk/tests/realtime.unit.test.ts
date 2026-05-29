@@ -743,16 +743,18 @@ describe("StreamSession startup orchestration", () => {
     });
   };
 
-  const subscribeRemoteTrack = () => {
+  const subscribeRemoteTrack = (kind: "video" | "audio" = "video") => {
     const room = liveKitMock.roomInstances.at(-1) as InstanceType<typeof liveKitMock.MockRoom>;
-    const mediaStreamTrack = { id: "remote-video", kind: "video" };
+    const mediaStreamTrack = { id: `remote-${kind}`, kind };
+    const trackKind = kind === "video" ? liveKitMock.Track.Kind.Video : liveKitMock.Track.Kind.Audio;
     const track = {
-      kind: liveKitMock.Track.Kind.Video,
+      kind: trackKind,
       mediaStreamTrack,
       attach: vi.fn(),
       on: vi.fn(),
     };
     room.emit(liveKitMock.RoomEvent.TrackSubscribed, track, {}, { identity: "inference-server-1" });
+    return track;
   };
 
   const createLocalStream = () =>
@@ -975,6 +977,61 @@ describe("StreamSession startup orchestration", () => {
 
     expect(firstRoom.localParticipant.publishTrack).not.toHaveBeenCalled();
     await expect(connectPromise).rejects.toThrow("WebSocket closed: 1000 closed");
+  });
+
+  it("drops remote audio tracks by default — no attach, not added to remoteStream", async () => {
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+      initialPrompt: { text: "go" },
+    });
+    const remoteStreams: MediaStream[] = [];
+    session.on("remoteStream", (stream) => remoteStreams.push(stream));
+
+    session.connect().catch(() => {});
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    await flushMicrotasks();
+    sendRoomInfo(ws);
+    await flushMicrotasks();
+
+    const audioTrack = subscribeRemoteTrack("audio");
+    expect(audioTrack.attach).not.toHaveBeenCalled();
+    expect(remoteStreams).toHaveLength(0);
+
+    const videoTrack = subscribeRemoteTrack("video");
+    expect(videoTrack.attach).toHaveBeenCalledTimes(1);
+    expect(remoteStreams).toHaveLength(1);
+    expect((remoteStreams[0] as unknown as FakeMediaStream).getTracks()).toEqual([
+      expect.objectContaining({ kind: "video" }),
+    ]);
+  });
+
+  it("plays remote audio tracks when playRemoteAudio is true", async () => {
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+      initialPrompt: { text: "go" },
+      playRemoteAudio: true,
+    });
+    const remoteStreams: MediaStream[] = [];
+    session.on("remoteStream", (stream) => remoteStreams.push(stream));
+
+    session.connect().catch(() => {});
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    await flushMicrotasks();
+    sendRoomInfo(ws);
+    await flushMicrotasks();
+
+    const audioTrack = subscribeRemoteTrack("audio");
+    expect(audioTrack.attach).toHaveBeenCalledTimes(1);
+    expect(remoteStreams).toHaveLength(1);
+    expect((remoteStreams[0] as unknown as FakeMediaStream).getTracks()).toEqual([
+      expect.objectContaining({ kind: "audio" }),
+    ]);
   });
 });
 

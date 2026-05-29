@@ -56,6 +56,16 @@ const realTimeClientConnectOptionsSchema = z.object({
   resolution: z.enum(["720p", "1080p"]).optional(),
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp9"]).optional(),
+  /**
+   * Play remote audio tracks published by the server. Default `false`.
+   *
+   * Set `true` for models that emit meaningful audio (avatars, voice
+   * sessions, V2V passthrough where input audio should round-trip). When
+   * `false`, audio tracks are dropped on the client — no hidden `<audio>`
+   * element is created by livekit-client and audio is not added to the
+   * stream passed to `onRemoteStream`.
+   */
+  playRemoteAudio: z.boolean().optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -102,8 +112,15 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
     if (!parsedOptions.success) throw parsedOptions.error;
 
-    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState, resolution, preferredVideoCodec } =
-      parsedOptions.data;
+    const {
+      onRemoteStream,
+      onConnectionChange,
+      onQueuePosition,
+      initialState,
+      resolution,
+      preferredVideoCodec,
+      playRemoteAudio,
+    } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
     let inputStream: MediaStream = stream ?? new MediaStream();
 
@@ -169,6 +186,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialPrompt,
         logger,
         videoCodec: publishCodec,
+        playRemoteAudio,
       });
 
       let sessionId: string | null = null;

@@ -45,6 +45,17 @@ export interface MediaChannelConfig {
   localStream: MediaStream | null;
   logger?: Logger;
   videoCodec?: VideoCodec;
+  /**
+   * Play remote audio tracks published by the server. Default `false`.
+   *
+   * When `false`, audio tracks subscribed from the server are dropped on the
+   * client: livekit-client's `track.attach()` is skipped (so no hidden
+   * `<audio>` element is created) and the track is not added to the remote
+   * stream. Set to `true` for models that emit meaningful audio output
+   * (avatars, voice-driven sessions, or V2V where the input audio should
+   * round-trip to subscribers).
+   */
+  playRemoteAudio?: boolean;
 }
 
 export type MediaConnectOptions = {
@@ -81,6 +92,7 @@ export class MediaChannel {
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
       if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) return;
       if (track.kind !== Track.Kind.Video && track.kind !== Track.Kind.Audio) return;
+      if (track.kind === Track.Kind.Audio && !this.config.playRemoteAudio) return;
 
       track.attach();
       const mediaStreamTrack = track.mediaStreamTrack;
