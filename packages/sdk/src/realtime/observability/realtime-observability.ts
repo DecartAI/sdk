@@ -232,7 +232,11 @@ export class RealtimeObservability {
     this.options.onStats?.(stats);
     this.telemetryReporter.addStats(stats);
     this.detectVideoStall(stats);
-    this.observabilityForwarder?.({ kind: "stats", stats });
+    // Stats intentionally not forwarded over the WS. They fire every 1s
+    // and would dominate Datadog's signal-to-noise ratio while not
+    // helping diagnose connection-establishment failures (which is what
+    // the WS-forwarded observability stream is for). They still flow to
+    // the local `onStats` callback and the platform telemetry POST.
   }
 
   private detectVideoStall(stats: WebRTCStats): void {
