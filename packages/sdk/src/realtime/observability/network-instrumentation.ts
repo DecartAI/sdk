@@ -153,6 +153,46 @@ function getPc(transport: PcTransportLike | undefined): RTCPeerConnection | unde
 }
 
 /**
+ * Walk `pc.getStats()` once and emit one synthetic `ice-candidate-past`
+ * event per local-candidate (and `remote-candidate-past` per remote one)
+ * already known to the PC. Covers the very common case where ICE
+ * gathering finished before our `icecandidate` listener was attached.
+ */
+async function snapshotPastCandidates(
+  pc: RTCPeerConnection,
+  side: Side,
+  emit: (name: string, data: Record<string, unknown>) => void,
+): Promise<void> {
+  try {
+    const report = await pc.getStats();
+    report.forEach((stat) => {
+      if (stat.type === "local-candidate" || stat.type === "remote-candidate") {
+        const c = stat as RTCIceCandidateStats & {
+          address?: string;
+          networkType?: string;
+          relayProtocol?: string;
+          url?: string;
+        };
+        emit("ice-candidate-past", {
+          side,
+          source: stat.type, // local-candidate | remote-candidate
+          candidateType: c.candidateType,
+          protocol: c.protocol,
+          address: c.address ?? null,
+          port: c.port,
+          priority: c.priority,
+          networkType: c.networkType ?? null,
+          relayProtocol: c.relayProtocol ?? null,
+          url: c.url ?? null,
+        });
+      }
+    });
+  } catch {
+    // ignore
+  }
+}
+
+/**
  * Attach low-level instrumentation to a connected LiveKit `Room`. Safe to
  * call once per room. Returns a cleanup function that detaches all listeners.
  */
@@ -164,11 +204,11 @@ export function attachRoomInstrumentation(room: Room, observability: RealtimeObs
   // Initial browser network snapshot — gives a baseline to compare against.
   emit("network-state", snapshotConnection());
 
-  // Browser network events.
+  // Browser network events relevant to ICE failure debugging. Page
+  // visibility transitions are intentionally not forwarded — they're
+  // noise for connection diagnostics.
   const onOnline = () => emit("browser-online", { ...snapshotConnection() });
   const onOffline = () => emit("browser-offline", { ...snapshotConnection() });
-  const onVisibility = () =>
-    emit("page-visibility", { state: typeof document !== "undefined" ? document.visibilityState : null });
   const conn =
     typeof navigator !== "undefined" ? (navigator as Navigator & { connection?: EventTarget }).connection : undefined;
   const onConnChange = () => emit("network-change", snapshotConnection());
@@ -176,39 +216,21 @@ export function attachRoomInstrumentation(room: Room, observability: RealtimeObs
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
   }
-  if (typeof document !== "undefined") {
-    document.addEventListener("visibilitychange", onVisibility);
-  }
   conn?.addEventListener?.("change", onConnChange);
 
-  // LiveKit Room lifecycle events worth seeing in Datadog.
+  // LiveKit Room lifecycle events that matter for connection debugging.
+  // Steady-state events (connection-quality, track-subscribed/muted/unmuted,
+  // local-track-published, participant-connected, page-visibility) are
+  // intentionally not forwarded — they're noise once a session is up and
+  // running, and the goal of this stream is to debug WHY connections fail
+  // or take too long, not narrate a healthy session.
   const onConnected = () => emit("room-connected", { name: room.name, sid: room.localParticipant?.sid });
   const onDisconnected = (reason?: DisconnectReason) => emit("room-disconnected", { reason });
   const onReconnecting = () => emit("room-reconnecting");
   const onSignalReconnecting = () => emit("room-signal-reconnecting");
   const onReconnected = () => emit("room-reconnected");
   const onConnectionStateChanged = (state: unknown) => emit("room-connection-state", { state });
-  const onConnectionQualityChanged = (quality: unknown, participant: unknown) =>
-    emit("connection-quality", {
-      quality,
-      participantIdentity: (participant as { identity?: string } | undefined)?.identity,
-    });
   const onMediaDevicesError = (e: Error) => emit("media-devices-error", { name: e.name, message: e.message });
-  const onLocalTrackPublished = (pub: unknown) => {
-    const p = pub as { kind?: string; source?: string; trackSid?: string; mimeType?: string } | undefined;
-    emit("local-track-published", { kind: p?.kind, source: p?.source, trackSid: p?.trackSid, mimeType: p?.mimeType });
-  };
-  const onParticipantConnected = (participant: unknown) =>
-    emit("participant-connected", { identity: (participant as { identity?: string } | undefined)?.identity });
-  const onTrackSubscribed = (track: unknown, _pub: unknown, participant: unknown) => {
-    const t = track as { kind?: string; sid?: string } | undefined;
-    const p = participant as { identity?: string } | undefined;
-    emit("track-subscribed", { kind: t?.kind, trackSid: t?.sid, fromIdentity: p?.identity });
-  };
-  const onTrackMuted = (_pub: unknown, participant: unknown) =>
-    emit("track-muted", { identity: (participant as { identity?: string } | undefined)?.identity });
-  const onTrackUnmuted = (_pub: unknown, participant: unknown) =>
-    emit("track-unmuted", { identity: (participant as { identity?: string } | undefined)?.identity });
 
   room.on(RoomEvent.Connected, onConnected);
   room.on(RoomEvent.Disconnected, onDisconnected);
@@ -216,13 +238,7 @@ export function attachRoomInstrumentation(room: Room, observability: RealtimeObs
   room.on(RoomEvent.SignalReconnecting, onSignalReconnecting);
   room.on(RoomEvent.Reconnected, onReconnected);
   room.on(RoomEvent.ConnectionStateChanged, onConnectionStateChanged);
-  room.on(RoomEvent.ConnectionQualityChanged, onConnectionQualityChanged);
   room.on(RoomEvent.MediaDevicesError, onMediaDevicesError);
-  room.on(RoomEvent.LocalTrackPublished, onLocalTrackPublished);
-  room.on(RoomEvent.ParticipantConnected, onParticipantConnected);
-  room.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
-  room.on(RoomEvent.TrackMuted, onTrackMuted);
-  room.on(RoomEvent.TrackUnmuted, onTrackUnmuted);
 
   // Attach to the underlying RTCPeerConnections for ICE-level visibility.
   // Done lazily on next tick — LiveKit creates the PC transports during
@@ -264,22 +280,13 @@ export function attachRoomInstrumentation(room: Room, observability: RealtimeObs
       room.off(RoomEvent.SignalReconnecting, onSignalReconnecting);
       room.off(RoomEvent.Reconnected, onReconnected);
       room.off(RoomEvent.ConnectionStateChanged, onConnectionStateChanged);
-      room.off(RoomEvent.ConnectionQualityChanged, onConnectionQualityChanged);
       room.off(RoomEvent.MediaDevicesError, onMediaDevicesError);
-      room.off(RoomEvent.LocalTrackPublished, onLocalTrackPublished);
-      room.off(RoomEvent.ParticipantConnected, onParticipantConnected);
-      room.off(RoomEvent.TrackSubscribed, onTrackSubscribed);
-      room.off(RoomEvent.TrackMuted, onTrackMuted);
-      room.off(RoomEvent.TrackUnmuted, onTrackUnmuted);
     } catch {
       // ignore detach errors during teardown
     }
     if (typeof window !== "undefined") {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
-    }
-    if (typeof document !== "undefined") {
-      document.removeEventListener("visibilitychange", onVisibility);
     }
     conn?.removeEventListener?.("change", onConnChange);
     for (const fn of pcCleanups) {
@@ -306,6 +313,27 @@ function attachPeerConnectionInstrumentation(
     signalingState: pc.signalingState,
   });
 
+  // The PC may already have gathered all its candidates by the time we
+  // attach. addEventListener('icecandidate', ...) only catches FUTURE
+  // events, so we walk getStats() once to surface what was already
+  // produced. This is the data we'd care about most for an ICE-failure
+  // post-mortem (srflx address, candidate types, the winning pair).
+  void snapshotPastCandidates(pc, side, emit);
+  if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+    void (async () => {
+      const pair = await snapshotSelectedPair(pc);
+      if (pair) emit("selected-candidate-pair", { side, ...pair, snapshot: true });
+      if (pcManager?.getConnectedAddress) {
+        try {
+          const addr = await pcManager.getConnectedAddress();
+          if (addr) emit("connected-address", { side, address: addr, snapshot: true });
+        } catch {
+          // ignore
+        }
+      }
+    })();
+  }
+
   const onIceCandidate = (ev: RTCPeerConnectionIceEvent) => {
     emit("ice-candidate", { side, ...summarizeCandidate(ev.candidate) });
   };
@@ -331,27 +359,15 @@ function attachPeerConnectionInstrumentation(
   };
   const onConnectionStateChange = () => emit("pc-connection-state", { side, state: pc.connectionState });
   const onIceGatheringStateChange = () => emit("ice-gathering-state", { side, state: pc.iceGatheringState });
-  const onSignalingStateChange = () => emit("signaling-state", { side, state: pc.signalingState });
-  const onNegotiationNeeded = () => emit("negotiation-needed", { side });
-  const onDataChannel = (ev: RTCDataChannelEvent) =>
-    emit("data-channel-opened", {
-      side,
-      label: ev.channel.label,
-      ordered: ev.channel.ordered,
-      protocol: ev.channel.protocol,
-    });
-  const onTrack = (ev: RTCTrackEvent) =>
-    emit("track-received", { side, kind: ev.track.kind, id: ev.track.id, label: ev.track.label });
+  // signalingstatechange + negotiationneeded + track + datachannel are
+  // intentionally not hooked — they fire on every SDP renegotiation cycle
+  // (each prompt / set_image triggers one) and bury the ICE-level signal.
 
   pc.addEventListener("icecandidate", onIceCandidate);
   pc.addEventListener("icecandidateerror", onIceCandidateError);
   pc.addEventListener("iceconnectionstatechange", onIceConnectionStateChange);
   pc.addEventListener("connectionstatechange", onConnectionStateChange);
   pc.addEventListener("icegatheringstatechange", onIceGatheringStateChange);
-  pc.addEventListener("signalingstatechange", onSignalingStateChange);
-  pc.addEventListener("negotiationneeded", onNegotiationNeeded);
-  pc.addEventListener("datachannel", onDataChannel);
-  pc.addEventListener("track", onTrack);
 
   return () => {
     pc.removeEventListener("icecandidate", onIceCandidate);
@@ -359,10 +375,6 @@ function attachPeerConnectionInstrumentation(
     pc.removeEventListener("iceconnectionstatechange", onIceConnectionStateChange);
     pc.removeEventListener("connectionstatechange", onConnectionStateChange);
     pc.removeEventListener("icegatheringstatechange", onIceGatheringStateChange);
-    pc.removeEventListener("signalingstatechange", onSignalingStateChange);
-    pc.removeEventListener("negotiationneeded", onNegotiationNeeded);
-    pc.removeEventListener("datachannel", onDataChannel);
-    pc.removeEventListener("track", onTrack);
   };
 }
 
