@@ -113,6 +113,21 @@ export class RealtimeObservability {
     this.observabilityForwarder = fn;
   }
 
+  /**
+   * Emit a raw instrumentation event over the observability sink. Used by
+   * `network-instrumentation.ts` to forward per-ICE-candidate / signaling /
+   * peer-connection-state events that don't fit the strict `DiagnosticEvents`
+   * type union. Best-effort; silently dropped if the sink isn't attached.
+   */
+  emitInstrumentationEvent(name: string, data: unknown): void {
+    this.observabilityForwarder?.({
+      kind: "instrumentation",
+      name,
+      data,
+      timestamp: Date.now(),
+    });
+  }
+
   diagnostic<K extends DiagnosticEventName>(name: K, data: DiagnosticEvents[K], timestamp: number = Date.now()): void {
     this.options.logger.debug(name, data as Record<string, unknown>);
     this.options.onDiagnostic?.({ name, data } as DiagnosticEvent);

@@ -11,6 +11,7 @@ import mitt, { type Emitter } from "mitt";
 
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
+import { attachRoomInstrumentation } from "./observability/network-instrumentation";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 
 export type VideoCodec = "h264" | "vp8" | "vp9" | "av1";
@@ -55,6 +56,7 @@ export class MediaChannel {
   private remoteStream: MediaStream | null = null;
   private events: Emitter<MediaChannelEvents> = mitt();
   private readonly logger: Logger;
+  private detachInstrumentation: (() => void) | null = null;
 
   constructor(private readonly config: MediaChannelConfig) {
     this.logger = config.logger ?? createConsoleLogger("warn");
@@ -111,6 +113,9 @@ export class MediaChannel {
     await room.connect(opts.url, opts.token);
     this.config.observability?.endPhase("webrtc-handshake", { success: true });
     this.config.observability?.setLiveKitRoom(room);
+    if (this.config.observability) {
+      this.detachInstrumentation = attachRoomInstrumentation(room, this.config.observability);
+    }
   }
 
   async publishLocalTracks(): Promise<void> {
@@ -124,6 +129,10 @@ export class MediaChannel {
     const room = this.room;
     this.room = null;
     this.remoteStream = null;
+    if (this.detachInstrumentation) {
+      this.detachInstrumentation();
+      this.detachInstrumentation = null;
+    }
     this.config.observability?.setLiveKitRoom(null);
     if (room) {
       room.disconnect().catch(() => {});
