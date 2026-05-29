@@ -72,6 +72,21 @@ type ConnectionInfo = {
   online?: boolean;
 };
 
+// Structural shape of an RTCIceCandidateStats entry. The DOM type isn't
+// in every TS lib build, so we redeclare what we read.
+type IceCandidateStat = {
+  id: string;
+  type: "local-candidate" | "remote-candidate";
+  candidateType?: string;
+  protocol?: string;
+  port?: number;
+  priority?: number;
+  address?: string;
+  networkType?: string;
+  relayProtocol?: string;
+  url?: string;
+};
+
 function summarizeCandidate(candidate: RTCIceCandidate | null): Record<string, unknown> {
   if (!candidate) return { eof: true };
   // Keep only the fields useful for ICE debugging. Dropped vs. raw RTCIceCandidate:
@@ -129,39 +144,56 @@ function snapshotConnection(): ConnectionInfo {
   return info;
 }
 
+// Structural shape of an RTCIceCandidatePairStats entry — same reason
+// as IceCandidateStat above (some TS lib builds don't expose this).
+type IceCandidatePairStat = {
+  type: "candidate-pair";
+  state: string;
+  nominated?: boolean;
+  localCandidateId?: string;
+  remoteCandidateId?: string;
+  currentRoundTripTime?: number;
+  availableOutgoingBitrate?: number;
+};
+
 async function snapshotSelectedPair(pc: RTCPeerConnection): Promise<Record<string, unknown> | null> {
   try {
     const report = await pc.getStats();
-    let pair: RTCIceCandidatePairStats | null = null;
-    const candidates = new Map<string, RTCIceCandidateStats>();
+    let pair: IceCandidatePairStat | null = null;
+    const candidates = new Map<string, IceCandidateStat>();
     report.forEach((stat) => {
-      if (stat.type === "candidate-pair" && stat.state === "succeeded" && stat.nominated) {
-        pair = stat as RTCIceCandidatePairStats;
+      const s = stat as unknown as { type: string; state?: string; nominated?: boolean; id: string };
+      if (s.type === "candidate-pair" && s.state === "succeeded" && s.nominated) {
+        pair = stat as unknown as IceCandidatePairStat;
       }
-      if (stat.type === "local-candidate" || stat.type === "remote-candidate") {
-        candidates.set(stat.id, stat as RTCIceCandidateStats);
+      if (s.type === "local-candidate" || s.type === "remote-candidate") {
+        candidates.set(s.id, stat as unknown as IceCandidateStat);
       }
     });
     if (!pair) return null;
-    const local = candidates.get(pair.localCandidateId);
-    const remote = candidates.get(pair.remoteCandidateId);
+    const localId = (pair as IceCandidatePairStat).localCandidateId;
+    const remoteId = (pair as IceCandidatePairStat).remoteCandidateId;
+    const local = localId ? candidates.get(localId) : undefined;
+    const remote = remoteId ? candidates.get(remoteId) : undefined;
+    const rtt = (pair as IceCandidatePairStat).currentRoundTripTime;
+    const aob = (pair as IceCandidatePairStat).availableOutgoingBitrate;
     return {
-      currentRoundTripTimeMs: pair.currentRoundTripTime != null ? pair.currentRoundTripTime * 1000 : null,
-      availableOutgoingBitrate: pair.availableOutgoingBitrate ?? null,
+      currentRoundTripTimeMs: rtt != null ? rtt * 1000 : null,
+      availableOutgoingBitrate: aob ?? null,
       local: local
         ? {
             type: local.candidateType,
             protocol: local.protocol,
-            address: (local as RTCIceCandidateStats & { address?: string }).address,
+            address: local.address,
             port: local.port,
-            networkType: (local as RTCIceCandidateStats & { networkType?: string }).networkType,
+            networkType: local.networkType,
           }
         : null,
       remote: remote
         ? {
             type: remote.candidateType,
             protocol: remote.protocol,
-            address: (remote as RTCIceCandidateStats & { address?: string }).address,
+            address: remote.address,
             port: remote.port,
           }
         : null,
@@ -190,16 +222,12 @@ async function snapshotPastCandidates(
   try {
     const report = await pc.getStats();
     report.forEach((stat) => {
-      if (stat.type === "local-candidate" || stat.type === "remote-candidate") {
-        const c = stat as RTCIceCandidateStats & {
-          address?: string;
-          networkType?: string;
-          relayProtocol?: string;
-          url?: string;
-        };
+      const s = stat as unknown as IceCandidateStat;
+      if (s.type === "local-candidate" || s.type === "remote-candidate") {
+        const c = s;
         emit("ice-candidate-past", {
           side,
-          source: stat.type, // local-candidate | remote-candidate
+          source: c.type, // local-candidate | remote-candidate
           candidateType: c.candidateType,
           protocol: c.protocol,
           address: c.address ?? null,

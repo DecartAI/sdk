@@ -372,8 +372,10 @@ export class SignalingChannel {
         roomName: msg.room_name,
         sessionId: msg.session_id,
       });
-    } else if (msg.type === "session_id") {
-      this.config.observability?.emitInstrumentationEvent("signaling-received", { type: msg.type });
+    } else if ((msg as { type?: string }).type === "session_id") {
+      // `session_id` isn't in the typed IncomingRealtimeMessage union but is
+      // sent by the bouncer; trace it for the connection timeline.
+      this.config.observability?.emitInstrumentationEvent("signaling-received", { type: "session_id" });
     }
     for (const ack of [...this.pendingAcks]) {
       if (ack.matches(msg)) {
