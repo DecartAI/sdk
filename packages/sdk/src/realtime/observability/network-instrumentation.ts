@@ -16,8 +16,32 @@
  * we never displace LiveKit's own handlers.
  */
 
-import { Room, RoomEvent, Track, type DisconnectReason } from "livekit-client";
+import { DisconnectReason, Room, RoomEvent, Track } from "livekit-client";
 import type { RealtimeObservability } from "./realtime-observability";
+
+const DISCONNECT_REASON_NAMES: Record<number, string> = {
+  [DisconnectReason.UNKNOWN_REASON]: "unknown",
+  [DisconnectReason.CLIENT_INITIATED]: "client_initiated",
+  [DisconnectReason.DUPLICATE_IDENTITY]: "duplicate_identity",
+  [DisconnectReason.SERVER_SHUTDOWN]: "server_shutdown",
+  [DisconnectReason.PARTICIPANT_REMOVED]: "participant_removed",
+  [DisconnectReason.ROOM_DELETED]: "room_deleted",
+  [DisconnectReason.STATE_MISMATCH]: "state_mismatch",
+  [DisconnectReason.JOIN_FAILURE]: "join_failure",
+  [DisconnectReason.MIGRATION]: "migration",
+  [DisconnectReason.SIGNAL_CLOSE]: "signal_close",
+  [DisconnectReason.ROOM_CLOSED]: "room_closed",
+  [DisconnectReason.USER_UNAVAILABLE]: "user_unavailable",
+  [DisconnectReason.USER_REJECTED]: "user_rejected",
+  [DisconnectReason.SIP_TRUNK_FAILURE]: "sip_trunk_failure",
+  [DisconnectReason.CONNECTION_TIMEOUT]: "connection_timeout",
+  [DisconnectReason.MEDIA_FAILURE]: "media_failure",
+};
+
+function disconnectReasonString(reason: number | undefined): string | undefined {
+  if (reason === undefined) return undefined;
+  return DISCONNECT_REASON_NAMES[reason] ?? `unknown(${reason})`;
+}
 
 type Side = "publisher" | "subscriber";
 
@@ -50,6 +74,10 @@ type ConnectionInfo = {
 
 function summarizeCandidate(candidate: RTCIceCandidate | null): Record<string, unknown> {
   if (!candidate) return { eof: true };
+  // Keep only the fields useful for ICE debugging. Dropped vs. raw RTCIceCandidate:
+  //   - candidate (raw SDP string — redundant with type/address/port/protocol)
+  //   - sdpMid / sdpMLineIndex (mux indexing, not network-debug)
+  //   - usernameFragment (ICE ufrag — auth, not network-debug)
   const c = candidate as RTCIceCandidate & {
     address?: string;
     relatedAddress?: string;
@@ -59,20 +87,16 @@ function summarizeCandidate(candidate: RTCIceCandidate | null): Record<string, u
     url?: string;
   };
   return {
-    candidate: c.candidate,
-    foundation: c.foundation,
-    component: c.component,
+    type: c.type,
     protocol: c.protocol,
     address: c.address ?? null,
     port: c.port,
     priority: c.priority,
-    type: c.type,
+    foundation: c.foundation,
+    component: c.component,
     tcpType: c.tcpType ?? null,
     relatedAddress: c.relatedAddress ?? null,
     relatedPort: c.relatedPort ?? null,
-    sdpMid: c.sdpMid,
-    sdpMLineIndex: c.sdpMLineIndex,
-    usernameFragment: c.usernameFragment,
     networkType: c.networkType ?? null,
     url: c.url ?? null,
   };
@@ -225,11 +249,11 @@ export function attachRoomInstrumentation(room: Room, observability: RealtimeObs
   // running, and the goal of this stream is to debug WHY connections fail
   // or take too long, not narrate a healthy session.
   const onConnected = () => emit("room-connected", { name: room.name, sid: room.localParticipant?.sid });
-  const onDisconnected = (reason?: DisconnectReason) => emit("room-disconnected", { reason });
+  const onDisconnected = (reason?: DisconnectReason) =>
+    emit("room-disconnected", { reason, reasonName: disconnectReasonString(reason) });
   const onReconnecting = () => emit("room-reconnecting");
   const onSignalReconnecting = () => emit("room-signal-reconnecting");
   const onReconnected = () => emit("room-reconnected");
-  const onConnectionStateChanged = (state: unknown) => emit("room-connection-state", { state });
   const onMediaDevicesError = (e: Error) => emit("media-devices-error", { name: e.name, message: e.message });
 
   room.on(RoomEvent.Connected, onConnected);
@@ -237,8 +261,9 @@ export function attachRoomInstrumentation(room: Room, observability: RealtimeObs
   room.on(RoomEvent.Reconnecting, onReconnecting);
   room.on(RoomEvent.SignalReconnecting, onSignalReconnecting);
   room.on(RoomEvent.Reconnected, onReconnected);
-  room.on(RoomEvent.ConnectionStateChanged, onConnectionStateChanged);
   room.on(RoomEvent.MediaDevicesError, onMediaDevicesError);
+  // RoomEvent.ConnectionStateChanged is intentionally not hooked — its
+  // states duplicate room-connected / -reconnecting / -disconnected.
 
   // Attach to the underlying RTCPeerConnections for ICE-level visibility.
   // Done lazily on next tick — LiveKit creates the PC transports during
@@ -279,7 +304,6 @@ export function attachRoomInstrumentation(room: Room, observability: RealtimeObs
       room.off(RoomEvent.Reconnecting, onReconnecting);
       room.off(RoomEvent.SignalReconnecting, onSignalReconnecting);
       room.off(RoomEvent.Reconnected, onReconnected);
-      room.off(RoomEvent.ConnectionStateChanged, onConnectionStateChanged);
       room.off(RoomEvent.MediaDevicesError, onMediaDevicesError);
     } catch {
       // ignore detach errors during teardown
@@ -299,18 +323,36 @@ export function attachRoomInstrumentation(room: Room, observability: RealtimeObs
   };
 }
 
+function summarizeIceServers(pc: RTCPeerConnection): Array<Record<string, unknown>> {
+  try {
+    const cfg = pc.getConfiguration();
+    return (cfg.iceServers ?? []).map((s) => ({
+      urls: Array.isArray(s.urls) ? s.urls : [s.urls],
+      hasUsername: !!s.username,
+      hasCredential: !!s.credential,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 function attachPeerConnectionInstrumentation(
   pc: RTCPeerConnection,
   side: Side,
   emit: (name: string, data: Record<string, unknown>) => void,
-  pcManager?: PcManagerLike,
+  _pcManager?: PcManagerLike,
 ): () => void {
+  // pc-attached carries the PC's iceServers config — directly answers
+  // "did the SDK get STUN/TURN URLs from the JoinResponse?". Credentials
+  // are redacted (we only log whether they were present).
   emit("pc-attached", {
     side,
     iceConnectionState: pc.iceConnectionState,
     connectionState: pc.connectionState,
     iceGatheringState: pc.iceGatheringState,
     signalingState: pc.signalingState,
+    iceServers: summarizeIceServers(pc),
+    iceTransportPolicy: pc.getConfiguration().iceTransportPolicy ?? null,
   });
 
   // The PC may already have gathered all its candidates by the time we
@@ -323,14 +365,6 @@ function attachPeerConnectionInstrumentation(
     void (async () => {
       const pair = await snapshotSelectedPair(pc);
       if (pair) emit("selected-candidate-pair", { side, ...pair, snapshot: true });
-      if (pcManager?.getConnectedAddress) {
-        try {
-          const addr = await pcManager.getConnectedAddress();
-          if (addr) emit("connected-address", { side, address: addr, snapshot: true });
-        } catch {
-          // ignore
-        }
-      }
     })();
   }
 
@@ -342,19 +376,10 @@ function attachPeerConnectionInstrumentation(
   };
   const onIceConnectionStateChange = async () => {
     emit("ice-connection-state", { side, state: pc.iceConnectionState });
-    // Snapshot the winning candidate pair when ICE settles (connected/completed)
-    // or capture stats at the moment of failure for forensics.
+    // Snapshot the winning candidate pair when ICE settles.
     if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
       const pair = await snapshotSelectedPair(pc);
       if (pair) emit("selected-candidate-pair", { side, ...pair });
-      if (pcManager?.getConnectedAddress) {
-        try {
-          const addr = await pcManager.getConnectedAddress();
-          if (addr) emit("connected-address", { side, address: addr });
-        } catch {
-          // ignore
-        }
-      }
     }
   };
   const onConnectionStateChange = () => emit("pc-connection-state", { side, state: pc.connectionState });

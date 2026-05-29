@@ -23,6 +23,27 @@ const liveKitMock = vi.hoisted(() => {
     SignalReconnecting: "signalReconnecting",
     Disconnected: "disconnected",
   } as const;
+  // Mirrors livekit-client's DisconnectReason enum well enough for our
+  // network-instrumentation lookup table. Real numeric values from the
+  // protocol; safe to extend without breaking tests.
+  const DisconnectReason = {
+    UNKNOWN_REASON: 0,
+    CLIENT_INITIATED: 1,
+    DUPLICATE_IDENTITY: 2,
+    SERVER_SHUTDOWN: 3,
+    PARTICIPANT_REMOVED: 4,
+    ROOM_DELETED: 5,
+    STATE_MISMATCH: 6,
+    JOIN_FAILURE: 7,
+    MIGRATION: 8,
+    SIGNAL_CLOSE: 9,
+    ROOM_CLOSED: 10,
+    USER_UNAVAILABLE: 11,
+    USER_REJECTED: 12,
+    SIP_TRUNK_FAILURE: 13,
+    CONNECTION_TIMEOUT: 14,
+    MEDIA_FAILURE: 15,
+  } as const;
 
   class MockRoom {
     handlers = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -49,7 +70,7 @@ const liveKitMock = vi.hoisted(() => {
     }
   }
 
-  return { roomInstances, RoomEvent, Track, TrackEvent, ConnectionState, MockRoom };
+  return { roomInstances, RoomEvent, Track, TrackEvent, ConnectionState, DisconnectReason, MockRoom };
 });
 
 vi.mock("livekit-client", () => ({
@@ -58,6 +79,7 @@ vi.mock("livekit-client", () => ({
   Track: liveKitMock.Track,
   TrackEvent: liveKitMock.TrackEvent,
   ConnectionState: liveKitMock.ConnectionState,
+  DisconnectReason: liveKitMock.DisconnectReason,
 }));
 
 class FakeMediaStream {

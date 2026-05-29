@@ -401,7 +401,17 @@ export class SignalingChannel {
     // Only trace connection-establishment-relevant signaling messages.
     // Routine generation_tick / prompt_ack / set_image_ack chatter is
     // suppressed to keep Datadog's signal-to-noise ratio usable.
-    if (msg.type === "livekit_room_info" || msg.type === "session_id") {
+    if (msg.type === "livekit_room_info") {
+      // Capture which LiveKit SFU node the bouncer steered this session
+      // to — useful for "which node was bad?" debugging. Token is not
+      // logged (auth material).
+      this.config.observability?.emitInstrumentationEvent("signaling-received", {
+        type: msg.type,
+        livekitUrl: msg.livekit_url,
+        roomName: msg.room_name,
+        sessionId: msg.session_id,
+      });
+    } else if (msg.type === "session_id") {
       this.config.observability?.emitInstrumentationEvent("signaling-received", { type: msg.type });
     }
     for (const ack of [...this.pendingAcks]) {
