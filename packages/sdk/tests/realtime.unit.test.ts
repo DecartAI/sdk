@@ -814,6 +814,61 @@ describe("StreamSession startup orchestration", () => {
     expect(states).toEqual(["connecting", "connected"]);
   });
 
+  it("transitions to generating on generation_started over the websocket", async () => {
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+      initialPrompt: { text: "wear a hat", enhance: false },
+    });
+    const states: string[] = [];
+    session.on("connectionChange", (state) => states.push(state));
+
+    const connectPromise = session.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    await flushMicrotasks();
+    sendRoomInfo(ws);
+    await flushMicrotasks();
+
+    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
+    await expect(connectPromise).resolves.toBeUndefined();
+    expect(states).toEqual(["connecting", "connected"]);
+
+    ws.receive({ type: "generation_started" });
+    expect(states).toEqual(["connecting", "connected", "generating"]);
+    expect(session.getConnectionState()).toBe("generating");
+
+    // Subsequent ticks must not re-emit the transition.
+    ws.receive({ type: "generation_tick", seconds: 5 });
+    expect(states).toEqual(["connecting", "connected", "generating"]);
+  });
+
+  it("transitions to generating on the first generation_tick as a fallback", async () => {
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+      initialPrompt: { text: "wear a hat", enhance: false },
+    });
+    const states: string[] = [];
+    session.on("connectionChange", (state) => states.push(state));
+
+    const connectPromise = session.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    await flushMicrotasks();
+    sendRoomInfo(ws);
+    await flushMicrotasks();
+
+    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
+    await expect(connectPromise).resolves.toBeUndefined();
+    expect(states).toEqual(["connecting", "connected"]);
+
+    ws.receive({ type: "generation_tick", seconds: 5 });
+    expect(states).toEqual(["connecting", "connected", "generating"]);
+  });
+
   it("emits remoteStream before caller initial-state ack while connect remains pending", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const session = new StreamSession({

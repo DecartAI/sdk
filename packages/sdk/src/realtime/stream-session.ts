@@ -255,17 +255,25 @@ export class StreamSession {
       this.queue = qp;
       this.events.emit("queuePosition", qp);
     });
-    this.signaling.on("generationTick", (e) => this.events.emit("generationTick", e));
+    // The server signals generation start over the websocket. `generation_started`
+    // fires immediately when generation begins; the first `generation_tick` is a
+    // later fallback in case that message is ever absent.
+    this.signaling.on("generationStarted", () => this.markGenerating());
+    this.signaling.on("generationTick", (e) => {
+      this.markGenerating();
+      this.events.emit("generationTick", e);
+    });
     this.signaling.on("generationEnded", (e) => this.events.emit("generationEnded", e));
     this.signaling.on("serverError", (err) => this.events.emit("error", err));
     this.signaling.on("closed", (info) => this.handleConnectionLoss({ source: "signaling", ...info }));
   }
 
+  private markGenerating(): void {
+    if (this.state === "connected") this.setState("generating");
+  }
+
   private wireMediaEvents(): void {
     this.media.on("remoteStream", (stream) => this.events.emit("remoteStream", stream));
-    this.media.on("firstFrame", () => {
-      if (this.state === "connected") this.setState("generating");
-    });
     this.media.on("disconnected", (info) => this.handleConnectionLoss({ source: "media", reason: info.reason }));
   }
 
