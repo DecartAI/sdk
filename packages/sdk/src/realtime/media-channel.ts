@@ -47,11 +47,8 @@ export interface MediaChannelConfig {
   logger?: Logger;
   videoCodec?: VideoCodec;
   /**
-   * When true, allow TCP ICE candidates (regular + TURN-TCP/TLS).
-   * Default `false` — TCP is blocked because the TCP-direct fallback to LiveKit
-   * `:7881` carries media under TCP head-of-line blocking that produces stalls
-   * for ~10% of production sessions. Set to true only when you need TCP as a
-   * fallback for clients with UDP fully blocked outbound.
+   * Allow TCP ICE candidates. Default `false`; see
+   * `RealTimeClientConnectOptions.allowTcpIce` for the rationale.
    */
   allowTcpIce?: boolean;
 }
@@ -85,8 +82,9 @@ export class MediaChannel {
   }
 
   async connect(opts: MediaConnectOptions): Promise<void> {
-    // Install the TCP-ICE filter BEFORE constructing the Room so that all
-    // PCs created by LiveKit go through the filtered RTCPeerConnection.
+    // Install the TCP-ICE filter before constructing the Room so that every PC
+    // LiveKit creates goes through the filtered RTCPeerConnection. No-op when
+    // the caller opted in to TCP via `allowTcpIce: true`.
     this.releaseIceFilter ??= installIceFilter({ allowTcp: this.config.allowTcpIce ?? false });
     this.room ??= new Room(REALTIME_CONFIG.livekit.roomOptions);
     const room = this.room;

@@ -57,15 +57,15 @@ const realTimeClientConnectOptionsSchema = z.object({
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp9"]).optional(),
   /**
-   * Allow TCP ICE candidates (direct TCP to LiveKit + TURN-TCP/TLS). Defaults to `false`.
+   * Allow TCP ICE candidates (direct TCP to the SFU + TURN-TCP/TLS). Defaults to `false`.
    *
-   * Production telemetry shows TCP-direct fallback degrades quality (stalls, choppy
-   * playback) for ~10% of clients because TCP head-of-line blocking interacts badly
-   * with WebRTC's real-time pacing. By default the SDK now blocks TCP candidates so
-   * the connection either succeeds over UDP (direct or TURN-UDP) or fails fast.
+   * The SDK blocks TCP by default as a quality choice: WebRTC media over TCP
+   * suffers from head-of-line blocking that produces visible stalls. UDP-only
+   * connections either work well or fail fast — both are better outcomes than
+   * a session limping along on TCP.
    *
-   * Set to `true` only if you knowingly accept TCP fallback — e.g. for diagnostic
-   * builds, or for users whose networks block UDP entirely (~4% of clients).
+   * Pass `true` if your users insist on TCP fallback — e.g. enterprise networks
+   * where outbound UDP is blocked and TURN-TLS:443 is the only path that works.
    */
   allowTcpIce: z.boolean().optional(),
 });

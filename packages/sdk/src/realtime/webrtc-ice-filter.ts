@@ -1,33 +1,45 @@
 /**
- * Globally wraps `RTCPeerConnection` to drop TCP ICE candidates so the realtime
- * connection only attempts UDP transports (direct UDP host/srflx and TURN-UDP).
+ * Wraps `globalThis.RTCPeerConnection` to drop TCP ICE candidates so the
+ * realtime media path only attempts UDP (direct UDP host/srflx and TURN-UDP).
  *
- * Why: telemetry from production shows ~10% of successfully-connected clients
- * land on TCP-direct to LiveKit's `:7881` even though 90% of them had a working
- * `udp srflx` candidate — meaning UDP reaches our STUN but the SFU UDP path is
- * lossy enough to fail ICE connectivity checks. TCP fallback then carries
- * media under HOL blocking, producing the stalls customers experience. Forcing
- * UDP-only either succeeds via direct UDP / TURN-UDP, or fails fast — both are
- * better outcomes than a session limping along on TCP.
+ * Why this exists — it's a quality-of-experience knob, not a security one.
+ * In production ~10% of clients negotiate TCP to the SFU when their UDP ICE
+ * checks fail, even though ~90% of those clients had a working `udp srflx`
+ * candidate (so UDP works at the network layer; it's the SFU-specific UDP
+ * path that's lossy enough to lose connectivity checks). WebRTC media over
+ * TCP is the worst of both worlds: TCP's head-of-line blocking and
+ * retransmits fight WebRTC's real-time pacing and produce the stalls and
+ * choppy playback customers report. Forcing UDP-only either succeeds (good
+ * experience) or fails fast (clean error the app can show) — both are
+ * preferable to a session limping along on TCP.
  *
- * Three filter points (defence in depth):
- *  1. `RTCConfiguration.iceServers` — drop `?transport=tcp` and `turns:` URLs
- *     so the browser never gathers TURN-TCP/TLS relay candidates.
- *  2. `setRemoteDescription` — strip `a=candidate ... TCP ...` lines from the
- *     SFU's SDP so its TCP host candidate is never paired against locals.
- *  3. `addIceCandidate` — drop trickled TCP candidates as a belt-and-braces
- *     guard in case any slip past the SDP filter.
+ * TCP candidates can reach a `PeerConnection` through three independent
+ * paths, so the filter closes all three:
+ *  1. `RTCConfiguration.iceServers` — strip `?transport=tcp` and `turns:`
+ *     URLs so the browser never gathers TURN-TCP/TLS relay candidates.
+ *  2. `setRemoteDescription` SDP — strip `a=candidate ... TCP ...` lines so
+ *     the SFU's TCP host candidate is never paired against ours.
+ *  3. `addIceCandidate` — drop trickled TCP candidates that arrive after
+ *     the initial SDP exchange.
  *
  * The patch is reference-counted: the first `installIceFilter` swaps
  * `globalThis.RTCPeerConnection` for a `Proxy`, the matching uninstall
- * function restores the original constructor when the last caller releases.
+ * restores the original constructor when the last caller releases.
  *
- * Caller can opt out via `allowTcp: true` (e.g. for diagnostic builds or
- * specific clients we know need TCP fallback).
+ * Opting out: a caller who insists on keeping TCP — e.g. an app whose
+ * users sit behind networks that block UDP entirely — passes
+ * `allowTcp: true` and gets the unfiltered constructor back. Default is
+ * `false` because in our 48h sample only ~0.4% of total sessions had no
+ * UDP candidate at all and would actually benefit from TCP fallback.
  */
 
 export interface IceFilterOptions {
-  /** When true, do not patch `RTCPeerConnection` — TCP candidates remain enabled. */
+  /**
+   * Opt out of TCP filtering. Default `false` (TCP candidates blocked).
+   * Set to `true` for callers whose users need TCP fallback because UDP
+   * is unreachable on their network — at the cost of the choppy-playback
+   * behavior we're trying to avoid.
+   */
   allowTcp: boolean;
 }
 
