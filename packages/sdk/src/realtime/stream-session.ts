@@ -61,6 +61,7 @@ interface StreamSessionConfig {
   initialPrompt?: InitialPrompt;
   logger?: Logger;
   videoCodec?: VideoCodec;
+  allowTcpIce?: boolean;
 }
 
 export class StreamSession {
@@ -317,6 +318,7 @@ export class StreamSession {
       localStream: this.config.localStream,
       logger: this.logger,
       videoCodec: this.config.videoCodec,
+      allowTcpIce: this.config.allowTcpIce,
     });
     this.wireSignalingEvents();
     this.wireMediaEvents();

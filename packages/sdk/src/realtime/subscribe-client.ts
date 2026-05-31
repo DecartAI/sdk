@@ -14,6 +14,7 @@ import { createEventBuffer } from "./event-buffer";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
 import type { ConnectionState } from "./types";
+import { installIceFilter } from "./webrtc-ice-filter";
 
 type TokenPayload = {
   room_name: string;
@@ -61,6 +62,11 @@ export type SubscribeOptions = {
   token: string;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionChange?: (state: ConnectionState) => void;
+  /**
+   * Allow TCP ICE candidates. Defaults to `false`. See `RealTimeClientConnectOptions.allowTcpIce`
+   * on the publisher side for the rationale — same caveats apply to subscribers.
+   */
+  allowTcpIce?: boolean;
 };
 
 export type RealTimeSubscribeClientOptions = {
@@ -121,6 +127,11 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
     let room: Room | undefined;
     let currentState: ConnectionState = "connecting";
     let remoteStream: MediaStream | null = null;
+    let releaseIceFilter: (() => void) | null = installIceFilter({ allowTcp: options.allowTcpIce ?? false });
+    const releaseFilter = () => {
+      releaseIceFilter?.();
+      releaseIceFilter = null;
+    };
 
     const setState = (state: ConnectionState) => {
       if (currentState === state) return;
@@ -178,6 +189,7 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
           observability?.stop();
           stop();
           activeRoom.disconnect().catch(() => {});
+          releaseFilter();
         },
         on: emitter.on,
         off: emitter.off,
@@ -190,6 +202,7 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
       if (room) {
         room.disconnect().catch(() => {});
       }
+      releaseFilter();
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error("Realtime subscribe error", { error: err.message });
       throw classifyWebrtcError(err);

@@ -13,6 +13,7 @@ import mitt, { type Emitter } from "mitt";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import type { RealtimeObservability } from "./observability/realtime-observability";
+import { installIceFilter } from "./webrtc-ice-filter";
 
 export type VideoCodec = "h264" | "vp8" | "vp9" | "av1";
 
@@ -45,6 +46,14 @@ export interface MediaChannelConfig {
   localStream: MediaStream | null;
   logger?: Logger;
   videoCodec?: VideoCodec;
+  /**
+   * When true, allow TCP ICE candidates (regular + TURN-TCP/TLS).
+   * Default `false` — TCP is blocked because the TCP-direct fallback to LiveKit
+   * `:7881` carries media under TCP head-of-line blocking that produces stalls
+   * for ~10% of production sessions. Set to true only when you need TCP as a
+   * fallback for clients with UDP fully blocked outbound.
+   */
+  allowTcpIce?: boolean;
 }
 
 export type MediaConnectOptions = {
@@ -57,6 +66,7 @@ export class MediaChannel {
   private remoteStream: MediaStream | null = null;
   private events: Emitter<MediaChannelEvents> = mitt();
   private readonly logger: Logger;
+  private releaseIceFilter: (() => void) | null = null;
 
   constructor(private readonly config: MediaChannelConfig) {
     this.logger = config.logger ?? createConsoleLogger("warn");
@@ -75,6 +85,9 @@ export class MediaChannel {
   }
 
   async connect(opts: MediaConnectOptions): Promise<void> {
+    // Install the TCP-ICE filter BEFORE constructing the Room so that all
+    // PCs created by LiveKit go through the filtered RTCPeerConnection.
+    this.releaseIceFilter ??= installIceFilter({ allowTcp: this.config.allowTcpIce ?? false });
     this.room ??= new Room(REALTIME_CONFIG.livekit.roomOptions);
     const room = this.room;
 
@@ -122,6 +135,8 @@ export class MediaChannel {
     if (room) {
       room.disconnect().catch(() => {});
     }
+    this.releaseIceFilter?.();
+    this.releaseIceFilter = null;
   }
 
   private async publishTracks(stream: MediaStream): Promise<void> {

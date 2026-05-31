@@ -56,6 +56,18 @@ const realTimeClientConnectOptionsSchema = z.object({
   resolution: z.enum(["720p", "1080p"]).optional(),
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp9"]).optional(),
+  /**
+   * Allow TCP ICE candidates (direct TCP to LiveKit + TURN-TCP/TLS). Defaults to `false`.
+   *
+   * Production telemetry shows TCP-direct fallback degrades quality (stalls, choppy
+   * playback) for ~10% of clients because TCP head-of-line blocking interacts badly
+   * with WebRTC's real-time pacing. By default the SDK now blocks TCP candidates so
+   * the connection either succeeds over UDP (direct or TURN-UDP) or fails fast.
+   *
+   * Set to `true` only if you knowingly accept TCP fallback — e.g. for diagnostic
+   * builds, or for users whose networks block UDP entirely (~4% of clients).
+   */
+  allowTcpIce: z.boolean().optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -102,8 +114,15 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
     if (!parsedOptions.success) throw parsedOptions.error;
 
-    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState, resolution, preferredVideoCodec } =
-      parsedOptions.data;
+    const {
+      onRemoteStream,
+      onConnectionChange,
+      onQueuePosition,
+      initialState,
+      resolution,
+      preferredVideoCodec,
+      allowTcpIce,
+    } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
     let inputStream: MediaStream = stream ?? new MediaStream();
 
@@ -169,6 +188,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialPrompt,
         logger,
         videoCodec: publishCodec,
+        allowTcpIce,
       });
 
       let sessionId: string | null = null;
