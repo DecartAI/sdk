@@ -5,7 +5,6 @@ import {
   Room,
   RoomEvent,
   Track,
-  TrackEvent,
   type TrackPublishOptions,
 } from "livekit-client";
 import mitt, { type Emitter } from "mitt";
@@ -36,7 +35,6 @@ export function getDefaultVideoPublishOptions(videoCodec?: VideoCodec): TrackPub
 
 export type MediaChannelEvents = {
   remoteStream: MediaStream;
-  firstFrame: undefined;
   disconnected: { reason?: DisconnectReason };
 };
 
@@ -97,9 +95,6 @@ export class MediaChannel {
         this.remoteStream = new MediaStream(tracks);
         this.events.emit("remoteStream", this.remoteStream);
       }
-      track.on(TrackEvent.VideoPlaybackStarted, () => {
-        this.events.emit("firstFrame");
-      });
     });
 
     room.on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
