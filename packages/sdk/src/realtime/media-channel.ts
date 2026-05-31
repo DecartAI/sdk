@@ -57,13 +57,19 @@ export class MediaChannel {
   private remoteStream: MediaStream | null = null;
   private events: Emitter<MediaChannelEvents> = mitt();
   private readonly logger: Logger;
+  private localStreamValue: MediaStream | null;
 
   constructor(private readonly config: MediaChannelConfig) {
     this.logger = config.logger ?? createConsoleLogger("warn");
+    this.localStreamValue = config.localStream;
   }
 
   get localStream(): MediaStream | null {
-    return this.config.localStream;
+    return this.localStreamValue;
+  }
+
+  setLocalStream(stream: MediaStream | null): void {
+    this.localStreamValue = stream;
   }
 
   on<E extends keyof MediaChannelEvents>(event: E, handler: (data: MediaChannelEvents[E]) => void): void {
@@ -108,9 +114,9 @@ export class MediaChannel {
   }
 
   async publishLocalTracks(): Promise<void> {
-    if (!this.config.localStream) return;
+    if (!this.localStreamValue) return;
     this.config.observability?.startPhase("publish-local-track");
-    await this.publishTracks(this.config.localStream);
+    await this.publishTracks(this.localStreamValue);
     this.config.observability?.endPhase("publish-local-track", { success: true });
   }
 

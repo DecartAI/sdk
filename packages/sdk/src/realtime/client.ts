@@ -70,6 +70,7 @@ export type Events = {
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
 };
+type EventBuffer = ReturnType<typeof createEventBuffer<Events>>;
 
 export type RealTimeClient = {
   set: (input: SetInput) => Promise<void>;
@@ -91,28 +92,35 @@ export type RealTimeClient = {
   setImage: (image: Blob | File | string | null, options?: ImageSetOptions) => Promise<void>;
 };
 
+export type RealTimeWarmupClient = {
+  start: (stream: MediaStream) => Promise<RealTimeClient>;
+  isConnected: () => boolean;
+  getConnectionState: () => ConnectionState;
+  disconnect: () => void;
+  on: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
+  off: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
+  sessionId: string | null;
+  subscribeToken: string | null;
+  getSubscribeToken: () => string | null;
+};
+
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
   const { baseUrl, apiKey, integration } = opts;
   const logger = opts.logger ?? createConsoleLogger("info");
 
-  const connect = async (
+  const prepareInputStream = (
     stream: MediaStream | null,
-    options: RealTimeClientConnectOptions,
-  ): Promise<RealTimeClient> => {
-    const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
-    if (!parsedOptions.success) throw parsedOptions.error;
-
-    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState, resolution, preferredVideoCodec } =
-      parsedOptions.data;
-    const mirror = parsedOptions.data.mirror ?? false;
+    mirror: "auto" | boolean,
+    fps: number,
+  ): { inputStream: MediaStream; dispose: () => void } => {
     let inputStream: MediaStream = stream ?? new MediaStream();
-
     let mirroredStream: MirroredStream | undefined;
+
     if (mirror !== false) {
       try {
         const firstVideoTrack = inputStream.getVideoTracks?.()[0];
         if (firstVideoTrack && (mirror === true || shouldMirrorTrack(firstVideoTrack))) {
-          mirroredStream = createMirroredStream(inputStream, { fps: resolveFpsNumber(options.model.fps) });
+          mirroredStream = createMirroredStream(inputStream, { fps });
           inputStream = mirroredStream.stream;
         } else if (mirror === true && !firstVideoTrack) {
           logger.warn("mirror: true requested but no video track was found on the input stream");
@@ -124,125 +132,261 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       }
     }
 
-    let session: StreamSession | undefined;
-    let observability: RealtimeObservability | undefined;
+    return {
+      inputStream,
+      dispose: () => mirroredStream?.dispose(),
+    };
+  };
+
+  type ParsedConnectOptions = z.infer<typeof realTimeClientConnectOptionsSchema>;
+
+  const createClientHandle = ({
+    activeSession,
+    eventEmitter,
+    stop,
+    observability,
+    getSessionId,
+    getSubscribeToken,
+    disposeInput,
+  }: {
+    activeSession: StreamSession;
+    eventEmitter: EventBuffer["emitter"];
+    stop: () => void;
+    observability: RealtimeObservability;
+    getSessionId: () => string | null;
+    getSubscribeToken: () => string | null;
+    disposeInput: () => void;
+  }): RealTimeClient => {
+    const methods = realtimeMethods(activeSession, imageToBase64);
+
+    return {
+      ...methods,
+      isConnected: () => activeSession.isConnected(),
+      getConnectionState: () => activeSession.getConnectionState(),
+      disconnect: () => {
+        observability.stop();
+        stop();
+        activeSession.disconnect();
+        disposeInput();
+      },
+      on: eventEmitter.on,
+      off: eventEmitter.off,
+      get sessionId() {
+        return getSessionId();
+      },
+      get subscribeToken() {
+        return getSubscribeToken();
+      },
+      getSubscribeToken,
+      setImage: async (image: Blob | File | string | null, imgOptions?: ImageSetOptions) => {
+        if (isFileRefId(image)) {
+          return activeSession.setImage({ kind: "ref", ref: image }, imgOptions);
+        }
+        if (image === null) return activeSession.setImage({ kind: "data", data: null }, imgOptions);
+        const base64 = await imageToBase64(image);
+        return activeSession.setImage({ kind: "data", data: base64 }, imgOptions);
+      },
+    };
+  };
+
+  const openSession = async ({
+    localStream,
+    options,
+    parsedOptions,
+    livekitWarmup,
+  }: {
+    localStream: MediaStream | null;
+    options: RealTimeClientConnectOptions;
+    parsedOptions: ParsedConnectOptions;
+    livekitWarmup: boolean;
+  }) => {
+    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState, resolution, preferredVideoCodec } =
+      parsedOptions;
+
+    const initialImageRef = isFileRefId(initialState?.image) ? initialState.image : undefined;
+    const initialImage =
+      initialImageRef === undefined && initialState?.image ? await imageToBase64(initialState.image) : undefined;
+    const initialPrompt = initialState?.prompt
+      ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
+      : undefined;
+
+    const url = `${baseUrl}${options.model.urlPath}`;
+    const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
+
+    const observability = new RealtimeObservability({
+      telemetryEnabled: opts.telemetryEnabled,
+      apiKey,
+      model: options.model.name,
+      integration,
+      logger,
+      onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
+      onStats: (stats) => emitOrBuffer("stats", stats),
+    });
+
+    const safariCodec = isDesktopSafari() ? "vp8" : undefined;
+    const publishCodec: VideoCodec | undefined = safariCodec ?? preferredVideoCodec;
+
+    const queryParams = new URLSearchParams({
+      ...(safariCodec ? { livekit_server_codec: safariCodec } : {}),
+      ...(options.queryParams ?? {}),
+      ...(livekitWarmup ? { livekit_warmup: "1" } : {}),
+      api_key: apiKey,
+      model: options.model.name,
+      ...(resolution ? { resolution } : {}),
+    });
+
+    const session = new StreamSession({
+      url: `${url}?${queryParams.toString()}`,
+      integration,
+      observability,
+      localStream,
+      initialImage,
+      initialImageRef,
+      initialPrompt,
+      logger,
+      videoCodec: publishCodec,
+      waitForInitialStateAck: !livekitWarmup,
+    });
+
+    let sessionId: string | null = null;
+    let subscribeToken: string | null = null;
+
+    session.on("remoteStream", onRemoteStream);
+
+    session.on("connectionChange", (state) => {
+      emitOrBuffer("connectionChange", state);
+      onConnectionChange?.(state);
+    });
+
+    session.on("queuePosition", (qp) => {
+      emitOrBuffer("queuePosition", qp);
+      onQueuePosition?.(qp);
+    });
+
+    session.on("sessionStarted", ({ sessionId: id, subscribeToken: token }) => {
+      sessionId = id;
+      subscribeToken = token;
+      observability.sessionStarted(id);
+    });
+
+    session.on("generationTick", (e) => emitOrBuffer("generationTick", e));
+    session.on("generationEnded", (e) => emitOrBuffer("generationEnded", e));
+
+    session.on("error", (error) => {
+      logger.error("Realtime error", { error: error.message });
+      emitOrBuffer("error", classifyWebrtcError(error));
+    });
 
     try {
-      const initialImageRef = isFileRefId(initialState?.image) ? initialState.image : undefined;
-      const initialImage =
-        initialImageRef === undefined && initialState?.image ? await imageToBase64(initialState.image) : undefined;
-      const initialPrompt = initialState?.prompt
-        ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
-        : undefined;
+      await session.connect();
+    } catch (error) {
+      observability.stop();
+      session.disconnect();
+      stop();
+      throw error;
+    }
 
-      const url = `${baseUrl}${options.model.urlPath}`;
-      const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
+    return {
+      activeSession: session,
+      eventEmitter,
+      flush,
+      stop,
+      observability,
+      getSessionId: () => sessionId,
+      getSubscribeToken: () => subscribeToken,
+    };
+  };
 
-      observability = new RealtimeObservability({
-        telemetryEnabled: opts.telemetryEnabled,
-        apiKey,
-        model: options.model.name,
-        integration,
-        logger,
-        onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
-        onStats: (stats) => emitOrBuffer("stats", stats),
+  const connect = async (
+    stream: MediaStream | null,
+    options: RealTimeClientConnectOptions,
+  ): Promise<RealTimeClient> => {
+    const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
+    if (!parsedOptions.success) throw parsedOptions.error;
+
+    const mirror = parsedOptions.data.mirror ?? false;
+    const prepared = prepareInputStream(stream, mirror, resolveFpsNumber(parsedOptions.data.model.fps));
+
+    try {
+      const sessionContext = await openSession({
+        localStream: prepared.inputStream,
+        options,
+        parsedOptions: parsedOptions.data,
+        livekitWarmup: false,
       });
 
-      const safariCodec = isDesktopSafari() ? "vp8" : undefined;
-      const publishCodec: VideoCodec | undefined = safariCodec ?? preferredVideoCodec;
-
-      const queryParams = new URLSearchParams({
-        ...(safariCodec ? { livekit_server_codec: safariCodec } : {}),
-        ...(options.queryParams ?? {}),
-        api_key: apiKey,
-        model: options.model.name,
-        ...(resolution ? { resolution } : {}),
+      const client = createClientHandle({
+        ...sessionContext,
+        disposeInput: prepared.dispose,
       });
-
-      session = new StreamSession({
-        url: `${url}?${queryParams.toString()}`,
-        integration,
-        observability,
-        localStream: inputStream,
-        initialImage,
-        initialImageRef,
-        initialPrompt,
-        logger,
-        videoCodec: publishCodec,
-      });
-
-      let sessionId: string | null = null;
-      let subscribeToken: string | null = null;
-
-      session.on("remoteStream", onRemoteStream);
-
-      session.on("connectionChange", (state) => {
-        emitOrBuffer("connectionChange", state);
-        onConnectionChange?.(state);
-      });
-
-      session.on("queuePosition", (qp) => {
-        emitOrBuffer("queuePosition", qp);
-        onQueuePosition?.(qp);
-      });
-
-      session.on("sessionStarted", ({ sessionId: id, subscribeToken: token }) => {
-        sessionId = id;
-        subscribeToken = token;
-        observability?.sessionStarted(id);
-      });
-
-      session.on("generationTick", (e) => emitOrBuffer("generationTick", e));
-      session.on("generationEnded", (e) => emitOrBuffer("generationEnded", e));
-
-      session.on("error", (error) => {
-        logger.error("Realtime error", { error: error.message });
-        emitOrBuffer("error", classifyWebrtcError(error));
-      });
-
-      const activeSession = session;
-      await activeSession.connect();
-
-      const methods = realtimeMethods(activeSession, imageToBase64);
-
-      const client: RealTimeClient = {
-        ...methods,
-        isConnected: () => activeSession.isConnected(),
-        getConnectionState: () => activeSession.getConnectionState(),
-        disconnect: () => {
-          observability?.stop();
-          stop();
-          activeSession.disconnect();
-          mirroredStream?.dispose();
-        },
-        on: eventEmitter.on,
-        off: eventEmitter.off,
-        get sessionId() {
-          return sessionId;
-        },
-        get subscribeToken() {
-          return subscribeToken;
-        },
-        getSubscribeToken: () => subscribeToken,
-        setImage: async (image: Blob | File | string | null, imgOptions?: ImageSetOptions) => {
-          if (isFileRefId(image)) {
-            return activeSession.setImage({ kind: "ref", ref: image }, imgOptions);
-          }
-          if (image === null) return activeSession.setImage({ kind: "data", data: null }, imgOptions);
-          const base64 = await imageToBase64(image);
-          return activeSession.setImage({ kind: "data", data: base64 }, imgOptions);
-        },
-      };
-
-      flush();
+      sessionContext.flush();
       return client;
     } catch (error) {
-      observability?.stop();
-      session?.disconnect();
-      mirroredStream?.dispose();
+      prepared.dispose();
       throw error;
     }
   };
 
-  return { connect };
+  const warmup = async (options: RealTimeClientConnectOptions): Promise<RealTimeWarmupClient> => {
+    const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
+    if (!parsedOptions.success) throw parsedOptions.error;
+
+    const sessionContext = await openSession({
+      localStream: null,
+      options,
+      parsedOptions: parsedOptions.data,
+      livekitWarmup: true,
+    });
+
+    let started = false;
+    let disposeStartedInput: (() => void) | undefined;
+    const mirror = parsedOptions.data.mirror ?? false;
+
+    const disconnect = () => {
+      sessionContext.observability.stop();
+      sessionContext.stop();
+      sessionContext.activeSession.disconnect();
+      disposeStartedInput?.();
+    };
+
+    const warmupClient: RealTimeWarmupClient = {
+      start: async (stream: MediaStream) => {
+        if (started) {
+          throw new Error("Realtime warmup has already been started");
+        }
+        started = true;
+        const prepared = prepareInputStream(stream, mirror, resolveFpsNumber(parsedOptions.data.model.fps));
+        disposeStartedInput = prepared.dispose;
+        try {
+          await sessionContext.activeSession.publishLocalStream(prepared.inputStream);
+        } catch (error) {
+          prepared.dispose();
+          throw error;
+        }
+        return createClientHandle({
+          ...sessionContext,
+          disposeInput: () => {
+            prepared.dispose();
+          },
+        });
+      },
+      isConnected: () => sessionContext.activeSession.isConnected(),
+      getConnectionState: () => sessionContext.activeSession.getConnectionState(),
+      disconnect,
+      on: sessionContext.eventEmitter.on,
+      off: sessionContext.eventEmitter.off,
+      get sessionId() {
+        return sessionContext.getSessionId();
+      },
+      get subscribeToken() {
+        return sessionContext.getSubscribeToken();
+      },
+      getSubscribeToken: sessionContext.getSubscribeToken,
+    };
+
+    sessionContext.flush();
+    return warmupClient;
+  };
+
+  return { connect, warmup };
 };

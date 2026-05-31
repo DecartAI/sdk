@@ -61,6 +61,7 @@ interface StreamSessionConfig {
   initialPrompt?: InitialPrompt;
   logger?: Logger;
   videoCodec?: VideoCodec;
+  waitForInitialStateAck?: boolean;
 }
 
 export class StreamSession {
@@ -73,12 +74,14 @@ export class StreamSession {
 
   private disposed = false;
   private currentAttempt = 0;
+  private localStream: MediaStream | null;
 
   private readonly initialStateGate = new InitialStateGate();
   private readonly logger: Logger;
 
   constructor(private readonly config: StreamSessionConfig) {
     this.logger = config.logger ?? createConsoleLogger("warn");
+    this.localStream = config.localStream;
     this.createTransport();
   }
 
@@ -128,6 +131,16 @@ export class StreamSession {
   async setImage(payload: SetImagePayload, opts?: ImageSetOptions): Promise<void> {
     this.assertConnected();
     return this.signaling.setImage(payload, opts);
+  }
+
+  async publishLocalStream(stream: MediaStream): Promise<void> {
+    this.assertConnected();
+    if (this.localStream) {
+      throw new Error("Local stream has already been published");
+    }
+    this.localStream = stream;
+    this.media.setLocalStream(stream);
+    await this.media.publishLocalTracks();
   }
 
   disconnect(): void {
@@ -188,7 +201,8 @@ export class StreamSession {
           url: roomInfo.livekitUrl,
           token: roomInfo.token,
         });
-        const isCurrentAttempt = await gateAttempt.waitForReadiness(initialStateAck);
+        const isCurrentAttempt =
+          this.config.waitForInitialStateAck === false ? true : await gateAttempt.waitForReadiness(initialStateAck);
         if (!isCurrentAttempt) {
           throw new AbortError("Stale connect attempt");
         }
@@ -243,7 +257,7 @@ export class StreamSession {
       };
     }
 
-    if (this.config.localStream) {
+    if (this.localStream) {
       return { image: null, prompt: null };
     }
 
@@ -314,7 +328,7 @@ export class StreamSession {
     });
     this.media = new MediaChannel({
       observability: this.config.observability,
-      localStream: this.config.localStream,
+      localStream: this.localStream,
       logger: this.logger,
       videoCodec: this.config.videoCodec,
     });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { models } from "../src/index.js";
+import { createDecartClient, models } from "../src/index.js";
 import { REALTIME_CONFIG } from "../src/realtime/config-realtime.js";
 import type { ServerError } from "../src/realtime/types.js";
 
@@ -93,6 +93,17 @@ type FakeWebSocketCloseEvent = {
   code: number;
   reason: string;
 };
+
+describe("top-level realtime client", () => {
+  it("exposes warmup through createDecartClient", () => {
+    const client = createDecartClient({
+      apiKey: "test",
+      realtimeBaseUrl: "wss://realtime.example.com",
+    });
+
+    expect(typeof client.realtime.warmup).toBe("function");
+  });
+});
 
 describe("Lucy 2.1 realtime", () => {
   describe("Model Definition", () => {
@@ -334,6 +345,7 @@ describe("realtime.connect options", () => {
     onopen: (() => void) | null = null;
     onmessage: ((event: FakeWebSocketMessageEvent) => void) | null = null;
     onclose: ((event: FakeWebSocketCloseEvent) => void) | null = null;
+    sentMessages: unknown[] = [];
 
     constructor(readonly url: string) {
       FakeWebSocket.instances.push(this);
@@ -342,6 +354,7 @@ describe("realtime.connect options", () => {
 
     send(data: string): void {
       const message = JSON.parse(data);
+      this.sentMessages.push(message);
       if (message.type === "livekit_join") {
         setTimeout(() => {
           this.onmessage?.({
@@ -363,6 +376,7 @@ describe("realtime.connect options", () => {
 
   beforeEach(() => {
     FakeWebSocket.instances = [];
+    liveKitMock.roomInstances.length = 0;
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("MediaStream", FakeMediaStream);
   });
@@ -408,6 +422,111 @@ describe("realtime.connect options", () => {
       }),
     ).rejects.toThrow();
     expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  const createLocalStream = () =>
+    new MediaStream([
+      { id: "local-video", kind: "video" },
+      { id: "local-audio", kind: "audio" },
+    ] as unknown[]) as MediaStream;
+
+  it("warmup adds livekit_warmup and connects LiveKit without publishing tracks", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const client = createRealTimeClient({
+      baseUrl: "wss://api3.decart.ai",
+      apiKey: "test-key",
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      telemetryEnabled: false,
+    });
+
+    const warmupClient = await client.warmup({
+      model: models.realtime("lucy-2.1"),
+      onRemoteStream: vi.fn(),
+    });
+
+    const url = new URL(FakeWebSocket.instances[0].url);
+    expect(url.searchParams.get("livekit_warmup")).toBe("1");
+    const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
+    expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "token");
+    expect(room.localParticipant.publishTrack).not.toHaveBeenCalled();
+    warmupClient.disconnect();
+  });
+
+  it("warmup does not wait for initial prompt ack before becoming ready", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const client = createRealTimeClient({
+      baseUrl: "wss://api3.decart.ai",
+      apiKey: "test-key",
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      telemetryEnabled: false,
+    });
+
+    const warmupClient = await Promise.race([
+      client.warmup({
+        model: models.realtime("lucy-2.1"),
+        onRemoteStream: vi.fn(),
+        initialState: {
+          prompt: { text: "test prompt" },
+        },
+      }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("warmup timed out")), 100)),
+    ]);
+
+    expect(FakeWebSocket.instances[0].sentMessages).toContainEqual({ type: "livekit_join" });
+    expect(FakeWebSocket.instances[0].sentMessages).toContainEqual({
+      type: "prompt",
+      prompt: "test prompt",
+      enhance_prompt: true,
+    });
+    warmupClient.disconnect();
+  });
+
+  it("warmup start publishes local video and audio tracks once", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const client = createRealTimeClient({
+      baseUrl: "wss://api3.decart.ai",
+      apiKey: "test-key",
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      telemetryEnabled: false,
+    });
+
+    const warmupClient = await client.warmup({
+      model: models.realtime("lucy-2.1"),
+      preferredVideoCodec: "h264",
+      onRemoteStream: vi.fn(),
+    });
+    const localStream = createLocalStream();
+    const realtimeClient = await warmupClient.start(localStream);
+
+    const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
+    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
+    expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(
+      1,
+      localStream.getTracks()[0],
+      expect.objectContaining({ videoCodec: "h264", source: liveKitMock.Track.Source.Camera }),
+    );
+    expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, localStream.getTracks()[1]);
+    await expect(warmupClient.start(localStream)).rejects.toThrow("already been started");
+    realtimeClient.disconnect();
+  });
+
+  it("warmup disconnect before start closes the room and websocket", async () => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    const client = createRealTimeClient({
+      baseUrl: "wss://api3.decart.ai",
+      apiKey: "test-key",
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      telemetryEnabled: false,
+    });
+
+    const warmupClient = await client.warmup({
+      model: models.realtime("lucy-2.1"),
+      onRemoteStream: vi.fn(),
+    });
+    warmupClient.disconnect();
+
+    const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
+    expect(room.disconnect).toHaveBeenCalled();
   });
 });
 
