@@ -160,10 +160,15 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
         }
         const mediaStreamTrack = track.mediaStreamTrack;
         if (!mediaStreamTrack) return;
-        remoteStream ??= new MediaStream();
-        if (!remoteStream.getTracks().includes(mediaStreamTrack)) {
-          remoteStream.addTrack(mediaStreamTrack);
+        // Emit a fresh MediaStream whenever the track set changes so the
+        // consumer's element re-reads its tracks (assigning the same reference
+        // is a no-op, leaving a late-arriving audio track without a sink). A
+        // single <video> element then plays both video and audio.
+        const tracks = remoteStream?.getTracks() ?? [];
+        if (!tracks.includes(mediaStreamTrack)) {
+          tracks.push(mediaStreamTrack);
         }
+        remoteStream = new MediaStream(tracks);
         options.onRemoteStream(remoteStream);
       });
 

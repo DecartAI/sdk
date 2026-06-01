@@ -207,20 +207,26 @@ describe("set()", () => {
 
   it("sends only prompt when no image provided", async () => {
     await methods.set({ prompt: "a cat" });
-    expect(mockSession.setImage).toHaveBeenCalledWith(null, {
-      prompt: "a cat",
-      enhance: true,
-      timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
-    });
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: null },
+      {
+        prompt: "a cat",
+        enhance: true,
+        timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+      },
+    );
   });
 
   it("sends prompt with enhance flag", async () => {
     await methods.set({ prompt: "a cat", enhance: true });
-    expect(mockSession.setImage).toHaveBeenCalledWith(null, {
-      prompt: "a cat",
-      enhance: true,
-      timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
-    });
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: null },
+      {
+        prompt: "a cat",
+        enhance: true,
+        timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+      },
+    );
   });
 
   it("sends only image when no prompt provided", async () => {
@@ -228,22 +234,28 @@ describe("set()", () => {
     await methods.set({ image: "rawbase64data" });
 
     expect(mockImageToBase64).toHaveBeenCalledWith("rawbase64data");
-    expect(mockSession.setImage).toHaveBeenCalledWith("convertedbase64", {
-      prompt: undefined,
-      enhance: true,
-      timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
-    });
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: "convertedbase64" },
+      {
+        prompt: undefined,
+        enhance: true,
+        timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+      },
+    );
   });
 
   it("sends prompt and image together", async () => {
     mockImageToBase64.mockResolvedValue("convertedbase64");
     await methods.set({ prompt: "a cat", enhance: false, image: "rawbase64" });
 
-    expect(mockSession.setImage).toHaveBeenCalledWith("convertedbase64", {
-      prompt: "a cat",
-      enhance: false,
-      timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
-    });
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: "convertedbase64" },
+      {
+        prompt: "a cat",
+        enhance: false,
+        timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+      },
+    );
   });
 
   it("converts Blob image to base64", async () => {
@@ -252,11 +264,39 @@ describe("set()", () => {
     await methods.set({ image: testBlob });
 
     expect(mockImageToBase64).toHaveBeenCalledWith(testBlob);
-    expect(mockSession.setImage).toHaveBeenCalledWith("blobbase64", {
-      prompt: undefined,
-      enhance: true,
-      timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
-    });
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: "blobbase64" },
+      {
+        prompt: undefined,
+        enhance: true,
+        timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+      },
+    );
+  });
+
+  it("treats a 'file_*' string as a server-side reference id, no base64 encoding", async () => {
+    await methods.set({ image: "file_abc123", prompt: "make it cinematic" });
+
+    expect(mockImageToBase64).not.toHaveBeenCalled();
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "ref", ref: "file_abc123" },
+      {
+        prompt: "make it cinematic",
+        enhance: true,
+        timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+      },
+    );
+  });
+
+  it("still treats non-'file_' strings as base64/URL inputs (encoded via imageToBase64)", async () => {
+    mockImageToBase64.mockResolvedValue("convertedbase64");
+    await methods.set({ image: "rawbase64data" });
+
+    expect(mockImageToBase64).toHaveBeenCalledWith("rawbase64data");
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: "convertedbase64" },
+      expect.objectContaining({ timeout: REALTIME_CONFIG.methods.updateTimeoutMs }),
+    );
   });
 });
 
@@ -810,6 +850,61 @@ describe("StreamSession startup orchestration", () => {
     ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
     await expect(connectPromise).resolves.toBeUndefined();
     expect(states).toEqual(["connecting", "connected"]);
+  });
+
+  it("transitions to generating on generation_started over the websocket", async () => {
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+      initialPrompt: { text: "wear a hat", enhance: false },
+    });
+    const states: string[] = [];
+    session.on("connectionChange", (state) => states.push(state));
+
+    const connectPromise = session.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    await flushMicrotasks();
+    sendRoomInfo(ws);
+    await flushMicrotasks();
+
+    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
+    await expect(connectPromise).resolves.toBeUndefined();
+    expect(states).toEqual(["connecting", "connected"]);
+
+    ws.receive({ type: "generation_started" });
+    expect(states).toEqual(["connecting", "connected", "generating"]);
+    expect(session.getConnectionState()).toBe("generating");
+
+    // Subsequent ticks must not re-emit the transition.
+    ws.receive({ type: "generation_tick", seconds: 5 });
+    expect(states).toEqual(["connecting", "connected", "generating"]);
+  });
+
+  it("transitions to generating on the first generation_tick as a fallback", async () => {
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+      initialPrompt: { text: "wear a hat", enhance: false },
+    });
+    const states: string[] = [];
+    session.on("connectionChange", (state) => states.push(state));
+
+    const connectPromise = session.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    await flushMicrotasks();
+    sendRoomInfo(ws);
+    await flushMicrotasks();
+
+    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
+    await expect(connectPromise).resolves.toBeUndefined();
+    expect(states).toEqual(["connecting", "connected"]);
+
+    ws.receive({ type: "generation_tick", seconds: 5 });
+    expect(states).toEqual(["connecting", "connected", "generating"]);
   });
 
   it("emits remoteStream before caller initial-state ack while connect remains pending", async () => {

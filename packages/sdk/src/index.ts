@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createFilesClient } from "./files/client";
 import { createProcessClient } from "./process/client";
 import { createQueueClient } from "./queue/client";
 import { createRealTimeClient } from "./realtime/client";
@@ -8,6 +9,8 @@ import { readEnv } from "./utils/env";
 import { createInvalidApiKeyError, createInvalidBaseUrlError } from "./utils/errors";
 import { createConsoleLogger, type Logger } from "./utils/logger";
 
+export type { FilesClient, UploadFileOptions } from "./files/client";
+export type { FileReference, FileUploadInput } from "./files/types";
 export type { ProcessClient } from "./process/client";
 export type { FileInput, ProcessOptions, ReactNativeFile } from "./process/types";
 export type { QueueClient } from "./queue/client";
@@ -233,6 +236,12 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     integration,
   });
 
+  const files = createFilesClient({
+    baseUrl,
+    apiKey: apiKey || "",
+    integration,
+  });
+
   return {
     realtime: {
       connect: realtimePublish.connect,
@@ -312,5 +321,16 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
      * ```
      */
     tokens,
+    /**
+     * Upload files once and reuse them across generations.
+     *
+     * @example
+     * ```ts
+     * const ref = await client.files.upload(blob);
+     * await rt.set({ image: ref.id, prompt: "make it cinematic" });
+     * await rt.set({ image: ref.id, prompt: "now in noir" });
+     * ```
+     */
+    files,
   };
 };

@@ -1131,6 +1131,182 @@ describe("Tokens API", () => {
   });
 });
 
+describe("Files API", () => {
+  let decart: ReturnType<typeof createDecartClient>;
+  let lastRequest: Request | null = null;
+  const server = setupServer();
+
+  beforeAll(() => {
+    server.listen({ onUnhandledRequest: "error" });
+  });
+
+  afterAll(() => {
+    server.close();
+  });
+
+  beforeEach(() => {
+    lastRequest = null;
+    decart = createDecartClient({
+      apiKey: "test-api-key",
+      baseUrl: "http://localhost",
+    });
+  });
+
+  afterEach(() => {
+    server.resetHandlers();
+  });
+
+  describe("upload", () => {
+    it("uploads a Blob and returns a FileReference", async () => {
+      server.use(
+        http.post("http://localhost/v1/files", async ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({
+            id: "file_abc123",
+            filename: "blob",
+            mime_type: "image/png",
+            size_bytes: 4,
+            created_at: "2026-01-01T00:00:00Z",
+            expires_at: "2026-01-02T00:00:00Z",
+          });
+        }),
+      );
+
+      const blob = new Blob([new Uint8Array([0, 1, 2, 3])], { type: "image/png" });
+      const ref = await decart.files.upload(blob);
+
+      expect(ref.id).toBe("file_abc123");
+      expect(ref.mime_type).toBe("image/png");
+      expect(lastRequest?.headers.get("x-api-key")).toBe("test-api-key");
+      // Content-Type starts with multipart/form-data when uploading a Blob
+      expect(lastRequest?.headers.get("content-type") ?? "").toContain("multipart/form-data");
+    });
+
+    it("throws on non-2xx upload", async () => {
+      server.use(
+        http.post("http://localhost/v1/files", () => {
+          return HttpResponse.json({ detail: "Too big" }, { status: 413 });
+        }),
+      );
+
+      await expect(decart.files.upload(new Blob(["x"]))).rejects.toThrow("Failed to upload file");
+    });
+
+    it("rejects bad ttlSeconds locally without hitting the network", async () => {
+      let hit = false;
+      server.use(
+        http.post("http://localhost/v1/files", () => {
+          hit = true;
+          return HttpResponse.json({}, { status: 200 });
+        }),
+      );
+
+      await expect(
+        // @ts-expect-error – intentionally invalid value
+        decart.files.upload(new Blob(["x"]), { ttlSeconds: "forever" }),
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+
+      await expect(decart.files.upload(new Blob(["x"]), { ttlSeconds: 30 })).rejects.toMatchObject({
+        code: "INVALID_INPUT",
+      });
+
+      expect(hit).toBe(false);
+    });
+
+    it("forwards a numeric ttlSeconds", async () => {
+      let receivedForm: FormData | null = null;
+      server.use(
+        http.post("http://localhost/v1/files", async ({ request }) => {
+          receivedForm = await request.formData();
+          return HttpResponse.json({
+            id: "file_abc",
+            filename: null,
+            mime_type: "image/png",
+            size_bytes: 1,
+            created_at: "2026-01-01T00:00:00Z",
+            expires_at: "2026-01-01T01:00:00Z",
+          });
+        }),
+      );
+      await decart.files.upload(new Blob(["x"]), { ttlSeconds: 3600 });
+      expect(receivedForm?.get("ttl_seconds")).toBe("3600");
+    });
+
+    it('forwards ttlSeconds="persistent" verbatim', async () => {
+      let receivedForm: FormData | null = null;
+      server.use(
+        http.post("http://localhost/v1/files", async ({ request }) => {
+          receivedForm = await request.formData();
+          return HttpResponse.json({
+            id: "file_abc",
+            filename: null,
+            mime_type: "image/png",
+            size_bytes: 1,
+            created_at: "2026-01-01T00:00:00Z",
+            expires_at: null,
+          });
+        }),
+      );
+      const ref = await decart.files.upload(new Blob(["x"]), { ttlSeconds: "persistent" });
+      expect(receivedForm?.get("ttl_seconds")).toBe("persistent");
+      expect(ref.expires_at).toBeNull();
+    });
+  });
+
+  describe("get", () => {
+    it("fetches metadata for a file id", async () => {
+      server.use(
+        http.get("http://localhost/v1/files/file_abc123", () => {
+          return HttpResponse.json({
+            id: "file_abc123",
+            filename: "portrait.png",
+            mime_type: "image/png",
+            size_bytes: 1234,
+            created_at: "2026-01-01T00:00:00Z",
+            expires_at: "2026-01-02T00:00:00Z",
+          });
+        }),
+      );
+
+      const ref = await decart.files.get("file_abc123");
+      expect(ref.id).toBe("file_abc123");
+      expect(ref.filename).toBe("portrait.png");
+    });
+
+    it("throws on 404", async () => {
+      server.use(
+        http.get("http://localhost/v1/files/file_missing", () => {
+          return HttpResponse.json({ detail: "File not found" }, { status: 404 });
+        }),
+      );
+
+      await expect(decart.files.get("file_missing")).rejects.toThrow("Failed to get file");
+    });
+  });
+
+  describe("delete", () => {
+    it("resolves on 204", async () => {
+      server.use(
+        http.delete("http://localhost/v1/files/file_abc123", () => {
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+
+      await expect(decart.files.delete("file_abc123")).resolves.toBeUndefined();
+    });
+
+    it("throws on non-2xx", async () => {
+      server.use(
+        http.delete("http://localhost/v1/files/file_missing", () => {
+          return HttpResponse.json({ detail: "File not found" }, { status: 404 });
+        }),
+      );
+
+      await expect(decart.files.delete("file_missing")).rejects.toThrow("Failed to delete file");
+    });
+  });
+});
+
 describe("Logger", () => {
   it("noopLogger does nothing", async () => {
     const { noopLogger } = await import("../src/utils/logger.js");
