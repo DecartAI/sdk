@@ -37,6 +37,7 @@ function buildDatasets(runs) {
         qpTx: [], qpRx: [],
         bppTx: [], bppRx: [],
         ocrLatency: [],
+        jitter: [],
     };
 
     runs.forEach((run) => {
@@ -49,6 +50,7 @@ function buildDatasets(runs) {
             ? downsample(ocrLatency).map((e) => ({ x: +((e.tMsAbs - startedAtMs) / 1000).toFixed(2), y: e.latencyMs }))
             : [];
         datasets.ocrLatency.push({ label, ...lineBase, pointRadius: 2, data: ocrPoints });
+        datasets.jitter.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.jitterMs })) });
         datasets.fpsTx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.senderFps })) });
         datasets.fpsRx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.receiverFps })) });
         datasets.bitrateTx.push({ label, ...lineBase, data: points.map((p) => ({ x: p.x, y: p.d.senderBitrateBps != null ? p.d.senderBitrateBps / 1000 : null })) });
@@ -100,7 +102,7 @@ const CSV_HEADER = [
     'freezeCountTotal', 'freezeCountDelta', 'totalFreezesDurationSec',
     'pauseCountTotal', 'pauseCountDelta',
     'qlReasonOut',
-    'ocrLatencyMs', 'ocrFrameDelta', 'ocrLocalN', 'ocrRemoteN', 'ocrConf',
+    'ocrLatencyMs', 'ocrStampId',
 ];
 
 const OCR_JOIN_WINDOW_MS = 1000;
@@ -167,10 +169,7 @@ function buildCsv(runs) {
                 d.pauseCountDelta ?? '',
                 d.qlReasonOut ?? '',
                 ocr ? ocr.latencyMs.toFixed(2) : '',
-                ocr ? ocr.frameDelta : '',
-                ocr ? ocr.localN : '',
-                ocr ? ocr.remoteN : '',
-                ocr ? ocr.conf.toFixed(1) : '',
+                ocr ? ocr.stampId : '',
             ].join(','));
         });
     });

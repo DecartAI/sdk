@@ -332,6 +332,15 @@
             <input type="text" id="realtime-base-url" placeholder="wss://api3.decart.ai">
         </div>
         <div class="control-group">
+            <label for="sfu-region-select">SFU Region (A/B):</label>
+            <select id="sfu-region-select">
+                <option value="" selected>Auto (server picks nearest by GeoIP)</option>
+                <option value="il">Israel — ils1</option>
+                <option value="usw2">US-West — usw2</option>
+            </select>
+            <div id="sfu-region-active" style="margin-top: 6px; font-size: 12px; color: #555;"></div>
+        </div>
+        <div class="control-group">
             <label for="model-select">Model:</label>
             <select id="model-select">
                 <optgroup label="Latest (server-resolved)">
@@ -415,6 +424,9 @@
         <div id="bench-status" style="margin-top:10px; font-family:'Courier New', monospace; font-size:13px;">
             <strong>Status:</strong> <span id="bench-status-text">idle</span>
             &nbsp; <strong>Elapsed:</strong> <span id="bench-elapsed-text">0s</span>
+            &nbsp; <strong>Setup:</strong> <span id="setup-latency-text">—</span>
+            &nbsp; <strong>TTFF:</strong> <span id="ttff-text">—</span>
+            &nbsp; <strong>connect→1st frame:</strong> <span id="first-frame-text">—</span>
         </div>
         <div id="bench-live" style="margin-top:6px; font-family:'Courier New', monospace; font-size:11px; color:#444;"></div>
         <div style="margin-top:14px;">
@@ -433,7 +445,8 @@
                 <div><canvas id="bench-chart-nack-rx"></canvas></div>
                 <div><canvas id="bench-chart-keyframes-tx"></canvas></div>
                 <div><canvas id="bench-chart-keyframes-rx"></canvas></div>
-                <div style="grid-column:1 / -1;"><canvas id="bench-chart-ocr-latency"></canvas></div>
+                <div><canvas id="bench-chart-ocr-latency"></canvas></div>
+                <div><canvas id="bench-chart-jitter"></canvas></div>
             </div>
             <div style="margin-top:14px;"><canvas id="bench-chart-summary"></canvas></div>
         </div>
@@ -581,6 +594,9 @@
         let processedVideoUrl = null;
         let currentSessionId = null;
         let currentSubscribeToken = null;
+        let connectStartedAtMs = null;
+        let setupLatencyMs = null;
+        let ttffMs = null;
         let model = models.realtime("lucy-2.1");
 
         // -----------------------------------------------------------------------
@@ -596,12 +612,12 @@
                 label: 'H.264 economy — 2.1 Mbps @ 30 fps, maintain-resolution',
                 description: 'Bandwidth-shave candidate. ~91% of F\'s budget and 84% of G\'s, same resolution and 30 fps target, biased to preserve pixel fidelity (drop fps before res). Tests how much bitrate we can shave before model input quality breaks.',
                 roomOptions: {
-                    adaptiveStream: false,
+                    adaptiveStream: true,
                     dynacast: true,
                 },
                 publishOptions: {
                     videoCodec: 'h264',
-                    simulcast: false,
+                    simulcast: true,
                     videoEncoding: {
                         maxBitrate: 2_100_000,
                         maxFramerate: 30,
@@ -619,7 +635,7 @@
                 },
                 publishOptions: {
                     videoCodec: 'h264',
-                    simulcast: false,
+                    simulcast: true,
                     videoEncoding: {
                         maxBitrate: 2_500_000,
                         maxFramerate: 24,
@@ -640,7 +656,7 @@
                     scalabilityMode: 'L1T3',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 2_000_000,
+                        maxBitrate: 2_300_000,
                         maxFramerate: 30,
                     },
                     backupCodec: { codec: 'h264' },
@@ -678,7 +694,7 @@
                     scalabilityMode: 'L3T3_KEY',
                     simulcast: false,
                     videoEncoding: {
-                        maxBitrate: 2_000_000,
+                        maxBitrate: 2_300_000,
                         maxFramerate: 30,
                     },
                     backupCodec: { codec: 'h264' },
@@ -770,12 +786,38 @@
                 .map((key) => `<option value="${key}">${PROFILE_SHORT_LABELS[key] ?? key}</option>`)
                 .join('');
         }
-        
+
+        function getSfuRegionPin() {
+            return elements.sfuRegionSelect.value.trim();
+        }
+
+        function sfuRegionQueryParams() {
+            const pin = getSfuRegionPin();
+            return pin ? { livekit_sfu_region: pin } : undefined;
+        }
+
+        function isStagingBaseUrl() {
+            return elements.realtimeBaseUrl.value.trim().toLowerCase().includes('stage');
+        }
+
+        function describeSfuRegion(pin) {
+            if (!pin) return 'Auto — bouncer picks nearest SFU by client GeoIP';
+            if (pin === 'il') return 'Pinned Israel → wss://ils1.lkc.decart.ai';
+            if (pin === 'usw2') return `Pinned US-West → ${isStagingBaseUrl() ? 'wss://livekit.stage-decart.com' : 'wss://lk.decart.ai'}`;
+            return `Pinned region "${pin}"`;
+        }
+
+        function updateSfuRegionReadout() {
+            elements.sfuRegionActive.textContent = describeSfuRegion(getSfuRegionPin());
+        }
+
         // DOM elements
         const elements = {
             apiKey: document.getElementById('api-key'),
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
+            sfuRegionSelect: document.getElementById('sfu-region-select'),
+            sfuRegionActive: document.getElementById('sfu-region-active'),
             resolutionSelect: document.getElementById('resolution-select'),
             chainedProfilesContainer: document.getElementById('chained-profiles-container'),
             publishProfileDescription: document.getElementById('publish-profile-description'),
@@ -815,7 +857,11 @@
             benchChartKeyframesTx: document.getElementById('bench-chart-keyframes-tx'),
             benchChartKeyframesRx: document.getElementById('bench-chart-keyframes-rx'),
             benchChartOcrLatency: document.getElementById('bench-chart-ocr-latency'),
+            benchChartJitter: document.getElementById('bench-chart-jitter'),
             benchChartSummary: document.getElementById('bench-chart-summary'),
+            setupLatencyText: document.getElementById('setup-latency-text'),
+            ttffText: document.getElementById('ttff-text'),
+            firstFrameText: document.getElementById('first-frame-text'),
             latencyReadout: document.getElementById('latency-readout'),
             localVideo: document.getElementById('local-video'),
             remoteVideo: document.getElementById('remote-video'),
@@ -1325,6 +1371,11 @@
                     data: { datasets: [] },
                     options: { ...commonOpts, plugins: timeSeriesPlugins('End-to-end latency via QR scan (ms)') },
                 }),
+                jitter: new Chart(elements.benchChartJitter, {
+                    type: 'line',
+                    data: { datasets: [] },
+                    options: { ...commonOpts, plugins: timeSeriesPlugins('Jitter (ms, receiver RTP)') },
+                }),
                 summary: new Chart(elements.benchChartSummary, {
                     type: 'bar',
                     data: { labels: [], datasets: [] },
@@ -1593,10 +1644,12 @@
                 pauseCountDelta: 0,
                 framesDroppedInTotal: null,
                 framesDroppedInDelta: 0,
+                jitterMs: null,
             };
 
             const recv = curr.receiver?.[0];
             if (recv) {
+                d.jitterMs = recv.jitter != null ? recv.jitter * 1000 : null;
                 d.inFrameWidth = recv.frameWidth ?? null;
                 d.inFrameHeight = recv.frameHeight ?? null;
                 d.inFps = typeof recv.framesPerSecond === 'number' ? recv.framesPerSecond : null;
@@ -1885,8 +1938,8 @@
         }
 
         // QR-based latency measurement
-        const OCR_SAMPLE_INTERVAL_MS = 2000;
-        const OCR_FRAME_DELTA_MAX = 600;
+        const OCR_SAMPLE_INTERVAL_MS = 1000;
+        const OCR_LATENCY_MAX_MS = 30000;
         const OCR_CROP_LOCAL = { x: 0, y: 0, w: 280, h: 280 };
         const OCR_CHART_MAX_POINTS = 600;
 
@@ -1932,7 +1985,6 @@
             if (!remoteVideo || remoteVideo.readyState < 2 || !remoteVideo.videoWidth) return;
 
             const sampledAt = performance.now();
-            const localN = pipeline.frameCount;
             const scale = remoteVideo.videoWidth / pipeline.canvas.width;
             const rx = OCR_CROP_LOCAL.x * scale;
             const ry = OCR_CROP_LOCAL.y * scale;
@@ -1950,21 +2002,21 @@
             ocrBusy = true;
             const requestId = ++ocrRequestSeq;
             ocrWorker.postMessage(
-                { kind: 'recognize', requestId, sampledAt, localN, bitmap },
+                { kind: 'recognize', requestId, sampledAt, bitmap },
                 [bitmap],
             );
         }
 
-        let ocrDropStats = { notFound: 0, badDelta: 0, accepted: 0 };
+        let ocrDropStats = { notFound: 0, unknownId: 0, tooOld: 0, accepted: 0 };
         let _ocrDropReportT = 0;
         function reportOcrStats() {
             const now = performance.now();
             if (now - _ocrDropReportT < 20000) return;
             _ocrDropReportT = now;
             const s = ocrDropStats;
-            if (s.notFound + s.badDelta + s.accepted === 0) return;
-            addLog(`QR 20s: accepted=${s.accepted} notFound=${s.notFound} badDelta=${s.badDelta}`, 'info');
-            ocrDropStats = { notFound: 0, badDelta: 0, accepted: 0 };
+            if (s.notFound + s.unknownId + s.tooOld + s.accepted === 0) return;
+            addLog(`QR 20s: accepted=${s.accepted} notFound=${s.notFound} unknownId=${s.unknownId} tooOld=${s.tooOld}`, 'info');
+            ocrDropStats = { notFound: 0, unknownId: 0, tooOld: 0, accepted: 0 };
         }
 
         function handleOcrMessage(msg) {
@@ -1978,20 +2030,23 @@
             if (msg.kind !== 'result') return;
             ocrBusy = false;
 
-            const { sampledAt, localN, remoteN, found } = msg;
-            if (!found || !Number.isFinite(remoteN)) { ocrDropStats.notFound++; reportOcrStats(); return; }
-            const frameDelta = localN - remoteN;
-            if (frameDelta < 0 || frameDelta > OCR_FRAME_DELTA_MAX) { ocrDropStats.badDelta++; reportOcrStats(); return; }
+            const { sampledAt, rawValue, found } = msg;
+            if (!found || !rawValue) { ocrDropStats.notFound++; reportOcrStats(); return; }
+            const pipeline = getActivePipeline();
+            const stampedAt = pipeline?.stampIdMap?.get(rawValue);
+            if (stampedAt == null) { ocrDropStats.unknownId++; reportOcrStats(); return; }
+            const latencyMs = sampledAt - stampedAt;
+            if (latencyMs < 0 || latencyMs > OCR_LATENCY_MAX_MS) { ocrDropStats.tooOld++; reportOcrStats(); return; }
             ocrDropStats.accepted++;
             reportOcrStats();
 
-            const fps = getSelectedCameraSettings().fps || 30;
-            const latencyMs = frameDelta * (1000 / fps);
             const nowAbs = Date.now();
             const entry = {
                 tMsAbs: nowAbs,
                 tMs: nowAbs - ocrEpochMs,
-                localN, remoteN, frameDelta, latencyMs, conf: 100,
+                stampId: rawValue,
+                stampedAt,
+                latencyMs,
             };
             ocrLatencySeries.push(entry);
             if (ocrLatencySeries.length > OCR_CHART_MAX_POINTS) ocrLatencySeries.shift();
@@ -2006,8 +2061,8 @@
         function renderLatencyReadout(entry) {
             const el = elements.latencyReadout;
             if (!el) return;
-            if (!entry) { el.textContent = 'latency: — ms (Δ — f)'; return; }
-            el.textContent = `latency: ${entry.latencyMs.toFixed(0)} ms (Δ ${entry.frameDelta} f)`;
+            if (!entry) { el.textContent = 'latency: — ms'; return; }
+            el.textContent = `latency: ${entry.latencyMs.toFixed(0)} ms`;
         }
 
         function sanitizeFileName(raw) {
@@ -2427,6 +2482,13 @@
         renderChainedProfiles();
         updatePublishProfileDescription();
 
+        elements.sfuRegionSelect.addEventListener('change', () => {
+            updateSfuRegionReadout();
+            addLog(`SFU region set to: ${describeSfuRegion(getSfuRegionPin())}`, 'info');
+        });
+        elements.realtimeBaseUrl.addEventListener('input', updateSfuRegionReadout);
+        updateSfuRegionReadout();
+
         // Model selection handler
         elements.modelSelect.addEventListener('change', (e) => {
             const selectedModel = e.target.value;
@@ -2492,14 +2554,35 @@
         const QR_PADDING = 12;
         const QR_X = 24;
         const QR_Y = 24;
-        let _lastQrCount = -1;
+        const STAMP_MAP_MAX = 900;
+
+        let _stampCounter = Math.floor(Math.random() * 0xffff);
+        function nextStampId() {
+            _stampCounter = (_stampCounter + 1) >>> 0;
+            return _stampCounter.toString(36);
+        }
+
+        function ensureStampId(pipeline) {
+            const now = performance.now();
+            if (!pipeline.stampIdMap) pipeline.stampIdMap = new Map();
+            const id = nextStampId();
+            pipeline.stampId = id;
+            pipeline.stampSetAt = now;
+            pipeline.stampIdMap.set(id, now);
+            while (pipeline.stampIdMap.size > STAMP_MAP_MAX) {
+                pipeline.stampIdMap.delete(pipeline.stampIdMap.keys().next().value);
+            }
+            return id;
+        }
+
+        let _lastQrId = '';
         let _lastQrMatrix = null;
         let _lastQrModuleCount = 0;
-        function getQrMatrix(count) {
-            if (count === _lastQrCount && _lastQrMatrix) return { matrix: _lastQrMatrix, modules: _lastQrModuleCount };
+        function getQrMatrix(id) {
+            if (id === _lastQrId && _lastQrMatrix) return { matrix: _lastQrMatrix, modules: _lastQrModuleCount };
             if (typeof qrcode !== 'function') return null;
             const q = qrcode(0, 'H');
-            q.addData(String(count));
+            q.addData(id);
             q.make();
             const modules = q.getModuleCount();
             const matrix = new Uint8Array(modules * modules);
@@ -2508,17 +2591,17 @@
                     matrix[r * modules + c] = q.isDark(r, c) ? 1 : 0;
                 }
             }
-            _lastQrCount = count;
+            _lastQrId = id;
             _lastQrMatrix = matrix;
             _lastQrModuleCount = modules;
             return { matrix, modules };
         }
 
-        function drawFrameCounter(ctx, count) {
+        function drawFrameCounter(ctx, id) {
             ctx.save();
             ctx.fillStyle = '#fff';
             ctx.fillRect(QR_X - QR_PADDING, QR_Y - QR_PADDING, QR_BOX_SIZE + QR_PADDING * 2, QR_BOX_SIZE + QR_PADDING * 2);
-            const qr = getQrMatrix(count);
+            const qr = getQrMatrix(id);
             if (qr) {
                 const cell = QR_BOX_SIZE / qr.modules;
                 ctx.fillStyle = '#000';
@@ -2530,16 +2613,6 @@
                     }
                 }
             }
-            ctx.font = 'bold 32px Arial, sans-serif';
-            ctx.textBaseline = 'top';
-            ctx.textAlign = 'left';
-            ctx.lineJoin = 'round';
-            ctx.lineWidth = 4;
-            ctx.strokeStyle = '#000';
-            ctx.fillStyle = '#fff';
-            const ty = QR_Y + QR_BOX_SIZE + QR_PADDING + 4;
-            ctx.strokeText(String(count), QR_X, ty);
-            ctx.fillText(String(count), QR_X, ty);
             ctx.restore();
         }
 
@@ -2604,8 +2677,8 @@
                     const dx = (canvas.width - dw) / 2;
                     const dy = (canvas.height - dh) / 2;
                     ctx.drawImage(video, dx, dy, dw, dh);
-                    fileSource.frameCount = Math.floor((performance.now() - fileSource.startedAt) * fileSource.fps / 1000);
-                    drawFrameCounter(ctx, fileSource.frameCount);
+                    const id = ensureStampId(fileSource);
+                    drawFrameCounter(ctx, id);
                 }
                 fileSource.drawHandle = scheduleVideoDraw(video, drawCoverFrame);
             };
@@ -2661,8 +2734,8 @@
                     const dx = (canvas.width - dw) / 2;
                     const dy = (canvas.height - dh) / 2;
                     ctx.drawImage(sourceVideo, dx, dy, dw, dh);
-                    cameraPipeline.frameCount = Math.floor((performance.now() - cameraPipeline.startedAt) * cameraPipeline.fps / 1000);
-                    drawFrameCounter(ctx, cameraPipeline.frameCount);
+                    const id = ensureStampId(cameraPipeline);
+                    drawFrameCounter(ctx, id);
                 }
                 cameraPipeline.drawHandle = scheduleVideoDraw(sourceVideo, draw);
             };
@@ -2745,6 +2818,43 @@
             }, 1500);
         }
 
+        function formatSetupMs(value) {
+            return value == null ? '—' : `${Math.round(value)}ms`;
+        }
+
+        function renderSetupTimings() {
+            elements.setupLatencyText.textContent = formatSetupMs(setupLatencyMs);
+            elements.ttffText.textContent = formatSetupMs(ttffMs);
+            const postSetupMs = (ttffMs != null && setupLatencyMs != null) ? ttffMs - setupLatencyMs : null;
+            elements.firstFrameText.textContent = formatSetupMs(postSetupMs);
+        }
+
+        function resetSetupTimings() {
+            connectStartedAtMs = performance.now();
+            setupLatencyMs = null;
+            ttffMs = null;
+            renderSetupTimings();
+        }
+
+        function handleConnectionDiagnostic(event) {
+            if (event.name !== 'client-session-connection-breakdown') return;
+            const websocketPhase = event.data.phases?.find((phase) => phase.phase === 'websocket-open');
+            if (websocketPhase) setupLatencyMs = websocketPhase.durationMs;
+            renderSetupTimings();
+            addLog(`Setup ${formatSetupMs(setupLatencyMs)} · total connect ${formatSetupMs(event.data.totalDurationMs)}`, 'info');
+        }
+
+        function captureFirstFrameTiming() {
+            const video = elements.remoteVideo;
+            if (typeof video.requestVideoFrameCallback !== 'function') return;
+            video.requestVideoFrameCallback(() => {
+                if (connectStartedAtMs == null || ttffMs != null) return;
+                ttffMs = performance.now() - connectStartedAtMs;
+                renderSetupTimings();
+                addLog(`TTFF (first frame) ${formatSetupMs(ttffMs)}`, 'success');
+            });
+        }
+
         async function connectPublisher() {
             const apiKey = elements.apiKey.value.trim();
             if (!apiKey) throw new Error('API key required');
@@ -2784,15 +2894,21 @@
             const profile = getSelectedPublishProfile();
             addLog(`Publish profile: ${formatProfileTitle(profile)} @ ${resolution}`, 'info');
 
+            const sfuQueryParams = sfuRegionQueryParams();
+            addLog(`SFU region: ${describeSfuRegion(getSfuRegionPin())}`, 'info');
+
+            resetSetupTimings();
             decartRealtime = await decartClient.realtime.connect(localStream, {
                 model,
                 resolution,
+                ...(sfuQueryParams && { queryParams: sfuQueryParams }),
                 publishOptions: profile.publishOptions,
                 roomOptions: profile.roomOptions,
                 remoteVideoElement: elements.remoteVideo,
                 onRemoteStream: (stream) => {
                     addLog('Received remote stream from Decart', 'success');
                     elements.remoteVideo.srcObject = stream;
+                    captureFirstFrameTiming();
                     if (!chainActive) startRecording();
                     startPromptCycler();
                     elements.benchStart.disabled = false;
@@ -2819,6 +2935,8 @@
                     ...(initialImage && { image: initialImage }),
                 },
             });
+
+            decartRealtime.on('diagnostic', handleConnectionDiagnostic);
 
             if (!decartRealtime.isConnected()) {
                 throw new Error('Connection established but not in connected state');

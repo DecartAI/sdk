@@ -21,7 +21,7 @@ self.onmessage = async (e) => {
         return;
     }
     if (msg.kind === 'recognize') {
-        const { requestId, sampledAt, localN, bitmap } = msg;
+        const { requestId, sampledAt, bitmap } = msg;
         if (busy) {
             try { bitmap.close?.(); } catch (_) {}
             self.postMessage({ kind: 'dropped', requestId });
@@ -37,17 +37,8 @@ self.onmessage = async (e) => {
         try {
             const codes = await d.detect(bitmap);
             try { bitmap.close?.(); } catch (_) {}
-            let remoteN = NaN;
-            let found = false;
-            for (const c of codes) {
-                const v = c.rawValue?.trim();
-                if (v && /^\d+$/.test(v)) {
-                    remoteN = parseInt(v, 10);
-                    found = true;
-                    break;
-                }
-            }
-            self.postMessage({ kind: 'result', requestId, sampledAt, localN, remoteN, found });
+            const raw = codes.length ? (codes[0].rawValue || '').trim() : '';
+            self.postMessage({ kind: 'result', requestId, sampledAt, rawValue: raw, found: raw.length > 0 });
         } catch (err) {
             try { bitmap.close?.(); } catch (_) {}
             self.postMessage({ kind: 'error', requestId, error: String(err?.message ?? err) });

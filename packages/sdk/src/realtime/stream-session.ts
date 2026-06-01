@@ -175,9 +175,9 @@ export class StreamSession {
       this.resetHandshakeState();
       const initialState = this.getInitialState();
       this.config.observability?.beginConnectionBreakdown(attempt, getInitialImageSizeKb(initialState?.image));
-      const gateAttempt = this.initialStateGate.startAttempt(initialState);
+      this.initialStateGate.startAttempt(initialState);
 
-      const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({
+      const { roomInfo } = await this.signaling.openAndJoin({
         connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
         initialState,
       });
@@ -194,10 +194,10 @@ export class StreamSession {
           url: roomInfo.livekitUrl,
           token: roomInfo.token,
         });
-        const isCurrentAttempt = await gateAttempt.waitForReadiness(initialStateAck);
-        if (!isCurrentAttempt) {
-          throw new AbortError("Stale connect attempt");
-        }
+        // const isCurrentAttempt = await gateAttempt.waitForReadiness(initialStateAck);
+        // if (!isCurrentAttempt) {
+        //   throw new AbortError("Stale connect attempt");
+        // }
         await this.media.publishLocalTracks();
       } catch (error) {
         this.tearDown();
