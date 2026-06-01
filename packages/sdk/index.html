@@ -649,18 +649,18 @@
         // The default entry intentionally preserves the SDK's simulcast baseline.
         // For a single backend consumer, single-layer H.264 is the expected best path;
         // simulcast remains here only as a control to measure its overhead.
-        // Profiles C-E keep the VP9/AV1 SVC candidates for comparison.
+        // Profiles C-D keep the VP9 SVC candidates for comparison.
         // -----------------------------------------------------------------------
         const PUBLISH_PROFILES = {
             A: {
                 label: 'H.264 economy — 2.1 Mbps @ 30 fps, maintain-resolution',
                 description: 'Bandwidth-shave candidate. ~91% of F\'s budget and 84% of G\'s, same resolution and 30 fps target, biased to preserve pixel fidelity (drop fps before res). Tests how much bitrate we can shave before model input quality breaks.',
+                preferredVideoCodec: 'h264',
                 roomOptions: {
                     adaptiveStream: true,
                     dynacast: true,
                 },
                 publishOptions: {
-                    videoCodec: 'h264',
                     simulcast: true,
                     videoEncoding: {
                         maxBitrate: 2_100_000,
@@ -673,12 +673,12 @@
             B: {
                 label: 'H.264 sharper-frames — 2.5 Mbps @ 24 fps, maintain-resolution',
                 description: 'Bits-per-frame candidate. Same 2.5 Mbps as G but at 24 fps, so each frame gets ~25% more bits and visibly sharper detail. Bets the inference model values per-frame fidelity over cadence — and that 24 fps is enough for its temporal needs.',
+                preferredVideoCodec: 'h264',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: true,
                 },
                 publishOptions: {
-                    videoCodec: 'h264',
                     simulcast: true,
                     videoEncoding: {
                         maxBitrate: 2_500_000,
@@ -691,12 +691,12 @@
             C: {
                 label: 'VP9 SVC L1T3 (temporal only)',
                 description: 'VP9 with 3 temporal layers (single resolution). Loss recovery without spatial encode cost.',
+                preferredVideoCodec: 'vp9',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: false,
                 },
                 publishOptions: {
-                    videoCodec: 'vp9',
                     scalabilityMode: 'L1T3',
                     simulcast: false,
                     videoEncoding: {
@@ -710,31 +710,12 @@
             D: {
                 label: 'VP9 SVC L3T3_KEY (spatial+temporal)',
                 description: 'VP9 full SVC: 3 spatial x 3 temporal layers. Best resilience on bad networks.',
+                preferredVideoCodec: 'vp9',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: false,
                 },
                 publishOptions: {
-                    videoCodec: 'vp9',
-                    scalabilityMode: 'L3T3_KEY',
-                    simulcast: false,
-                    videoEncoding: {
-                        maxBitrate: 2_300_000,
-                        maxFramerate: 30,
-                    },
-                    backupCodec: { codec: 'h264' },
-                    degradationPreference: 'maintain-framerate',
-                },
-            },
-            E: {
-                label: 'AV1 SVC L3T3_KEY (compression-first)',
-                description: 'AV1 full SVC. Best compression, but watch client CPU. Falls back to H.264 if unsupported.',
-                roomOptions: {
-                    adaptiveStream: false,
-                    dynacast: false,
-                },
-                publishOptions: {
-                    videoCodec: 'av1',
                     scalabilityMode: 'L3T3_KEY',
                     simulcast: false,
                     videoEncoding: {
@@ -748,12 +729,12 @@
             F: {
                 label: 'H.264 constrained — 2.3 Mbps @ 24 fps, maintain-framerate',
                 description: 'H.264 single layer with a lower bitrate ceiling for weaker networks; drops resolution before FPS (preserves 24 fps cadence under pressure).',
+                preferredVideoCodec: 'h264',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: false,
                 },
                 publishOptions: {
-                    videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
                         maxBitrate: 2_300_000,
@@ -766,12 +747,12 @@
             G: {
                 label: 'H.264 high bitrate — 2.5 Mbps @ 30 fps, maintain-resolution',
                 description: 'H.264 single layer with more bitrate headroom for clean networks while still preserving resolution under pressure (drops fps before resolution).',
+                preferredVideoCodec: 'h264',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: false,
                 },
                 publishOptions: {
-                    videoCodec: 'h264',
                     simulcast: false,
                     videoEncoding: {
                         maxBitrate: 2_500_000,
@@ -820,7 +801,6 @@
             B: 'B — H.264 2.5 Mbps @ 24 fps, maintain-resolution',
             C: 'C — VP9 SVC L1T3',
             D: 'D — VP9 SVC L3T3_KEY',
-            E: 'E — AV1 SVC L3T3_KEY',
             F: 'F — H.264 2.3 Mbps @ 24 fps, maintain-framerate',
             G: 'G — H.264 2.5 Mbps @ 30 fps, maintain-resolution',
         };
@@ -2578,7 +2558,6 @@
             };
         }
 
-        const FRAME_COUNTER_FONT_PX = 80;
         function scheduleVideoDraw(video, fn) {
             if (typeof video.requestVideoFrameCallback === 'function') {
                 return { type: 'vfc', id: video.requestVideoFrameCallback(fn) };
@@ -2946,6 +2925,7 @@
                 model,
                 resolution,
                 ...(sfuQueryParams && { queryParams: sfuQueryParams }),
+                preferredVideoCodec: profile.preferredVideoCodec,
                 publishOptions: profile.publishOptions,
                 roomOptions: profile.roomOptions,
                 remoteVideoElement: elements.remoteVideo,

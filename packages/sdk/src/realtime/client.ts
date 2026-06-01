@@ -1,3 +1,4 @@
+import type { RoomOptions, TrackPublishOptions } from "livekit-client";
 import { z } from "zod";
 import { isFileRefId } from "../files/types";
 import {
@@ -12,7 +13,7 @@ import { createConsoleLogger, type Logger } from "../utils/logger";
 import { imageToBase64 } from "../utils/media";
 import { isDesktopSafari } from "../utils/platform";
 import { createEventBuffer } from "./event-buffer";
-import type { VideoCodec } from "./media-channel";
+import type { RealtimeVideoStats, VideoCodec } from "./media-channel";
 import { realtimeMethods, type SetInput } from "./methods";
 import { createMirroredStream, type MirroredStream, shouldMirrorTrack } from "./mirror-stream";
 import type { DiagnosticEvent } from "./observability/diagnostics";
@@ -20,9 +21,6 @@ import { RealtimeObservability } from "./observability/realtime-observability";
 import type { WebRTCStats } from "./observability/webrtc-stats";
 import { StreamSession } from "./stream-session";
 import type { ConnectionState, GenerationEnded, GenerationTick, ImageSetOptions, QueuePosition } from "./types";
-import type { RoomOptions, TrackPublishOptions } from "livekit-client";
-
-import type { RealtimeVideoStats } from "./media-channel";
 
 export type RealTimeClientOptions = {
   baseUrl: string;
@@ -57,6 +55,7 @@ const realTimeClientConnectOptionsSchema = z.object({
   queryParams: z.record(z.string(), z.string()).optional(),
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
   resolution: z.enum(["720p", "1080p"]).optional(),
+  preferredVideoCodec: z.enum(["h264", "vp9"]).optional(),
   publishOptions: z
     .custom<Partial<TrackPublishOptions>>((val) => val === undefined || typeof val === "object")
     .optional(),
@@ -119,6 +118,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       onQueuePosition,
       initialState,
       resolution,
+      preferredVideoCodec,
       publishOptions,
       roomOptions,
       remoteVideoElement,
@@ -188,7 +188,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialImageRef,
         initialPrompt,
         logger,
-        videoCodec: safariCodec,
+        videoCodec: publishCodec,
         publishOptions,
         roomOptions,
         remoteVideoElement,

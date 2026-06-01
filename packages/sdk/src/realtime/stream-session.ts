@@ -1,11 +1,10 @@
+import type { RoomOptions, TrackPublishOptions } from "livekit-client";
 import mitt, { type Emitter } from "mitt";
 import pRetry, { AbortError } from "p-retry";
-
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import { InitialStateGate } from "./initial-state-gate";
 import { MediaChannel, type RealtimeVideoStats, type VideoCodec } from "./media-channel";
-import type { RoomOptions, TrackPublishOptions } from "livekit-client";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 import { SignalingChannel } from "./signaling-channel";
 import type {
@@ -133,7 +132,7 @@ export class StreamSession {
     return this.media.getVideoStats();
   }
 
-  async setImage(image: string | null, opts?: ImageSetOptions): Promise<void> {
+  async setImage(payload: SetImagePayload, opts?: ImageSetOptions): Promise<void> {
     this.assertConnected();
     return this.signaling.setImage(payload, opts);
   }
