@@ -187,7 +187,7 @@ const v2vResolutionSchema = z
   .default("720p");
 
 const videoEditSchema = z.object({
-  prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),
+  prompt: z.string().min(1).describe("The prompt to use for the generation"),
   data: fileInputSchema.describe(
     "The video data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
   ),
@@ -216,7 +216,7 @@ const imageEditSchema = z.object({
 
 const restyleSchema = z
   .object({
-    prompt: z.string().min(1).max(1000).optional().describe("Text prompt for the video editing"),
+    prompt: z.string().min(1).optional().describe("Text prompt for the video editing"),
     reference_image: fileInputSchema
       .optional()
       .describe("Reference image to transform into a prompt (File, Blob, ReadableStream, URL, or string URL)"),
@@ -236,10 +236,7 @@ const restyleSchema = z
   });
 
 const videoEdit2Schema = z.object({
-  prompt: z
-    .string()
-    .max(1000)
-    .describe("Text prompt for the video editing. Send an empty string if you want no text prompt."),
+  prompt: z.string().describe("Text prompt for the video editing. Send an empty string if you want no text prompt."),
   reference_image: fileInputSchema
     .optional()
     .describe("Optional reference image to guide the edit (File, Blob, ReadableStream, URL, or string URL)"),
