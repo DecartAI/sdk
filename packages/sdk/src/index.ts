@@ -27,6 +27,7 @@ export type {
   RealTimeClient,
   RealTimeClientConnectOptions,
   RealTimeClientInitialState,
+  RealTimeWarmupClient,
 } from "./realtime/client";
 export type { SetInput } from "./realtime/methods";
 export type {
@@ -238,6 +239,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
   return {
     realtime: {
       connect: realtimePublish.connect,
+      warmup: realtimePublish.warmup,
       subscribe: realtimeSubscribe.subscribe,
     },
 
