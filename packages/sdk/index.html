@@ -811,12 +811,12 @@
 
         // Chain state: array of profile keys to run sequentially, plus the index currently active.
         // Read lazily so it tracks the current bench-duration input value at chain time.
-        const CHAIN_INTER_RUN_BUFFER_MS = 15000;
+        const CHAIN_TEARDOWN_TO_CONNECT_MS = 15000;
         function getChainIntervalMs() {
             const durationSeconds = Number(elements?.benchDuration?.value);
             return Number.isFinite(durationSeconds) && durationSeconds > 0
-                ? (durationSeconds * 1000) + CHAIN_INTER_RUN_BUFFER_MS
-                : 120_000 + CHAIN_INTER_RUN_BUFFER_MS;
+                ? (durationSeconds * 1000) + 6000
+                : 127_000;
         }
         const chainedProfileKeys = initialChainedProfiles();
         let chainIndex = 0;
@@ -3094,6 +3094,10 @@
                 finishChain();
                 return;
             }
+            addLog(`Cooling down ${CHAIN_TEARDOWN_TO_CONNECT_MS / 1000}s before next profile`, 'info');
+            await new Promise((resolve) => { chainAdvanceTimer = setTimeout(resolve, CHAIN_TEARDOWN_TO_CONNECT_MS); });
+            chainAdvanceTimer = null;
+            if (!chainActive) return;
             addLog(`Reconnecting with profile ${chainedProfileKeys[chainIndex]} (slot ${chainIndex + 1}/${chainedProfileKeys.length})`, 'info');
             logChainSegmentBoundary(chainedProfileKeys[chainIndex], chainIndex + 1, chainedProfileKeys.length);
             updatePublishProfileDescription();
