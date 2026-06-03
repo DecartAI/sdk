@@ -449,6 +449,21 @@
                 <div><canvas id="bench-chart-jitter"></canvas></div>
             </div>
             <div style="margin-top:14px;"><canvas id="bench-chart-summary"></canvas></div>
+            <div id="bench-timings-table-wrapper" style="margin-top:14px; overflow-x:auto;">
+                <table id="bench-timings-table" style="width:100%; border-collapse:collapse; font-family:'Courier New', monospace; font-size:12px;">
+                    <thead>
+                        <tr style="background:#f0f0f0; text-align:left;">
+                            <th style="padding:6px 10px; border-bottom:1px solid #ddd;">#</th>
+                            <th style="padding:6px 10px; border-bottom:1px solid #ddd;">Profile</th>
+                            <th style="padding:6px 10px; border-bottom:1px solid #ddd;">Elapsed</th>
+                            <th style="padding:6px 10px; border-bottom:1px solid #ddd;">Setup</th>
+                            <th style="padding:6px 10px; border-bottom:1px solid #ddd;">TTFF</th>
+                            <th style="padding:6px 10px; border-bottom:1px solid #ddd;">connect→1st frame</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bench-timings-tbody"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -776,6 +791,24 @@
             return keys;
         }
 
+        const LS_KEY_CHAIN = 'decart-playground:chained-profiles';
+        function loadChainedProfilesFromStorage() {
+            try {
+                const raw = localStorage.getItem(LS_KEY_CHAIN);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (!Array.isArray(parsed)) return null;
+                const valid = parsed.filter((k) => typeof k === 'string' && k in PUBLISH_PROFILES);
+                return valid.length ? valid : null;
+            } catch (_) { return null; }
+        }
+        function saveChainedProfiles() {
+            try { localStorage.setItem(LS_KEY_CHAIN, JSON.stringify(chainedProfileKeys)); } catch (_) {}
+        }
+        function initialChainedProfiles() {
+            return loadChainedProfilesFromStorage() ?? shuffledDefaultChain();
+        }
+
         // Chain state: array of profile keys to run sequentially, plus the index currently active.
         // Read lazily so it tracks the current bench-duration input value at chain time.
         function getChainIntervalMs() {
@@ -784,7 +817,7 @@
                 ? (durationSeconds * 1000) + 6000
                 : 127_000;
         }
-        const chainedProfileKeys = shuffledDefaultChain();
+        const chainedProfileKeys = initialChainedProfiles();
         let chainIndex = 0;
         let chainActive = false;
         let chainAdvanceTimer = null;
@@ -883,6 +916,7 @@
             benchChartOcrLatency: document.getElementById('bench-chart-ocr-latency'),
             benchChartJitter: document.getElementById('bench-chart-jitter'),
             benchChartSummary: document.getElementById('bench-chart-summary'),
+            benchTimingsTbody: document.getElementById('bench-timings-tbody'),
             setupLatencyText: document.getElementById('setup-latency-text'),
             ttffText: document.getElementById('ttff-text'),
             firstFrameText: document.getElementById('first-frame-text'),
@@ -1530,6 +1564,40 @@
             });
         }
 
+        function fmtTimingMs(v) {
+            if (v == null || !Number.isFinite(v)) return '—';
+            return `${Math.round(v)}ms`;
+        }
+        function fmtElapsedMs(v) {
+            if (v == null || !Number.isFinite(v)) return '—';
+            return `${(v / 1000).toFixed(1)}s`;
+        }
+        function refreshTimingsTable() {
+            const tbody = elements.benchTimingsTbody;
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            benchmarkRuns.forEach((run, idx) => {
+                const t = run.timings ?? {};
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid #eee';
+                const cells = [
+                    String(idx + 1),
+                    runLabel(run, idx),
+                    fmtElapsedMs(t.elapsedMs),
+                    fmtTimingMs(t.setupMs),
+                    fmtTimingMs(t.ttffMs),
+                    fmtTimingMs(t.postSetupMs),
+                ];
+                cells.forEach((text) => {
+                    const td = document.createElement('td');
+                    td.style.padding = '6px 10px';
+                    td.textContent = text;
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+        }
+
         function refreshSummaryChart() {
             const charts = ensureBenchCharts();
             if (!charts) return;
@@ -1949,6 +2017,12 @@
             if (benchElapsedTimer) { clearInterval(benchElapsedTimer); benchElapsedTimer = null; }
             currentBenchRun.endedAtMs = nowMs();
             currentBenchRun.summary = computeBenchSummary(currentBenchRun);
+            currentBenchRun.timings = {
+                elapsedMs: currentBenchRun.endedAtMs - currentBenchRun.startedAtMs,
+                setupMs: setupLatencyMs,
+                ttffMs,
+                postSetupMs: (ttffMs != null && setupLatencyMs != null) ? ttffMs - setupLatencyMs : null,
+            };
             benchmarkRuns.push(currentBenchRun);
             console.log('[Benchmark] Run complete:', currentBenchRun);
             addLog(`Benchmark stopped. profile=${currentBenchRun.profile} avgFps=${currentBenchRun.summary.fps.avg.toFixed(1)} p5Fps=${(currentBenchRun.summary.fps.p5 ?? 0).toFixed(1)}`, 'success');
@@ -1959,6 +2033,7 @@
             elements.benchStatusText.textContent = `idle (last: ${finished.profile})`;
             refreshTimeSeriesChartsNow();
             refreshSummaryChart();
+            refreshTimingsTable();
         }
 
         // QR-based latency measurement
@@ -2185,6 +2260,7 @@
             elements.benchStatusText.textContent = 'idle';
             refreshTimeSeriesChartsNow();
             refreshSummaryChart();
+            refreshTimingsTable();
             addLog('Benchmark runs cleared', 'info');
         }
 
@@ -2466,6 +2542,7 @@
                 select.disabled = chainActive;
                 select.addEventListener('change', () => {
                     chainedProfileKeys[idx] = select.value;
+                    saveChainedProfiles();
                     updatePublishProfileDescription();
                     addLog(`Chain slot ${idx + 1}: ${select.value}`, 'info');
                 });
@@ -2487,6 +2564,7 @@
             addBtn.addEventListener('click', () => {
                 const last = chainedProfileKeys[chainedProfileKeys.length - 1] ?? DEFAULT_PROFILE_KEY;
                 chainedProfileKeys.push(last);
+                saveChainedProfiles();
                 renderChainedProfiles();
                 updatePublishProfileDescription();
                 addLog(`Chain extended to ${chainedProfileKeys.length} profiles`, 'info');
