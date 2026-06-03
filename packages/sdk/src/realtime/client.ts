@@ -174,6 +174,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         ...(safariCodec ? { livekit_server_codec: safariCodec } : {}),
         livekit_early_room_info: "true",
         ...(options.queryParams ?? {}),
+        livekit_eager_join: "true",
         api_key: apiKey,
         model: options.model.name,
         ...(resolution ? { resolution } : {}),
