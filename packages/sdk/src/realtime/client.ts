@@ -172,7 +172,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       const queryParams = new URLSearchParams({
         ...(safariCodec ? { livekit_server_codec: safariCodec } : {}),
-        livekit_early_room_info: "true",
         livekit_eager_join: "true",
         ...(options.queryParams ?? {}),
         api_key: apiKey,
