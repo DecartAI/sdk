@@ -811,11 +811,12 @@
 
         // Chain state: array of profile keys to run sequentially, plus the index currently active.
         // Read lazily so it tracks the current bench-duration input value at chain time.
+        const CHAIN_INTER_RUN_BUFFER_MS = 15000;
         function getChainIntervalMs() {
             const durationSeconds = Number(elements?.benchDuration?.value);
             return Number.isFinite(durationSeconds) && durationSeconds > 0
-                ? (durationSeconds * 1000) + 6000
-                : 127_000;
+                ? (durationSeconds * 1000) + CHAIN_INTER_RUN_BUFFER_MS
+                : 120_000 + CHAIN_INTER_RUN_BUFFER_MS;
         }
         const chainedProfileKeys = initialChainedProfiles();
         let chainIndex = 0;
