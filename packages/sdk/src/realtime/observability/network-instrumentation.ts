@@ -50,6 +50,11 @@ type Side = "publisher" | "subscriber";
 // across LiveKit versions; we degrade gracefully if a field is missing.
 type EngineLike = {
   pcManager?: PcManagerLike;
+  // RTCEngine extends EventEmitter and emits 'transportsCreated' the
+  // moment publisher/subscriber RTCPeerConnections exist. Hook into that
+  // for deterministic attach (no polling, no early-window misses).
+  on?: (event: string, listener: (...args: unknown[]) => void) => unknown;
+  off?: (event: string, listener: (...args: unknown[]) => void) => unknown;
 };
 type PcManagerLike = {
   publisher?: PcTransportLike;
@@ -62,6 +67,11 @@ type PcTransportLike = {
   _pc?: RTCPeerConnection;
 };
 type RoomWithEngine = Room & { engine?: EngineLike };
+
+// LiveKit's EngineEvent.TransportsCreated string value. Kept as a literal
+// so we don't have to import the enum (which would couple us to the
+// livekit-client version at runtime).
+const TRANSPORTS_CREATED_EVENT = "transportsCreated";
 
 type ConnectionInfo = {
   effectiveType?: string;
@@ -294,10 +304,18 @@ export function attachRoomInstrumentation(room: Room, observability: RealtimeObs
   // states duplicate room-connected / -reconnecting / -disconnected.
 
   // Attach to the underlying RTCPeerConnections for ICE-level visibility.
-  // Done lazily on next tick — LiveKit creates the PC transports during
-  // `room.connect()`, and the engine may not be wired up yet at the
-  // moment we register Room events. Polling for a short window covers
-  // both early and late attach scenarios.
+  //
+  // Two paths, in priority order:
+  //   1. Synchronous attach if the engine's PCs already exist (common when
+  //      called mid-reconnect or post-connect).
+  //   2. Subscribe to engine's 'transportsCreated' event so we attach the
+  //      moment LiveKit creates the publisher/subscriber PCs — which
+  //      happens INSIDE room.connect() before ICE gathering starts. This
+  //      is the deterministic path that catches every ICE candidate from
+  //      the very first one, including on failed connections where
+  //      room.connect() never resolves.
+  //   3. Polling fallback (short window) in case the LiveKit build doesn't
+  //      expose engine.on() as we expect.
   const pcCleanups: Array<() => void> = [];
   const attachedSides = new Set<Side>();
   const attachPcEventsIfReady = (): boolean => {
@@ -313,8 +331,41 @@ export function attachRoomInstrumentation(room: Room, observability: RealtimeObs
     }
     return attachedSides.size === 2;
   };
-  // Try immediately, then poll briefly for the late case.
-  if (!attachPcEventsIfReady()) {
+
+  // 1. Try synchronously.
+  const fullyAttached = attachPcEventsIfReady();
+
+  // 2. Subscribe to engine.on('transportsCreated') for the event-driven path.
+  //    This is the case that matters for failing connections: room.connect()
+  //    triggers PC creation, fires 'transportsCreated', then starts ICE
+  //    gathering. If ICE never converges, we still want every gathered
+  //    candidate event. Listening here guarantees we attach BEFORE the first
+  //    icecandidate fires.
+  const engine = (room as RoomWithEngine).engine;
+  let transportsCreatedHandler: ((...args: unknown[]) => void) | null = null;
+  if (engine?.on && engine?.off) {
+    transportsCreatedHandler = () => {
+      emit("engine-transports-created");
+      attachPcEventsIfReady();
+    };
+    try {
+      engine.on(TRANSPORTS_CREATED_EVENT, transportsCreatedHandler);
+      pcCleanups.push(() => {
+        try {
+          if (transportsCreatedHandler) engine.off?.(TRANSPORTS_CREATED_EVENT, transportsCreatedHandler);
+        } catch {
+          // ignore
+        }
+      });
+    } catch {
+      // engine doesn't accept the event subscription; fall through to polling.
+    }
+  }
+
+  // 3. Polling fallback: if engine.on isn't usable, or for engine builds where
+  //    PCs are created without firing transportsCreated, keep a short poll.
+  //    Stops as soon as both sides are attached or the window expires.
+  if (!fullyAttached) {
     let attempts = 0;
     const poll = setInterval(() => {
       attempts++;

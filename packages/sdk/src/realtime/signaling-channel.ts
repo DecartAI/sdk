@@ -114,6 +114,15 @@ function buildInitialStateRequest(initialState?: InitialState): InitialStateRequ
   return null;
 }
 
+/**
+ * Hard upper bound on buffered observability events that arrive before the
+ * WebSocket is open. Bounded so an SDK consumer that misuses the API
+ * can't accumulate unbounded memory. 256 events covers the entire
+ * pre-WS observability window in practice (initial network-state,
+ * pc-attached, snapshot candidates, gathering-state transitions).
+ */
+const OBSERVABILITY_BUFFER_MAX = 256;
+
 export class SignalingChannel {
   private ws: WebSocket | null = null;
   private events: Emitter<SignalingChannelEvents> = mitt();
@@ -123,6 +132,13 @@ export class SignalingChannel {
   private connected = false;
   private closing = false;
   private readonly logger: Logger;
+  /**
+   * Observability events emitted before the WS is open. Flushed in order
+   * the moment readyState becomes OPEN. Dropped with a single `dropped`
+   * count event if the buffer overflows.
+   */
+  private observabilityBuffer: unknown[] = [];
+  private observabilityBufferDropped = 0;
 
   constructor(private readonly config: SignalingChannelConfig) {
     this.logger = config.logger ?? createConsoleLogger("warn");
@@ -206,6 +222,10 @@ export class SignalingChannel {
         // ignore
       }
     }
+    // Drop any buffered observability events that never made it out — the
+    // session is over and a future reconnect creates a fresh channel.
+    this.observabilityBuffer = [];
+    this.observabilityBufferDropped = 0;
     this.rejectPendingRoomInfo(new Error("Control channel closed"));
     this.rejectAllPending(new Error("Control channel closed"));
   }
@@ -223,15 +243,63 @@ export class SignalingChannel {
   /**
    * Fire-and-forget client-side observability event. Goes out over the
    * existing realtime WebSocket as `{type: "observability", data}` and is
-   * logged by bouncer under the current session's log context. Never
-   * throws; quietly drops if the socket isn't open.
+   * logged by bouncer under the current session's log context.
+   *
+   * If the WS isn't open yet, the event is buffered (bounded) and flushed
+   * the moment the WS becomes OPEN. This catches the small but important
+   * window between SDK init and WS-open during which network-state /
+   * pc-attached / early ICE events may fire — without buffering they'd
+   * silently disappear, exactly the failure mode we hit on `.251`-style
+   * networks where the connection never advances past the ICE phase and
+   * we never get a second chance to capture those events.
    */
   sendObservability(data: unknown): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      try {
+        this.writeMessage({ type: "observability", data });
+      } catch {
+        // Best-effort; never disrupt the session for a telemetry hiccup.
+      }
+      return;
+    }
+    // WS not open yet (or closed). Buffer up to the cap; drop the rest.
+    if (this.observabilityBuffer.length >= OBSERVABILITY_BUFFER_MAX) {
+      this.observabilityBufferDropped++;
+      return;
+    }
+    this.observabilityBuffer.push(data);
+  }
+
+  /**
+   * Flush any observability events that arrived before the WS was open.
+   * Called once from `openSocket` immediately after readyState becomes OPEN.
+   */
+  private flushObservabilityBuffer(): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
-    try {
-      this.writeMessage({ type: "observability", data });
-    } catch {
-      // Best-effort; never disrupt the session for a telemetry hiccup.
+    const queued = this.observabilityBuffer;
+    this.observabilityBuffer = [];
+    for (const data of queued) {
+      try {
+        this.writeMessage({ type: "observability", data });
+      } catch {
+        // ignore — best-effort
+      }
+    }
+    if (this.observabilityBufferDropped > 0) {
+      try {
+        this.writeMessage({
+          type: "observability",
+          data: {
+            kind: "instrumentation",
+            name: "observability-buffer-overflow",
+            data: { droppedCount: this.observabilityBufferDropped },
+            timestamp: Date.now(),
+          },
+        });
+      } catch {
+        // ignore
+      }
+      this.observabilityBufferDropped = 0;
     }
   }
 
@@ -264,6 +332,12 @@ export class SignalingChannel {
       this.ws = ws;
       ws.onopen = () => {
         clearTimeout(timer);
+        // Flush any observability events that fired before the WS was
+        // ready. Otherwise pre-open instrumentation (network-state, early
+        // pc-attached, gathering-state transitions) would be silently
+        // dropped — which is exactly the case we hit on failed `.251`
+        // sessions where the connection times out at ICE.
+        this.flushObservabilityBuffer();
         resolve();
       };
       ws.onclose = (e) => {

@@ -109,13 +109,36 @@ export class MediaChannel {
       this.events.emit("disconnected", { reason });
     });
 
-    this.config.observability?.startPhase("webrtc-handshake");
-    await room.connect(opts.url, opts.token);
-    this.config.observability?.endPhase("webrtc-handshake", { success: true });
-    this.config.observability?.setLiveKitRoom(room);
+    // Attach instrumentation BEFORE connect so we catch the room-level events
+    // (Connected, SignalConnected, Reconnecting, etc.) and the PC-side ICE
+    // candidate / state-change firehose as they happen, not after the fact.
     if (this.config.observability) {
       this.detachInstrumentation = attachRoomInstrumentation(room, this.config.observability);
     }
+    this.config.observability?.startPhase("webrtc-handshake");
+    // Mark the moment we hand off to LiveKit's connect — useful to bracket
+    // any failure inside `room.connect()` against our own timing.
+    this.config.observability?.emitInstrumentationEvent("livekit-connect-start", {
+      url: opts.url,
+    });
+    try {
+      await room.connect(opts.url, opts.token);
+    } catch (error) {
+      // Emit the failure with whatever LiveKit gave us, then re-throw.
+      // Without this, a `room.connect()` rejection produces zero observability —
+      // the runOneConnect catch in stream-session.ts tears down before any
+      // failure signal can reach the WS forwarder.
+      const message = error instanceof Error ? error.message : String(error);
+      const name = error instanceof Error ? error.name : "Error";
+      this.config.observability?.emitInstrumentationEvent("livekit-connect-error", {
+        name,
+        message,
+      });
+      this.config.observability?.endPhase("webrtc-handshake", { success: false, error: message });
+      throw error;
+    }
+    this.config.observability?.endPhase("webrtc-handshake", { success: true });
+    this.config.observability?.setLiveKitRoom(room);
   }
 
   async publishLocalTracks(): Promise<void> {
