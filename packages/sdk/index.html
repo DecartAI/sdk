@@ -341,6 +341,12 @@
             <div id="sfu-region-active" style="margin-top: 6px; font-size: 12px; color: #555;"></div>
         </div>
         <div class="control-group">
+            <div class="checkbox-group">
+                <input type="checkbox" id="eager-join-toggle" checked>
+                <label for="eager-join-toggle" style="margin:0; font-weight:normal;">Send <code>livekit_eager_join=true</code> on connect</label>
+            </div>
+        </div>
+        <div class="control-group">
             <label for="model-select">Model:</label>
             <select id="model-select">
                 <optgroup label="Latest (server-resolved)">
@@ -875,6 +881,7 @@
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             sfuRegionSelect: document.getElementById('sfu-region-select'),
+            eagerJoinToggle: document.getElementById('eager-join-toggle'),
             sfuRegionActive: document.getElementById('sfu-region-active'),
             resolutionSelect: document.getElementById('resolution-select'),
             chainedProfilesContainer: document.getElementById('chained-profiles-container'),
@@ -2998,12 +3005,15 @@
 
             const sfuQueryParams = sfuRegionQueryParams();
             addLog(`SFU region: ${describeSfuRegion(getSfuRegionPin())}`, 'info');
+            const eagerJoin = elements.eagerJoinToggle.checked ? 'true' : 'false';
+            const queryParams = { ...(sfuQueryParams ?? {}), livekit_eager_join: eagerJoin };
+            addLog(`livekit_eager_join=${eagerJoin}`, 'info');
 
             resetSetupTimings();
             decartRealtime = await decartClient.realtime.connect(localStream, {
                 model,
                 resolution,
-                ...(sfuQueryParams && { queryParams: sfuQueryParams }),
+                queryParams,
                 preferredVideoCodec: profile.preferredVideoCodec,
                 publishOptions: profile.publishOptions,
                 roomOptions: profile.roomOptions,
