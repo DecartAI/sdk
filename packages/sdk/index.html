@@ -342,8 +342,8 @@
         </div>
         <div class="control-group">
             <div class="checkbox-group">
-                <input type="checkbox" id="eager-join-toggle" checked>
-                <label for="eager-join-toggle" style="margin:0; font-weight:normal;">Send <code>livekit_eager_join=true</code> on connect</label>
+                <input type="checkbox" id="enhancement-toggle" checked>
+                <label for="enhancement-toggle" style="margin:0; font-weight:normal;">Use enhancement (eager join + initial state bundled into <code>livekit_join</code>; off = legacy two-step)</label>
             </div>
         </div>
         <div class="control-group">
@@ -881,7 +881,7 @@
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             sfuRegionSelect: document.getElementById('sfu-region-select'),
-            eagerJoinToggle: document.getElementById('eager-join-toggle'),
+            enhancementToggle: document.getElementById('enhancement-toggle'),
             sfuRegionActive: document.getElementById('sfu-region-active'),
             resolutionSelect: document.getElementById('resolution-select'),
             chainedProfilesContainer: document.getElementById('chained-profiles-container'),
@@ -2947,10 +2947,12 @@
 
         function handleConnectionDiagnostic(event) {
             if (event.name !== 'client-session-connection-breakdown') return;
-            const websocketPhase = event.data.phases?.find((phase) => phase.phase === 'websocket-open');
+            const phases = event.data.phases ?? [];
+            const websocketPhase = phases.find((phase) => phase.phase === 'websocket-open');
             if (websocketPhase) setupLatencyMs = websocketPhase.durationMs;
             renderSetupTimings();
-            addLog(`Setup ${formatSetupMs(setupLatencyMs)} · total connect ${formatSetupMs(event.data.totalDurationMs)}`, 'info');
+            const breakdown = phases.map((p) => `${p.phase}=${formatSetupMs(p.durationMs)}`).join(' · ');
+            addLog(`Connect breakdown: ${breakdown} · total ${formatSetupMs(event.data.totalDurationMs)}`, 'info');
         }
 
         function captureFirstFrameTiming() {
@@ -3005,15 +3007,16 @@
 
             const sfuQueryParams = sfuRegionQueryParams();
             addLog(`SFU region: ${describeSfuRegion(getSfuRegionPin())}`, 'info');
-            const eagerJoin = elements.eagerJoinToggle.checked ? 'true' : 'false';
-            const queryParams = { ...(sfuQueryParams ?? {}), livekit_eager_join: eagerJoin };
-            addLog(`livekit_eager_join=${eagerJoin}`, 'info');
+            const useEnhancement = elements.enhancementToggle.checked;
+            const queryParams = { ...(sfuQueryParams ?? {}), livekit_eager_join: useEnhancement ? 'true' : 'false' };
+            addLog(`enhancement=${useEnhancement} → livekit_eager_join=${useEnhancement}, bundleInitialState=${useEnhancement}`, 'info');
 
             resetSetupTimings();
             decartRealtime = await decartClient.realtime.connect(localStream, {
                 model,
                 resolution,
                 queryParams,
+                bundleInitialState: useEnhancement,
                 preferredVideoCodec: profile.preferredVideoCodec,
                 publishOptions: profile.publishOptions,
                 roomOptions: profile.roomOptions,

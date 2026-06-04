@@ -64,6 +64,7 @@ interface StreamSessionConfig {
   publishOptions?: Partial<TrackPublishOptions>;
   roomOptions?: Partial<RoomOptions>;
   remoteVideoElement?: HTMLVideoElement;
+  bundleInitialState?: boolean;
 }
 
 export class StreamSession {
@@ -181,6 +182,7 @@ export class StreamSession {
       const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({
         connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
         initialState,
+        bundleInitialState: this.config.bundleInitialState,
       });
 
       if (this.disposed || this.currentAttempt !== attempt) {
@@ -190,14 +192,25 @@ export class StreamSession {
 
       this.queue = null;
 
+      const bundleInitialState = this.config.bundleInitialState ?? true;
+
       try {
         await this.media.connect({
           url: roomInfo.livekitUrl,
           token: roomInfo.token,
         });
-        const isCurrentAttempt = await gateAttempt.waitForReadiness(initialStateAck);
-        if (!isCurrentAttempt) {
-          throw new AbortError("Stale connect attempt");
+        if (bundleInitialState) {
+          // The initial state rode out with the join; publish input tracks
+          // immediately so frames flow while set_ref_image runs, rather than
+          // waiting for its ack. The ack still surfaces failures via "error".
+          if (this.disposed || this.currentAttempt !== attempt) {
+            throw new AbortError("Stale connect attempt");
+          }
+        } else {
+          const isCurrentAttempt = await gateAttempt.waitForReadiness(initialStateAck);
+          if (!isCurrentAttempt) {
+            throw new AbortError("Stale connect attempt");
+          }
         }
         await this.media.publishLocalTracks();
       } catch (error) {

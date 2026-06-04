@@ -11,12 +11,15 @@ import type {
   ImageSetOptions,
   IncomingRealtimeMessage,
   InitialState,
+  LiveKitJoinMessage,
   OutgoingRealtimeMessage,
   PromptAckMessage,
+  PromptMessage,
   PromptSendOptions,
   QueuePosition,
   ServerError,
   SetImageAckMessage,
+  SetImageMessage,
   SetImagePayload,
 } from "./types";
 
@@ -60,6 +63,7 @@ export type OpenAndJoinOptions = {
   connectTimeout?: number;
   handshakeTimeout?: number;
   initialState?: InitialState;
+  bundleInitialState?: boolean;
 };
 
 export type OpenAndJoinResult = {
@@ -77,7 +81,39 @@ type RequestOptions = {
   matchAck: (msg: IncomingRealtimeMessage) => boolean;
   timeoutMs: number;
   label: string;
+  write?: boolean;
 };
+
+type InitialStateRequest = {
+  message: SetImageMessage | PromptMessage;
+  matchAck: (msg: IncomingRealtimeMessage) => boolean;
+  label: string;
+};
+
+function buildInitialStateRequest(initialState?: InitialState): InitialStateRequest | null {
+  if (!initialState) return null;
+
+  if (initialState.imageRef !== undefined || initialState.image !== undefined) {
+    const message: SetImageMessage =
+      initialState.imageRef !== undefined
+        ? { type: "set_image", image_ref: initialState.imageRef }
+        : { type: "set_image", image_data: initialState.image ?? null };
+    if (initialState.prompt !== undefined) message.prompt = initialState.prompt;
+    if (initialState.enhance !== undefined) message.enhance_prompt = initialState.enhance;
+    return { message, matchAck: (msg) => msg.type === "set_image_ack", label: "Image send" };
+  }
+
+  if (initialState.prompt !== undefined && initialState.prompt !== null) {
+    const text = initialState.prompt;
+    return {
+      message: { type: "prompt", prompt: text, enhance_prompt: initialState.enhance ?? true },
+      matchAck: (msg) => msg.type === "prompt_ack" && msg.prompt === text,
+      label: "Prompt send",
+    };
+  }
+
+  return null;
+}
 
 export class SignalingChannel {
   private ws: WebSocket | null = null;
@@ -111,7 +147,18 @@ export class SignalingChannel {
     this.config.observability?.startPhase("room-join");
     const roomInfoWait = this.waitForRoomInfo(handshakeTimeout);
 
-    if (!this.writeMessage({ type: "livekit_join" })) {
+    // When bundled, the initial state rides inside livekit_join so the
+    // inference server gets the reference image/prompt with the join — no
+    // extra client round-trip waiting for livekit_room_info. When not bundled,
+    // it is sent as a separate message after room info (legacy two-step).
+    const bundleInitialState = opts.bundleInitialState ?? true;
+    const initialStateRequest = buildInitialStateRequest(opts.initialState);
+    const joinMessage: LiveKitJoinMessage =
+      bundleInitialState && initialStateRequest
+        ? { type: "livekit_join", initial_state: initialStateRequest.message }
+        : { type: "livekit_join" };
+
+    if (!this.writeMessage(joinMessage)) {
       roomInfoWait.cancel();
       throw new Error("WebSocket is not open");
     }
@@ -127,17 +174,28 @@ export class SignalingChannel {
 
     this.connected = true;
 
-    const initialStateAck = this.sendInitialStateTracked(opts.initialState);
+    // Arm the ack only now that room info arrived, so a long queue wait cannot
+    // trip the ack timeout. When bundled the message is already sent (write
+    // false); when not bundled it is written here (legacy two-step).
+    const initialStateAck = initialStateRequest
+      ? this.flushInitialState(initialStateRequest, { write: !bundleInitialState })
+      : Promise.resolve();
     initialStateAck.catch(() => {});
 
     return { roomInfo, initialStateAck };
   }
 
-  private async sendInitialStateTracked(initialState?: InitialState): Promise<void> {
-    if (!initialState) return;
+  private async flushInitialState(request: InitialStateRequest, opts: { write: boolean }): Promise<void> {
     this.config.observability?.startPhase("initial-state-handshake");
-    await this.sendInitialState(initialState);
+    const ack = await this.request<SetImageAckMessage | PromptAckMessage>({
+      message: request.message,
+      matchAck: request.matchAck,
+      timeoutMs: REALTIME_CONFIG.signaling.requestTimeoutMs,
+      label: request.label,
+      write: opts.write,
+    });
     this.config.observability?.endPhase("initial-state-handshake", { success: true });
+    if (!ack.success) throw new Error(ack.error ?? `Failed: ${request.label}`);
   }
 
   close(): void {
@@ -277,35 +335,12 @@ export class SignalingChannel {
     return { promise, cancel: cleanup };
   }
 
-  private async sendInitialState(initialState?: InitialState): Promise<void> {
-    if (!initialState) return;
-
-    if (initialState.imageRef !== undefined) {
-      await this.setImage(
-        { kind: "ref", ref: initialState.imageRef },
-        { prompt: initialState.prompt, enhance: initialState.enhance },
-      );
-      return;
-    }
-
-    if (initialState.image !== undefined) {
-      await this.setImage(
-        { kind: "data", data: initialState.image },
-        { prompt: initialState.prompt, enhance: initialState.enhance },
-      );
-      return;
-    }
-
-    if (initialState.prompt !== undefined && initialState.prompt !== null) {
-      await this.sendPrompt(initialState.prompt, { enhance: initialState.enhance });
-    }
-  }
-
   private async request<TAck extends IncomingRealtimeMessage>({
     message,
     matchAck,
     timeoutMs,
     label,
+    write = true,
   }: RequestOptions): Promise<TAck> {
     return new Promise<TAck>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -331,7 +366,7 @@ export class SignalingChannel {
       };
       this.pendingAcks.push(entry);
 
-      if (!this.writeMessage(message)) {
+      if (write && !this.writeMessage(message)) {
         cleanup();
         reject(new Error("WebSocket is not open"));
       }
