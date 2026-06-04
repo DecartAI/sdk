@@ -461,6 +461,7 @@
                         <tr style="background:#f0f0f0; text-align:left;">
                             <th style="padding:6px 10px; border-bottom:1px solid #ddd;">#</th>
                             <th style="padding:6px 10px; border-bottom:1px solid #ddd;">Profile</th>
+                            <th style="padding:6px 10px; border-bottom:1px solid #ddd;">Session ID</th>
                             <th style="padding:6px 10px; border-bottom:1px solid #ddd;">Elapsed</th>
                             <th style="padding:6px 10px; border-bottom:1px solid #ddd;">Setup</th>
                             <th style="padding:6px 10px; border-bottom:1px solid #ddd;">TTFF</th>
@@ -1133,7 +1134,9 @@
             'put a yellow raincoat on the person',
             'add a gold chain necklace',
         ];
+        const PROMPT_CYCLE_START_DELAY_MS = 6000;
         const PROMPT_CYCLE_INTERVAL_MS = 10000;
+        let promptCycleStartTimer = null;
         let promptCycleTimer = null;
         let promptCycleIndex = 0;
 
@@ -1151,11 +1154,18 @@
         function startPromptCycler() {
             stopPromptCycler();
             promptCycleIndex = 0;
-            sendCyclePrompt();
-            promptCycleTimer = setInterval(sendCyclePrompt, PROMPT_CYCLE_INTERVAL_MS);
+            promptCycleStartTimer = setTimeout(() => {
+                promptCycleStartTimer = null;
+                sendCyclePrompt();
+                promptCycleTimer = setInterval(sendCyclePrompt, PROMPT_CYCLE_INTERVAL_MS);
+            }, PROMPT_CYCLE_START_DELAY_MS);
         }
 
         function stopPromptCycler() {
+            if (promptCycleStartTimer) {
+                clearTimeout(promptCycleStartTimer);
+                promptCycleStartTimer = null;
+            }
             if (promptCycleTimer) {
                 clearInterval(promptCycleTimer);
                 promptCycleTimer = null;
@@ -1591,6 +1601,7 @@
                 const cells = [
                     String(idx + 1),
                     runLabel(run, idx),
+                    run.sessionId || '—',
                     fmtElapsedMs(t.elapsedMs),
                     fmtTimingMs(t.setupMs),
                     fmtTimingMs(t.ttffMs),
