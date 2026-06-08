@@ -208,6 +208,17 @@ describe("ConnectionQualityEvaluator", () => {
     });
   });
 
+  it("refreshes the limiting factor when the cause shifts at the same held level", () => {
+    const evaluator = new ConnectionQualityEvaluator(fastThresholds());
+    evaluator.update(makeStats()); // good
+    evaluator.update(makeStats({ rttSec: 0.6 }));
+    evaluator.update(makeStats({ rttSec: 0.6 }));
+    expect(evaluator.update(makeStats({ rttSec: 0.6 }))?.limitingFactor).toBe("latency"); // critical via latency
+    // Still critical, but latency recovered and bandwidth is now the culprit.
+    evaluator.update(makeStats({ availableOutgoingBitrate: 500_000 }));
+    expect(evaluator.current()).toMatchObject({ quality: "critical", limitingFactor: "bandwidth" });
+  });
+
   it("keeps the limiting factor of the held verdict during recovery", () => {
     const evaluator = new ConnectionQualityEvaluator(fastThresholds());
     evaluator.update(makeStats()); // good

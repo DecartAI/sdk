@@ -216,7 +216,8 @@ export class ConnectionQualityEvaluator {
   private readonly fps: RingBuffer;
   private sampleCount = 0;
   private currentLevel: ConnectionQuality | null = null;
-  // Captured when a level commits so a held verdict keeps the reason that produced it.
+  // Reason for the current verdict; refreshed to the live cause, but held across a
+  // recovery lag (bad level still debounced while the latest sample improved).
   private currentFactor: ConnectionQualityLimitingFactor = "none";
   private candidateLevel: ConnectionQuality | null = null;
   private candidateCount = 0;
@@ -270,10 +271,16 @@ export class ConnectionQualityEvaluator {
       changed = this.applyHysteresis(quality);
     }
 
-    if (changed || warmupJustEnded) {
-      this.currentFactor = quality === "good" ? (limitingFactor === "cpu" ? "cpu" : "none") : limitingFactor;
-    }
     const emitted = this.currentLevel ?? quality;
+
+    // limitingFactor explains why we're at `emitted`: nothing when good; otherwise
+    // the current worst dimension — but keep the last committed reason while a bad
+    // level is held and the latest sample has already recovered above it.
+    if (emitted === "good") {
+      this.currentFactor = smoothed.qualityLimitationReason === "cpu" ? "cpu" : "none";
+    } else if (RANK[quality] <= RANK[emitted]) {
+      this.currentFactor = limitingFactor;
+    }
 
     this.lastReport = {
       quality: emitted,
