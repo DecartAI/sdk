@@ -3,6 +3,7 @@ import { createFilesClient } from "./files/client";
 import { createProcessClient } from "./process/client";
 import { createQueueClient } from "./queue/client";
 import { createRealTimeClient } from "./realtime/client";
+import { createPreflight } from "./realtime/preflight";
 import { createRealTimeSubscribeClient } from "./realtime/subscribe-client";
 import { createTokensClient } from "./tokens/client";
 import { readEnv } from "./utils/env";
@@ -30,6 +31,12 @@ export type {
 } from "./realtime/client";
 export type { SetInput } from "./realtime/methods";
 export type {
+  ConnectionQuality,
+  ConnectionQualityLimitingFactor,
+  ConnectionQualityMetrics,
+  ConnectionQualityReport,
+} from "./realtime/observability/connection-quality";
+export type {
   ClientSessionConnectionBreakdownEvent,
   ClientSessionConnectionBreakdownPhase,
   DiagnosticEvent,
@@ -39,6 +46,12 @@ export type {
   VideoStallEvent,
 } from "./realtime/observability/diagnostics";
 export type { WebRTCStats } from "./realtime/observability/webrtc-stats";
+export type {
+  CheckConnectivityOptions,
+  ConnectivityMetrics,
+  ConnectivityReport,
+  ConnectivityTransport,
+} from "./realtime/preflight";
 export type {
   RealTimeSubscribeClient,
   SubscribeEvents,
@@ -210,6 +223,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     integration,
     logger,
   });
+  const preflight = createPreflight({ logger });
 
   const process = createProcessClient({
     baseUrl,
@@ -239,6 +253,19 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     realtime: {
       connect: realtimePublish.connect,
       subscribe: realtimeSubscribe.subscribe,
+      /**
+       * Check whether the user's network can support a real-time session
+       * *before* connecting — so you can gate showing the integration.
+       * SDK-only: validates WebRTC reachability (UDP egress / TURN need) and
+       * latency via a throwaway peer connection. Does not start a session.
+       *
+       * @example
+       * ```ts
+       * const { quality, reasons } = await client.realtime.checkConnectivity();
+       * if (quality === "critical") showFallbackUI(reasons); // your call what counts as "adequate"
+       * ```
+       */
+      checkConnectivity: preflight.checkConnectivity,
     },
 
     /**
