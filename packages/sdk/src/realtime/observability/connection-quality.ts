@@ -133,7 +133,12 @@ export function scoreMetrics(
     if (signals.qualityLimitationReason === "bandwidth") bandwidth = worst(bandwidth, "fair");
   }
 
-  let stall = scoreHigherBetter(signals.fps, thresholds.stall.goodFps, thresholds.stall.fairFps, thresholds.stall.poorFps);
+  let stall = scoreHigherBetter(
+    signals.fps,
+    thresholds.stall.goodFps,
+    thresholds.stall.fairFps,
+    thresholds.stall.poorFps,
+  );
   if (signals.freezeCountDelta != null && signals.freezeCountDelta > 0) stall = worst(stall, "fair");
 
   const quality = worst(bandwidth, latency, loss, stall);
