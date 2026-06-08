@@ -87,7 +87,8 @@ function extractSignals(stats: WebRTCStats): QualitySignals {
 
   return {
     rttMs: rttSec != null ? rttSec * 1000 : null,
-    fractionLost: stats.remoteInbound?.fractionLost ?? null,
+    // WebRTC reports fractionLost as the RFC 3550 8-bit value (loss × 256); normalize to a 0–1 fraction.
+    fractionLost: stats.remoteInbound?.fractionLost != null ? stats.remoteInbound.fractionLost / 256 : null,
     availableOutgoingKbps:
       stats.connection.availableOutgoingBitrate != null ? stats.connection.availableOutgoingBitrate / 1000 : null,
     fps: stats.video?.framesPerSecond ?? null,

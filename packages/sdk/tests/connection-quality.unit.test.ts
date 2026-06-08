@@ -50,7 +50,8 @@ function makeStats(o: StatsOverrides = {}): WebRTCStats {
     remoteInbound: o.remoteInboundNull
       ? null
       : {
-          fractionLost: o.fractionLost === undefined ? 0 : o.fractionLost,
+          // o.fractionLost is a 0–1 fraction; the real WebRTC stat is that × 256 (RFC 3550 8-bit).
+          fractionLost: o.fractionLost === undefined ? 0 : o.fractionLost * 256,
           jitter: 0,
           roundTripTime: rttSec,
         },
@@ -82,6 +83,11 @@ describe("scoreSnapshot", () => {
     const { quality, limitingFactor } = scoreSnapshot(makeStats({ fractionLost: 0.2 }));
     expect(quality).toBe("critical");
     expect(limitingFactor).toBe("loss");
+  });
+
+  it("normalizes the RFC 3550 fractionLost scale (a few % loss is not critical)", () => {
+    // 3% real loss (raw stat ≈ 7.7) must read "fair", not "critical".
+    expect(scoreSnapshot(makeStats({ fractionLost: 0.03 })).quality).toBe("fair");
   });
 
   it("does not penalize a low (server-controlled) downstream bitrate on its own", () => {
