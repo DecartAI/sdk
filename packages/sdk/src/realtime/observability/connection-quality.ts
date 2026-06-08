@@ -4,6 +4,10 @@ import type { WebRTCStats } from "./webrtc-stats";
 /**
  * Smoothed verdict on whether the connection is good enough for the realtime
  * pipeline, derived from the raw `WebRTCStats` the SDK already collects.
+ *
+ * Note: the bandwidth dimension relies on Chromium-only stats
+ * (`availableOutgoingBitrate`), so on Safari/Firefox the verdict reflects
+ * latency, loss, and fps only.
  */
 export type ConnectionQuality = "good" | "fair" | "poor" | "critical";
 
@@ -18,7 +22,7 @@ export type ConnectionQualityMetrics = {
   fps: number | null;
   /** Fraction (0–1) of our outbound packets the server reports lost, or null until measured. */
   packetLoss: number | null;
-  /** Estimated available upstream bandwidth in kbps, or null until measured. */
+  /** Estimated available upstream bandwidth in kbps. Chromium-only — null on Safari/Firefox. */
   availableUpstreamKbps: number | null;
 };
 
