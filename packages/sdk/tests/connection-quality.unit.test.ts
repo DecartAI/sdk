@@ -193,6 +193,21 @@ describe("ConnectionQualityEvaluator", () => {
     expect(evaluator.update(makeStats())).toBeNull(); // steady afterward → silent
   });
 
+  it("snaps to the real verdict when warm-up ends (no lingering optimistic good)", () => {
+    const evaluator = new ConnectionQualityEvaluator(fastThresholds({ warmupSamples: 3 }));
+    const weakUplink = () => makeStats({ availableOutgoingBitrate: 800_000 }); // ~0.23 ratio → critical
+    // Bandwidth is skipped during warm-up, so the provisional verdict is good.
+    expect(evaluator.update(weakUplink())).toMatchObject({ quality: "good", warmingUp: true });
+    expect(evaluator.update(weakUplink())).toBeNull();
+    // When warm-up ends the first non-warming report must already reflect the
+    // weak uplink — not stay "good" until the downgrade debounce catches up.
+    expect(evaluator.update(weakUplink())).toMatchObject({
+      quality: "critical",
+      warmingUp: false,
+      limitingFactor: "bandwidth",
+    });
+  });
+
   it("keeps the limiting factor of the held verdict during recovery", () => {
     const evaluator = new ConnectionQualityEvaluator(fastThresholds());
     evaluator.update(makeStats()); // good

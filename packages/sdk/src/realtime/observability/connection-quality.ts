@@ -283,10 +283,28 @@ export class ConnectionQualityEvaluator {
     const warmingUp = this.sampleCount < this.thresholds.warmupSamples;
     const { quality, limitingFactor } = scoreMetrics(smoothed, this.thresholds, { skipBitrate: warmingUp });
 
-    const changed = this.applyHysteresis(quality);
-    // Capture the reason only when the level actually commits, so it stays in
-    // sync with the (debounced) quality being reported between changes.
-    if (changed) {
+    // Warm-up skips bandwidth scoring while the encoder/BWE ramp. The moment it
+    // ends we have a trustworthy, fully-scored verdict — commit it immediately
+    // instead of letting the optimistic warm-up "good" linger through the
+    // downgrade debounce, so the first non-warming report is authoritative.
+    // (This also delivers that first non-provisional report to callback
+    // consumers, who would otherwise stay stuck on `warmingUp: true`.)
+    const warmupJustEnded = this.prevWarmingUp && !warmingUp;
+    this.prevWarmingUp = warmingUp;
+
+    let changed: boolean;
+    if (warmupJustEnded) {
+      changed = this.currentLevel !== quality;
+      this.currentLevel = quality;
+      this.candidateLevel = null;
+      this.candidateCount = 0;
+    } else {
+      changed = this.applyHysteresis(quality);
+    }
+
+    // Capture the reason whenever the level (re)commits, so it stays in sync
+    // with the quality being reported between changes.
+    if (changed || warmupJustEnded) {
       this.currentFactor = quality === "good" ? (limitingFactor === "cpu" ? "cpu" : "none") : limitingFactor;
     }
     const emitted = this.currentLevel ?? quality;
@@ -303,13 +321,7 @@ export class ConnectionQualityEvaluator {
       },
     };
 
-    // Also emit when warm-up ends so callback consumers receive the first
-    // non-provisional verdict — on a steady connection the level never changes,
-    // so they'd otherwise stay stuck on the initial `warmingUp: true` report.
-    const warmingUpChanged = warmingUp !== this.prevWarmingUp;
-    this.prevWarmingUp = warmingUp;
-
-    return changed || warmingUpChanged ? this.lastReport : null;
+    return changed || warmupJustEnded ? this.lastReport : null;
   }
 
   current(): ConnectionQualityReport | null {
