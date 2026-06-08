@@ -2,29 +2,15 @@ import { REALTIME_CONFIG } from "../config-realtime";
 import type { WebRTCStats } from "./webrtc-stats";
 
 /**
- * Interpreted, smoothed verdict on whether the user's connection is good
- * enough for the real-time camera-up pipeline. Derived entirely from the
- * raw `WebRTCStats` the SDK already collects — no new transport or polling.
- *
- * "good" — show normally · "fair" — usable, optional subtle warning ·
- * "poor" — degraded, prominent warning · "critical" — effectively unusable.
+ * Smoothed verdict on whether the connection is good enough for the realtime
+ * pipeline, derived from the raw `WebRTCStats` the SDK already collects.
  */
 export type ConnectionQuality = "good" | "fair" | "poor" | "critical";
 
 /** Which dimension pulled the verdict down to its current level. */
-export type ConnectionQualityLimitingFactor =
-  | "bandwidth" // upstream BWE below need, encoder bandwidth-limited, or low inbound bitrate
-  | "latency" // RTT too high
-  | "loss" // server reports too many of our packets lost
-  | "stall" // rendered stream froze / fps collapsed
-  | "cpu" // encoder CPU-limited (a device issue, never drags quality down)
-  | "none"; // nothing limiting
+export type ConnectionQualityLimitingFactor = "bandwidth" | "latency" | "loss" | "stall" | "cpu" | "none";
 
-/**
- * The human-meaningful numbers behind the verdict — one per scored dimension
- * (`rttMs`→latency, `packetLoss`→loss, `fps`→stall, `availableUpstreamKbps`→
- * bandwidth). For the full raw WebRTC firehose, subscribe to the `stats` event.
- */
+/** Human-meaningful numbers behind the verdict; the full raw stats are on the `stats` event. */
 export type ConnectionQualityMetrics = {
   /** Round-trip time in ms, or null until measured. */
   rttMs: number | null;
@@ -39,7 +25,7 @@ export type ConnectionQualityMetrics = {
 export type ConnectionQualityReport = {
   quality: ConnectionQuality;
   limitingFactor: ConnectionQualityLimitingFactor;
-  /** True while the connection ramps; the verdict is provisional (see warmupSamples). */
+  /** True while the connection ramps; the verdict is provisional. */
   warmingUp: boolean;
   metrics: ConnectionQualityMetrics;
 };
@@ -57,12 +43,11 @@ export type ConnectionQualityThresholds = {
 
 const RANK: Record<ConnectionQuality, number> = { critical: 0, poor: 1, fair: 2, good: 3 };
 
-/** Worst (lowest-rank) of the given qualities. */
 function worst(...qualities: ConnectionQuality[]): ConnectionQuality {
   return qualities.reduce((a, b) => (RANK[a] <= RANK[b] ? a : b));
 }
 
-/** Score a metric where lower is better (RTT, loss). `null` → "good" (absence of evidence ≠ bad). */
+// A null metric scores "good" — absence of evidence is not evidence of badness.
 function scoreLowerBetter(value: number | null, good: number, fair: number, poor: number): ConnectionQuality {
   if (value === null) return "good";
   if (value <= good) return "good";
@@ -71,7 +56,6 @@ function scoreLowerBetter(value: number | null, good: number, fair: number, poor
   return "critical";
 }
 
-/** Score a metric where higher is better (bitrate, fps). `null` → "good". */
 function scoreHigherBetter(value: number | null, good: number, fair: number, poor: number): ConnectionQuality {
   if (value === null) return "good";
   if (value >= good) return "good";
@@ -80,10 +64,7 @@ function scoreHigherBetter(value: number | null, good: number, fair: number, poo
   return "critical";
 }
 
-/**
- * Full set of raw signals the scorer needs (internal). The public report
- * exposes only a human-meaningful subset; everything here is also on `stats`.
- */
+/** Full set of raw signals the scorer needs; the public report exposes a subset. */
 type QualitySignals = {
   rttMs: number | null;
   fractionLost: number | null;
@@ -94,7 +75,6 @@ type QualitySignals = {
   isRelayed: boolean;
 };
 
-/** Pull the scoring-relevant signals out of a raw stats snapshot. */
 function extractSignals(stats: WebRTCStats): QualitySignals {
   const rttSec = stats.remoteInbound?.roundTripTime ?? stats.connection.currentRoundTripTime;
   const isRelayed = stats.connection.selectedCandidatePairs.some(
@@ -134,15 +114,9 @@ export function scoreMetrics(
 
   const loss = scoreLowerBetter(signals.fractionLost, thresholds.loss.good, thresholds.loss.fair, thresholds.loss.poor);
 
-  // Bandwidth is scored on the UPSTREAM path only, as available BWE ÷ the
-  // INTENDED publish bitrate (a stable reference). We deliberately do NOT divide
-  // by the encoder's current target/outbound: congestion control lowers those
-  // to match a weak uplink, so the ratio would sit near 1.0 and report "good"
-  // even while the stream is throttled far below intended quality.
-  //
-  // The DOWNSTREAM (received) bitrate is not scored at all — its value is chosen
-  // by the server's encoder for the model, not by the network. Real downstream
-  // trouble surfaces through the stall (fps/freezes) and loss dimensions.
+  // Upstream only: available BWE ÷ the INTENDED publish bitrate. Dividing by the
+  // encoder's adaptive target would mask throttling (it drops with the uplink).
+  // Downstream bitrate is intentionally not scored — it's server-chosen.
   let bandwidth: ConnectionQuality = "good";
   if (!options.skipBitrate) {
     const ratio =
@@ -155,25 +129,17 @@ export function scoreMetrics(
       thresholds.upstream.fairRatio,
       thresholds.upstream.poorRatio,
     );
-    // The encoder explicitly telling us it throttled for the network is a
-    // stronger signal than the BWE ratio — cap at "fair".
+    // Encoder self-reporting a bandwidth limit is a stronger signal than the ratio.
     if (signals.qualityLimitationReason === "bandwidth") bandwidth = worst(bandwidth, "fair");
   }
 
-  let stall = scoreHigherBetter(
-    signals.fps,
-    thresholds.stall.goodFps,
-    thresholds.stall.fairFps,
-    thresholds.stall.poorFps,
-  );
-  // A freeze this sample means the rendered stream can't be called "good".
+  let stall = scoreHigherBetter(signals.fps, thresholds.stall.goodFps, thresholds.stall.fairFps, thresholds.stall.poorFps);
   if (signals.freezeCountDelta != null && signals.freezeCountDelta > 0) stall = worst(stall, "fair");
 
   const quality = worst(bandwidth, latency, loss, stall);
 
-  // limitingFactor: the worst network dimension (tie-break bandwidth > loss >
-  // latency > stall). CPU limitation is surfaced only when the network is
-  // otherwise clean — it's a device problem, never a reason to hide.
+  // Worst network dimension (tie-break bandwidth > loss > latency > stall). "cpu"
+  // is informational and only surfaces when the network is otherwise clean.
   let limitingFactor: ConnectionQualityLimitingFactor;
   if (quality === "good") {
     limitingFactor = signals.qualityLimitationReason === "cpu" ? "cpu" : "none";
@@ -230,10 +196,9 @@ class RingBuffer {
 }
 
 /**
- * Stateful wrapper around the pure scorer: smooths metrics over a rolling
- * window and applies asymmetric hysteresis so the emitted level doesn't flap
- * every second. `update()` returns a report only when the debounced level
- * changes; `current()` returns the latest report at any time.
+ * Smooths metrics over a rolling window and applies asymmetric hysteresis so the
+ * emitted level doesn't flap. `update()` returns a report only when the level or
+ * warm-up state changes; `current()` returns the latest at any time.
  */
 export class ConnectionQualityEvaluator {
   private readonly rtt: RingBuffer;
@@ -242,8 +207,7 @@ export class ConnectionQualityEvaluator {
   private readonly fps: RingBuffer;
   private sampleCount = 0;
   private currentLevel: ConnectionQuality | null = null;
-  // Captured when a level is committed so a held verdict keeps the reason that
-  // produced it — not whatever the latest (possibly recovering) sample reads.
+  // Captured when a level commits so a held verdict keeps the reason that produced it.
   private currentFactor: ConnectionQualityLimitingFactor = "none";
   private candidateLevel: ConnectionQuality | null = null;
   private candidateCount = 0;
@@ -270,8 +234,6 @@ export class ConnectionQualityEvaluator {
     this.availableOutgoing.push(raw.availableOutgoingKbps);
     this.fps.push(raw.fps);
 
-    // Smooth the noisy signals over the window; encoder/path fields reflect the
-    // latest sample, not a window aggregate.
     const smoothed: QualitySignals = {
       ...raw,
       rttMs: this.rtt.median(),
@@ -283,12 +245,9 @@ export class ConnectionQualityEvaluator {
     const warmingUp = this.sampleCount < this.thresholds.warmupSamples;
     const { quality, limitingFactor } = scoreMetrics(smoothed, this.thresholds, { skipBitrate: warmingUp });
 
-    // Warm-up skips bandwidth scoring while the encoder/BWE ramp. The moment it
-    // ends we have a trustworthy, fully-scored verdict — commit it immediately
-    // instead of letting the optimistic warm-up "good" linger through the
-    // downgrade debounce, so the first non-warming report is authoritative.
-    // (This also delivers that first non-provisional report to callback
-    // consumers, who would otherwise stay stuck on `warmingUp: true`.)
+    // Warm-up skips bandwidth scoring; when it ends, commit the fully-scored verdict
+    // immediately so the first non-warming report is authoritative, rather than
+    // holding the optimistic "good" through the downgrade debounce.
     const warmupJustEnded = this.prevWarmingUp && !warmingUp;
     this.prevWarmingUp = warmingUp;
 
@@ -302,8 +261,6 @@ export class ConnectionQualityEvaluator {
       changed = this.applyHysteresis(quality);
     }
 
-    // Capture the reason whenever the level (re)commits, so it stays in sync
-    // with the quality being reported between changes.
     if (changed || warmupJustEnded) {
       this.currentFactor = quality === "good" ? (limitingFactor === "cpu" ? "cpu" : "none") : limitingFactor;
     }
@@ -344,9 +301,8 @@ export class ConnectionQualityEvaluator {
 
   /** Returns true if the debounced level changed this tick. */
   private applyHysteresis(raw: ConnectionQuality): boolean {
-    // First verdict is emitted immediately so consumers get an initial state.
     if (this.currentLevel === null) {
-      this.currentLevel = raw;
+      this.currentLevel = raw; // first verdict — emit immediately
       this.candidateLevel = null;
       this.candidateCount = 0;
       return true;

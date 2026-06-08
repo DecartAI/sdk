@@ -3,19 +3,11 @@ import { REALTIME_CONFIG } from "./config-realtime";
 import type { ConnectionQuality } from "./observability/connection-quality";
 
 /**
- * SDK-only connectivity preflight. Run this *before* `realtime.connect()` to
- * decide whether to show/enable the integration. It does NOT start a session
- * or consume any inference — it spins up a throwaway `RTCPeerConnection`
- * against public STUN servers to answer two questions cheaply:
- *
- *  1. Can WebRTC even leave this network over UDP? (the dominant failure on
- *     corporate / locked-down networks)
- *  2. Roughly how laggy is the path? (time-to-first-reflexive-candidate)
- *
- * It deliberately does NOT measure upstream throughput — that can't be done
- * accurately without a backend echo room or upload sink. Use the in-session
- * `connectionQuality` signal (which sees real BWE a couple seconds after
- * connect) for the throughput question.
+ * SDK-only connectivity preflight — run before `realtime.connect()` to decide
+ * whether to show the integration. Spins up a throwaway `RTCPeerConnection`
+ * against public STUN (no session, no inference) to check whether WebRTC can
+ * leave the network over UDP and roughly how laggy the path is. It does not
+ * measure throughput — use the in-session `connectionQuality` signal for that.
  */
 export type ConnectivityTransport = "udp" | "relay" | "failed";
 
@@ -27,11 +19,7 @@ export type ConnectivityMetrics = {
 };
 
 export type ConnectivityReport = {
-  /**
-   * Pre-connect connection quality, on the same `good → critical` scale as the
-   * in-session signal. The SDK reports the state and leaves the decision to you
-   * — e.g. show on "good", warn on "fair"/"poor", hide on "critical".
-   */
+  /** Pre-connect quality on the same `good → critical` scale as the in-session signal — you decide what to do. */
   quality: ConnectionQuality;
   metrics: ConnectivityMetrics;
   /** Human-readable explanations for any non-"good" verdict. */
