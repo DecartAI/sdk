@@ -1,6 +1,7 @@
 import type { Room } from "livekit-client";
 import type { Logger } from "../../utils/logger";
 import { REALTIME_CONFIG } from "../config-realtime";
+import { ConnectionQualityEvaluator, type ConnectionQualityReport } from "./connection-quality";
 import type {
   ClientSessionConnectionBreakdownPhase,
   DiagnosticEvent,
@@ -19,6 +20,7 @@ export type RealtimeObservabilityOptions = {
   logger: Logger;
   onDiagnostic?: (event: DiagnosticEvent) => void;
   onStats?: (stats: WebRTCStats) => void;
+  onConnectionQuality?: (report: ConnectionQualityReport) => void;
 };
 
 type PendingTelemetryDiagnostic = {
@@ -51,6 +53,7 @@ export class RealtimeObservability {
   private videoStalled = false;
   private stallStartMs = 0;
   private connectionBreakdown: ConnectionBreakdownBuffer | null = null;
+  private readonly connectionQuality = new ConnectionQualityEvaluator();
 
   constructor(private readonly options: RealtimeObservabilityOptions) {}
 
@@ -160,7 +163,7 @@ export class RealtimeObservability {
     this.resetStallDetection();
     this.statsCollectorSource = source;
 
-    if (!this.options.telemetryEnabled && !this.options.onStats) {
+    if (!this.options.telemetryEnabled && !this.options.onStats && !this.options.onConnectionQuality) {
       return;
     }
 
@@ -200,10 +203,16 @@ export class RealtimeObservability {
     this.connectionBreakdown = null;
   }
 
+  getConnectionQuality(): ConnectionQualityReport | null {
+    return this.connectionQuality.current();
+  }
+
   private handleStats(stats: WebRTCStats): void {
     this.options.onStats?.(stats);
     this.telemetryReporter.addStats(stats);
     this.detectVideoStall(stats);
+    const report = this.connectionQuality.update(stats);
+    if (report) this.options.onConnectionQuality?.(report);
   }
 
   private detectVideoStall(stats: WebRTCStats): void {
@@ -240,5 +249,7 @@ export class RealtimeObservability {
   private resetStallDetection(): void {
     this.videoStalled = false;
     this.stallStartMs = 0;
+    // A reconnect re-enters warm-up; don't blend pre/post-reconnect networks.
+    this.connectionQuality.reset();
   }
 }
