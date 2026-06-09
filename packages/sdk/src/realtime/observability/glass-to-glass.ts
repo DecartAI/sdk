@@ -231,6 +231,7 @@ function createFrameScheduler(video: HTMLVideoElement, onFrame: () => void): { s
   let running = false;
 
   const schedule = () => {
+    if (!running) return; // never re-arm after stop(), even if a trailing tick calls us
     handle = supportsRvfc ? video.requestVideoFrameCallback(tick) : requestAnimationFrame(tick);
   };
   const tick = () => {
