@@ -1734,12 +1734,78 @@ describe("TelemetryReporter", () => {
 
       reporter.stop();
 
-      // stop() should NOT send any network request
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, options] = fetchMock.mock.calls[0];
+      expect(url).toBe("https://platform.decart.ai/api/v1/telemetry");
+      expect(options.keepalive).toBe(true);
 
-      // flush() after stop() should be a no-op (buffers were cleared)
+      const body = JSON.parse(options.body);
+      expect(body.sessionId).toBe("sess-2");
+      expect(body.stats).toHaveLength(1);
+
+      // flush() after stop() should be a no-op because stop drained the buffers.
       reporter.flush();
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("only uses keepalive on the last stop chunk", async () => {
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const reporter = new TelemetryReporter({
+        apiKey: "test-key",
+        sessionId: "sess-chunk-stop",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+      });
+
+      for (let i = 0; i < 150; i++) {
+        reporter.addStats({
+          timestamp: i,
+          video: null,
+          audio: null,
+          connection: { currentRoundTripTime: null, availableOutgoingBitrate: null },
+        });
+      }
+
+      reporter.stop();
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[0][1].keepalive).toBeUndefined();
+      expect(fetchMock.mock.calls[1][1].keepalive).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not use keepalive when the stop payload is too large", async () => {
+    const { TelemetryReporter } = await import("../src/realtime/observability/telemetry-reporter.js");
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const reporter = new TelemetryReporter({
+        apiKey: "test-key",
+        sessionId: "sess-large-stop",
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+      });
+
+      reporter.addDiagnostic({
+        name: "client-session-connection-breakdown",
+        data: { message: "x".repeat(70 * 1024) },
+        timestamp: 1000,
+      });
+
+      reporter.stop();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][1].keepalive).toBeUndefined();
     } finally {
       vi.unstubAllGlobals();
     }

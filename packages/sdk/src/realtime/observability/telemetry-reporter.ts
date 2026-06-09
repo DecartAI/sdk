@@ -21,6 +21,8 @@ type TelemetryReport = {
   diagnostics: TelemetryDiagnostic[];
 };
 
+const KEEPALIVE_MAX_BODY_BYTES = 60 * 1024;
+
 export interface TelemetryReporterOptions {
   apiKey: string;
   sessionId: string;
@@ -87,14 +89,13 @@ export class TelemetryReporter implements ITelemetryReporter {
     this.sendReport();
   }
 
-  /** Stop the reporter and discard any buffered data. */
+  /** Stop the reporter and make one final best-effort flush. */
   stop(): void {
     if (this.intervalId !== null) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    this.statsBuffer = [];
-    this.diagnosticsBuffer = [];
+    this.sendReport({ keepalive: true });
   }
 
   /**
@@ -124,7 +125,7 @@ export class TelemetryReporter implements ITelemetryReporter {
     };
   }
 
-  private sendReport(): void {
+  private sendReport(options: { keepalive?: boolean } = {}): void {
     if (this.statsBuffer.length === 0 && this.diagnosticsBuffer.length === 0) {
       return;
     }
@@ -136,18 +137,27 @@ export class TelemetryReporter implements ITelemetryReporter {
         "Content-Type": "application/json",
       };
 
-      // Send as many chunks as needed to drain both buffers.
-      let chunk = this.createReportChunk();
-      while (chunk !== null) {
+      const chunks: TelemetryReport[] = [];
+      let nextChunk = this.createReportChunk();
+      while (nextChunk !== null) {
+        chunks.push(nextChunk);
+        nextChunk = this.createReportChunk();
+      }
+
+      chunks.forEach((chunk, index) => {
+        const body = JSON.stringify(chunk);
+        const useKeepalive =
+          options.keepalive &&
+          index === chunks.length - 1 &&
+          new TextEncoder().encode(body).byteLength <= KEEPALIVE_MAX_BODY_BYTES;
+
         fetch(REALTIME_CONFIG.observability.telemetryUrl, {
           method: "POST",
           headers: commonHeaders,
-          body: JSON.stringify(chunk),
-          // Only set keepalive on the very last chunk (if the caller requested it).
+          body,
+          ...(useKeepalive ? { keepalive: true } : {}),
         }).catch(() => {});
-
-        chunk = this.createReportChunk();
-      }
+      });
     } catch {
       // Telemetry is best-effort and should never add console noise for SDK users.
     }
