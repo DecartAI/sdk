@@ -267,11 +267,13 @@ export function classifyActiveProbe(
   }
 
   if (metrics.ttffMs == null && metrics.g2gMs == null) {
-    reasons.push(
-      "Could not measure glass-to-glass latency during the probe (no marker round-trip); falling back to network metrics.",
-    );
     if (metrics.rttMs != null) {
+      reasons.push(
+        "Could not measure glass-to-glass latency during the probe (no marker round-trip); using network RTT instead.",
+      );
       dims.push(scoreLowerBetter(metrics.rttMs, thresholds.rtt.goodMs, thresholds.rtt.fairMs, thresholds.rtt.poorMs));
+    } else {
+      reasons.push("The probe connected but could not measure latency (no marker round-trip and no RTT sample).");
     }
   }
 
@@ -295,7 +297,14 @@ export function classifyActiveProbe(
     }
   }
 
-  return { quality: dims.length ? worst(...dims) : "good", metrics, reasons };
+  // The session connected (transport !== "failed") but produced no usable
+  // quality signal — don't claim "good" we never verified. Report "fair" so the
+  // caller treats it as connected-but-unverified, with the reason explaining why.
+  if (dims.length === 0) {
+    return { quality: "fair", metrics, reasons };
+  }
+
+  return { quality: worst(...dims), metrics, reasons };
 }
 
 /** Derive active-probe metrics from the latest in-session stats sample. */

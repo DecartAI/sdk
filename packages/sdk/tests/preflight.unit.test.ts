@@ -112,6 +112,16 @@ describe("classifyActiveProbe", () => {
     expect(report.quality).toBe("critical");
     expect(report.reasons.length).toBeGreaterThan(0);
   });
+
+  it("returns fair (not good) when connected but nothing could be measured", () => {
+    // Session established (transport udp) but the probe produced no signal at all.
+    const report = classifyActiveProbe(
+      probeMetrics({ g2gMs: null, ttffMs: null, rttMs: null, g2gDropRatio: null, packetLoss: null }),
+      PROBE_THRESHOLDS,
+    );
+    expect(report.quality).toBe("fair");
+    expect(report.reasons.length).toBeGreaterThan(0);
+  });
 });
 
 describe("checkConnectivity", () => {
