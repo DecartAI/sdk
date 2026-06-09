@@ -360,6 +360,12 @@
             </select>
         </div>
         <div class="control-group">
+            <label>
+                <input type="checkbox" id="measure-g2g" />
+                Measure glass-to-glass latency (pixel marker; visible bottom-left, opt-in)
+            </label>
+        </div>
+        <div class="control-group">
             <label for="initial-prompt">Initial Prompt (empty = passthrough):</label>
             <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
         </div>
@@ -392,7 +398,8 @@
             SDK-only WebRTC reachability + latency probe — no session, no inference. Use it to decide whether to show the integration <em>before</em> connecting. Needs an API key above (the client factory requires one), but the probe itself only hits public STUN.
         </p>
         <div class="inline-controls">
-            <button id="check-connectivity-btn">Check Connectivity</button>
+            <button id="check-connectivity-btn">Check Connectivity (STUN)</button>
+            <button id="active-probe-btn">Active Probe (measure glass-to-glass)</button>
         </div>
         <div id="connectivity-result" style="margin-top: 10px; padding: 10px 12px; border-radius: 6px; display: none; background: #f8f9fa;">
             <div style="font-size: 15px; font-weight: bold;" id="connectivity-headline">-</div>
@@ -627,7 +634,9 @@
             connectionQualityBadge: document.getElementById('connection-quality-badge'),
             connectionQualityDetail: document.getElementById('connection-quality-detail'),
             // Connectivity preflight elements
+            measureG2g: document.getElementById('measure-g2g'),
             checkConnectivityBtn: document.getElementById('check-connectivity-btn'),
+            activeProbeBtn: document.getElementById('active-probe-btn'),
             connectivityResult: document.getElementById('connectivity-result'),
             connectivityHeadline: document.getElementById('connectivity-headline'),
             connectivityMetrics: document.getElementById('connectivity-metrics'),
@@ -770,9 +779,13 @@
             const m = report.metrics;
             const parts = [];
             if (report.limitingFactor && report.limitingFactor !== 'none') parts.push(`limited by ${report.limitingFactor}`);
+            if (m.ttffMs != null) parts.push(`ttff ${(m.ttffMs / 1000).toFixed(1)}s`);
+            if (m.g2gMs != null) parts.push(`g2g ${Math.round(m.g2gMs)}ms`);
             if (m.rttMs != null) parts.push(`rtt ${Math.round(m.rttMs)}ms`);
             if (m.fps != null) parts.push(`${Math.round(m.fps)}fps`);
             if (m.packetLoss != null) parts.push(`loss ${(m.packetLoss * 100).toFixed(1)}%`);
+            if (m.g2gDropRatio != null) parts.push(`drops ${(m.g2gDropRatio * 100).toFixed(1)}%`);
+            if (m.upstreamJitterMs != null) parts.push(`↑jitter ${Math.round(m.upstreamJitterMs)}ms`);
             if (m.availableUpstreamKbps != null) parts.push(`↑avail ${Math.round(m.availableUpstreamKbps)}kbps`);
             elements.connectionQualityDetail.textContent = parts.join('  ·  ');
         }
@@ -814,9 +827,7 @@
                 elements.connectivityHeadline.style.color = style.color;
                 elements.connectivityHeadline.textContent = style.label;
 
-                const m = report.metrics;
-                elements.connectivityMetrics.textContent =
-                    `quality=${report.quality}   transport=${m.transport}   rtt=${m.rttMs != null ? `${m.rttMs}ms` : 'n/a'}`;
+                renderConnectivityMetrics(report.metrics);
 
                 elements.connectivityReasons.innerHTML = '';
                 for (const reason of report.reasons) {
@@ -835,7 +846,59 @@
             }
         }
 
+        function renderConnectivityMetrics(m) {
+            const parts = [`transport=${m.transport}`, `rtt=${m.rttMs != null ? `${m.rttMs}ms` : 'n/a'}`];
+            if (m.ttffMs != null) parts.push(`ttff=${(m.ttffMs / 1000).toFixed(1)}s`);
+            if (m.g2gMs != null) parts.push(`g2g=${m.g2gMs}ms`);
+            if (m.g2gDropRatio != null) parts.push(`drops=${(m.g2gDropRatio * 100).toFixed(1)}%`);
+            if (m.upstreamJitterMs != null) parts.push(`↑jitter=${m.upstreamJitterMs}ms`);
+            if (m.packetLoss != null) parts.push(`↑loss=${(m.packetLoss * 100).toFixed(1)}%`);
+            if (m.sampleCount != null) parts.push(`samples=${m.sampleCount}`);
+            elements.connectivityMetrics.textContent = parts.join('   ');
+        }
+
+        // Active probe: briefly opens a real session to measure true glass-to-glass latency.
+        async function runActivePreflight() {
+            const client = ensureDecartClient();
+            if (!client) return;
+
+            try {
+                elements.activeProbeBtn.disabled = true;
+                elements.connectivityResult.style.display = 'block';
+                elements.connectivityResult.style.background = '#f8f9fa';
+                elements.connectivityHeadline.style.color = '#333';
+                elements.connectivityHeadline.textContent = '⏳ Running active probe (opening a short session)…';
+                elements.connectivityMetrics.textContent = '';
+                elements.connectivityReasons.innerHTML = '';
+                addLog(`Running active preflight probe for model "${model.name}"…`, 'info');
+
+                const report = await client.realtime.checkConnectivity({ active: true, model });
+
+                const style = CONNECTIVITY_STYLE[report.quality] ?? CONNECTIVITY_STYLE.fair;
+                elements.connectivityResult.style.background = style.bg;
+                elements.connectivityHeadline.style.color = style.color;
+                elements.connectivityHeadline.textContent = style.label;
+                renderConnectivityMetrics(report.metrics);
+
+                elements.connectivityReasons.innerHTML = '';
+                for (const reason of report.reasons) {
+                    const li = document.createElement('li');
+                    li.textContent = reason;
+                    elements.connectivityReasons.appendChild(li);
+                }
+
+                addLog(`checkConnectivity({ active: true }) →\n${JSON.stringify(report, null, 2)}`, style.log);
+            } catch (error) {
+                elements.connectivityHeadline.style.color = '#c62828';
+                elements.connectivityHeadline.textContent = `❌ Active probe failed: ${error.message ?? error}`;
+                addLog(`Active preflight failed: ${error.message ?? error}`, 'error');
+            } finally {
+                elements.activeProbeBtn.disabled = false;
+            }
+        }
+
         elements.checkConnectivityBtn.addEventListener('click', runConnectivityCheck);
+        elements.activeProbeBtn.addEventListener('click', runActivePreflight);
 
         function syncPublisherSubscribeToken() {
             if (activeConnectionMode !== 'publisher' || !decartRealtime?.getSubscribeToken) {
@@ -1019,10 +1082,16 @@
                     addLog(`Preferred video codec: ${preferredVideoCodec}`, 'info');
                 }
 
+                const measureGlassToGlass = elements.measureG2g.checked;
+                if (measureGlassToGlass) {
+                    addLog('Glass-to-glass measurement ON (marker visible bottom-left of output)', 'info');
+                }
+
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     resolution,
                     ...(preferredVideoCodec && { preferredVideoCodec }),
+                    ...(measureGlassToGlass && { measureGlassToGlass: true }),
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;

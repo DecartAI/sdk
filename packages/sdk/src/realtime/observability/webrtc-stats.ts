@@ -1,4 +1,5 @@
 import { REALTIME_CONFIG } from "../config-realtime";
+import type { G2GMetrics } from "./glass-to-glass";
 
 export type WebRTCStats = {
   timestamp: number;
@@ -130,6 +131,13 @@ export type WebRTCStats = {
      */
     selectedCandidatePairs: IceCandidatePair[];
   };
+  /**
+   * True glass-to-glass latency + end-to-end drop signal, merged in by
+   * `RealtimeObservability` when the opt-in pixel-marker measurement is active
+   * (see glass-to-glass.ts). Null otherwise — the stats collector does not
+   * populate it.
+   */
+  glassToGlass: G2GMetrics | null;
 };
 
 /** One side of an ICE candidate pair (sender or receiver). */
@@ -515,6 +523,8 @@ export class WebRTCStatsCollector {
       outboundVideo,
       connection,
       remoteInbound,
+      // Populated downstream by RealtimeObservability when g2g measurement is on.
+      glassToGlass: null,
     };
   }
 }

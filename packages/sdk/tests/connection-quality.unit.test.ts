@@ -23,6 +23,8 @@ type StatsOverrides = {
   videoNull?: boolean;
   outboundNull?: boolean;
   remoteInboundNull?: boolean;
+  g2gMs?: number;
+  g2gDropRatio?: number;
 };
 
 /** Build a WebRTCStats snapshot that scores "good" by default; override per test. */
@@ -62,6 +64,16 @@ function makeStats(o: StatsOverrides = {}): WebRTCStats {
         ? [{ local: relayCandidate, remote: relayCandidate }]
         : [{ local: hostCandidate, remote: hostCandidate }],
     },
+    glassToGlass:
+      o.g2gMs === undefined && o.g2gDropRatio === undefined
+        ? null
+        : {
+            ttffMs: null,
+            medianMs: o.g2gMs ?? null,
+            p90Ms: null,
+            sampleCount: 1,
+            dropRatio: o.g2gDropRatio ?? null,
+          },
   };
   return stats as unknown as WebRTCStats;
 }
@@ -141,6 +153,34 @@ describe("scoreSnapshot", () => {
     // low upstream headroom: 1 Mbps available vs 3 Mbps needed → critical, unless skipped
     expect(scoreSnapshot(makeStats({ availableOutgoingBitrate: 1_000_000 }), THRESHOLDS, opts).quality).toBe("good");
     expect(scoreSnapshot(makeStats({ availableOutgoingBitrate: 1_000_000 })).quality).toBe("critical");
+  });
+
+  it("drives the latency verdict off measured glass-to-glass when present (not RTT)", () => {
+    // Low RTT alone reads good, but a high measured g2g (slow model path) must
+    // pull latency down — this is the whole point of the feature.
+    const { quality, limitingFactor } = scoreSnapshot(makeStats({ rttSec: 0.05, g2gMs: 1800 }));
+    expect(quality).toBe("critical"); // 1800ms > poor band (1500)
+    expect(limitingFactor).toBe("latency");
+  });
+
+  it("rates a typical mid-stream glass-to-glass latency as good", () => {
+    // ~450ms steady-state (server pipeline ~285ms + network/jitter) is good.
+    expect(scoreSnapshot(makeStats({ g2gMs: 450 })).quality).toBe("good");
+  });
+
+  it("rates a good glass-to-glass latency as good even on a relayed path", () => {
+    // g2g already includes the network legs, so no relay headroom is applied.
+    expect(scoreSnapshot(makeStats({ g2gMs: 450, relayed: true })).quality).toBe("good");
+  });
+
+  it("falls back to RTT for latency when glass-to-glass is absent", () => {
+    expect(scoreSnapshot(makeStats({ rttSec: 0.6 })).quality).toBe("critical");
+  });
+
+  it("flags a high end-to-end frame drop ratio as a stall problem", () => {
+    const { quality, limitingFactor } = scoreSnapshot(makeStats({ g2gDropRatio: 0.2 }));
+    expect(quality).toBe("critical"); // 20% > poor band (10%)
+    expect(limitingFactor).toBe("stall");
   });
 
   it("treats missing metrics as good (absence of evidence is not evidence of badness)", () => {

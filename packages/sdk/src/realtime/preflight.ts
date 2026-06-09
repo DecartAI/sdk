@@ -1,6 +1,9 @@
+import { type CustomModelDefinition, type ModelDefinition, resolveFpsNumber } from "../shared/model";
 import type { Logger } from "../utils/logger";
+import type { RealTimeClient, RealTimeClientConnectOptions } from "./client";
 import { REALTIME_CONFIG } from "./config-realtime";
-import type { ConnectionQuality } from "./observability/connection-quality";
+import { type ConnectionQuality, extractSignals, scoreLowerBetter, worst } from "./observability/connection-quality";
+import type { WebRTCStats } from "./observability/webrtc-stats";
 
 /**
  * SDK-only connectivity preflight — run before `realtime.connect()` to decide
@@ -14,8 +17,20 @@ export type ConnectivityTransport = "udp" | "relay" | "failed";
 export type ConnectivityMetrics = {
   /** "udp" = direct UDP works · "relay" = will need TURN (unverified SDK-only) · "failed" = no connectivity. */
   transport: ConnectivityTransport;
-  /** Approximate network round-trip time (ms) from time-to-first STUN candidate, or null. */
+  /** Approximate network round-trip time (ms) from time-to-first STUN candidate (or real RTT in active mode), or null. */
   rttMs: number | null;
+  /** Active-probe only: measured mid-stream (steady-state) glass-to-glass latency (ms), or null. */
+  g2gMs?: number | null;
+  /** Active-probe only: time-to-first-frame (ms) — startup latency to the first rendered model frame, or null. */
+  ttffMs?: number | null;
+  /** Active-probe only: end-to-end frame drop ratio (0–1), or null. */
+  g2gDropRatio?: number | null;
+  /** Active-probe only: server's view of upstream jitter (ms), or null. */
+  upstreamJitterMs?: number | null;
+  /** Active-probe only: server-reported upstream packet loss (0–1), or null. */
+  packetLoss?: number | null;
+  /** Active-probe only: number of glass-to-glass samples collected. */
+  sampleCount?: number;
 };
 
 export type ConnectivityReport = {
@@ -33,10 +48,25 @@ export type CheckConnectivityOptions = {
   iceGatherTimeoutMs?: number;
   /** Abort the probe early. */
   signal?: AbortSignal;
+  /**
+   * Run an active probe instead of the STUN-only check: briefly open a real
+   * session with a synthetic source and measure true glass-to-glass latency,
+   * then tear it down. Requires `model`. Costs a short GPU session.
+   */
+  active?: boolean;
+  /** Required when `active`: the realtime model to probe (latency is model-specific). */
+  model?: ModelDefinition | CustomModelDefinition;
+  /** Active-probe duration (ms). Defaults to config. */
+  durationMs?: number;
 };
+
+/** Realtime `connect` injected by the SDK root so the active probe can open a session. */
+type RealtimeConnect = (stream: MediaStream | null, options: RealTimeClientConnectOptions) => Promise<RealTimeClient>;
 
 export type PreflightOptions = {
   logger: Logger;
+  /** Injected by the SDK root; enables the opt-in active probe. */
+  connect?: RealtimeConnect;
 };
 
 export type PreflightRttThresholds = { goodMs: number; marginalMs: number };
@@ -184,10 +214,256 @@ export function classifyConnectivity(
   };
 }
 
+// --- Active probe (opt-in) ---------------------------------------------------
+
+/** Thresholds the active-probe verdict reuses from the in-session quality config. */
+type ActiveProbeThresholds = Pick<
+  typeof REALTIME_CONFIG.observability.connectionQuality,
+  "rtt" | "glassToGlass" | "ttff" | "loss" | "g2gDrop"
+>;
+
+/**
+ * Classify an active-probe result. Judges startup (TTFF) and steady-state
+ * (mid-stream glass-to-glass) latency separately — both are real experienced
+ * latency on different scales — and folds in drops + upstream loss. Falls back
+ * to RTT only when neither latency could be measured. Pure.
+ */
+export function classifyActiveProbe(
+  metrics: ConnectivityMetrics,
+  thresholds: ActiveProbeThresholds,
+): ConnectivityReport {
+  const reasons: string[] = [];
+
+  if (metrics.transport === "failed") {
+    return {
+      quality: "critical",
+      metrics,
+      reasons: ["Could not establish a realtime session for the active probe."],
+    };
+  }
+
+  const dims: ConnectionQuality[] = [];
+
+  if (metrics.ttffMs != null) {
+    const t = thresholds.ttff;
+    const q = scoreLowerBetter(metrics.ttffMs, t.goodMs, t.fairMs, t.poorMs);
+    dims.push(q);
+    if (q !== "good") {
+      reasons.push(
+        `Time to first frame is ~${(metrics.ttffMs / 1000).toFixed(1)}s (good ≤ ${(t.goodMs / 1000).toFixed(0)}s); the session is slow to start.`,
+      );
+    }
+  }
+
+  if (metrics.g2gMs != null) {
+    const g = thresholds.glassToGlass;
+    const q = scoreLowerBetter(metrics.g2gMs, g.goodMs, g.fairMs, g.poorMs);
+    dims.push(q);
+    if (q !== "good") {
+      reasons.push(
+        `Mid-stream glass-to-glass latency is ~${metrics.g2gMs}ms (good ≤ ${g.goodMs}ms); the real-time experience may feel laggy.`,
+      );
+    }
+  }
+
+  if (metrics.ttffMs == null && metrics.g2gMs == null) {
+    reasons.push(
+      "Could not measure glass-to-glass latency during the probe (no marker round-trip); falling back to network metrics.",
+    );
+    if (metrics.rttMs != null) {
+      dims.push(scoreLowerBetter(metrics.rttMs, thresholds.rtt.goodMs, thresholds.rtt.fairMs, thresholds.rtt.poorMs));
+    }
+  }
+
+  if (metrics.g2gDropRatio != null) {
+    const d = thresholds.g2gDrop;
+    const q = scoreLowerBetter(metrics.g2gDropRatio, d.good, d.fair, d.poor);
+    dims.push(q);
+    if (q !== "good") {
+      reasons.push(
+        `End-to-end frame drop ratio is ${(metrics.g2gDropRatio * 100).toFixed(1)}% (good ≤ ${d.good * 100}%).`,
+      );
+    }
+  }
+
+  if (metrics.packetLoss != null) {
+    const l = thresholds.loss;
+    const q = scoreLowerBetter(metrics.packetLoss, l.good, l.fair, l.poor);
+    dims.push(q);
+    if (q !== "good") {
+      reasons.push(`Upstream packet loss is ${(metrics.packetLoss * 100).toFixed(1)}% (good ≤ ${l.good * 100}%).`);
+    }
+  }
+
+  return { quality: dims.length ? worst(...dims) : "good", metrics, reasons };
+}
+
+/** Derive active-probe metrics from the latest in-session stats sample. */
+function activeMetricsFromStats(stats: WebRTCStats | null): ConnectivityMetrics {
+  if (!stats) {
+    // Connected but no stats arrived yet — connectivity works, just unmeasured.
+    return {
+      transport: "udp",
+      rttMs: null,
+      g2gMs: null,
+      ttffMs: null,
+      g2gDropRatio: null,
+      upstreamJitterMs: null,
+      packetLoss: null,
+      sampleCount: 0,
+    };
+  }
+  // Reuse the in-session signal extractor so the RTT fallback, RFC-3550 loss
+  // normalization, jitter conversion, and relay detection stay in one place.
+  const s = extractSignals(stats);
+  return {
+    transport: s.isRelayed ? "relay" : "udp",
+    rttMs: s.rttMs != null ? Math.round(s.rttMs) : null,
+    g2gMs: s.g2gMs,
+    ttffMs: s.ttffMs,
+    g2gDropRatio: s.g2gDropRatio,
+    upstreamJitterMs: s.upstreamJitterMs != null ? Math.round(s.upstreamJitterMs) : null,
+    packetLoss: s.fractionLost,
+    sampleCount: stats.glassToGlass?.sampleCount ?? 0,
+  };
+}
+
+/**
+ * Animated synthetic video source — no camera permission needed; content is
+ * irrelevant to the marker. Sized to the model's exact input dimensions so the
+ * server doesn't resize/crop the frame, which would move the bottom-left marker
+ * out of where the server reads it (breaking the round trip).
+ */
+function createSyntheticSource(
+  width: number,
+  height: number,
+  fps: number,
+): { stream: MediaStream; dispose: () => void } {
+  if (typeof document === "undefined") {
+    throw new Error("active preflight requires a DOM environment (document is undefined)");
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("active preflight: 2D canvas context unavailable");
+  if (typeof canvas.captureStream !== "function") {
+    throw new Error("active preflight: canvas.captureStream unavailable");
+  }
+
+  let rafHandle: number | null = null;
+  let frame = 0;
+  const draw = () => {
+    frame++;
+    // Animate so the encoder produces real frames at the target rate.
+    ctx.fillStyle = `hsl(${frame % 360}, 60%, 50%)`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "white";
+    ctx.fillRect((frame * 7) % canvas.width, 48, 96, 96);
+    rafHandle = requestAnimationFrame(draw);
+  };
+  rafHandle = requestAnimationFrame(draw);
+
+  const stream = canvas.captureStream(fps);
+  return {
+    stream,
+    dispose: () => {
+      if (rafHandle !== null) cancelAnimationFrame(rafHandle);
+      for (const track of stream.getTracks()) track.stop();
+    },
+  };
+}
+
+/** Resolve once enough g2g samples exist or the probe window elapses (never rejects). */
+function waitForProbe(
+  getLatest: () => WebRTCStats | null,
+  minSamples: number,
+  durationMs: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  return new Promise((resolve) => {
+    const start = performance.now();
+    const tick = () => {
+      if (signal?.aborted) return resolve();
+      if ((getLatest()?.glassToGlass?.sampleCount ?? 0) >= minSamples) return resolve();
+      if (performance.now() - start >= durationMs) return resolve();
+      setTimeout(tick, 200);
+    };
+    setTimeout(tick, 200);
+  });
+}
+
+async function runActiveProbe(args: {
+  connect: RealtimeConnect;
+  logger: Logger;
+  model: ModelDefinition | CustomModelDefinition;
+  durationMs: number;
+  signal: AbortSignal | undefined;
+}): Promise<ConnectivityReport> {
+  const { connect, logger, model, durationMs, signal } = args;
+  const thresholds = REALTIME_CONFIG.observability.connectionQuality;
+
+  let source: { stream: MediaStream; dispose: () => void } | undefined;
+  let client: RealTimeClient | undefined;
+  let latest: WebRTCStats | null = null;
+
+  try {
+    // Match the model's exact input resolution so the server processes the frame
+    // without reshaping it (which would corrupt the bottom-left pixel marker).
+    source = createSyntheticSource(model.width, model.height, resolveFpsNumber(model.fps));
+    client = await connect(source.stream, {
+      model,
+      measureGlassToGlass: true,
+      onRemoteStream: () => {},
+    });
+    client.on("stats", (stats) => {
+      latest = stats;
+    });
+    await waitForProbe(() => latest, REALTIME_CONFIG.preflight.active.minSamples, durationMs, signal);
+  } catch (error) {
+    logger.warn("active preflight: probe failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return classifyActiveProbe(
+      {
+        transport: "failed",
+        rttMs: null,
+        g2gMs: null,
+        g2gDropRatio: null,
+        upstreamJitterMs: null,
+        packetLoss: null,
+        sampleCount: 0,
+      },
+      thresholds,
+    );
+  } finally {
+    client?.disconnect();
+    source?.dispose();
+  }
+
+  return classifyActiveProbe(activeMetricsFromStats(latest), thresholds);
+}
+
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = REALTIME_CONFIG.preflight.defaultStunUrls.map((urls) => ({ urls }));
 
-export const createPreflight = ({ logger }: PreflightOptions) => {
+export const createPreflight = ({ logger, connect }: PreflightOptions) => {
   const checkConnectivity = async (options: CheckConnectivityOptions = {}): Promise<ConnectivityReport> => {
+    if (options.active) {
+      if (!connect) {
+        throw new Error("active preflight is unavailable (realtime client not wired)");
+      }
+      if (!options.model) {
+        throw new Error("active preflight requires a `model` (latency is model-specific)");
+      }
+      return runActiveProbe({
+        connect,
+        logger,
+        model: options.model,
+        durationMs: options.durationMs ?? REALTIME_CONFIG.preflight.active.durationMs,
+        signal: options.signal,
+      });
+    }
+
     const iceServers = options.iceServers ?? DEFAULT_ICE_SERVERS;
     const timeoutMs = options.iceGatherTimeoutMs ?? REALTIME_CONFIG.preflight.iceGatherTimeoutMs;
     const result = await gatherIceCandidates(iceServers, timeoutMs, options.signal, logger);

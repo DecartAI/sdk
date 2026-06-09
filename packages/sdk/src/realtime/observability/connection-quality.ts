@@ -18,10 +18,32 @@ export type ConnectionQualityLimitingFactor = "bandwidth" | "latency" | "loss" |
 export type ConnectionQualityMetrics = {
   /** Round-trip time in ms, or null until measured. */
   rttMs: number | null;
+  /**
+   * Mid-stream (steady-state) glass-to-glass latency (ms) — the real per-frame
+   * camera→display latency through the model, excluding startup. Only populated
+   * when the opt-in pixel-marker measurement is on (`connect({ measureGlassToGlass: true })`)
+   * and past warm-up; null otherwise. When present it drives the latency verdict
+   * instead of `rttMs`.
+   */
+  g2gMs: number | null;
+  /**
+   * Time-to-first-frame (ms) — startup latency from connect to the first rendered
+   * model frame. One-shot; populated under g2g measurement once the first frame
+   * arrives. Surfaced for visibility; does not drive the live verdict (it's
+   * historical by the time a verdict exists).
+   */
+  ttffMs: number | null;
   /** Rendered (inbound) frames per second, or null until measured. */
   fps: number | null;
   /** Fraction (0–1) of our outbound packets the server reports lost, or null until measured. */
   packetLoss: number | null;
+  /** Server's view of upstream (client→server) jitter in ms, or null. Observational. */
+  upstreamJitterMs: number | null;
+  /**
+   * End-to-end frame drop ratio (0–1) inferred from the pixel-marker seq stream.
+   * Only populated under the opt-in g2g measurement; null otherwise.
+   */
+  g2gDropRatio: number | null;
   /** Estimated available upstream bandwidth in kbps. Chromium-only — null on Safari/Firefox. */
   availableUpstreamKbps: number | null;
 };
@@ -40,19 +62,22 @@ export type ConnectionQualityThresholds = {
   downgradeConsecutive: number;
   upgradeConsecutive: number;
   rtt: { goodMs: number; fairMs: number; poorMs: number; relayExtraMs: number };
+  glassToGlass: { goodMs: number; fairMs: number; poorMs: number };
+  ttff: { goodMs: number; fairMs: number; poorMs: number };
   loss: { good: number; fair: number; poor: number };
+  g2gDrop: { good: number; fair: number; poor: number };
   upstream: { goodRatio: number; fairRatio: number; poorRatio: number; requiredUpstreamKbps: number };
   stall: { goodFps: number; fairFps: number; poorFps: number };
 };
 
-const RANK: Record<ConnectionQuality, number> = { critical: 0, poor: 1, fair: 2, good: 3 };
+export const RANK: Record<ConnectionQuality, number> = { critical: 0, poor: 1, fair: 2, good: 3 };
 
-function worst(...qualities: ConnectionQuality[]): ConnectionQuality {
+export function worst(...qualities: ConnectionQuality[]): ConnectionQuality {
   return qualities.reduce((a, b) => (RANK[a] <= RANK[b] ? a : b));
 }
 
 // A null metric scores "good" — absence of evidence is not evidence of badness.
-function scoreLowerBetter(value: number | null, good: number, fair: number, poor: number): ConnectionQuality {
+export function scoreLowerBetter(value: number | null, good: number, fair: number, poor: number): ConnectionQuality {
   if (value === null) return "good";
   if (value <= good) return "good";
   if (value <= fair) return "fair";
@@ -69,9 +94,13 @@ function scoreHigherBetter(value: number | null, good: number, fair: number, poo
 }
 
 /** Full set of raw signals the scorer needs; the public report exposes a subset. */
-type QualitySignals = {
+export type QualitySignals = {
   rttMs: number | null;
+  g2gMs: number | null;
+  ttffMs: number | null;
+  upstreamJitterMs: number | null;
   fractionLost: number | null;
+  g2gDropRatio: number | null;
   availableOutgoingKbps: number | null;
   fps: number | null;
   freezeCountDelta: number | null;
@@ -79,7 +108,7 @@ type QualitySignals = {
   isRelayed: boolean;
 };
 
-function extractSignals(stats: WebRTCStats): QualitySignals {
+export function extractSignals(stats: WebRTCStats): QualitySignals {
   const rttSec = stats.remoteInbound?.roundTripTime ?? stats.connection.currentRoundTripTime;
   const isRelayed = stats.connection.selectedCandidatePairs.some(
     (pair) => pair.local.candidateType === "relay" || pair.remote.candidateType === "relay",
@@ -87,8 +116,13 @@ function extractSignals(stats: WebRTCStats): QualitySignals {
 
   return {
     rttMs: rttSec != null ? rttSec * 1000 : null,
+    g2gMs: stats.glassToGlass?.medianMs ?? null,
+    ttffMs: stats.glassToGlass?.ttffMs ?? null,
+    // remote-inbound jitter is the server's view of our uplink; seconds → ms.
+    upstreamJitterMs: stats.remoteInbound?.jitter != null ? stats.remoteInbound.jitter * 1000 : null,
     // WebRTC reports fractionLost as the RFC 3550 8-bit value (loss × 256); normalize to a 0–1 fraction.
     fractionLost: stats.remoteInbound?.fractionLost != null ? stats.remoteInbound.fractionLost / 256 : null,
+    g2gDropRatio: stats.glassToGlass?.dropRatio ?? null,
     availableOutgoingKbps:
       stats.connection.availableOutgoingBitrate != null ? stats.connection.availableOutgoingBitrate / 1000 : null,
     fps: stats.video?.framesPerSecond ?? null,
@@ -109,13 +143,24 @@ export function scoreMetrics(
   thresholds: ConnectionQualityThresholds,
   options: ScoreOptions = {},
 ): { quality: ConnectionQuality; limitingFactor: ConnectionQualityLimitingFactor } {
+  // Prefer measured glass-to-glass — the real experienced latency — when the
+  // opt-in pixel-marker measurement is active. It already includes both network
+  // legs, so relay headroom doesn't apply. Fall back to RTT otherwise.
   const relayExtra = signals.isRelayed ? thresholds.rtt.relayExtraMs : 0;
-  const latency = scoreLowerBetter(
-    signals.rttMs,
-    thresholds.rtt.goodMs + relayExtra,
-    thresholds.rtt.fairMs + relayExtra,
-    thresholds.rtt.poorMs + relayExtra,
-  );
+  const latency =
+    signals.g2gMs != null
+      ? scoreLowerBetter(
+          signals.g2gMs,
+          thresholds.glassToGlass.goodMs,
+          thresholds.glassToGlass.fairMs,
+          thresholds.glassToGlass.poorMs,
+        )
+      : scoreLowerBetter(
+          signals.rttMs,
+          thresholds.rtt.goodMs + relayExtra,
+          thresholds.rtt.fairMs + relayExtra,
+          thresholds.rtt.poorMs + relayExtra,
+        );
 
   const loss = scoreLowerBetter(signals.fractionLost, thresholds.loss.good, thresholds.loss.fair, thresholds.loss.poor);
 
@@ -145,6 +190,15 @@ export function scoreMetrics(
     thresholds.stall.poorFps,
   );
   if (signals.freezeCountDelta != null && signals.freezeCountDelta > 0) stall = worst(stall, "fair");
+  // End-to-end frame drops (server backpressure / overload, or transit loss)
+  // surface as the same user-visible symptom as a low frame rate.
+  const drop = scoreLowerBetter(
+    signals.g2gDropRatio,
+    thresholds.g2gDrop.good,
+    thresholds.g2gDrop.fair,
+    thresholds.g2gDrop.poor,
+  );
+  stall = worst(stall, drop);
 
   const quality = worst(bandwidth, latency, loss, stall);
 
@@ -212,6 +266,7 @@ class RingBuffer {
  */
 export class ConnectionQualityEvaluator {
   private readonly rtt: RingBuffer;
+  private readonly glassToGlass: RingBuffer;
   private readonly loss: RingBuffer;
   private readonly availableOutgoing: RingBuffer;
   private readonly fps: RingBuffer;
@@ -230,6 +285,7 @@ export class ConnectionQualityEvaluator {
   ) {
     const w = thresholds.windowSamples;
     this.rtt = new RingBuffer(w);
+    this.glassToGlass = new RingBuffer(w);
     this.loss = new RingBuffer(w);
     this.availableOutgoing = new RingBuffer(w);
     this.fps = new RingBuffer(w);
@@ -241,13 +297,17 @@ export class ConnectionQualityEvaluator {
     const raw = extractSignals(stats);
 
     this.rtt.push(raw.rttMs);
+    this.glassToGlass.push(raw.g2gMs);
     this.loss.push(raw.fractionLost);
     this.availableOutgoing.push(raw.availableOutgoingKbps);
     this.fps.push(raw.fps);
 
+    // `upstreamJitterMs` (observational, unscored) and `g2gDropRatio` (already
+    // windowed by the SeqTracker) ride through from `raw` un-resmoothed.
     const smoothed: QualitySignals = {
       ...raw,
       rttMs: this.rtt.median(),
+      g2gMs: this.glassToGlass.median(),
       fractionLost: this.loss.median(),
       availableOutgoingKbps: this.availableOutgoing.median(),
       fps: this.fps.min(),
@@ -289,8 +349,14 @@ export class ConnectionQualityEvaluator {
       warmingUp,
       metrics: {
         rttMs: smoothed.rttMs,
+        g2gMs: smoothed.g2gMs,
+        // ttffMs (one-shot startup), upstreamJitterMs (observational), and
+        // g2gDropRatio (already windowed) are surfaced raw, not re-smoothed.
+        ttffMs: raw.ttffMs,
         fps: smoothed.fps,
         packetLoss: smoothed.fractionLost,
+        upstreamJitterMs: raw.upstreamJitterMs,
+        g2gDropRatio: raw.g2gDropRatio,
         availableUpstreamKbps: smoothed.availableOutgoingKbps,
       },
     };
@@ -304,6 +370,7 @@ export class ConnectionQualityEvaluator {
 
   reset(): void {
     this.rtt.clear();
+    this.glassToGlass.clear();
     this.loss.clear();
     this.availableOutgoing.clear();
     this.fps.clear();

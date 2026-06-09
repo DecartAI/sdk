@@ -169,6 +169,8 @@ export class StreamSession {
       this.resetHandshakeState();
       const initialState = this.getInitialState();
       this.config.observability?.beginConnectionBreakdown(attempt, getInitialImageSizeKb(initialState?.image));
+      // Start the glass-to-glass TTFF clock for this attempt (resets the tracker).
+      this.config.observability?.markGlassToGlassStart();
       const gateAttempt = this.initialStateGate.startAttempt(initialState);
 
       const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({

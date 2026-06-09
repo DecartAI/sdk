@@ -82,6 +82,11 @@ export class MediaChannel {
 
       const mediaStreamTrack = track.mediaStreamTrack;
       if (mediaStreamTrack) {
+        // Feed the rendered remote video to the glass-to-glass marker reader
+        // (no-op unless g2g measurement is enabled).
+        if (track.kind === Track.Kind.Video) {
+          this.config.observability?.attachRemoteVideoTrack(mediaStreamTrack);
+        }
         // Emit a fresh MediaStream whenever the track set changes. Consumers
         // assign this to an element's `srcObject`; mutating the existing stream
         // in place would not work because assigning the same MediaStream
