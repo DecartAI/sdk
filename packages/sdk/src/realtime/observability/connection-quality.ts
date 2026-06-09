@@ -21,7 +21,7 @@ export type ConnectionQualityMetrics = {
   /**
    * Mid-stream (steady-state) glass-to-glass latency (ms) — the real per-frame
    * camera→display latency through the model, excluding startup. Only populated
-   * when the opt-in pixel-marker measurement is on (`connect({ measureGlassToGlass: true })`)
+   * when the opt-in pixel-marker measurement is on (`connect({ deep: true })`)
    * and past warm-up; null otherwise. When present it drives the latency verdict
    * instead of `rttMs`.
    */

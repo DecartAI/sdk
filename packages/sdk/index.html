@@ -399,7 +399,7 @@
         </p>
         <div class="inline-controls">
             <button id="check-connectivity-btn">Check Connectivity (STUN)</button>
-            <button id="active-probe-btn">Active Probe (measure glass-to-glass)</button>
+            <button id="active-probe-btn">Deep Probe (measure glass-to-glass)</button>
         </div>
         <div id="connectivity-result" style="margin-top: 10px; padding: 10px 12px; border-radius: 6px; display: none; background: #f8f9fa;">
             <div style="font-size: 15px; font-weight: bold;" id="connectivity-headline">-</div>
@@ -867,12 +867,12 @@
                 elements.connectivityResult.style.display = 'block';
                 elements.connectivityResult.style.background = '#f8f9fa';
                 elements.connectivityHeadline.style.color = '#333';
-                elements.connectivityHeadline.textContent = '⏳ Running active probe (opening a short session)…';
+                elements.connectivityHeadline.textContent = '⏳ Running deep probe (opening a short session)…';
                 elements.connectivityMetrics.textContent = '';
                 elements.connectivityReasons.innerHTML = '';
-                addLog(`Running active preflight probe for model "${model.name}"…`, 'info');
+                addLog(`Running deep connectivity probe for model "${model.name}"…`, 'info');
 
-                const report = await client.realtime.checkConnectivity({ active: true, model });
+                const report = await client.realtime.checkConnectivity({ deep: true, model });
 
                 const style = CONNECTIVITY_STYLE[report.quality] ?? CONNECTIVITY_STYLE.fair;
                 elements.connectivityResult.style.background = style.bg;
@@ -887,11 +887,11 @@
                     elements.connectivityReasons.appendChild(li);
                 }
 
-                addLog(`checkConnectivity({ active: true }) →\n${JSON.stringify(report, null, 2)}`, style.log);
+                addLog(`checkConnectivity({ deep: true }) →\n${JSON.stringify(report, null, 2)}`, style.log);
             } catch (error) {
                 elements.connectivityHeadline.style.color = '#c62828';
-                elements.connectivityHeadline.textContent = `❌ Active probe failed: ${error.message ?? error}`;
-                addLog(`Active preflight failed: ${error.message ?? error}`, 'error');
+                elements.connectivityHeadline.textContent = `❌ Deep probe failed: ${error.message ?? error}`;
+                addLog(`Deep probe failed: ${error.message ?? error}`, 'error');
             } finally {
                 elements.activeProbeBtn.disabled = false;
             }
@@ -1082,16 +1082,16 @@
                     addLog(`Preferred video codec: ${preferredVideoCodec}`, 'info');
                 }
 
-                const measureGlassToGlass = elements.measureG2g.checked;
-                if (measureGlassToGlass) {
-                    addLog('Glass-to-glass measurement ON (marker visible bottom-left of output)', 'info');
+                const deep = elements.measureG2g.checked;
+                if (deep) {
+                    addLog('Deep (glass-to-glass) measurement ON (marker visible bottom-left of output)', 'info');
                 }
 
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     resolution,
                     ...(preferredVideoCodec && { preferredVideoCodec }),
-                    ...(measureGlassToGlass && { measureGlassToGlass: true }),
+                    ...(deep && { deep: true }),
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;

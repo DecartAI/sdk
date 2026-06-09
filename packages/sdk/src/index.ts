@@ -260,8 +260,8 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
        *
        * Default (STUN-only): validates WebRTC reachability (UDP egress / TURN
        * need) and approximate latency via a throwaway peer connection — no
-       * session, instant. Opt-in active probe (`{ active: true, model }`):
-       * briefly opens a real session with a synthetic source and measures *true*
+       * session, instant. Opt-in deep probe (`{ deep: true, model }`): briefly
+       * opens a real session with a synthetic source and measures *true*
        * glass-to-glass latency (and end-to-end drops / upstream loss+jitter),
        * then tears it down — accurate, but costs a short GPU session.
        *
@@ -272,7 +272,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
        * if (quality === "critical") showFallbackUI(reasons);
        *
        * // Accurate, measured glass-to-glass verdict
-       * const probe = await client.realtime.checkConnectivity({ active: true, model: models.realtime("mirage") });
+       * const probe = await client.realtime.checkConnectivity({ deep: true, model: models.realtime("mirage") });
        * console.log(probe.metrics.g2gMs);
        * ```
        */

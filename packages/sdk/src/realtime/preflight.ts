@@ -17,7 +17,7 @@ export type ConnectivityTransport = "udp" | "relay" | "failed";
 export type ConnectivityMetrics = {
   /** "udp" = direct UDP works · "relay" = will need TURN (unverified SDK-only) · "failed" = no connectivity. */
   transport: ConnectivityTransport;
-  /** Approximate network round-trip time (ms) from time-to-first STUN candidate (or real RTT in active mode), or null. */
+  /** Approximate network round-trip time (ms) from time-to-first STUN candidate (or real RTT in deep mode), or null. */
   rttMs: number | null;
   /** Active-probe only: measured mid-stream (steady-state) glass-to-glass latency (ms), or null. */
   g2gMs?: number | null;
@@ -49,14 +49,14 @@ export type CheckConnectivityOptions = {
   /** Abort the probe early. */
   signal?: AbortSignal;
   /**
-   * Run an active probe instead of the STUN-only check: briefly open a real
-   * session with a synthetic source and measure true glass-to-glass latency,
+   * Opt-in "deep" probe: instead of the STUN-only network check, briefly open a
+   * real session with a synthetic source, measure true glass-to-glass latency,
    * then tear it down. Requires `model`. Costs a short GPU session.
    */
-  active?: boolean;
-  /** Required when `active`: the realtime model to probe (latency is model-specific). */
+  deep?: boolean;
+  /** Required when `deep`: the realtime model to probe (latency is model-specific). */
   model?: ModelDefinition | CustomModelDefinition;
-  /** Active-probe duration (ms). Defaults to config. */
+  /** Deep-probe duration (ms). Defaults to config. */
   durationMs?: number;
 };
 
@@ -238,7 +238,7 @@ export function classifyActiveProbe(
     return {
       quality: "critical",
       metrics,
-      reasons: ["Could not establish a realtime session for the active probe."],
+      reasons: ["Could not establish a realtime session for the deep probe."],
     };
   }
 
@@ -340,15 +340,15 @@ function createSyntheticSource(
   fps: number,
 ): { stream: MediaStream; dispose: () => void } {
   if (typeof document === "undefined") {
-    throw new Error("active preflight requires a DOM environment (document is undefined)");
+    throw new Error("deep connectivity probe requires a DOM environment (document is undefined)");
   }
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("active preflight: 2D canvas context unavailable");
+  if (!ctx) throw new Error("deep connectivity probe: 2D canvas context unavailable");
   if (typeof canvas.captureStream !== "function") {
-    throw new Error("active preflight: canvas.captureStream unavailable");
+    throw new Error("deep connectivity probe: canvas.captureStream unavailable");
   }
 
   let rafHandle: number | null = null;
@@ -413,7 +413,7 @@ async function runActiveProbe(args: {
     source = createSyntheticSource(model.width, model.height, resolveFpsNumber(model.fps));
     client = await connect(source.stream, {
       model,
-      measureGlassToGlass: true,
+      deep: true,
       onRemoteStream: () => {},
     });
     client.on("stats", (stats) => {
@@ -421,7 +421,7 @@ async function runActiveProbe(args: {
     });
     await waitForProbe(() => latest, REALTIME_CONFIG.preflight.active.minSamples, durationMs, signal);
   } catch (error) {
-    logger.warn("active preflight: probe failed", {
+    logger.warn("deep connectivity probe failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     return classifyActiveProbe(
@@ -448,12 +448,12 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = REALTIME_CONFIG.preflight.defaultStu
 
 export const createPreflight = ({ logger, connect }: PreflightOptions) => {
   const checkConnectivity = async (options: CheckConnectivityOptions = {}): Promise<ConnectivityReport> => {
-    if (options.active) {
+    if (options.deep) {
       if (!connect) {
-        throw new Error("active preflight is unavailable (realtime client not wired)");
+        throw new Error("deep connectivity probe is unavailable (realtime client not wired)");
       }
       if (!options.model) {
-        throw new Error("active preflight requires a `model` (latency is model-specific)");
+        throw new Error("deep connectivity probe requires a `model` (latency is model-specific)");
       }
       return runActiveProbe({
         connect,

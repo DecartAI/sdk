@@ -105,12 +105,12 @@ export const REALTIME_CONFIG = {
     /** RTT bands (ms) for the preflight verdict. */
     rtt: { goodMs: 150, marginalMs: 300 },
     /**
-     * Opt-in active probe (`checkConnectivity({ active: true, model })`): briefly
-     * opens a real session with a synthetic source + pixel-marker measurement to
-     * get a true glass-to-glass verdict, then tears it down. Costs a short GPU
-     * session. The verdict reuses the in-session `connectionQuality` bands.
-     * Duration must cover TTFF (~4–5s) + mid-stream warm-up (~2s) before
-     * steady-state samples accrue; resolves early once `minSamples` exist.
+     * Deep probe (`checkConnectivity({ deep: true, model })`): briefly opens a
+     * real session with a synthetic source + pixel-marker measurement to get a
+     * true glass-to-glass verdict, then tears it down. Costs a short GPU session.
+     * The verdict reuses the in-session `connectionQuality` bands. Duration must
+     * cover TTFF (~4–5s) + mid-stream warm-up (~2s) before steady-state samples
+     * accrue; resolves early once `minSamples` exist.
      */
     active: { durationMs: 12_000, minSamples: 5 },
   },
