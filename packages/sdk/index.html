@@ -200,6 +200,8 @@
             background: #f8f9fa;
             border-radius: 4px;
             border-left: 3px solid #ddd;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
         }
         
         .log-error {
@@ -292,6 +294,11 @@
             <span id="status-indicator" class="status-indicator status-disconnected"></span>
             <span id="status-text">Disconnected</span>
         </div>
+        <div id="connection-quality-row" style="display: none; margin-top: 10px;">
+            <strong>Connection Quality:</strong>
+            <span id="connection-quality-badge" style="display: inline-block; padding: 2px 10px; border-radius: 12px; color: #fff; font-weight: bold; font-size: 12px;">-</span>
+            <span id="connection-quality-detail" style="font-family: 'Courier New', monospace; font-size: 12px; color: #555; margin-left: 8px;"></span>
+        </div>
         <div id="session-info" style="display: none; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 14px;">
             <strong>Session ID:</strong> <span id="session-id-text">-</span>
         </div>
@@ -328,6 +335,7 @@
                     <option value="lucy-2.5">Lucy 2.5</option>
                     <option value="lucy-2.1-vton">Lucy 2.1 VTON</option>
                     <option value="lucy-vton-2">Lucy VTON 2</option>
+                    <option value="lucy-vton-3">Lucy VTON 3</option>
                     <option value="lucy-restyle-2">Lucy Restyle 2</option>
                 </optgroup>
                 <optgroup label="Deprecated aliases">
@@ -342,6 +350,14 @@
             <select id="resolution-select">
                 <option value="720p" selected>720p (default)</option>
                 <option value="1080p">1080p</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="codec-select">Preferred Video Codec:</label>
+            <select id="codec-select">
+                <option value="" selected>Default (h264)</option>
+                <option value="h264">h264</option>
+                <option value="vp9">vp9</option>
             </select>
         </div>
         <div class="control-group">
@@ -367,6 +383,22 @@
             <button id="start-camera">Start Camera</button>
             <button id="connect-btn" disabled>Connect to Decart</button>
             <button id="disconnect-btn" disabled>Disconnect</button>
+        </div>
+    </div>
+
+    <!-- Connectivity Check (Preflight) -->
+    <div class="controls">
+        <h3>Connectivity Check (Preflight)</h3>
+        <p style="margin: 0 0 10px 0; font-size: 12px; color: #666;">
+            SDK-only WebRTC reachability + latency probe — no session, no inference. Use it to decide whether to show the integration <em>before</em> connecting. Needs an API key above (the client factory requires one), but the probe itself only hits public STUN.
+        </p>
+        <div class="inline-controls">
+            <button id="check-connectivity-btn">Check Connectivity</button>
+        </div>
+        <div id="connectivity-result" style="margin-top: 10px; padding: 10px 12px; border-radius: 6px; display: none; background: #f8f9fa;">
+            <div style="font-size: 15px; font-weight: bold;" id="connectivity-headline">-</div>
+            <div style="margin-top: 6px; font-family: 'Courier New', monospace; font-size: 12px; color: #333;" id="connectivity-metrics"></div>
+            <ul id="connectivity-reasons" style="margin: 8px 0 0 0; padding-left: 18px; font-size: 12px; color: #555;"></ul>
         </div>
     </div>
 
@@ -602,6 +634,7 @@
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             resolutionSelect: document.getElementById('resolution-select'),
+            codecSelect: document.getElementById('codec-select'),
             initialPrompt: document.getElementById('initial-prompt'),
             cameraFps: document.getElementById('camera-fps'),
             streamAudioToggle: document.getElementById('stream-audio-toggle'),
@@ -629,6 +662,16 @@
             subscribeTokenInput: document.getElementById('subscribe-token-input'),
             subscribeBtn: document.getElementById('subscribe-btn'),
             logsContainer: document.getElementById('logs-container'),
+            // Connection quality (in-session) elements
+            connectionQualityRow: document.getElementById('connection-quality-row'),
+            connectionQualityBadge: document.getElementById('connection-quality-badge'),
+            connectionQualityDetail: document.getElementById('connection-quality-detail'),
+            // Connectivity preflight elements
+            checkConnectivityBtn: document.getElementById('check-connectivity-btn'),
+            connectivityResult: document.getElementById('connectivity-result'),
+            connectivityHeadline: document.getElementById('connectivity-headline'),
+            connectivityMetrics: document.getElementById('connectivity-metrics'),
+            connectivityReasons: document.getElementById('connectivity-reasons'),
             // Image reference elements
             referenceImage: document.getElementById('reference-image'),
             includeReferenceFrame: document.getElementById('include-reference-frame'),
@@ -755,6 +798,85 @@
             elements.statusIndicator.className = `status-indicator ${statusClass[status] || statusClass.disconnected}`;
             elements.statusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
         }
+
+        // ---------- Connection quality (in-session) ----------
+        const QUALITY_COLORS = { good: '#4CAF50', fair: '#c9a227', poor: '#ff9800', critical: '#f44336' };
+
+        function updateConnectionQuality(report) {
+            elements.connectionQualityRow.style.display = 'block';
+            elements.connectionQualityBadge.style.background = QUALITY_COLORS[report.quality] ?? '#777';
+            elements.connectionQualityBadge.textContent =
+                report.quality.toUpperCase() + (report.warmingUp ? ' (warming up)' : '');
+
+            const m = report.metrics;
+            const parts = [];
+            if (report.limitingFactor && report.limitingFactor !== 'none') parts.push(`limited by ${report.limitingFactor}`);
+            if (m.rttMs != null) parts.push(`rtt ${Math.round(m.rttMs)}ms`);
+            if (m.fps != null) parts.push(`${Math.round(m.fps)}fps`);
+            if (m.packetLoss != null) parts.push(`loss ${(m.packetLoss * 100).toFixed(1)}%`);
+            if (m.availableUpstreamKbps != null) parts.push(`↑avail ${Math.round(m.availableUpstreamKbps)}kbps`);
+            elements.connectionQualityDetail.textContent = parts.join('  ·  ');
+        }
+
+        function resetConnectionQuality() {
+            elements.connectionQualityRow.style.display = 'none';
+            elements.connectionQualityBadge.textContent = '-';
+            elements.connectionQualityBadge.style.background = '#777';
+            elements.connectionQualityDetail.textContent = '';
+        }
+
+        // ---------- Connectivity preflight ----------
+        // The SDK reports a quality state; the app decides what to do with it.
+        const CONNECTIVITY_STYLE = {
+            good: { bg: '#e8f5e8', color: '#2e7d32', label: '✅ Good — connection looks ready', log: 'success' },
+            fair: { bg: '#fff8e1', color: '#b8860b', label: '⚠️ Fair — usable, with caveats', log: 'info' },
+            poor: { bg: '#fff3e0', color: '#e65100', label: '⚠️ Poor — connection is degraded', log: 'info' },
+            critical: { bg: '#ffebee', color: '#c62828', label: '⛔ Critical — cannot establish a connection', log: 'error' },
+        };
+
+        async function runConnectivityCheck() {
+            const client = ensureDecartClient();
+            if (!client) return;
+
+            try {
+                elements.checkConnectivityBtn.disabled = true;
+                elements.connectivityResult.style.display = 'block';
+                elements.connectivityResult.style.background = '#f8f9fa';
+                elements.connectivityHeadline.style.color = '#333';
+                elements.connectivityHeadline.textContent = '⏳ Probing network…';
+                elements.connectivityMetrics.textContent = '';
+                elements.connectivityReasons.innerHTML = '';
+                addLog('Running connectivity preflight…', 'info');
+
+                const report = await client.realtime.checkConnectivity();
+
+                const style = CONNECTIVITY_STYLE[report.quality] ?? CONNECTIVITY_STYLE.fair;
+                elements.connectivityResult.style.background = style.bg;
+                elements.connectivityHeadline.style.color = style.color;
+                elements.connectivityHeadline.textContent = style.label;
+
+                const m = report.metrics;
+                elements.connectivityMetrics.textContent =
+                    `quality=${report.quality}   transport=${m.transport}   rtt=${m.rttMs != null ? `${m.rttMs}ms` : 'n/a'}`;
+
+                elements.connectivityReasons.innerHTML = '';
+                for (const reason of report.reasons) {
+                    const li = document.createElement('li');
+                    li.textContent = reason;
+                    elements.connectivityReasons.appendChild(li);
+                }
+
+                addLog(`checkConnectivity() →\n${JSON.stringify(report, null, 2)}`, style.log);
+            } catch (error) {
+                elements.connectivityHeadline.style.color = '#c62828';
+                elements.connectivityHeadline.textContent = `❌ Probe failed: ${error.message ?? error}`;
+                addLog(`Connectivity check failed: ${error.message ?? error}`, 'error');
+            } finally {
+                elements.checkConnectivityBtn.disabled = false;
+            }
+        }
+
+        elements.checkConnectivityBtn.addEventListener('click', runConnectivityCheck);
 
         function syncPublisherSubscribeToken() {
             if (activeConnectionMode !== 'publisher' || !decartRealtime?.getSubscribeToken) {
@@ -900,7 +1022,8 @@
                 elements.connectBtn.disabled = true;
                 elements.subscribeBtn.disabled = true;
                 activeConnectionMode = 'publisher';
-                
+                resetConnectionQuality();
+
                 addLog('Initializing Decart client...', 'info');
                 
                 const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
@@ -932,9 +1055,15 @@
                 const resolution = elements.resolutionSelect.value;
                 addLog(`Resolution: ${resolution}`, 'info');
 
+                const preferredVideoCodec = elements.codecSelect.value || undefined;
+                if (preferredVideoCodec) {
+                    addLog(`Preferred video codec: ${preferredVideoCodec}`, 'info');
+                }
+
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     resolution,
+                    ...(preferredVideoCodec && { preferredVideoCodec }),
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
@@ -947,6 +1076,13 @@
                     },
                     onQueuePosition: (queuePosition) => {
                         addLog(`Queue position: ${queuePosition.position}/${queuePosition.queueSize}`, 'info');
+                    },
+                    onConnectionQuality: (report) => {
+                        updateConnectionQuality(report);
+                        addLog(
+                            `onConnectionQuality →\n${JSON.stringify(report, null, 2)}`,
+                            report.quality === 'poor' || report.quality === 'critical' ? 'error' : 'info',
+                        );
                     },
                     initialState: {
                         ...(promptValue && { prompt: promptValue }),
@@ -1127,6 +1263,7 @@
             elements.referenceImage.value = '';
             elements.imageStatus.style.display = 'none';
             elements.imagePreview.style.display = 'none';
+            resetConnectionQuality();
             updateUseRefAsImageBtnState();
 
             addLog('Disconnected successfully', 'info');

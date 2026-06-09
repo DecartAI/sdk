@@ -5,7 +5,6 @@ import {
   Room,
   RoomEvent,
   Track,
-  TrackEvent,
   type TrackPublishOptions,
 } from "livekit-client";
 import mitt, { type Emitter } from "mitt";
@@ -17,22 +16,25 @@ import type { RealtimeObservability } from "./observability/realtime-observabili
 export type VideoCodec = "h264" | "vp8" | "vp9" | "av1";
 
 export function getDefaultVideoPublishOptions(videoCodec?: VideoCodec): TrackPublishOptions {
-  const videoEncoding = {
-    maxBitrate: REALTIME_CONFIG.livekit.defaultMaxVideoBitrateBps,
-    maxFramerate: REALTIME_CONFIG.livekit.defaultPublishFps,
-  };
+  const resolvedCodec = videoCodec ?? REALTIME_CONFIG.livekit.defaultVideoCodec;
+  const maxBitrate =
+    resolvedCodec === "vp9"
+      ? REALTIME_CONFIG.livekit.vp9MaxVideoBitrateBps
+      : REALTIME_CONFIG.livekit.defaultMaxVideoBitrateBps;
 
   return {
     source: Track.Source.Camera,
-    videoCodec: videoCodec ?? REALTIME_CONFIG.livekit.defaultVideoCodec,
-    simulcast: true,
-    videoEncoding,
+    videoCodec: resolvedCodec,
+    simulcast: resolvedCodec !== "vp9",
+    videoEncoding: {
+      maxBitrate,
+      maxFramerate: REALTIME_CONFIG.livekit.defaultPublishFps,
+    },
   };
 }
 
 export type MediaChannelEvents = {
   remoteStream: MediaStream;
-  firstFrame: undefined;
   disconnected: { reason?: DisconnectReason };
 };
 
@@ -78,18 +80,21 @@ export class MediaChannel {
       if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) return;
       if (track.kind !== Track.Kind.Video && track.kind !== Track.Kind.Audio) return;
 
-      track.attach();
       const mediaStreamTrack = track.mediaStreamTrack;
       if (mediaStreamTrack) {
-        this.remoteStream ??= new MediaStream();
-        if (!this.remoteStream.getTracks().includes(mediaStreamTrack)) {
-          this.remoteStream.addTrack(mediaStreamTrack);
+        // Emit a fresh MediaStream whenever the track set changes. Consumers
+        // assign this to an element's `srcObject`; mutating the existing stream
+        // in place would not work because assigning the same MediaStream
+        // reference is a no-op and a late-arriving audio track would never get
+        // an output sink. A new object forces the element to re-read its tracks,
+        // so a single <video> element plays both video and audio.
+        const tracks = this.remoteStream?.getTracks() ?? [];
+        if (!tracks.includes(mediaStreamTrack)) {
+          tracks.push(mediaStreamTrack);
         }
+        this.remoteStream = new MediaStream(tracks);
         this.events.emit("remoteStream", this.remoteStream);
       }
-      track.on(TrackEvent.VideoPlaybackStarted, () => {
-        this.events.emit("firstFrame");
-      });
     });
 
     room.on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {

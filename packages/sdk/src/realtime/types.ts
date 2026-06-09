@@ -42,6 +42,10 @@ export type GenerationEndedMessage = GenerationEnded & {
   type: "generation_ended";
 };
 
+export type GenerationStartedMessage = {
+  type: "generation_started";
+};
+
 export type LiveKitJoinMessage = {
   type: "livekit_join";
 };
@@ -129,6 +133,7 @@ export type IncomingRealtimeMessage =
   | SetImageAckMessage
   | GenerationTickMessage
   | GenerationEndedMessage
+  | GenerationStartedMessage
   | LiveKitRoomInfoMessage
   | QueuePositionMessage;
 

@@ -12,8 +12,10 @@ import { createConsoleLogger, type Logger } from "../utils/logger";
 import { imageToBase64 } from "../utils/media";
 import { isDesktopSafari } from "../utils/platform";
 import { createEventBuffer } from "./event-buffer";
+import type { VideoCodec } from "./media-channel";
 import { realtimeMethods, type SetInput } from "./methods";
 import { createMirroredStream, type MirroredStream, shouldMirrorTrack } from "./mirror-stream";
+import type { ConnectionQualityReport } from "./observability/connection-quality";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
 import type { WebRTCStats } from "./observability/webrtc-stats";
@@ -31,6 +33,7 @@ export type RealTimeClientOptions = {
 const realTimeClientInitialStateSchema = modelStateSchema;
 type OnRemoteStreamFn = (stream: MediaStream) => void;
 type OnConnectionChangeFn = (state: ConnectionState) => void;
+type OnConnectionQualityFn = (report: ConnectionQualityReport) => void;
 type OnQueuePositionFn = (queuePosition: QueuePosition) => void;
 export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialStateSchema>;
 
@@ -44,6 +47,11 @@ const realTimeClientConnectOptionsSchema = z.object({
       message: "onConnectionChange must be a function",
     })
     .optional(),
+  onConnectionQuality: z
+    .custom<OnConnectionQualityFn>((val) => typeof val === "function", {
+      message: "onConnectionQuality must be a function",
+    })
+    .optional(),
   onQueuePosition: z
     .custom<OnQueuePositionFn>((val) => typeof val === "function", {
       message: "onQueuePosition must be a function",
@@ -53,6 +61,8 @@ const realTimeClientConnectOptionsSchema = z.object({
   queryParams: z.record(z.string(), z.string()).optional(),
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
   resolution: z.enum(["720p", "1080p"]).optional(),
+  /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
+  preferredVideoCodec: z.enum(["h264", "vp9"]).optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -60,6 +70,7 @@ export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientCon
 
 export type Events = {
   connectionChange: ConnectionState;
+  connectionQuality: ConnectionQualityReport;
   queuePosition: QueuePosition;
   error: DecartSDKError;
   generationTick: GenerationTick;
@@ -73,6 +84,8 @@ export type RealTimeClient = {
   setPrompt: (prompt: string, { enhance }?: { enhance?: boolean }) => Promise<void>;
   isConnected: () => boolean;
   getConnectionState: () => ConnectionState;
+  /** Latest interpreted connection-quality verdict, or null before any stats arrive. */
+  getConnectionQuality: () => ConnectionQualityReport | null;
   disconnect: () => void;
   on: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
   off: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
@@ -104,7 +117,15 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
     if (!parsedOptions.success) throw parsedOptions.error;
 
-    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState, resolution } = parsedOptions.data;
+    const {
+      onRemoteStream,
+      onConnectionChange,
+      onConnectionQuality,
+      onQueuePosition,
+      initialState,
+      resolution,
+      preferredVideoCodec,
+    } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
     let inputStream: MediaStream = stream ?? new MediaStream();
 
@@ -147,9 +168,14 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         logger,
         onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
         onStats: (stats) => emitOrBuffer("stats", stats),
+        onConnectionQuality: (report) => {
+          emitOrBuffer("connectionQuality", report);
+          onConnectionQuality?.(report);
+        },
       });
 
       const safariCodec = isDesktopSafari() ? "vp8" : undefined;
+      const publishCodec: VideoCodec | undefined = safariCodec ?? preferredVideoCodec;
 
       const queryParams = new URLSearchParams({
         ...(safariCodec ? { livekit_server_codec: safariCodec } : {}),
@@ -168,7 +194,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialImageRef,
         initialPrompt,
         logger,
-        videoCodec: safariCodec,
+        videoCodec: publishCodec,
       });
 
       let sessionId: string | null = null;
@@ -209,6 +235,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         ...methods,
         isConnected: () => activeSession.isConnected(),
         getConnectionState: () => activeSession.getConnectionState(),
+        getConnectionQuality: () => observability?.getConnectionQuality() ?? null,
         disconnect: () => {
           observability?.stop();
           stop();

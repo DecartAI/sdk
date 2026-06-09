@@ -2372,6 +2372,7 @@ describe("Canonical Model Names", () => {
         "lucy-2.5",
         "lucy-2.1-vton",
         "lucy-vton-2",
+        "lucy-vton-3",
         "lucy-restyle-2",
       ]);
       expect(canonicalVideoModels.options).toEqual([
@@ -2379,6 +2380,7 @@ describe("Canonical Model Names", () => {
         "lucy-2.1",
         "lucy-2.1-vton",
         "lucy-vton-2",
+        "lucy-vton-3",
         "lucy-restyle-2",
       ]);
       expect(canonicalImageModels.options).toEqual(["lucy-image-2"]);
@@ -2439,7 +2441,7 @@ describe("Canonical Model Names", () => {
     it("lists all models when called without options", () => {
       const listedModels = listModels();
 
-      expect(listedModels).toHaveLength(27);
+      expect(listedModels).toHaveLength(29);
       expect(listedModels.some((model) => model.kind === "realtime" && model.name === "lucy-2.1")).toBe(true);
       expect(listedModels.some((model) => model.kind === "video" && model.name === "lucy-clip")).toBe(true);
       expect(listedModels.some((model) => model.kind === "image" && model.name === "lucy-image-2")).toBe(true);
@@ -2532,6 +2534,15 @@ describe("Canonical Model Names", () => {
       expect(model.height).toBe(624);
     });
 
+    it("lucy-vton-3 canonical name works", () => {
+      const model = models.realtime("lucy-vton-3");
+      expect(model.name).toBe("lucy-vton-3");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
     it("lucy-restyle-2 canonical name works", () => {
       const model = models.realtime("lucy-restyle-2");
       expect(model.name).toBe("lucy-restyle-2");
@@ -2568,6 +2579,16 @@ describe("Canonical Model Names", () => {
       expect(model.name).toBe("lucy-vton-2");
       expect(model.urlPath).toBe("/v1/generate/lucy-vton-2");
       expect(model.queueUrlPath).toBe("/v1/jobs/lucy-vton-2");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
+    it("lucy-vton-3 as video model works", () => {
+      const model = models.video("lucy-vton-3");
+      expect(model.name).toBe("lucy-vton-3");
+      expect(model.urlPath).toBe("/v1/generate/lucy-vton-3");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-vton-3");
       expect(model.fps).toBe(20);
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);

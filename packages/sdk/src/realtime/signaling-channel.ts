@@ -29,6 +29,7 @@ export type RoomInfo = {
 
 export type SignalingChannelEvents = {
   queuePosition: QueuePosition;
+  generationStarted: undefined;
   generationTick: GenerationTick;
   generationEnded: GenerationEnded;
   serverError: Error;
@@ -367,6 +368,9 @@ export class SignalingChannel {
           position: msg.position,
           queueSize: msg.queue_size,
         });
+        break;
+      case "generation_started":
+        this.events.emit("generationStarted");
         break;
       case "generation_tick":
         this.events.emit("generationTick", { seconds: msg.seconds });
