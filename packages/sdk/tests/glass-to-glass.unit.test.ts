@@ -48,6 +48,21 @@ describe("SeqTracker", () => {
     expect(snap.p90Ms).toBe(300);
   });
 
+  it("averages the two middle samples for an even-count median (no high skew)", () => {
+    const t = new SeqTracker();
+    t.markStart(0);
+    const warm = t.stampNext(0);
+    t.recordInbound(warm, 10); // first frame (warm-up, excluded)
+
+    for (const latency of [100, 200, 150, 300]) {
+      const seq = t.stampNext(PAST_WARMUP);
+      t.recordInbound(seq, PAST_WARMUP + latency);
+    }
+    const snap = t.snapshot();
+    expect(snap.sampleCount).toBe(4);
+    expect(snap.medianMs).toBe(175); // sorted [100,150,200,300] -> (150 + 200) / 2
+  });
+
   it("ignores unknown, duplicate, and implausible inbound seqs", () => {
     const t = new SeqTracker();
     const warm = t.stampNext(0);

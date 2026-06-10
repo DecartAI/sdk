@@ -143,14 +143,24 @@ export class SeqTracker {
 
   snapshot(): G2GMetrics {
     const sorted = [...this.latencies].sort((a, b) => a - b);
-    const pct = (p: number): number | null =>
-      sorted.length === 0 ? null : Math.round(sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]);
+    const n = sorted.length;
+    // True median: average the two middle samples on an even count. Nearest-rank
+    // would bias high and can tip a verdict near a band threshold. p90 stays
+    // nearest-rank (the standard percentile convention).
+    const medianMs =
+      n === 0
+        ? null
+        : n % 2 === 0
+          ? Math.round((sorted[n / 2 - 1] + sorted[n / 2]) / 2)
+          : Math.round(sorted[(n - 1) / 2]);
+    const p90Ms = n === 0 ? null : Math.round(sorted[Math.min(n - 1, Math.floor(0.9 * n))]);
+
     let dropRatio: number | null = null;
     if (this.outcomes.length >= DROP_MIN_OUTCOMES) {
-      const dropped = this.outcomes.reduce((n, delivered) => n + (delivered ? 0 : 1), 0);
+      const dropped = this.outcomes.reduce((acc, delivered) => acc + (delivered ? 0 : 1), 0);
       dropRatio = dropped / this.outcomes.length;
     }
-    return { ttffMs: this.ttffMs, medianMs: pct(0.5), p90Ms: pct(0.9), sampleCount: sorted.length, dropRatio };
+    return { ttffMs: this.ttffMs, medianMs, p90Ms, sampleCount: n, dropRatio };
   }
 
   /** Clear measurement state. Keeps `nextSeq` monotonic to avoid stale collisions. */
