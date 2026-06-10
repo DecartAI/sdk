@@ -56,7 +56,6 @@ const realTimeClientConnectOptionsSchema = z.object({
   resolution: z.enum(["720p", "1080p"]).optional(),
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp9"]).optional(),
-  bundleInitialState: z.boolean().optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -103,15 +102,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
     if (!parsedOptions.success) throw parsedOptions.error;
 
-    const {
-      onRemoteStream,
-      onConnectionChange,
-      onQueuePosition,
-      initialState,
-      resolution,
-      preferredVideoCodec,
-      bundleInitialState,
-    } = parsedOptions.data;
+    const { onRemoteStream, onConnectionChange, onQueuePosition, initialState, resolution, preferredVideoCodec } =
+      parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
     let inputStream: MediaStream = stream ?? new MediaStream();
 
@@ -177,7 +169,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialPrompt,
         logger,
         videoCodec: publishCodec,
-        bundleInitialState,
       });
 
       let sessionId: string | null = null;

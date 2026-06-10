@@ -371,10 +371,6 @@
             <input type="checkbox" id="stream-audio-toggle" unchecked>
             <label for="stream-audio-toggle" style="margin: 0; font-weight: normal;">Stream microphone audio</label>
         </div>
-        <div class="control-group checkbox-group">
-            <input type="checkbox" id="legacy-protocol-toggle">
-            <label for="legacy-protocol-toggle" style="margin: 0; font-weight: normal;">Legacy connection protocol (two-step: no bundled initial_state)</label>
-        </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
             <button id="connect-btn" disabled>Connect to Decart</button>
@@ -579,7 +575,6 @@
             initialPrompt: document.getElementById('initial-prompt'),
             cameraFps: document.getElementById('camera-fps'),
             streamAudioToggle: document.getElementById('stream-audio-toggle'),
-            legacyToggle: document.getElementById('legacy-protocol-toggle'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
             disconnectBtn: document.getElementById('disconnect-btn'),
@@ -911,11 +906,6 @@
                     addLog(`Preferred video codec: ${preferredVideoCodec}`, 'info');
                 }
 
-                const legacyProtocol = elements.legacyToggle.checked;
-                if (legacyProtocol) {
-                    addLog('Legacy protocol: join without bundled initial_state; initial state sent after room info (two-step)', 'info');
-                }
-
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     resolution,
@@ -933,7 +923,6 @@
                     onQueuePosition: (queuePosition) => {
                         addLog(`Queue position: ${queuePosition.position}/${queuePosition.queueSize}`, 'info');
                     },
-                    bundleInitialState: !legacyProtocol,
                     initialState: {
                         ...(promptValue && { prompt: promptValue }),
                         ...(initialImage && { image: initialImage }),
