@@ -383,6 +383,35 @@ function createSyntheticSource(
   };
 }
 
+const ABORTED_DEEP_PROBE: ConnectivityReport = {
+  quality: "fair",
+  metrics: {
+    transport: "failed",
+    rttMs: null,
+    g2gMs: null,
+    ttffMs: null,
+    g2gDropRatio: null,
+    upstreamJitterMs: null,
+    packetLoss: null,
+    sampleCount: 0,
+  },
+  reasons: ["Deep connectivity probe aborted."],
+};
+
+/** Unblock `promise` early when `signal` aborts. */
+function raceAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason ?? new DOMException("Aborted", "AbortError")), {
+        once: true,
+      });
+    }),
+  ]);
+}
+
 /** Resolve once enough g2g samples exist or the probe window elapses (never rejects). */
 function waitForProbe(
   getLatest: () => WebRTCStats | null,
@@ -416,20 +445,30 @@ async function runActiveProbe(args: {
   let client: RealTimeClient | undefined;
   let latest: WebRTCStats | null = null;
 
+  if (signal?.aborted) return ABORTED_DEEP_PROBE;
+
   try {
     // Match the model's exact input resolution so the server processes the frame
     // without reshaping it (which would corrupt the bottom-left pixel marker).
     source = createSyntheticSource(model.width, model.height, resolveFpsNumber(model.fps));
-    client = await connect(source.stream, {
+
+    const connectTask = connect(source.stream, {
       model,
       debugQuality: true,
       onRemoteStream: () => {},
     });
+    signal?.addEventListener("abort", () => connectTask.then((c) => c.disconnect()).catch(() => {}), {
+      once: true,
+    });
+    client = await raceAbort(connectTask, signal);
+
     client.on("stats", (stats) => {
       latest = stats;
     });
     await waitForProbe(() => latest, REALTIME_CONFIG.preflight.active.minSamples, durationMs, signal);
+    if (signal?.aborted) return ABORTED_DEEP_PROBE;
   } catch (error) {
+    if (signal?.aborted) return ABORTED_DEEP_PROBE;
     logger.warn("deep connectivity probe failed", {
       error: error instanceof Error ? error.message : String(error),
     });
