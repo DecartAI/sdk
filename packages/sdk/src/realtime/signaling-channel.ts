@@ -63,6 +63,7 @@ export type OpenAndJoinOptions = {
   connectTimeout?: number;
   handshakeTimeout?: number;
   initialState?: InitialState;
+  bundleInitialState?: boolean;
 };
 
 export type OpenAndJoinResult = {
@@ -150,11 +151,14 @@ export class SignalingChannel {
     // The initial state rides inside livekit_join so the inference server gets
     // the reference image/prompt with the join, with no separate message sent
     // after livekit_room_info arrives.
+    const bundleInitialState = opts.bundleInitialState ?? true;
     const initialStateRequest = buildInitialStateRequest(opts.initialState);
-    const joinMessage: LiveKitJoinMessage = {
-      type: "livekit_join",
-      initial_state: initialStateRequest ? initialStateRequest.message : null,
-    };
+    const joinMessage: LiveKitJoinMessage = bundleInitialState
+      ? {
+          type: "livekit_join",
+          initial_state: initialStateRequest ? initialStateRequest.message : null,
+        }
+      : { type: "livekit_join" };
 
     if (!this.writeMessage(joinMessage)) {
       roomInfoWait.cancel();
@@ -175,20 +179,22 @@ export class SignalingChannel {
     // Arm the ack only now that room info arrived, so a long queue wait cannot
     // trip the ack timeout. The message already rode out with the join, so this
     // waits for the ack without writing again.
-    const initialStateAck = initialStateRequest ? this.flushInitialState(initialStateRequest) : Promise.resolve();
+    const initialStateAck = initialStateRequest
+      ? this.flushInitialState(initialStateRequest, { write: !bundleInitialState })
+      : Promise.resolve();
     initialStateAck.catch(() => {});
 
     return { roomInfo, initialStateAck };
   }
 
-  private async flushInitialState(request: InitialStateRequest): Promise<void> {
+  private async flushInitialState(request: InitialStateRequest, opts: { write: boolean }): Promise<void> {
     this.config.observability?.startPhase("initial-state-handshake");
     const ack = await this.request<SetImageAckMessage | PromptAckMessage>({
       message: request.message,
       matchAck: request.matchAck,
       timeoutMs: REALTIME_CONFIG.signaling.requestTimeoutMs,
       label: request.label,
-      write: false,
+      write: opts.write,
     });
     this.config.observability?.endPhase("initial-state-handshake", { success: true });
     if (!ack.success) throw new Error(ack.error ?? `Failed: ${request.label}`);

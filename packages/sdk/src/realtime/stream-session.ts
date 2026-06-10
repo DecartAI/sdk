@@ -61,6 +61,7 @@ interface StreamSessionConfig {
   initialPrompt?: InitialPrompt;
   logger?: Logger;
   videoCodec?: VideoCodec;
+  bundleInitialState?: boolean;
 }
 
 export class StreamSession {
@@ -174,6 +175,7 @@ export class StreamSession {
       const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({
         connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
         initialState,
+        bundleInitialState: this.config.bundleInitialState,
       });
 
       if (this.disposed || this.currentAttempt !== attempt) {
