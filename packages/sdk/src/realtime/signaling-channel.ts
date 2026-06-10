@@ -151,9 +151,10 @@ export class SignalingChannel {
     // the reference image/prompt with the join, with no separate message sent
     // after livekit_room_info arrives.
     const initialStateRequest = buildInitialStateRequest(opts.initialState);
-    const joinMessage: LiveKitJoinMessage = initialStateRequest
-      ? { type: "livekit_join", initial_state: initialStateRequest.message }
-      : { type: "livekit_join" };
+    const joinMessage: LiveKitJoinMessage = {
+      type: "livekit_join",
+      initial_state: initialStateRequest ? initialStateRequest.message : null,
+    };
 
     if (!this.writeMessage(joinMessage)) {
       roomInfoWait.cancel();
