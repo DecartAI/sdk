@@ -204,6 +204,49 @@ describe("RealtimeObservability", () => {
     expect(body.diagnostics.map((event: NamedDiagnostic) => event.name)).toEqual(["videoStall", "videoStall"]);
   });
 
+  it("flushes buffered telemetry when stopped before the report interval", async () => {
+    const { RealtimeObservability } = await import("../src/realtime/observability/realtime-observability.js");
+
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+    const source = {
+      getStats: vi.fn().mockResolvedValue(
+        new Map([
+          [
+            "video",
+            {
+              type: "inbound-rtp",
+              kind: "video",
+              framesPerSecond: 30,
+              framesDecoded: 1,
+            },
+          ],
+        ]) as unknown as RTCStatsReport,
+      ),
+    };
+
+    const observability = new RealtimeObservability({
+      telemetryEnabled: true,
+      apiKey: "test-key",
+      logger,
+    });
+
+    observability.sessionStarted("session-stop");
+    observability.setStatsProvider(source);
+
+    await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.observability.statsDefaultIntervalMs);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    observability.stop();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1].keepalive).toBe(true);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.sessionId).toBe("session-stop");
+    expect(body.stats).toHaveLength(1);
+  });
+
   it("replaces the stats provider without leaving the old polling loop running", async () => {
     const { RealtimeObservability } = await import("../src/realtime/observability/realtime-observability.js");
 
