@@ -422,7 +422,7 @@ async function runActiveProbe(args: {
     source = createSyntheticSource(model.width, model.height, resolveFpsNumber(model.fps));
     client = await connect(source.stream, {
       model,
-      deep: true,
+      debugQuality: true,
       onRemoteStream: () => {},
     });
     client.on("stats", (stats) => {

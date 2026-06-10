@@ -1082,16 +1082,16 @@
                     addLog(`Preferred video codec: ${preferredVideoCodec}`, 'info');
                 }
 
-                const deep = elements.measureG2g.checked;
-                if (deep) {
-                    addLog('Deep (glass-to-glass) measurement ON (marker visible bottom-left of output)', 'info');
+                const debugQuality = elements.measureG2g.checked;
+                if (debugQuality) {
+                    addLog('Debug-quality (glass-to-glass) measurement ON (marker visible bottom-left of output)', 'info');
                 }
 
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     resolution,
                     ...(preferredVideoCodec && { preferredVideoCodec }),
-                    ...(deep && { deep: true }),
+                    ...(debugQuality && { debugQuality: true }),
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;

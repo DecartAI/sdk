@@ -22,8 +22,8 @@ export type RealtimeObservabilityOptions = {
   onDiagnostic?: (event: DiagnosticEvent) => void;
   onStats?: (stats: WebRTCStats) => void;
   onConnectionQuality?: (report: ConnectionQualityReport) => void;
-  /** Opt-in: measure true glass-to-glass latency via the pixel-marker pipeline. */
-  deep?: boolean;
+  /** Opt-in diagnostic: measure true glass-to-glass latency via the pixel-marker pipeline (visible marker). */
+  debugQuality?: boolean;
 };
 
 type PendingTelemetryDiagnostic = {
@@ -57,13 +57,13 @@ export class RealtimeObservability {
   private stallStartMs = 0;
   private connectionBreakdown: ConnectionBreakdownBuffer | null = null;
   private readonly connectionQuality = new ConnectionQualityEvaluator();
-  /** Glass-to-glass: shared tracker, outgoing stamp pump, and incoming reader. Null unless `deep`. */
+  /** Glass-to-glass: shared tracker, outgoing stamp pump, and incoming reader. Null unless `debugQuality`. */
   private readonly seqTracker: SeqTracker | null;
   private readonly markerReader: MarkerReader | null;
   private stampPump: StampPump | null = null;
 
   constructor(private readonly options: RealtimeObservabilityOptions) {
-    this.seqTracker = options.deep ? new SeqTracker() : null;
+    this.seqTracker = options.debugQuality ? new SeqTracker() : null;
     this.markerReader = this.seqTracker ? createMarkerReader(this.seqTracker) : null;
   }
 
