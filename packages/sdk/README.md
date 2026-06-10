@@ -129,6 +129,70 @@ subscriber.on("connectionChange", (state) => {
 subscriber.disconnect();
 ```
 
+### Connection quality
+
+There are two layers: a **preflight** check before connecting, and an **in-session** quality
+signal while connected. Both report on a shared `"good" | "fair" | "poor" | "critical"` scale —
+the SDK reports, you decide what to do (gate the UI, warn the user, etc.).
+
+**Preflight (before connecting).** A fast, network-only reachability check — it spins up a
+throwaway peer connection against public STUN, so there's no session and no cost:
+
+```typescript
+const { quality, metrics, reasons } = await client.realtime.checkConnectivity();
+// metrics: { transport: "udp" | "relay" | "failed", rttMs }
+if (quality === "critical") showFallbackUI(reasons);
+```
+
+**In-session quality.** While connected, the SDK derives a smoothed verdict from WebRTC stats
+(latency, packet loss, bandwidth headroom, frame rate) and tells you which dimension is the
+bottleneck:
+
+```typescript
+const realtimeClient = await client.realtime.connect(stream, {
+  model,
+  onRemoteStream: (s) => { videoElement.srcObject = s; },
+  onConnectionQuality: ({ quality, limitingFactor, metrics }) => {
+    // limitingFactor: "bandwidth" | "latency" | "loss" | "stall" | "cpu" | "none"
+    // metrics: { rttMs, fps, packetLoss, upstreamJitterMs, availableUpstreamKbps, ... }
+    console.log(quality, limitingFactor);
+  },
+});
+
+// also available as an event and a getter:
+realtimeClient.on("connectionQuality", (report) => { /* ... */ });
+realtimeClient.getConnectionQuality(); // latest report, or null before the first sample
+```
+
+**Glass-to-glass latency (opt-in, diagnostic).** Network RTT hides the dominant cost in
+real-time video — model inference — so a session can read "good" while actually feeling laggy.
+Set `debugQuality: true` to measure the *real* camera→display latency: the SDK stamps a pixel
+marker into each outgoing frame and reads it back off the rendered output, surfacing **startup**
+(`ttffMs`) and **steady-state** (`g2gMs`) latency plus end-to-end frame drops (`g2gDropRatio`).
+When present, glass-to-glass drives the latency verdict instead of RTT.
+
+> ⚠️ Diagnostic only. The marker is **visible** (bottom-left of the published and rendered video)
+> and adds per-frame pixel work — don't enable it for production / end-user sessions.
+
+```typescript
+const realtimeClient = await client.realtime.connect(stream, {
+  model,
+  debugQuality: true,
+  onConnectionQuality: ({ quality, metrics }) => {
+    console.log(metrics.ttffMs, metrics.g2gMs, metrics.g2gDropRatio);
+  },
+});
+```
+
+For a *measured* verdict before connecting (instead of the network-only check), use the **deep
+probe**: it briefly opens a real session with a synthetic source, measures glass-to-glass, then
+tears it down. It requires a `model` and costs a short GPU session:
+
+```typescript
+const probe = await client.realtime.checkConnectivity({ deep: true, model });
+console.log(probe.quality, probe.metrics.g2gMs, probe.metrics.ttffMs);
+```
+
 ### Async Processing (Queue API)
 
 For video generation jobs, use the queue API to submit jobs and poll for results:
