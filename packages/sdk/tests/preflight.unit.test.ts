@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { REALTIME_CONFIG } from "../src/realtime/config-realtime.js";
+import type { RealTimeClient } from "../src/realtime/client.js";
 import {
   type ConnectivityMetrics,
   classifyActiveProbe,
@@ -7,6 +8,7 @@ import {
   createPreflight,
   type PreflightRttThresholds,
 } from "../src/realtime/preflight.js";
+import { models } from "../src/shared/model.js";
 
 const logger = { debug() {}, info() {}, warn() {}, error() {} };
 const RTT: PreflightRttThresholds = { goodMs: 150, marginalMs: 300 };
@@ -124,6 +126,31 @@ describe("classifyActiveProbe", () => {
   });
 });
 
+function stubDeepProbeDom() {
+  const tracks = [{ stop: vi.fn() }];
+  vi.stubGlobal(
+    "document",
+    {
+      createElement: vi.fn(() => ({
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => ({
+          fillRect: vi.fn(),
+          set fillStyle(_: string) {},
+        })),
+        captureStream: vi.fn(() => ({
+          getTracks: () => tracks,
+          getVideoTracks: () => tracks,
+        })),
+      })),
+    } as unknown as Document,
+  );
+  vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) =>
+    setTimeout(() => cb(performance.now()), 0),
+  );
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id));
+}
+
 describe("checkConnectivity", () => {
   it("reports critical/failed when WebRTC is unavailable in the environment", async () => {
     // The vitest unit env has no RTCPeerConnection, so the probe degrades cleanly.
@@ -131,5 +158,48 @@ describe("checkConnectivity", () => {
     const report = await checkConnectivity();
     expect(report.metrics.transport).toBe("failed");
     expect(report.quality).toBe("critical");
+  });
+
+  it("returns immediately when a deep probe signal is already aborted", async () => {
+    const connect = vi.fn();
+    const controller = new AbortController();
+    controller.abort();
+    const { checkConnectivity } = createPreflight({ logger, connect });
+    const report = await checkConnectivity({
+      deep: true,
+      model: models.realtime("lucy-restyle-2"),
+      signal: controller.signal,
+    });
+    expect(connect).not.toHaveBeenCalled();
+    expect(report.reasons).toContain("Deep connectivity probe aborted.");
+  });
+
+  it("cancels a deep probe while connect is still in flight", async () => {
+    vi.useFakeTimers();
+    stubDeepProbeDom();
+    const disconnect = vi.fn();
+    const connect = vi.fn(
+      () =>
+        new Promise<RealTimeClient>((resolve) => {
+          setTimeout(() => resolve({ on: vi.fn(), disconnect } as unknown as RealTimeClient), 60_000);
+        }),
+    );
+    const controller = new AbortController();
+    const { checkConnectivity } = createPreflight({ logger, connect });
+    const model = models.realtime("lucy-restyle-2");
+
+    const pending = checkConnectivity({ deep: true, model, signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(10);
+    controller.abort();
+    const report = await pending;
+
+    expect(report.reasons).toContain("Deep connectivity probe aborted.");
+    expect(connect).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(disconnect).toHaveBeenCalledOnce();
+
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 });
