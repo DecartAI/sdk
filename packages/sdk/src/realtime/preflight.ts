@@ -405,11 +405,9 @@ function raceAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined): Pro
   return Promise.race([
     promise,
     new Promise<never>((_, reject) => {
-      signal.addEventListener(
-        "abort",
-        () => reject(signal.reason ?? new DOMException("Aborted", "AbortError")),
-        { once: true },
-      );
+      signal.addEventListener("abort", () => reject(signal.reason ?? new DOMException("Aborted", "AbortError")), {
+        once: true,
+      });
     }),
   ]);
 }

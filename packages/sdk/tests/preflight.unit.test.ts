@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { REALTIME_CONFIG } from "../src/realtime/config-realtime.js";
 import type { RealTimeClient } from "../src/realtime/client.js";
+import { REALTIME_CONFIG } from "../src/realtime/config-realtime.js";
 import {
   type ConnectivityMetrics,
   classifyActiveProbe,
@@ -128,26 +128,21 @@ describe("classifyActiveProbe", () => {
 
 function stubDeepProbeDom() {
   const tracks = [{ stop: vi.fn() }];
-  vi.stubGlobal(
-    "document",
-    {
-      createElement: vi.fn(() => ({
-        width: 0,
-        height: 0,
-        getContext: vi.fn(() => ({
-          fillRect: vi.fn(),
-          set fillStyle(_: string) {},
-        })),
-        captureStream: vi.fn(() => ({
-          getTracks: () => tracks,
-          getVideoTracks: () => tracks,
-        })),
+  vi.stubGlobal("document", {
+    createElement: vi.fn(() => ({
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => ({
+        fillRect: vi.fn(),
+        set fillStyle(_: string) {},
       })),
-    } as unknown as Document,
-  );
-  vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) =>
-    setTimeout(() => cb(performance.now()), 0),
-  );
+      captureStream: vi.fn(() => ({
+        getTracks: () => tracks,
+        getVideoTracks: () => tracks,
+      })),
+    })),
+  } as unknown as Document);
+  vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 0));
   vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id));
 }
 
