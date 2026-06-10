@@ -383,40 +383,35 @@ function createSyntheticSource(
   };
 }
 
-function isAborted(signal: AbortSignal | undefined): boolean {
-  return signal?.aborted ?? false;
-}
+const ABORTED_DEEP_PROBE: ConnectivityReport = {
+  quality: "fair",
+  metrics: {
+    transport: "failed",
+    rttMs: null,
+    g2gMs: null,
+    ttffMs: null,
+    g2gDropRatio: null,
+    upstreamJitterMs: null,
+    packetLoss: null,
+    sampleCount: 0,
+  },
+  reasons: ["Deep connectivity probe aborted."],
+};
 
-/** Reject when `signal` aborts (or immediately if already aborted). */
-function abortPromise(signal: AbortSignal): Promise<never> {
-  return new Promise((_, reject) => {
-    if (signal.aborted) {
-      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
-      return;
-    }
-    signal.addEventListener(
-      "abort",
-      () => reject(signal.reason ?? new DOMException("Aborted", "AbortError")),
-      { once: true },
-    );
-  });
-}
-
-function abortedDeepProbeReport(): ConnectivityReport {
-  return {
-    quality: "fair",
-    metrics: {
-      transport: "failed",
-      rttMs: null,
-      g2gMs: null,
-      ttffMs: null,
-      g2gDropRatio: null,
-      upstreamJitterMs: null,
-      packetLoss: null,
-      sampleCount: 0,
-    },
-    reasons: ["Deep connectivity probe aborted."],
-  };
+/** Unblock `promise` early when `signal` aborts. */
+function raceAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      signal.addEventListener(
+        "abort",
+        () => reject(signal.reason ?? new DOMException("Aborted", "AbortError")),
+        { once: true },
+      );
+    }),
+  ]);
 }
 
 /** Resolve once enough g2g samples exist or the probe window elapses (never rejects). */
@@ -452,7 +447,7 @@ async function runActiveProbe(args: {
   let client: RealTimeClient | undefined;
   let latest: WebRTCStats | null = null;
 
-  if (isAborted(signal)) return abortedDeepProbeReport();
+  if (signal?.aborted) return ABORTED_DEEP_PROBE;
 
   try {
     // Match the model's exact input resolution so the server processes the frame
@@ -464,28 +459,18 @@ async function runActiveProbe(args: {
       debugQuality: true,
       onRemoteStream: () => {},
     });
-    const onAbortDuringConnect = () => {
-      connectTask.then((c) => c.disconnect()).catch(() => {});
-    };
-    signal?.addEventListener("abort", onAbortDuringConnect, { once: true });
-    try {
-      client = signal ? await Promise.race([connectTask, abortPromise(signal)]) : await connectTask;
-    } catch (error) {
-      if (isAborted(signal)) return abortedDeepProbeReport();
-      throw error;
-    } finally {
-      signal?.removeEventListener("abort", onAbortDuringConnect);
-    }
-
-    if (isAborted(signal)) return abortedDeepProbeReport();
+    signal?.addEventListener("abort", () => connectTask.then((c) => c.disconnect()).catch(() => {}), {
+      once: true,
+    });
+    client = await raceAbort(connectTask, signal);
 
     client.on("stats", (stats) => {
       latest = stats;
     });
     await waitForProbe(() => latest, REALTIME_CONFIG.preflight.active.minSamples, durationMs, signal);
-    if (isAborted(signal)) return abortedDeepProbeReport();
+    if (signal?.aborted) return ABORTED_DEEP_PROBE;
   } catch (error) {
-    if (isAborted(signal)) return abortedDeepProbeReport();
+    if (signal?.aborted) return ABORTED_DEEP_PROBE;
     logger.warn("deep connectivity probe failed", {
       error: error instanceof Error ? error.message : String(error),
     });
