@@ -8,6 +8,7 @@ import type {
   DiagnosticEventName,
   DiagnosticEvents,
 } from "./diagnostics";
+import { createMarkerReader, createStampPump, type MarkerReader, SeqTracker, type StampPump } from "./glass-to-glass";
 import { createLiveKitStatsProvider } from "./livekit-stats-provider";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
@@ -21,6 +22,8 @@ export type RealtimeObservabilityOptions = {
   onDiagnostic?: (event: DiagnosticEvent) => void;
   onStats?: (stats: WebRTCStats) => void;
   onConnectionQuality?: (report: ConnectionQualityReport) => void;
+  /** Opt-in diagnostic: measure true glass-to-glass latency via the pixel-marker pipeline (visible marker). */
+  debugQuality?: boolean;
 };
 
 type PendingTelemetryDiagnostic = {
@@ -54,8 +57,49 @@ export class RealtimeObservability {
   private stallStartMs = 0;
   private connectionBreakdown: ConnectionBreakdownBuffer | null = null;
   private readonly connectionQuality = new ConnectionQualityEvaluator();
+  /** Glass-to-glass: shared tracker, outgoing stamp pump, and incoming reader. Null unless `debugQuality`. */
+  private readonly seqTracker: SeqTracker | null;
+  private readonly markerReader: MarkerReader | null;
+  private stampPump: StampPump | null = null;
 
-  constructor(private readonly options: RealtimeObservabilityOptions) {}
+  constructor(private readonly options: RealtimeObservabilityOptions) {
+    this.seqTracker = options.debugQuality ? new SeqTracker() : null;
+    this.markerReader = this.seqTracker ? createMarkerReader(this.seqTracker) : null;
+  }
+
+  /**
+   * Wrap the outgoing stream so each frame carries a marker, feeding the shared
+   * tracker that the reader matches against. Returns the stream to publish
+   * (unchanged when g2g is off or stamping can't start). Owned here so the
+   * writer and reader of the tracker share one lifecycle and survive reconnects.
+   */
+  attachOutgoingStream(stream: MediaStream, fps: number): MediaStream {
+    if (!this.seqTracker) return stream;
+    try {
+      this.stampPump = createStampPump(stream, { tracker: this.seqTracker, fps });
+      return this.stampPump.stream;
+    } catch (error) {
+      this.options.logger.warn("Failed to start glass-to-glass stamp pump; continuing without it", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return stream;
+    }
+  }
+
+  /** Feed the remote video track to the marker reader (called from the media channel). */
+  attachRemoteVideoTrack(track: MediaStreamTrack): void {
+    this.markerReader?.attach(track);
+  }
+
+  /**
+   * Mark the start of a connect attempt for glass-to-glass timing (resets the
+   * tracker and starts the TTFF clock). Called at the top of each connect/
+   * reconnect so TTFF measures the full setup→first-frame wait. No-op unless g2g
+   * measurement is on.
+   */
+  markGlassToGlassStart(): void {
+    this.seqTracker?.markStart(performance.now());
+  }
 
   diagnostic<K extends DiagnosticEventName>(name: K, data: DiagnosticEvents[K], timestamp: number = Date.now()): void {
     this.options.logger.debug(name, data as Record<string, unknown>);
@@ -196,6 +240,8 @@ export class RealtimeObservability {
 
   stop(): void {
     this.stopStats();
+    this.stampPump?.dispose();
+    this.markerReader?.dispose();
     this.telemetryReporter.stop();
     this.telemetryReporter = new NullTelemetryReporter();
     this.telemetryReporterReady = false;
@@ -208,6 +254,7 @@ export class RealtimeObservability {
   }
 
   private handleStats(stats: WebRTCStats): void {
+    if (this.seqTracker) stats.glassToGlass = this.seqTracker.snapshot();
     this.options.onStats?.(stats);
     this.telemetryReporter.addStats(stats);
     this.detectVideoStall(stats);
@@ -251,5 +298,8 @@ export class RealtimeObservability {
     this.stallStartMs = 0;
     // A reconnect re-enters warm-up; don't blend pre/post-reconnect networks.
     this.connectionQuality.reset();
+    // Note: the g2g tracker is reset via markGlassToGlassStart() at the start of
+    // each connect attempt, NOT here — this runs mid-connect (on room attach) and
+    // would otherwise wipe the TTFF start clock set moments earlier.
   }
 }

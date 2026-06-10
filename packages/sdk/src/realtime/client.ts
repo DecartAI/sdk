@@ -63,6 +63,16 @@ const realTimeClientConnectOptionsSchema = z.object({
   resolution: z.enum(["720p", "1080p"]).optional(),
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp9"]).optional(),
+  /**
+   * Opt-in DEBUG-quality measurement: stamps a pixel marker into every outgoing
+   * frame and reads it back off the rendered output (the server re-stamps it) to
+   * measure true glass-to-glass latency, surfaced as `g2gMs` / `ttffMs` /
+   * `g2gDropRatio` on the `stats` and `connectionQuality` signals. Diagnostic
+   * only: the marker is **visible** (bottom-left of the published + rendered
+   * video) and adds per-frame pixel work — do not enable it for production /
+   * end-user sessions.
+   */
+  debugQuality: z.boolean().optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -141,6 +151,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       }
     }
 
+    const debugQuality = parsedOptions.data.debugQuality ?? false;
+
     let session: StreamSession | undefined;
     let observability: RealtimeObservability | undefined;
 
@@ -167,7 +179,15 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           emitOrBuffer("connectionQuality", report);
           onConnectionQuality?.(report);
         },
+        debugQuality,
       });
+
+      // Stamp the marker into the outgoing stream (after any mirror, so it isn't
+      // flipped). The pump is owned by observability so it shares the tracker's
+      // lifecycle with the marker reader and survives reconnects.
+      if (debugQuality) {
+        inputStream = observability.attachOutgoingStream(inputStream, resolveFpsNumber(options.model.fps));
+      }
 
       const safariCodec = isDesktopSafari() ? "vp8" : undefined;
       const publishCodec: VideoCodec | undefined = safariCodec ?? preferredVideoCodec;
@@ -175,6 +195,9 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       const queryParams = new URLSearchParams({
         ...(safariCodec ? { livekit_server_codec: safariCodec } : {}),
         ...(options.queryParams ?? {}),
+        // Ask the server to re-stamp the pixel marker from input to output so the
+        // client can read glass-to-glass latency back off the rendered frames.
+        ...(debugQuality ? { pixel_latency: "1" } : {}),
         api_key: apiKey,
         model: options.model.name,
         ...(resolution ? { resolution } : {}),

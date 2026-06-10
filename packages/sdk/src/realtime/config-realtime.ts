@@ -82,8 +82,27 @@ export const REALTIME_CONFIG = {
       upgradeConsecutive: 5,
       /** Round-trip time bands (ms). Bands widen by relayExtraMs on TURN-relayed paths. */
       rtt: { goodMs: 150, fairMs: 300, poorMs: 500, relayExtraMs: 100 },
+      /**
+       * Mid-stream (steady-state) true glass-to-glass latency bands (ms) — the
+       * real per-frame camera→display latency through the model, used for the
+       * latency dimension *instead of* RTT when pixel-marker measurement is on.
+       * Already includes both network legs, so relayExtraMs does not apply.
+       * Excludes startup (see `ttff`). Anchored to Datadog
+       * `rt.stream.pipeline_latency_ms` (server-side median ~285ms / p95 ~510ms)
+       * plus network + jitter-buffer + decode headroom. Tune with real data.
+       */
+      glassToGlass: { goodMs: 500, fairMs: 900, poorMs: 1500 },
+      /**
+       * Time-to-first-frame bands (ms) — startup latency from connect to the
+       * first rendered model frame. An order of magnitude larger than mid-stream
+       * and judged separately (a slow first frame is a different problem from a
+       * laggy steady state). ~4–5s is an acceptable ("fair") cold start today.
+       */
+      ttff: { goodMs: 4_000, fairMs: 6_000, poorMs: 10_000 },
       /** Fraction of outbound packets the server reports lost (0..1). */
       loss: { good: 0.02, fair: 0.05, poor: 0.1 },
+      /** End-to-end frame drop ratio (0..1) inferred from the pixel-marker seq stream (backpressure/overload). */
+      g2gDrop: { good: 0.02, fair: 0.05, poor: 0.1 },
       /** Upstream headroom = available BWE ÷ the intended publish bitrate (requiredUpstreamKbps). */
       upstream: { goodRatio: 1.0, fairRatio: 0.8, poorRatio: 0.5, requiredUpstreamKbps: 3500 },
       /** Rendered (inbound) frames-per-second. */
@@ -102,5 +121,14 @@ export const REALTIME_CONFIG = {
     iceGatherTimeoutMs: 5_000,
     /** RTT bands (ms) for the preflight verdict. */
     rtt: { goodMs: 150, marginalMs: 300 },
+    /**
+     * Deep probe (`checkConnectivity({ deep: true, model })`): briefly opens a
+     * real session with a synthetic source + pixel-marker measurement to get a
+     * true glass-to-glass verdict, then tears it down. Costs a short GPU session.
+     * The verdict reuses the in-session `connectionQuality` bands. Duration must
+     * cover TTFF (~4–5s) + mid-stream warm-up (~2s) before steady-state samples
+     * accrue; resolves early once `minSamples` exist.
+     */
+    active: { durationMs: 12_000, minSamples: 5 },
   },
 } as const;

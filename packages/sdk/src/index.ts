@@ -45,6 +45,7 @@ export type {
   ReconnectEvent,
   VideoStallEvent,
 } from "./realtime/observability/diagnostics";
+export type { G2GMetrics } from "./realtime/observability/glass-to-glass";
 export type { WebRTCStats } from "./realtime/observability/webrtc-stats";
 export type {
   CheckConnectivityOptions,
@@ -223,7 +224,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
     integration,
     logger,
   });
-  const preflight = createPreflight({ logger });
+  const preflight = createPreflight({ logger, connect: realtimePublish.connect });
 
   const process = createProcessClient({
     baseUrl,
@@ -256,13 +257,23 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
       /**
        * Check whether the user's network can support a real-time session
        * *before* connecting — so you can gate showing the integration.
-       * SDK-only: validates WebRTC reachability (UDP egress / TURN need) and
-       * latency via a throwaway peer connection. Does not start a session.
+       *
+       * Default (STUN-only): validates WebRTC reachability (UDP egress / TURN
+       * need) and approximate latency via a throwaway peer connection — no
+       * session, instant. Opt-in deep probe (`{ deep: true, model }`): briefly
+       * opens a real session with a synthetic source and measures *true*
+       * glass-to-glass latency (and end-to-end drops / upstream loss+jitter),
+       * then tears it down — accurate, but costs a short GPU session.
        *
        * @example
        * ```ts
+       * // Fast, pre-session reachability check
        * const { quality, reasons } = await client.realtime.checkConnectivity();
-       * if (quality === "critical") showFallbackUI(reasons); // your call what counts as "adequate"
+       * if (quality === "critical") showFallbackUI(reasons);
+       *
+       * // Accurate, measured glass-to-glass verdict
+       * const probe = await client.realtime.checkConnectivity({ deep: true, model: models.realtime("mirage") });
+       * console.log(probe.metrics.g2gMs);
        * ```
        */
       checkConnectivity: preflight.checkConnectivity,
