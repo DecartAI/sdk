@@ -118,6 +118,7 @@ export class SignalingChannel {
   private ws: WebSocket | null = null;
   private events: Emitter<SignalingChannelEvents> = mitt();
   private pendingAcks: PendingAck[] = [];
+  private bufferedAcks: IncomingRealtimeMessage[] = [];
   private pendingRoomInfo: PendingRoomInfo | null = null;
   private connected = false;
   private closing = false;
@@ -337,6 +338,13 @@ export class SignalingChannel {
     write = true,
   }: RequestOptions): Promise<TAck> {
     return new Promise<TAck>((resolve, reject) => {
+      const buffered = this.bufferedAcks.findIndex((m) => matchAck(m));
+      if (buffered !== -1) {
+        const [claimed] = this.bufferedAcks.splice(buffered, 1);
+        resolve(claimed as TAck);
+        return;
+      }
+
       const timer = setTimeout(() => {
         cleanup();
         this.logger.warn("signaling: ack timed out", { label, timeoutMs });
@@ -377,8 +385,13 @@ export class SignalingChannel {
     for (const ack of [...this.pendingAcks]) {
       if (ack.matches(msg)) {
         ack.onMatch(msg);
-        break;
+        return;
       }
+    }
+
+    if (!this.connected && (msg.type === "set_image_ack" || msg.type === "prompt_ack")) {
+      this.bufferedAcks.push(msg);
+      return;
     }
 
     switch (msg.type) {
@@ -433,6 +446,7 @@ export class SignalingChannel {
   private rejectAllPending(error: Error): void {
     const pending = this.pendingAcks;
     this.pendingAcks = [];
+    this.bufferedAcks = [];
     for (const entry of pending) entry.reject(error);
   }
 }
