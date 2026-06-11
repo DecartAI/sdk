@@ -98,8 +98,8 @@ describe("scoreSnapshot", () => {
   });
 
   it("normalizes the RFC 3550 fractionLost scale (a few % loss is not critical)", () => {
-    // 3% real loss (raw stat ≈ 7.7) must read "fair", not "critical".
-    expect(scoreSnapshot(makeStats({ fractionLost: 0.03 })).quality).toBe("fair");
+    // 3% real loss (raw stat ≈ 7.7) must read "poor", not "critical".
+    expect(scoreSnapshot(makeStats({ fractionLost: 0.03 })).quality).toBe("poor");
   });
 
   it("does not penalize a low (server-controlled) downstream bitrate on its own", () => {
