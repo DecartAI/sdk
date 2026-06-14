@@ -35,23 +35,6 @@ export const REALTIME_CONFIG = {
     defaultMaxVideoBitrateBps: 3_500_000,
     vp9MaxVideoBitrateBps: 3_000_000,
     defaultPublishFps: 30,
-    /**
-     * Publish a single camera layer (no simulcast). The camera feeds exactly
-     * one subscriber — the inference server — and dynacast/adaptiveStream are
-     * off, so extra simulcast layers are never selected away; they are pure
-     * wasted uplink and extra packets-per-second that amplify packet reorder /
-     * inter-arrival jitter on the publisher->SFU ingress (the leg where the
-     * SFU measures the 18-34% out-of-order spikes). One layer = fewer packets
-     * and smaller bursts on the client's WiFi/cellular uplink.
-     */
-    publishSimulcast: false,
-    /**
-     * Under uplink pressure the encoder should shed RESOLUTION, not FRAMERATE.
-     * A steady cadence matters more than spatial detail for a real-time v2v
-     * model that resamples to the live edge; dropping fps instead would starve
-     * the model's input cadence and surface as stutter.
-     */
-    publishDegradationPreference: "maintain-framerate",
   },
   observability: {
     stallFpsThreshold: 0.5,

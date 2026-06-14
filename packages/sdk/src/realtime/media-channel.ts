@@ -25,8 +25,7 @@ export function getDefaultVideoPublishOptions(videoCodec?: VideoCodec): TrackPub
   return {
     source: Track.Source.Camera,
     videoCodec: resolvedCodec,
-    simulcast: REALTIME_CONFIG.livekit.publishSimulcast,
-    degradationPreference: REALTIME_CONFIG.livekit.publishDegradationPreference,
+    simulcast: resolvedCodec !== "vp9",
     videoEncoding: {
       maxBitrate,
       maxFramerate: REALTIME_CONFIG.livekit.defaultPublishFps,
