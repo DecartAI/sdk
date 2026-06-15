@@ -449,7 +449,7 @@ describe("SignalingChannel initial handshake", () => {
     vi.unstubAllGlobals();
   });
 
-  it("defers initial set_image until room info arrives, exposes ack as a separate promise", async () => {
+  it("bundles initial set_image into livekit_join, exposes ack as a separate promise", async () => {
     const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
     const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
 
@@ -457,11 +457,16 @@ describe("SignalingChannel initial handshake", () => {
       initialState: { image: "base64-image", prompt: "wear a hat", enhance: false },
     });
 
+    const bundledJoin = {
+      type: "livekit_join",
+      initial_state: { type: "set_image", image_data: "base64-image", prompt: "wear a hat", enhance_prompt: false },
+    };
+
     const ws = FakeWebSocket.instances[0];
     ws.onopen?.();
     await Promise.resolve();
     await Promise.resolve();
-    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
+    expect(ws.sentMessages).toEqual([bundledJoin]);
 
     ws.receive({
       type: "livekit_room_info",
@@ -478,10 +483,7 @@ describe("SignalingChannel initial handshake", () => {
       roomName: "room",
       sessionId: "session",
     });
-    expect(ws.sentMessages).toEqual([
-      { type: "livekit_join" },
-      { type: "set_image", image_data: "base64-image", prompt: "wear a hat", enhance_prompt: false },
-    ]);
+    expect(ws.sentMessages).toEqual([bundledJoin]);
 
     let ackResolved = false;
     initialStateAck.then(() => {
@@ -495,7 +497,7 @@ describe("SignalingChannel initial handshake", () => {
     expect(ackResolved).toBe(true);
   });
 
-  it("defers initial null set_image until room info arrives", async () => {
+  it("bundles initial null set_image into livekit_join", async () => {
     const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
     const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
 
@@ -503,11 +505,16 @@ describe("SignalingChannel initial handshake", () => {
       initialState: { image: null, prompt: null },
     });
 
+    const bundledJoin = {
+      type: "livekit_join",
+      initial_state: { type: "set_image", image_data: null, prompt: null },
+    };
+
     const ws = FakeWebSocket.instances[0];
     ws.onopen?.();
     await Promise.resolve();
     await Promise.resolve();
-    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
+    expect(ws.sentMessages).toEqual([bundledJoin]);
 
     ws.receive({
       type: "livekit_room_info",
@@ -519,7 +526,7 @@ describe("SignalingChannel initial handshake", () => {
 
     const { roomInfo, initialStateAck } = await openPromise;
     expect(roomInfo.roomName).toBe("room");
-    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }, { type: "set_image", image_data: null, prompt: null }]);
+    expect(ws.sentMessages).toEqual([bundledJoin]);
 
     let ackResolved = false;
     initialStateAck.then(() => {
@@ -596,14 +603,19 @@ describe("SignalingChannel initial handshake", () => {
       });
       openPromise.catch(() => {});
 
+      const bundledJoin = {
+        type: "livekit_join",
+        initial_state: { type: "set_image", image_data: "base64-image" },
+      };
+
       const ws = FakeWebSocket.instances[0];
       ws.onopen?.();
       await flushMicrotasks();
-      expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
+      expect(ws.sentMessages).toEqual([bundledJoin]);
 
       ws.receive({ type: "queue_position", position: 5, queue_size: 10 });
       await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.signaling.requestTimeoutMs * 2);
-      expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
+      expect(ws.sentMessages).toEqual([bundledJoin]);
 
       ws.receive({ type: "queue_position", position: 1, queue_size: 10 });
       ws.receive({
@@ -615,7 +627,7 @@ describe("SignalingChannel initial handshake", () => {
       });
 
       const { initialStateAck } = await openPromise;
-      expect(ws.sentMessages).toEqual([{ type: "livekit_join" }, { type: "set_image", image_data: "base64-image" }]);
+      expect(ws.sentMessages).toEqual([bundledJoin]);
 
       ws.receive({ type: "set_image_ack", success: true, error: null });
       await expect(initialStateAck).resolves.toBeUndefined();
@@ -788,15 +800,16 @@ describe("StreamSession startup orchestration", () => {
     ws.onopen?.();
     await flushMicrotasks();
 
-    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
+    const bundledJoin = {
+      type: "livekit_join",
+      initial_state: { type: "prompt", prompt: "wear a hat", enhance_prompt: false },
+    };
+    expect(ws.sentMessages).toEqual([bundledJoin]);
 
     sendRoomInfo(ws);
     await flushMicrotasks();
 
-    expect(ws.sentMessages).toEqual([
-      { type: "livekit_join" },
-      { type: "prompt", prompt: "wear a hat", enhance_prompt: false },
-    ]);
+    expect(ws.sentMessages).toEqual([bundledJoin]);
 
     const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
     expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "token");
@@ -948,15 +961,20 @@ describe("StreamSession startup orchestration", () => {
     session.on("connectionChange", (state) => states.push(state));
     session.on("remoteStream", (stream) => remoteStreams.push(stream));
 
+    const bundledJoin = {
+      type: "livekit_join",
+      initial_state: { type: "set_image", image_data: null, prompt: null },
+    };
+
     const connectPromise = session.connect();
     const ws = FakeWebSocket.instances[0];
     ws.onopen?.();
     await flushMicrotasks();
-    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
+    expect(ws.sentMessages).toEqual([bundledJoin]);
 
     sendRoomInfo(ws);
     await flushMicrotasks();
-    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }, { type: "set_image", image_data: null, prompt: null }]);
+    expect(ws.sentMessages).toEqual([bundledJoin]);
     subscribeRemoteTrack();
 
     const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
@@ -992,16 +1010,18 @@ describe("StreamSession startup orchestration", () => {
     await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.session.retry.minTimeout);
     const secondWs = FakeWebSocket.instances[1];
     expect(secondWs).toBeDefined();
+    const bundledJoin = {
+      type: "livekit_join",
+      initial_state: { type: "set_image", image_data: "base64-image" },
+    };
+
     secondWs.onopen?.();
     await flushMicrotasks();
-    expect(secondWs.sentMessages).toEqual([{ type: "livekit_join" }]);
+    expect(secondWs.sentMessages).toEqual([bundledJoin]);
 
     sendRoomInfo(secondWs, "second");
     await flushMicrotasks();
-    expect(secondWs.sentMessages).toEqual([
-      { type: "livekit_join" },
-      { type: "set_image", image_data: "base64-image" },
-    ]);
+    expect(secondWs.sentMessages).toEqual([bundledJoin]);
     secondWs.receive({ type: "set_image_ack", success: true, error: null });
     await expect(connectPromise).resolves.toBeUndefined();
   });
