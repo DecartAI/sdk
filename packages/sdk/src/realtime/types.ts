@@ -68,7 +68,7 @@ export type GenerationStartedMessage = {
 
 export type LiveKitJoinMessage = {
   type: "livekit_join";
-  initial_state?: SetImageMessage | PromptMessage;
+  initial_state?: SetImageMessage | PromptMessage | null;
 };
 
 export type LiveKitRoomInfoMessage = {

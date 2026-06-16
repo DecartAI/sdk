@@ -3,7 +3,6 @@ import mitt, { type Emitter } from "mitt";
 import pRetry, { AbortError } from "p-retry";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
-import { InitialStateGate } from "./initial-state-gate";
 import { MediaChannel, type RealtimeVideoStats, type VideoCodec } from "./media-channel";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 import { SignalingChannel } from "./signaling-channel";
@@ -64,7 +63,6 @@ interface StreamSessionConfig {
   publishOptions?: Partial<TrackPublishOptions>;
   roomOptions?: Partial<RoomOptions>;
   remoteVideoElement?: HTMLVideoElement;
-  bundleInitialState?: boolean;
 }
 
 export class StreamSession {
@@ -78,7 +76,6 @@ export class StreamSession {
   private disposed = false;
   private currentAttempt = 0;
 
-  private readonly initialStateGate = new InitialStateGate();
   private readonly logger: Logger;
 
   constructor(private readonly config: StreamSessionConfig) {
@@ -177,12 +174,10 @@ export class StreamSession {
       this.resetHandshakeState();
       const initialState = this.getInitialState();
       this.config.observability?.beginConnectionBreakdown(attempt, getInitialImageSizeKb(initialState?.image));
-      const gateAttempt = this.initialStateGate.startAttempt(initialState);
 
-      const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({
+      const { roomInfo } = await this.signaling.openAndJoin({
         connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
         initialState,
-        bundleInitialState: this.config.bundleInitialState,
       });
 
       if (this.disposed || this.currentAttempt !== attempt) {
@@ -192,25 +187,16 @@ export class StreamSession {
 
       this.queue = null;
 
-      const bundleInitialState = this.config.bundleInitialState ?? true;
-
       try {
         await this.media.connect({
           url: roomInfo.livekitUrl,
           token: roomInfo.token,
         });
-        if (bundleInitialState) {
-          // The initial state rode out with the join; publish input tracks
-          // immediately so frames flow while set_ref_image runs, rather than
-          // waiting for its ack. The ack still surfaces failures via "error".
-          if (this.disposed || this.currentAttempt !== attempt) {
-            throw new AbortError("Stale connect attempt");
-          }
-        } else {
-          const isCurrentAttempt = await gateAttempt.waitForReadiness(initialStateAck);
-          if (!isCurrentAttempt) {
-            throw new AbortError("Stale connect attempt");
-          }
+        // The initial state rode out with the join; publish input tracks
+        // immediately so frames flow while set_ref_image runs, rather than
+        // waiting for its ack. The ack still surfaces failures via "error".
+        if (this.disposed || this.currentAttempt !== attempt) {
+          throw new AbortError("Stale connect attempt");
         }
         await this.media.publishLocalTracks();
       } catch (error) {
@@ -356,7 +342,6 @@ export class StreamSession {
   private tearDown(): void {
     this.signaling.close();
     this.media.disconnect();
-    this.initialStateGate.reset();
     this.resetHandshakeState();
   }
 

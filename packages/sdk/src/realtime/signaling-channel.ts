@@ -63,7 +63,6 @@ export type OpenAndJoinOptions = {
   connectTimeout?: number;
   handshakeTimeout?: number;
   initialState?: InitialState;
-  bundleInitialState?: boolean;
 };
 
 export type OpenAndJoinResult = {
@@ -119,6 +118,7 @@ export class SignalingChannel {
   private ws: WebSocket | null = null;
   private events: Emitter<SignalingChannelEvents> = mitt();
   private pendingAcks: PendingAck[] = [];
+  private bufferedAcks: IncomingRealtimeMessage[] = [];
   private pendingRoomInfo: PendingRoomInfo | null = null;
   private connected = false;
   private closing = false;
@@ -147,16 +147,14 @@ export class SignalingChannel {
     this.config.observability?.startPhase("room-join");
     const roomInfoWait = this.waitForRoomInfo(handshakeTimeout);
 
-    // When bundled, the initial state rides inside livekit_join so the
-    // inference server gets the reference image/prompt with the join — no
-    // extra client round-trip waiting for livekit_room_info. When not bundled,
-    // it is sent as a separate message after room info (legacy two-step).
-    const bundleInitialState = opts.bundleInitialState ?? true;
+    // The initial state rides inside livekit_join so the inference server gets
+    // the reference image/prompt with the join, with no separate message sent
+    // after livekit_room_info arrives.
     const initialStateRequest = buildInitialStateRequest(opts.initialState);
-    const joinMessage: LiveKitJoinMessage =
-      bundleInitialState && initialStateRequest
-        ? { type: "livekit_join", initial_state: initialStateRequest.message }
-        : { type: "livekit_join" };
+    const joinMessage: LiveKitJoinMessage = {
+      type: "livekit_join",
+      initial_state: initialStateRequest ? initialStateRequest.message : null,
+    };
 
     if (!this.writeMessage(joinMessage)) {
       roomInfoWait.cancel();
@@ -175,24 +173,22 @@ export class SignalingChannel {
     this.connected = true;
 
     // Arm the ack only now that room info arrived, so a long queue wait cannot
-    // trip the ack timeout. When bundled the message is already sent (write
-    // false); when not bundled it is written here (legacy two-step).
-    const initialStateAck = initialStateRequest
-      ? this.flushInitialState(initialStateRequest, { write: !bundleInitialState })
-      : Promise.resolve();
+    // trip the ack timeout. The message already rode out with the join, so this
+    // waits for the ack without writing again.
+    const initialStateAck = initialStateRequest ? this.flushInitialState(initialStateRequest) : Promise.resolve();
     initialStateAck.catch(() => {});
 
     return { roomInfo, initialStateAck };
   }
 
-  private async flushInitialState(request: InitialStateRequest, opts: { write: boolean }): Promise<void> {
+  private async flushInitialState(request: InitialStateRequest): Promise<void> {
     this.config.observability?.startPhase("initial-state-handshake");
     const ack = await this.request<SetImageAckMessage | PromptAckMessage>({
       message: request.message,
       matchAck: request.matchAck,
       timeoutMs: REALTIME_CONFIG.signaling.requestTimeoutMs,
       label: request.label,
-      write: opts.write,
+      write: false,
     });
     this.config.observability?.endPhase("initial-state-handshake", { success: true });
     if (!ack.success) throw new Error(ack.error ?? `Failed: ${request.label}`);
@@ -343,6 +339,13 @@ export class SignalingChannel {
     write = true,
   }: RequestOptions): Promise<TAck> {
     return new Promise<TAck>((resolve, reject) => {
+      const buffered = this.bufferedAcks.findIndex((m) => matchAck(m));
+      if (buffered !== -1) {
+        const [claimed] = this.bufferedAcks.splice(buffered, 1);
+        resolve(claimed as TAck);
+        return;
+      }
+
       const timer = setTimeout(() => {
         cleanup();
         this.logger.warn("signaling: ack timed out", { label, timeoutMs });
@@ -383,8 +386,13 @@ export class SignalingChannel {
     for (const ack of [...this.pendingAcks]) {
       if (ack.matches(msg)) {
         ack.onMatch(msg);
-        break;
+        return;
       }
+    }
+
+    if (!this.connected && (msg.type === "set_image_ack" || msg.type === "prompt_ack")) {
+      this.bufferedAcks.push(msg);
+      return;
     }
 
     switch (msg.type) {
@@ -441,6 +449,7 @@ export class SignalingChannel {
   private rejectAllPending(error: Error): void {
     const pending = this.pendingAcks;
     this.pendingAcks = [];
+    this.bufferedAcks = [];
     for (const entry of pending) entry.reject(error);
   }
 }

@@ -538,39 +538,6 @@ describe("SignalingChannel initial handshake", () => {
     expect(ackResolved).toBe(true);
   });
 
-  it("legacy two-step: sends initial set_image after room info when bundling disabled", async () => {
-    const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
-    const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
-
-    const openPromise = channel.openAndJoin({
-      initialState: { image: "base64-image", prompt: "wear a hat", enhance: false },
-      bundleInitialState: false,
-    });
-
-    const ws = FakeWebSocket.instances[0];
-    ws.onopen?.();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
-
-    ws.receive({
-      type: "livekit_room_info",
-      livekit_url: "wss://livekit.example.test",
-      token: "token",
-      room_name: "room",
-      session_id: "session",
-    });
-
-    const { initialStateAck } = await openPromise;
-    expect(ws.sentMessages).toEqual([
-      { type: "livekit_join" },
-      { type: "set_image", image_data: "base64-image", prompt: "wear a hat", enhance_prompt: false },
-    ]);
-
-    ws.receive({ type: "set_image_ack", success: true, error: null });
-    await expect(initialStateAck).resolves.toBeUndefined();
-  });
-
   it("rejects pending initial-state ack on server error", async () => {
     const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
     const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
@@ -733,54 +700,6 @@ describe("SignalingChannel initial handshake", () => {
   });
 });
 
-describe("InitialStateGate", () => {
-  it("waits for caller initial state and reports a current attempt after ack", async () => {
-    const { InitialStateGate } = await import("../src/realtime/initial-state-gate.js");
-    const gate = new InitialStateGate();
-    let ackInitialState!: () => void;
-    const initialStateAck = new Promise<void>((resolve) => {
-      ackInitialState = resolve;
-    });
-
-    const attempt = gate.startAttempt({ prompt: "wear a hat" });
-    let resolved = false;
-    const readiness = attempt.waitForReadiness(initialStateAck).then((isCurrent) => {
-      resolved = true;
-      return isCurrent;
-    });
-    await flushMicrotasks();
-    expect(resolved).toBe(false);
-
-    ackInitialState();
-    await expect(readiness).resolves.toBe(true);
-  });
-
-  it("does not gate the internal null-image bootstrap", async () => {
-    const { InitialStateGate } = await import("../src/realtime/initial-state-gate.js");
-    const gate = new InitialStateGate();
-    const attempt = gate.startAttempt({ image: null, prompt: null });
-
-    await expect(attempt.waitForReadiness(new Promise(() => {}))).resolves.toBe(true);
-  });
-
-  it("reports stale startup attempts after reset", async () => {
-    const { InitialStateGate } = await import("../src/realtime/initial-state-gate.js");
-    const gate = new InitialStateGate();
-    let ackInitialState!: () => void;
-    const initialStateAck = new Promise<void>((resolve) => {
-      ackInitialState = resolve;
-    });
-
-    const attempt = gate.startAttempt({ image: "base64-image" });
-    const readiness = attempt.waitForReadiness(initialStateAck);
-
-    gate.reset();
-    ackInitialState();
-
-    await expect(readiness).resolves.toBe(false);
-  });
-});
-
 describe("StreamSession startup orchestration", () => {
   class FakeWebSocket {
     static OPEN = 1;
@@ -887,48 +806,6 @@ describe("StreamSession startup orchestration", () => {
     ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
   });
 
-  it("legacy: resolves connect and emits connected only after caller initial-state ack", async () => {
-    const { StreamSession } = await import("../src/realtime/stream-session.js");
-    const session = new StreamSession({
-      url: "wss://example.test/realtime",
-      localStream: null,
-      initialPrompt: { text: "wear a hat", enhance: false },
-      bundleInitialState: false,
-    });
-    const states: string[] = [];
-    session.on("connectionChange", (state) => states.push(state));
-
-    const connectPromise = session.connect();
-    const ws = FakeWebSocket.instances[0];
-    ws.onopen?.();
-    await flushMicrotasks();
-
-    expect(ws.sentMessages).toEqual([{ type: "livekit_join" }]);
-
-    sendRoomInfo(ws);
-    await flushMicrotasks();
-
-    expect(ws.sentMessages).toEqual([
-      { type: "livekit_join" },
-      { type: "prompt", prompt: "wear a hat", enhance_prompt: false },
-    ]);
-
-    const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
-    expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "token");
-    expect(states).toEqual(["connecting"]);
-
-    let resolved = false;
-    connectPromise.then(() => {
-      resolved = true;
-    });
-    await flushMicrotasks();
-    expect(resolved).toBe(false);
-
-    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
-    await expect(connectPromise).resolves.toBeUndefined();
-    expect(states).toEqual(["connecting", "connected"]);
-  });
-
   it("transitions to generating on generation_started over the websocket", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const session = new StreamSession({
@@ -984,14 +861,13 @@ describe("StreamSession startup orchestration", () => {
     expect(states).toEqual(["connecting", "connected", "generating"]);
   });
 
-  it("emits remoteStream before caller initial-state ack while connect remains pending", async () => {
+  it("emits remoteStream without waiting for the initial-state ack", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const session = new StreamSession({
       url: "wss://example.test/realtime",
       localStream: null,
       initialImage: "base64-image",
       initialPrompt: { text: "wear a hat" },
-      bundleInitialState: false,
     });
     const states: string[] = [];
     const remoteStreams: MediaStream[] = [];
@@ -1007,17 +883,10 @@ describe("StreamSession startup orchestration", () => {
 
     subscribeRemoteTrack();
     expect(remoteStreams).toHaveLength(1);
-    expect(states).toEqual(["connecting"]);
-
-    let resolved = false;
-    connectPromise.then(() => {
-      resolved = true;
-    });
-    await flushMicrotasks();
-    expect(resolved).toBe(false);
+    await expect(connectPromise).resolves.toBeUndefined();
+    expect(states).toEqual(["connecting", "connected"]);
 
     ws.receive({ type: "set_image_ack", success: true, error: null });
-    await expect(connectPromise).resolves.toBeUndefined();
     expect(states).toEqual(["connecting", "connected"]);
   });
 

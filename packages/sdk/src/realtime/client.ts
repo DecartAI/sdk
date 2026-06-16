@@ -65,7 +65,6 @@ const realTimeClientConnectOptionsSchema = z.object({
       (val) => val === undefined || (typeof val === "object" && val !== null && "srcObject" in val),
     )
     .optional(),
-  bundleInitialState: z.boolean().optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -123,7 +122,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       publishOptions,
       roomOptions,
       remoteVideoElement,
-      bundleInitialState,
     } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
     let inputStream: MediaStream = stream ?? new MediaStream();
@@ -194,7 +192,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         publishOptions,
         roomOptions,
         remoteVideoElement,
-        bundleInitialState,
       });
 
       let sessionId: string | null = null;

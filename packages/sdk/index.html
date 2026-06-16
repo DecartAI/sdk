@@ -341,12 +341,6 @@
             <div id="sfu-region-active" style="margin-top: 6px; font-size: 12px; color: #555;"></div>
         </div>
         <div class="control-group">
-            <div class="checkbox-group">
-                <input type="checkbox" id="enhancement-toggle" checked>
-                <label for="enhancement-toggle" style="margin:0; font-weight:normal;">Use enhancement (eager join + initial state bundled into <code>livekit_join</code>; off = legacy two-step)</label>
-            </div>
-        </div>
-        <div class="control-group">
             <label for="model-select">Model:</label>
             <select id="model-select">
                 <optgroup label="Latest (server-resolved)">
@@ -667,11 +661,9 @@
 
         // -----------------------------------------------------------------------
         // LiveKit publish profiles for 1:1 streaming to the AI inference server.
-        // Profile A-B and F-H candidates keep H.264 and maxFramerate: 30.
-        // The default entry intentionally preserves the SDK's simulcast baseline.
-        // For a single backend consumer, single-layer H.264 is the expected best path;
-        // simulcast remains here only as a control to measure its overhead.
-        // Profiles C-D keep the VP9 SVC candidates for comparison.
+        // Realtime sessions always use eager join and bundle initial_state into livekit_join.
+        // Dynacast stays off here so benchmark runs do not pause publisher layers.
+        // Profiles A, B, and F use H.264 simulcast; profiles C-D keep VP9 SVC candidates.
         // -----------------------------------------------------------------------
         const PUBLISH_PROFILES = {
             A: {
@@ -679,8 +671,8 @@
                 description: 'Bandwidth-shave candidate. ~91% of F\'s budget and 84% of G\'s, same resolution and 30 fps target, biased to preserve pixel fidelity (drop fps before res). Tests how much bitrate we can shave before model input quality breaks.',
                 preferredVideoCodec: 'h264',
                 roomOptions: {
-                    adaptiveStream: true,
-                    dynacast: true,
+                    adaptiveStream: false,
+                    dynacast: false,
                 },
                 publishOptions: {
                     simulcast: true,
@@ -698,7 +690,7 @@
                 preferredVideoCodec: 'h264',
                 roomOptions: {
                     adaptiveStream: false,
-                    dynacast: true,
+                    dynacast: false,
                 },
                 publishOptions: {
                     simulcast: true,
@@ -749,15 +741,15 @@
                 },
             },
             F: {
-                label: 'H.264 constrained — 2.3 Mbps @ 24 fps, maintain-framerate',
-                description: 'H.264 single layer with a lower bitrate ceiling for weaker networks; drops resolution before FPS (preserves 24 fps cadence under pressure).',
+                label: 'H.264 simulcast constrained — 2.3 Mbps @ 24 fps, maintain-framerate',
+                description: 'H.264 simulcast with a lower bitrate ceiling for weaker networks; drops resolution before FPS (preserves 24 fps cadence under pressure). Dynacast is off so all publisher layers remain available.',
                 preferredVideoCodec: 'h264',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: false,
                 },
                 publishOptions: {
-                    simulcast: false,
+                    simulcast: true,
                     videoEncoding: {
                         maxBitrate: 2_300_000,
                         maxFramerate: 24,
@@ -842,7 +834,7 @@
             B: 'B — H.264 2.5 Mbps @ 24 fps, maintain-resolution',
             C: 'C — VP9 SVC L1T3',
             D: 'D — VP9 SVC L3T3_KEY',
-            F: 'F — H.264 2.3 Mbps @ 24 fps, maintain-framerate',
+            F: 'F — H.264 simulcast 2.3 Mbps @ 24 fps, maintain-framerate',
             G: 'G — H.264 2.5 Mbps @ 30 fps, maintain-resolution',
         };
 
@@ -882,7 +874,6 @@
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             sfuRegionSelect: document.getElementById('sfu-region-select'),
-            enhancementToggle: document.getElementById('enhancement-toggle'),
             sfuRegionActive: document.getElementById('sfu-region-active'),
             resolutionSelect: document.getElementById('resolution-select'),
             chainedProfilesContainer: document.getElementById('chained-profiles-container'),
@@ -3018,16 +3009,14 @@
 
             const sfuQueryParams = sfuRegionQueryParams();
             addLog(`SFU region: ${describeSfuRegion(getSfuRegionPin())}`, 'info');
-            const useEnhancement = elements.enhancementToggle.checked;
-            const queryParams = { ...(sfuQueryParams ?? {}), livekit_eager_join: useEnhancement ? 'true' : 'false' };
-            addLog(`enhancement=${useEnhancement} → livekit_eager_join=${useEnhancement}, bundleInitialState=${useEnhancement}`, 'info');
+            const queryParams = { ...(sfuQueryParams ?? {}) };
+            addLog('Realtime startup: eager join enabled; initial_state is bundled into livekit_join', 'info');
 
             resetSetupTimings();
             decartRealtime = await decartClient.realtime.connect(localStream, {
                 model,
                 resolution,
                 queryParams,
-                bundleInitialState: useEnhancement,
                 preferredVideoCodec: profile.preferredVideoCodec,
                 publishOptions: profile.publishOptions,
                 roomOptions: profile.roomOptions,
