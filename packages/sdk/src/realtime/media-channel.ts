@@ -1,6 +1,7 @@
 import {
   type DisconnectReason,
   LocalVideoTrack,
+  type LocalTrackPublication,
   type RemoteParticipant,
   type RemoteTrack,
   RemoteVideoTrack,
@@ -166,10 +167,35 @@ export type MediaConnectOptions = {
   token: string;
 };
 
+type EncodingLayerState = {
+  rid: string;
+  active: boolean;
+  maxBitrate?: number;
+  scaleResolutionDownBy?: number;
+};
+
+type LayerMonitor = {
+  intervalId: ReturnType<typeof setInterval>;
+  lastInactiveKey: string | null;
+};
+
+const getEncodingRid = (encoding: RTCRtpEncodingParameters, index: number): string => {
+  if (encoding.rid) return encoding.rid;
+  return index === 0 ? "q" : `layer-${index}`;
+};
+
+const getInactiveLayerKey = (layers: EncodingLayerState[]): string =>
+  layers
+    .filter((layer) => !layer.active)
+    .map((layer) => layer.rid)
+    .sort()
+    .join(",");
+
 export class MediaChannel {
   private room: Room | null = null;
   private remoteStream: MediaStream | null = null;
   private events: Emitter<MediaChannelEvents> = mitt();
+  private layerMonitors = new Map<string, LayerMonitor>();
   private readonly logger: Logger;
 
   constructor(private readonly config: MediaChannelConfig) {
@@ -315,6 +341,7 @@ export class MediaChannel {
     const room = this.room;
     this.room = null;
     this.remoteStream = null;
+    this.stopLayerMonitors();
     this.config.observability?.setLiveKitRoom(null);
     if (room) {
       room.disconnect().catch(() => {});
@@ -333,7 +360,53 @@ export class MediaChannel {
         maxBitrate: publishOptions.videoEncoding?.maxBitrate,
         maxFramerate: publishOptions.videoEncoding?.maxFramerate,
       });
-      await this.room.localParticipant.publishTrack(track, publishOptions);
+      const publication = await this.room.localParticipant.publishTrack(track, publishOptions);
+      this.startLayerMonitor(publication);
     }
+  }
+
+  private startLayerMonitor(publication: LocalTrackPublication): void {
+    const track = publication.videoTrack;
+    if (!(track instanceof LocalVideoTrack)) return;
+
+    const key = publication.trackSid || track.sid || track.id;
+    const previous = this.layerMonitors.get(key);
+    if (previous) clearInterval(previous.intervalId);
+
+    let monitor: LayerMonitor;
+    const intervalId = setInterval(
+      () => this.logInactiveLayers(track, monitor),
+      REALTIME_CONFIG.observability.statsDefaultIntervalMs,
+    );
+    monitor = { intervalId, lastInactiveKey: null };
+    this.layerMonitors.set(key, monitor);
+    this.logInactiveLayers(track, monitor);
+  }
+
+  private logInactiveLayers(track: LocalVideoTrack, monitor: LayerMonitor): void {
+    const encodings = track.sender?.getParameters().encodings ?? [];
+    if (encodings.length === 0) return;
+
+    const layers: EncodingLayerState[] = encodings.map((encoding, index) => ({
+      rid: getEncodingRid(encoding, index),
+      active: encoding.active !== false,
+      maxBitrate: encoding.maxBitrate,
+      scaleResolutionDownBy: encoding.scaleResolutionDownBy,
+    }));
+    const inactiveKey = getInactiveLayerKey(layers);
+    if (inactiveKey === monitor.lastInactiveKey) return;
+    monitor.lastInactiveKey = inactiveKey;
+
+    this.logger.info("livekit: simulcast layer streaming state changed", {
+      inactiveLayers: inactiveKey ? inactiveKey.split(",") : [],
+      layers,
+    });
+  }
+
+  private stopLayerMonitors(): void {
+    for (const monitor of this.layerMonitors.values()) {
+      clearInterval(monitor.intervalId);
+    }
+    this.layerMonitors.clear();
   }
 }

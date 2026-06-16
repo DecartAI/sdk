@@ -29,7 +29,7 @@ export const REALTIME_CONFIG = {
     inferenceServerIdentityPrefix: "inference-server-",
     roomOptions: {
       adaptiveStream: false,
-      dynacast: false,
+      dynacast: true,
     },
     defaultVideoCodec: "h264",
     defaultMaxVideoBitrateBps: 3_500_000,
