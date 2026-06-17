@@ -48,6 +48,16 @@ export type GenerationStartedMessage = {
 export type LiveKitJoinMessage = {
   type: "livekit_join";
   initial_state?: SetImageMessage | PromptMessage | null;
+  /**
+   * Opt-in client capabilities advertised to the inference server at join.
+   * `frame_timing` asks the server to thread the publisher's per-frame
+   * `user_timestamp` (carried in the LiveKit packet trailer) through to the
+   * output track's trailer, so the client can measure true end-to-end
+   * latency. Only sent when the client configured a packet-trailer worker —
+   * otherwise the server would append trailer bytes the client can't strip.
+   * See DecartAI/api#2075.
+   */
+  client_capabilities?: { frame_timing?: boolean };
 };
 
 export type LiveKitRoomInfoMessage = {
