@@ -56,7 +56,7 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
-    "livekit-client": "^2.0.0",
+    "livekit-client": "2.19.1",
     "mitt": "^3.0.1",
     "p-retry": "^6.2.1",
     "zod": "^4.0.17"

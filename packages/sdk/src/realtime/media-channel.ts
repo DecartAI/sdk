@@ -2,8 +2,10 @@ import {
   type DisconnectReason,
   type RemoteParticipant,
   type RemoteTrack,
+  type RemoteVideoTrack,
   Room,
   RoomEvent,
+  type RoomOptions,
   Track,
   type TrackPublishOptions,
 } from "livekit-client";
@@ -35,6 +37,13 @@ export function getDefaultVideoPublishOptions(videoCodec?: VideoCodec): TrackPub
 
 export type MediaChannelEvents = {
   remoteStream: MediaStream;
+  /**
+   * The subscribed remote video track (LiveKit wrapper, not the raw
+   * MediaStreamTrack). Carries `packetTrailerExtractor` when a
+   * packet-trailer worker is configured, letting consumers read per-frame
+   * `user_timestamp` for end-to-end latency.
+   */
+  remoteVideoTrack: RemoteVideoTrack;
   disconnected: { reason?: DisconnectReason };
 };
 
@@ -43,6 +52,15 @@ export interface MediaChannelConfig {
   localStream: MediaStream | null;
   logger?: Logger;
   videoCodec?: VideoCodec;
+  /**
+   * Dedicated LiveKit packet-trailer worker (from
+   * `livekit-client/packet-trailer-worker`). When set, the Room is created
+   * with this worker, the local video publish opts into per-frame
+   * `user_timestamp` stamping, and `RemoteVideoTrack.packetTrailerExtractor`
+   * becomes available on the subscribed track. The worker must be provided by
+   * the consumer because bundling a Web Worker is build-tool specific.
+   */
+  packetTrailerWorker?: Worker;
 }
 
 export type MediaConnectOptions = {
@@ -73,7 +91,11 @@ export class MediaChannel {
   }
 
   async connect(opts: MediaConnectOptions): Promise<void> {
-    this.room ??= new Room(REALTIME_CONFIG.livekit.roomOptions);
+    const roomOptions: RoomOptions = { ...REALTIME_CONFIG.livekit.roomOptions };
+    if (this.config.packetTrailerWorker) {
+      roomOptions.packetTrailer = { worker: this.config.packetTrailerWorker };
+    }
+    this.room ??= new Room(roomOptions);
     const room = this.room;
 
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
@@ -86,6 +108,10 @@ export class MediaChannel {
         // (no-op unless g2g measurement is enabled).
         if (track.kind === Track.Kind.Video) {
           this.config.observability?.attachRemoteVideoTrack(mediaStreamTrack);
+          // Surface the LiveKit track wrapper too — its `packetTrailerExtractor`
+          // (present when a packet-trailer worker is configured) is how
+          // consumers read per-frame `user_timestamp` for E2E latency.
+          this.events.emit("remoteVideoTrack", track as RemoteVideoTrack);
         }
         // Emit a fresh MediaStream whenever the track set changes. Consumers
         // assign this to an element's `srcObject`; mutating the existing stream
@@ -134,7 +160,13 @@ export class MediaChannel {
     if (!this.room) return;
     for (const track of stream.getTracks()) {
       if (track.kind === "video") {
-        await this.room.localParticipant.publishTrack(track, getDefaultVideoPublishOptions(this.config.videoCodec));
+        const publishOptions = getDefaultVideoPublishOptions(this.config.videoCodec);
+        if (this.config.packetTrailerWorker) {
+          // Auto-fill `user_timestamp = Date.now() * 1000` on every encoded
+          // frame's packet trailer; the server echoes it onto the output frame.
+          publishOptions.packetTrailer = { timestamp: true };
+        }
+        await this.room.localParticipant.publishTrack(track, publishOptions);
       } else {
         await this.room.localParticipant.publishTrack(track);
       }
