@@ -1,4 +1,3 @@
-import type { RemoteVideoTrack } from "livekit-client";
 import mitt, { type Emitter } from "mitt";
 import pRetry, { AbortError } from "p-retry";
 
@@ -49,7 +48,6 @@ type StreamSessionEvents = {
   generationTick: GenerationTick;
   generationEnded: GenerationEnded;
   remoteStream: MediaStream;
-  remoteVideoTrack: RemoteVideoTrack;
   error: Error;
 };
 
@@ -63,10 +61,6 @@ interface StreamSessionConfig {
   initialPrompt?: InitialPrompt;
   logger?: Logger;
   videoCodec?: VideoCodec;
-  /** Packet-trailer worker; enables per-frame E2E latency. See MediaChannelConfig. */
-  packetTrailerWorker?: Worker;
-  /** Advertise `frame_timing` capability in the join. See SignalingChannelConfig. */
-  frameTiming?: boolean;
 }
 
 export class StreamSession {
@@ -282,7 +276,6 @@ export class StreamSession {
 
   private wireMediaEvents(): void {
     this.media.on("remoteStream", (stream) => this.events.emit("remoteStream", stream));
-    this.media.on("remoteVideoTrack", (track) => this.events.emit("remoteVideoTrack", track));
     this.media.on("disconnected", (info) => this.handleConnectionLoss({ source: "media", reason: info.reason }));
   }
 
@@ -328,14 +321,12 @@ export class StreamSession {
       integration: this.config.integration,
       logger: this.logger,
       observability: this.config.observability,
-      frameTiming: this.config.frameTiming,
     });
     this.media = new MediaChannel({
       observability: this.config.observability,
       localStream: this.config.localStream,
       logger: this.logger,
       videoCodec: this.config.videoCodec,
-      packetTrailerWorker: this.config.packetTrailerWorker,
     });
     this.wireSignalingEvents();
     this.wireMediaEvents();
