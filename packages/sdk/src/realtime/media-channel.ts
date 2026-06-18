@@ -107,8 +107,17 @@ export class MediaChannel {
       this.events.emit("disconnected", { reason });
     });
 
+    // Split room.connect into the SFU signaling-WS setup (TLS + join) vs the
+    // transport bring-up (ICE + DTLS). SignalConnected fires between the two,
+    // so the breakdown shows which half dominates the handshake.
     this.config.observability?.startPhase("webrtc-handshake");
+    this.config.observability?.startPhase("sfu-signal-connect");
+    room.once(RoomEvent.SignalConnected, () => {
+      this.config.observability?.endPhase("sfu-signal-connect", { success: true });
+      this.config.observability?.startPhase("sfu-ice-dtls");
+    });
     await room.connect(opts.url, opts.token);
+    this.config.observability?.endPhase("sfu-ice-dtls", { success: true });
     this.config.observability?.endPhase("webrtc-handshake", { success: true });
     this.config.observability?.setLiveKitRoom(room);
   }
