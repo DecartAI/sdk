@@ -44,13 +44,6 @@ export interface SignalingChannelConfig {
   integration?: string;
   logger?: Logger;
   observability?: RealtimeObservability;
-  /**
-   * When true, advertise `client_capabilities: { frame_timing: true }` in the
-   * `livekit_join` so the server stamps per-frame `user_timestamp` onto the
-   * output packet trailer. Gated on the client having a packet-trailer worker
-   * configured (see MediaChannelConfig.packetTrailerWorker).
-   */
-  frameTiming?: boolean;
 }
 
 type PendingAck = {
@@ -161,7 +154,6 @@ export class SignalingChannel {
     const joinMessage: LiveKitJoinMessage = {
       type: "livekit_join",
       initial_state: initialStateRequest ? initialStateRequest.message : null,
-      ...(this.config.frameTiming ? { client_capabilities: { frame_timing: true } } : {}),
     };
 
     if (!this.writeMessage(joinMessage)) {
