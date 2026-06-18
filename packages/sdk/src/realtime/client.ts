@@ -1,3 +1,4 @@
+import type { RemoteVideoTrack } from "livekit-client";
 import { z } from "zod";
 import { isFileRefId } from "../files/types";
 import {
@@ -35,6 +36,7 @@ type OnRemoteStreamFn = (stream: MediaStream) => void;
 type OnConnectionChangeFn = (state: ConnectionState) => void;
 type OnConnectionQualityFn = (report: ConnectionQualityReport) => void;
 type OnQueuePositionFn = (queuePosition: QueuePosition) => void;
+type OnRemoteVideoTrackFn = (track: RemoteVideoTrack) => void;
 export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialStateSchema>;
 
 const realTimeClientConnectOptionsSchema = z.object({
@@ -73,6 +75,30 @@ const realTimeClientConnectOptionsSchema = z.object({
    * end-user sessions.
    */
   debugQuality: z.boolean().optional(),
+  /**
+   * Opt-in per-frame end-to-end latency via LiveKit packet trailers. Provide a
+   * worker from `livekit-client/packet-trailer-worker` (bundling a Web Worker
+   * is build-tool specific, so the consumer supplies it). When set, the publish
+   * stamps `user_timestamp` on each frame's trailer, the join advertises the
+   * `frame_timing` capability so the server echoes it onto the output frame,
+   * and the subscribed track exposes `packetTrailerExtractor`. Pair with
+   * `onRemoteVideoTrack` to read the values back. See DecartAI/api#2075.
+   */
+  packetTrailerWorker: z
+    .custom<Worker>((val) => val != null && typeof (val as { postMessage?: unknown }).postMessage === "function", {
+      message: "packetTrailerWorker must be a Worker",
+    })
+    .optional(),
+  /**
+   * Receives the subscribed remote video track (LiveKit wrapper) when it is
+   * first subscribed. Use its `packetTrailerExtractor` (populated only when
+   * `packetTrailerWorker` is set) to read per-frame `user_timestamp`.
+   */
+  onRemoteVideoTrack: z
+    .custom<OnRemoteVideoTrackFn>((val) => typeof val === "function", {
+      message: "onRemoteVideoTrack must be a function",
+    })
+    .optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -127,9 +153,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       onConnectionChange,
       onConnectionQuality,
       onQueuePosition,
+      onRemoteVideoTrack,
       initialState,
       resolution,
       preferredVideoCodec,
+      packetTrailerWorker,
     } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
     let inputStream: MediaStream = stream ?? new MediaStream();
@@ -213,12 +241,17 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialPrompt,
         logger,
         videoCodec: publishCodec,
+        packetTrailerWorker,
+        // The worker is what makes trailer strip/extract possible client-side;
+        // only advertise the capability when we can actually handle the trailer.
+        frameTiming: !!packetTrailerWorker,
       });
 
       let sessionId: string | null = null;
       let subscribeToken: string | null = null;
 
       session.on("remoteStream", onRemoteStream);
+      if (onRemoteVideoTrack) session.on("remoteVideoTrack", onRemoteVideoTrack);
 
       session.on("connectionChange", (state) => {
         emitOrBuffer("connectionChange", state);
