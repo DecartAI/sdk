@@ -147,16 +147,22 @@ export class SignalingChannel {
     this.config.observability?.startPhase("room-join");
     const roomInfoWait = this.waitForRoomInfo(handshakeTimeout);
 
-    // The initial state rides inside livekit_join so the inference server gets
-    // the reference image/prompt with the join, with no separate message sent
-    // after livekit_room_info arrives.
+    // Lean join first, then the initial state as its own frame. The server
+    // returns room_info off the small join frame without waiting for the
+    // (multi-MB) image to upload, so the upload overlaps the SFU connect rather
+    // than blocking room_info. Order matters: the join must be written first.
     const initialStateRequest = buildInitialStateRequest(opts.initialState);
     const joinMessage: LiveKitJoinMessage = {
       type: "livekit_join",
-      initial_state: initialStateRequest ? initialStateRequest.message : null,
+      initial_state: null,
     };
 
     if (!this.writeMessage(joinMessage)) {
+      roomInfoWait.cancel();
+      throw new Error("WebSocket is not open");
+    }
+
+    if (initialStateRequest && !this.writeMessage(initialStateRequest.message)) {
       roomInfoWait.cancel();
       throw new Error("WebSocket is not open");
     }
@@ -173,8 +179,8 @@ export class SignalingChannel {
     this.connected = true;
 
     // Arm the ack only now that room info arrived, so a long queue wait cannot
-    // trip the ack timeout. The message already rode out with the join, so this
-    // waits for the ack without writing again.
+    // trip the ack timeout. The message was already written as its own frame
+    // right after the join, so this waits for the ack without writing again.
     const initialStateAck = initialStateRequest ? this.flushInitialState(initialStateRequest) : Promise.resolve();
     initialStateAck.catch(() => {});
 
