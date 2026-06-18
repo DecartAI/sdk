@@ -332,6 +332,7 @@
                 </optgroup>
                 <optgroup label="Canonical">
                     <option value="lucy-2.1" selected>Lucy 2.1</option>
+                    <option value="lucy-2.5">Lucy 2.5</option>
                     <option value="lucy-2.1-vton">Lucy 2.1 VTON</option>
                     <option value="lucy-vton-2">Lucy VTON 2</option>
                     <option value="lucy-vton-3">Lucy VTON 3</option>
@@ -481,6 +482,12 @@
         <div class="inline-controls">
             <button id="send-image" disabled>Send Reference Image</button>
         </div>
+        <div class="control-group" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+            <input type="checkbox" id="include-reference-frame">
+            <label for="include-reference-frame" style="margin: 0; font-weight: normal;">
+                Also capture &amp; attach camera reference frame
+            </label>
+        </div>
         <div id="image-status" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 6px; display: none;">
             <strong>Status:</strong> <span id="image-status-text">Ready</span>
         </div>
@@ -588,6 +595,39 @@
         let decartClient = null;
         let decartRealtime = null;
         let localStream = null;
+
+        // Captures a low-res JPEG snapshot from the local camera stream.
+        // Mirrors the pattern used in tryonv1 so the bouncer's prompt enhancer can see what the person is currently wearing.
+        async function captureReferenceFrame() {
+            if (!localStream) return null;
+            const video = document.createElement('video');
+            video.srcObject = localStream;
+            video.muted = true;
+            video.playsInline = true;
+            await video.play();
+            await new Promise((resolve) => {
+                if ('requestVideoFrameCallback' in video) {
+                    video.requestVideoFrameCallback(() => resolve());
+                } else {
+                    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+                }
+            });
+            if (!video.videoWidth) {
+                video.pause();
+                video.srcObject = null;
+                return null;
+            }
+            const scale = 320 / video.videoWidth;
+            const canvas = document.createElement('canvas');
+            canvas.width = 320;
+            canvas.height = Math.round(video.videoHeight * scale);
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            video.pause();
+            video.srcObject = null;
+            return new Promise((resolve) => {
+                canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.5);
+            });
+        }
         let isConnected = false;
         let activeConnectionMode = null;
         let processedVideoUrl = null;
@@ -643,6 +683,7 @@
             connectivityReasons: document.getElementById('connectivity-reasons'),
             // Image reference elements
             referenceImage: document.getElementById('reference-image'),
+            includeReferenceFrame: document.getElementById('include-reference-frame'),
             setImage: document.getElementById('send-image'),
             imageStatus: document.getElementById('image-status'),
             imageStatusText: document.getElementById('image-status-text'),
@@ -1423,7 +1464,17 @@
 
                 addLog('Sending reference image...', 'info');
 
-                await decartRealtime.setImage(file);
+                let sampleFrameData = null;
+                if (elements.includeReferenceFrame.checked) {
+                    sampleFrameData = await captureReferenceFrame();
+                    if (sampleFrameData) {
+                        addLog(`Captured reference frame from camera (${(sampleFrameData.size / 1024).toFixed(1)} KB)`, 'info');
+                    } else {
+                        addLog('Camera stream not available — skipping reference frame', 'warning');
+                    }
+                }
+
+                await decartRealtime.setImage(file, sampleFrameData ? { sampleFrameData } : undefined);
 
                 elements.imageStatusText.textContent = '✅ Image sent successfully!';
                 elements.imageStatusText.style.color = '#4CAF50';

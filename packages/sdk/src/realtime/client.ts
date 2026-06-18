@@ -108,7 +108,12 @@ export type RealTimeClient = {
    * - `"file_..."` id (from `client.files.upload(...).id`): sent as a server-side reference.
    * - `null`: clear the current image.
    */
-  setImage: (image: Blob | File | string | null, options?: ImageSetOptions) => Promise<void>;
+  setImage: (
+    image: Blob | File | string | null,
+    options?: Omit<ImageSetOptions, "sampleFrameData"> & {
+      sampleFrameData?: Blob | File | string | null;
+    },
+  ) => Promise<void>;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
@@ -269,13 +274,23 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           return subscribeToken;
         },
         getSubscribeToken: () => subscribeToken,
-        setImage: async (image: Blob | File | string | null, imgOptions?: ImageSetOptions) => {
-          if (isFileRefId(image)) {
-            return activeSession.setImage({ kind: "ref", ref: image }, imgOptions);
+        setImage: async (
+          image: Blob | File | string | null,
+          imgOptions?: Omit<ImageSetOptions, "sampleFrameData"> & {
+            sampleFrameData?: Blob | File | string | null;
+          },
+        ) => {
+          const { sampleFrameData, ...rest } = imgOptions ?? {};
+          const sessionOpts: ImageSetOptions = { ...rest };
+          if (sampleFrameData !== undefined) {
+            sessionOpts.sampleFrameData = sampleFrameData === null ? null : await imageToBase64(sampleFrameData);
           }
-          if (image === null) return activeSession.setImage({ kind: "data", data: null }, imgOptions);
+          if (isFileRefId(image)) {
+            return activeSession.setImage({ kind: "ref", ref: image }, sessionOpts);
+          }
+          if (image === null) return activeSession.setImage({ kind: "data", data: null }, sessionOpts);
           const base64 = await imageToBase64(image);
-          return activeSession.setImage({ kind: "data", data: base64 }, imgOptions);
+          return activeSession.setImage({ kind: "data", data: base64 }, sessionOpts);
         },
       };
 

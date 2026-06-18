@@ -13,6 +13,7 @@ const setInputSchema = z
      * - `"file_..."` id (from `client.files.upload(...).id`): sent as a server-side reference.
      */
     image: z.union([z.instanceof(Blob), z.instanceof(File), z.string(), z.null()]).optional(),
+    sampleFrameData: z.union([z.instanceof(Blob), z.instanceof(File), z.string(), z.null()]).optional(),
   })
   .refine((data) => data.prompt !== undefined || data.image !== undefined, {
     message: "At least one of 'prompt' or 'image' must be provided",
@@ -33,8 +34,15 @@ export const realtimeMethods = (
     const parsed = setInputSchema.safeParse(input);
     if (!parsed.success) throw parsed.error;
 
-    const { prompt, enhance, image } = parsed.data;
-    const options = { prompt, enhance, timeout: REALTIME_CONFIG.methods.updateTimeoutMs };
+    const { prompt, enhance, image, sampleFrameData } = parsed.data;
+    const options: { prompt?: string; enhance: boolean; timeout: number; sampleFrameData?: string | null } = {
+      prompt,
+      enhance,
+      timeout: REALTIME_CONFIG.methods.updateTimeoutMs,
+    };
+    if (sampleFrameData !== undefined) {
+      options.sampleFrameData = sampleFrameData === null ? null : await imageToBase64(sampleFrameData);
+    }
 
     if (isFileRefId(image)) {
       await session.setImage({ kind: "ref", ref: image }, options);

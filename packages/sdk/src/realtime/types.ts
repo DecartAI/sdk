@@ -23,6 +23,7 @@ export type SetImageMessage = {
   image_ref?: string;
   prompt?: string | null;
   enhance_prompt?: boolean;
+  sample_frame_data?: string | null;
 };
 
 export type SetImagePayload = { kind: "data"; data: string | null } | { kind: "ref"; ref: string };
@@ -122,6 +123,8 @@ export type ImageSetOptions = {
   prompt?: string | null;
   enhance?: boolean;
   timeout?: number;
+  /** Optional base64-encoded sample frame (e.g. current camera frame) for prompt-enhancement context. */
+  sampleFrameData?: string | null;
 };
 
 // Incoming message types (from server)

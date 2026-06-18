@@ -299,6 +299,36 @@ describe("set()", () => {
       expect.objectContaining({ timeout: REALTIME_CONFIG.methods.updateTimeoutMs }),
     );
   });
+
+  it("converts sampleFrameData Blob to base64 and forwards it on options", async () => {
+    const refBlob = new Blob(["ref-frame"], { type: "image/jpeg" });
+    mockImageToBase64.mockImplementation(async (input) => (input === refBlob ? "refbase64" : "imgbase64"));
+
+    await methods.set({ image: "raw", sampleFrameData: refBlob });
+
+    expect(mockImageToBase64).toHaveBeenCalledWith(refBlob);
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: "imgbase64" },
+      expect.objectContaining({ sampleFrameData: "refbase64" }),
+    );
+  });
+
+  it("forwards null sampleFrameData without calling imageToBase64 on it", async () => {
+    mockImageToBase64.mockResolvedValue("imgbase64");
+    await methods.set({ image: "raw", sampleFrameData: null });
+
+    expect(mockImageToBase64).toHaveBeenCalledTimes(1);
+    expect(mockSession.setImage).toHaveBeenCalledWith(
+      { kind: "data", data: "imgbase64" },
+      expect.objectContaining({ sampleFrameData: null }),
+    );
+  });
+
+  it("omits sampleFrameData from options when not provided", async () => {
+    await methods.set({ prompt: "a cat" });
+    const call = mockSession.setImage.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect("sampleFrameData" in call).toBe(false);
+  });
 });
 
 describe("Subscribe Token", () => {

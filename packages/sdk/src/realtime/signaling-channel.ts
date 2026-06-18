@@ -227,6 +227,7 @@ export class SignalingChannel {
         : { type: "set_image", image_data: payload.data };
     if (opts.prompt !== undefined) message.prompt = opts.prompt;
     if (opts.enhance !== undefined) message.enhance_prompt = opts.enhance;
+    if (opts.sampleFrameData !== undefined) message.sample_frame_data = opts.sampleFrameData;
 
     const ack = await this.request<SetImageAckMessage>({
       message,
