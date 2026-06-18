@@ -72,8 +72,7 @@ export class StreamSession {
 
   private disposed = false;
   private currentAttempt = 0;
-  private currentConnectRun = 0;
-  private readonly activeInitialStateAckRuns = new Set<number>();
+  private teardownGeneration = 0;
 
   private readonly logger: Logger;
 
@@ -161,7 +160,6 @@ export class StreamSession {
   }
 
   private async runOneConnect(attempt: number): Promise<void> {
-    const run = ++this.currentConnectRun;
     if (this.disposed || this.currentAttempt !== attempt) {
       throw new AbortError("Stale connect attempt");
     }
@@ -177,10 +175,9 @@ export class StreamSession {
         connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
         initialState,
       });
-      this.watchInitialStateAck(initialStateAck, attempt, run);
+      this.watchInitialStateAck(initialStateAck, attempt);
 
       if (this.disposed || this.currentAttempt !== attempt) {
-        this.cancelInitialStateAckWatch(run);
         this.tearDown();
         throw new AbortError("Stale connect attempt");
       }
@@ -194,13 +191,11 @@ export class StreamSession {
         });
         await this.media.publishLocalTracks();
       } catch (error) {
-        this.cancelInitialStateAckWatch(run);
         this.tearDown();
         throw error;
       }
 
       if (this.disposed || this.currentAttempt !== attempt) {
-        this.cancelInitialStateAckWatch(run);
         this.tearDown();
         throw new AbortError("Stale connect attempt");
       }
@@ -221,20 +216,12 @@ export class StreamSession {
     }
   }
 
-  private watchInitialStateAck(initialStateAck: Promise<void>, attempt: number, run: number): void {
-    this.activeInitialStateAckRuns.add(run);
-    initialStateAck
-      .catch((error) => {
-        if (!this.activeInitialStateAckRuns.has(run) || this.disposed || this.currentAttempt !== attempt) return;
-        this.events.emit("error", error instanceof Error ? error : new Error(String(error)));
-      })
-      .finally(() => {
-        this.activeInitialStateAckRuns.delete(run);
-      });
-  }
-
-  private cancelInitialStateAckWatch(run: number): void {
-    this.activeInitialStateAckRuns.delete(run);
+  private watchInitialStateAck(initialStateAck: Promise<void>, attempt: number): void {
+    const generation = this.teardownGeneration;
+    initialStateAck.catch((error) => {
+      if (this.disposed || this.currentAttempt !== attempt || this.teardownGeneration !== generation) return;
+      this.events.emit("error", error instanceof Error ? error : new Error(String(error)));
+    });
   }
 
   private getInitialState(): InitialState | undefined {
@@ -349,6 +336,7 @@ export class StreamSession {
   }
 
   private tearDown(): void {
+    this.teardownGeneration++;
     this.signaling.close();
     this.media.disconnect();
     this.resetHandshakeState();
