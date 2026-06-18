@@ -124,6 +124,21 @@ export type ImageSetOptions = {
   timeout?: number;
 };
 
+export type SetupTimingMark = {
+  label: string;
+  at_ms: number;
+  duration_ms?: number;
+  [key: string]: unknown;
+};
+
+export type SetupTimingMessage = {
+  type: "setup_timing";
+  source: string;
+  session_id: string | null;
+  total_ms: number;
+  marks: SetupTimingMark[];
+};
+
 // Incoming message types (from server)
 export type IncomingRealtimeMessage =
   | PromptAckMessage
@@ -133,7 +148,8 @@ export type IncomingRealtimeMessage =
   | GenerationEndedMessage
   | GenerationStartedMessage
   | LiveKitRoomInfoMessage
-  | QueuePositionMessage;
+  | QueuePositionMessage
+  | SetupTimingMessage;
 
 // Outgoing message types (to server)
 export type OutgoingRealtimeMessage = LiveKitJoinMessage | PromptMessage | SetImageMessage;
