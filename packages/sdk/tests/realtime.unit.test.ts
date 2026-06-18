@@ -5,6 +5,7 @@ import type { ServerError } from "../src/realtime/types.js";
 
 const liveKitMock = vi.hoisted(() => {
   const roomInstances: MockRoom[] = [];
+  const connectMocks: Array<() => Promise<void>> = [];
 
   const RoomEvent = {
     TrackSubscribed: "trackSubscribed",
@@ -30,7 +31,7 @@ const liveKitMock = vi.hoisted(() => {
     localParticipant = {
       publishTrack: vi.fn().mockResolvedValue(undefined),
     };
-    connect = vi.fn().mockResolvedValue(undefined);
+    connect = vi.fn().mockImplementation(() => connectMocks.shift()?.() ?? Promise.resolve());
     disconnect = vi.fn().mockResolvedValue(undefined);
 
     constructor() {
@@ -49,7 +50,7 @@ const liveKitMock = vi.hoisted(() => {
     }
   }
 
-  return { roomInstances, RoomEvent, Track, TrackEvent, ConnectionState, MockRoom };
+  return { roomInstances, connectMocks, RoomEvent, Track, TrackEvent, ConnectionState, MockRoom };
 });
 
 vi.mock("livekit-client", () => ({
@@ -727,6 +728,7 @@ describe("StreamSession startup orchestration", () => {
 
   beforeEach(() => {
     FakeWebSocket.instances = [];
+    liveKitMock.connectMocks.length = 0;
     liveKitMock.roomInstances.length = 0;
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("MediaStream", FakeMediaStream);
@@ -959,6 +961,51 @@ describe("StreamSession startup orchestration", () => {
     expect(errors[0].message).toBe("bad image");
     expect(firstRoom.disconnect).not.toHaveBeenCalled();
     expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it("does not emit initial-state errors when retry teardown closes a pending ack", async () => {
+    vi.useFakeTimers();
+    try {
+      liveKitMock.connectMocks.push(
+        () => Promise.reject(new Error("webrtc failed")),
+        () => Promise.resolve(),
+      );
+      const { StreamSession } = await import("../src/realtime/stream-session.js");
+      const session = new StreamSession({
+        url: "wss://example.test/realtime",
+        localStream: null,
+        initialPrompt: { text: "wear a hat" },
+      });
+      const errors: Error[] = [];
+      session.on("error", (error) => errors.push(error));
+
+      const connectPromise = session.connect();
+      const firstWs = FakeWebSocket.instances[0];
+      firstWs.onopen?.();
+      await flushMicrotasks();
+      sendRoomInfo(firstWs, "first");
+      await flushMicrotasks();
+      await flushMicrotasks();
+
+      expect(liveKitMock.roomInstances[0]?.disconnect).toHaveBeenCalled();
+      expect(errors).toHaveLength(0);
+
+      await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.session.retry.minTimeout);
+      await flushMicrotasks();
+      expect(FakeWebSocket.instances).toHaveLength(2);
+
+      const secondWs = FakeWebSocket.instances[1];
+      secondWs.onopen?.();
+      await flushMicrotasks();
+      sendRoomInfo(secondWs, "second");
+
+      await expect(connectPromise).resolves.toBeUndefined();
+      secondWs.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
+      await flushMicrotasks();
+      expect(errors).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("disconnects media for an already-published track when startup is torn down", async () => {
