@@ -147,13 +147,9 @@ export class SignalingChannel {
     this.config.observability?.startPhase("room-join");
     const roomInfoWait = this.waitForRoomInfo(handshakeTimeout);
 
-    // The initial state rides inside livekit_join so the inference server gets
-    // the reference image/prompt with the join, with no separate message sent
-    // after livekit_room_info arrives.
     const initialStateRequest = buildInitialStateRequest(opts.initialState);
     const joinMessage: LiveKitJoinMessage = {
       type: "livekit_join",
-      initial_state: initialStateRequest ? initialStateRequest.message : null,
     };
 
     if (!this.writeMessage(joinMessage)) {
@@ -172,9 +168,8 @@ export class SignalingChannel {
 
     this.connected = true;
 
-    // Arm the ack only now that room info arrived, so a long queue wait cannot
-    // trip the ack timeout. The message already rode out with the join, so this
-    // waits for the ack without writing again.
+    // Send the initial state only after room info arrives, so a long queue wait
+    // cannot trip the ack timeout.
     const initialStateAck = initialStateRequest ? this.flushInitialState(initialStateRequest) : Promise.resolve();
     initialStateAck.catch(() => {});
 
@@ -188,7 +183,6 @@ export class SignalingChannel {
       matchAck: request.matchAck,
       timeoutMs: REALTIME_CONFIG.signaling.requestTimeoutMs,
       label: request.label,
-      write: false,
     });
     this.config.observability?.endPhase("initial-state-handshake", { success: true });
     if (!ack.success) throw new Error(ack.error ?? `Failed: ${request.label}`);
