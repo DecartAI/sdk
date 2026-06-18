@@ -3,7 +3,6 @@ import pRetry, { AbortError } from "p-retry";
 
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
-import { InitialStateGate } from "./initial-state-gate";
 import { MediaChannel, type VideoCodec } from "./media-channel";
 import type { RealtimeObservability } from "./observability/realtime-observability";
 import { SignalingChannel } from "./signaling-channel";
@@ -73,8 +72,8 @@ export class StreamSession {
 
   private disposed = false;
   private currentAttempt = 0;
+  private teardownGeneration = 0;
 
-  private readonly initialStateGate = new InitialStateGate();
   private readonly logger: Logger;
 
   constructor(private readonly config: StreamSessionConfig) {
@@ -171,12 +170,12 @@ export class StreamSession {
       this.config.observability?.beginConnectionBreakdown(attempt, getInitialImageSizeKb(initialState?.image));
       // Start the glass-to-glass TTFF clock for this attempt (resets the tracker).
       this.config.observability?.markGlassToGlassStart();
-      const gateAttempt = this.initialStateGate.startAttempt(initialState);
 
       const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({
         connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
         initialState,
       });
+      this.watchInitialStateAck(initialStateAck, attempt);
 
       if (this.disposed || this.currentAttempt !== attempt) {
         this.tearDown();
@@ -190,10 +189,6 @@ export class StreamSession {
           url: roomInfo.livekitUrl,
           token: roomInfo.token,
         });
-        const isCurrentAttempt = await gateAttempt.waitForReadiness(initialStateAck);
-        if (!isCurrentAttempt) {
-          throw new AbortError("Stale connect attempt");
-        }
         await this.media.publishLocalTracks();
       } catch (error) {
         this.tearDown();
@@ -219,6 +214,14 @@ export class StreamSession {
       });
       throw error;
     }
+  }
+
+  private watchInitialStateAck(initialStateAck: Promise<void>, attempt: number): void {
+    const generation = this.teardownGeneration;
+    initialStateAck.catch((error) => {
+      if (this.disposed || this.currentAttempt !== attempt || this.teardownGeneration !== generation) return;
+      this.events.emit("error", error instanceof Error ? error : new Error(String(error)));
+    });
   }
 
   private getInitialState(): InitialState | undefined {
@@ -333,9 +336,9 @@ export class StreamSession {
   }
 
   private tearDown(): void {
+    this.teardownGeneration++;
     this.signaling.close();
     this.media.disconnect();
-    this.initialStateGate.reset();
     this.resetHandshakeState();
   }
 
