@@ -668,54 +668,6 @@ describe("SignalingChannel initial handshake", () => {
   });
 });
 
-describe("InitialStateGate", () => {
-  it("waits for caller initial state and reports a current attempt after ack", async () => {
-    const { InitialStateGate } = await import("../src/realtime/initial-state-gate.js");
-    const gate = new InitialStateGate();
-    let ackInitialState!: () => void;
-    const initialStateAck = new Promise<void>((resolve) => {
-      ackInitialState = resolve;
-    });
-
-    const attempt = gate.startAttempt({ prompt: "wear a hat" });
-    let resolved = false;
-    const readiness = attempt.waitForReadiness(initialStateAck).then((isCurrent) => {
-      resolved = true;
-      return isCurrent;
-    });
-    await flushMicrotasks();
-    expect(resolved).toBe(false);
-
-    ackInitialState();
-    await expect(readiness).resolves.toBe(true);
-  });
-
-  it("does not gate the internal null-image bootstrap", async () => {
-    const { InitialStateGate } = await import("../src/realtime/initial-state-gate.js");
-    const gate = new InitialStateGate();
-    const attempt = gate.startAttempt({ image: null, prompt: null });
-
-    await expect(attempt.waitForReadiness(new Promise(() => {}))).resolves.toBe(true);
-  });
-
-  it("reports stale startup attempts after reset", async () => {
-    const { InitialStateGate } = await import("../src/realtime/initial-state-gate.js");
-    const gate = new InitialStateGate();
-    let ackInitialState!: () => void;
-    const initialStateAck = new Promise<void>((resolve) => {
-      ackInitialState = resolve;
-    });
-
-    const attempt = gate.startAttempt({ image: "base64-image" });
-    const readiness = attempt.waitForReadiness(initialStateAck);
-
-    gate.reset();
-    ackInitialState();
-
-    await expect(readiness).resolves.toBe(false);
-  });
-});
-
 describe("StreamSession startup orchestration", () => {
   class FakeWebSocket {
     static OPEN = 1;
@@ -785,7 +737,7 @@ describe("StreamSession startup orchestration", () => {
     vi.useRealTimers();
   });
 
-  it("starts LiveKit after room info, but resolves connect and emits connected only after caller initial-state ack", async () => {
+  it("starts LiveKit after room info, then resolves connect before caller initial-state ack", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const session = new StreamSession({
       url: "wss://example.test/realtime",
@@ -815,16 +767,11 @@ describe("StreamSession startup orchestration", () => {
     expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "token");
     expect(states).toEqual(["connecting"]);
 
-    let resolved = false;
-    connectPromise.then(() => {
-      resolved = true;
-    });
-    await flushMicrotasks();
-    expect(resolved).toBe(false);
-
-    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
     await expect(connectPromise).resolves.toBeUndefined();
     expect(states).toEqual(["connecting", "connected"]);
+
+    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
+    await flushMicrotasks();
   });
 
   it("transitions to generating on generation_started over the websocket", async () => {
@@ -844,7 +791,6 @@ describe("StreamSession startup orchestration", () => {
     sendRoomInfo(ws);
     await flushMicrotasks();
 
-    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
     await expect(connectPromise).resolves.toBeUndefined();
     expect(states).toEqual(["connecting", "connected"]);
 
@@ -855,6 +801,9 @@ describe("StreamSession startup orchestration", () => {
     // Subsequent ticks must not re-emit the transition.
     ws.receive({ type: "generation_tick", seconds: 5 });
     expect(states).toEqual(["connecting", "connected", "generating"]);
+
+    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
+    await flushMicrotasks();
   });
 
   it("transitions to generating on the first generation_tick as a fallback", async () => {
@@ -874,15 +823,17 @@ describe("StreamSession startup orchestration", () => {
     sendRoomInfo(ws);
     await flushMicrotasks();
 
-    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
     await expect(connectPromise).resolves.toBeUndefined();
     expect(states).toEqual(["connecting", "connected"]);
 
     ws.receive({ type: "generation_tick", seconds: 5 });
     expect(states).toEqual(["connecting", "connected", "generating"]);
+
+    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
+    await flushMicrotasks();
   });
 
-  it("emits remoteStream before caller initial-state ack while connect remains pending", async () => {
+  it("emits remoteStream before caller initial-state ack after connect resolves", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const session = new StreamSession({
       url: "wss://example.test/realtime",
@@ -901,24 +852,17 @@ describe("StreamSession startup orchestration", () => {
     await flushMicrotasks();
     sendRoomInfo(ws);
     await flushMicrotasks();
+    await expect(connectPromise).resolves.toBeUndefined();
+    expect(states).toEqual(["connecting", "connected"]);
 
     subscribeRemoteTrack();
     expect(remoteStreams).toHaveLength(1);
-    expect(states).toEqual(["connecting"]);
-
-    let resolved = false;
-    connectPromise.then(() => {
-      resolved = true;
-    });
-    await flushMicrotasks();
-    expect(resolved).toBe(false);
 
     ws.receive({ type: "set_image_ack", success: true, error: null });
-    await expect(connectPromise).resolves.toBeUndefined();
-    expect(states).toEqual(["connecting", "connected"]);
+    await flushMicrotasks();
   });
 
-  it("waits for caller initial-state ack before publishing local tracks", async () => {
+  it("publishes local tracks immediately after LiveKit connect and before caller initial-state ack", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const localStream = createLocalStream();
     const session = new StreamSession({
@@ -936,9 +880,6 @@ describe("StreamSession startup orchestration", () => {
 
     const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
     expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "token");
-    expect(room.localParticipant.publishTrack).not.toHaveBeenCalled();
-
-    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
     await expect(connectPromise).resolves.toBeUndefined();
     expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(
@@ -947,6 +888,9 @@ describe("StreamSession startup orchestration", () => {
       expect.objectContaining({ source: liveKitMock.Track.Source.Camera }),
     );
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, localStream.getTracks()[1]);
+
+    ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
+    await flushMicrotasks();
   });
 
   it("does not gate remoteStream or connected state on the internal null-image bootstrap ack", async () => {
@@ -982,16 +926,20 @@ describe("StreamSession startup orchestration", () => {
     expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
     expect(remoteStreams).toHaveLength(1);
     expect(states).toEqual(["connecting", "connected"]);
+
+    ws.receive({ type: "set_image_ack", success: true, error: null });
+    await flushMicrotasks();
   });
 
-  it("tears down media and signaling, then retries when caller initial-state ack fails", async () => {
-    vi.useFakeTimers();
+  it("emits async errors without retrying when caller initial-state ack fails after connect", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const session = new StreamSession({
       url: "wss://example.test/realtime",
       localStream: null,
       initialImage: "base64-image",
     });
+    const errors: Error[] = [];
+    session.on("error", (error) => errors.push(error));
 
     const connectPromise = session.connect();
     const firstWs = FakeWebSocket.instances[0];
@@ -1001,32 +949,19 @@ describe("StreamSession startup orchestration", () => {
     await flushMicrotasks();
 
     const firstRoom = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
-    firstWs.receive({ type: "set_image_ack", success: false, error: "bad image" });
-    await flushMicrotasks();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(firstRoom.disconnect).toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.session.retry.minTimeout);
-    const secondWs = FakeWebSocket.instances[1];
-    expect(secondWs).toBeDefined();
-    const bundledJoin = {
-      type: "livekit_join",
-      initial_state: { type: "set_image", image_data: "base64-image" },
-    };
-
-    secondWs.onopen?.();
-    await flushMicrotasks();
-    expect(secondWs.sentMessages).toEqual([bundledJoin]);
-
-    sendRoomInfo(secondWs, "second");
-    await flushMicrotasks();
-    expect(secondWs.sentMessages).toEqual([bundledJoin]);
-    secondWs.receive({ type: "set_image_ack", success: true, error: null });
     await expect(connectPromise).resolves.toBeUndefined();
+
+    firstWs.receive({ type: "set_image_ack", success: false, error: "bad image" });
+
+    await vi.waitFor(() => {
+      expect(errors).toHaveLength(1);
+    });
+    expect(errors[0].message).toBe("bad image");
+    expect(firstRoom.disconnect).not.toHaveBeenCalled();
+    expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
-  it("does not publish local tracks from a stale startup attempt", async () => {
+  it("disconnects media for an already-published track when startup is torn down", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const session = new StreamSession({
       url: "wss://example.test/realtime",
@@ -1042,14 +977,14 @@ describe("StreamSession startup orchestration", () => {
     await flushMicrotasks();
 
     const firstRoom = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
-    expect(firstRoom.localParticipant.publishTrack).not.toHaveBeenCalled();
+    await expect(connectPromise).resolves.toBeUndefined();
+    expect(firstRoom.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
 
     session.disconnect();
     firstWs.receive({ type: "prompt_ack", prompt: "make it cinematic", success: true, error: null });
     await flushMicrotasks();
 
-    expect(firstRoom.localParticipant.publishTrack).not.toHaveBeenCalled();
-    await expect(connectPromise).rejects.toThrow("WebSocket closed: 1000 closed");
+    expect(firstRoom.disconnect).toHaveBeenCalled();
   });
 });
 
