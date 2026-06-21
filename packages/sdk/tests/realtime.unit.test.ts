@@ -458,7 +458,7 @@ describe("SignalingChannel initial handshake", () => {
       initialState: { image: "base64-image", prompt: "wear a hat", enhance: false },
     });
 
-    const leanJoin = { type: "livekit_join", passthrough: false, initial_state: null };
+    const leanJoin = { type: "livekit_join", passthrough: false };
     const initialImage = { type: "set_image", image_data: "base64-image", prompt: "wear a hat", enhance_prompt: false };
 
     const ws = FakeWebSocket.instances[0];
@@ -504,7 +504,7 @@ describe("SignalingChannel initial handshake", () => {
       initialState: { image: null, prompt: null },
     });
 
-    const leanJoin = { type: "livekit_join", passthrough: true, initial_state: null };
+    const leanJoin = { type: "livekit_join", passthrough: true };
     const bootstrapImage = { type: "set_image", image_data: null, prompt: null };
 
     const ws = FakeWebSocket.instances[0];
@@ -600,7 +600,7 @@ describe("SignalingChannel initial handshake", () => {
       });
       openPromise.catch(() => {});
 
-      const leanJoin = { type: "livekit_join", passthrough: false, initial_state: null };
+      const leanJoin = { type: "livekit_join", passthrough: false };
       const initialImage = { type: "set_image", image_data: "base64-image" };
 
       const ws = FakeWebSocket.instances[0];
@@ -748,7 +748,7 @@ describe("StreamSession startup orchestration", () => {
     ws.onopen?.();
     await flushMicrotasks();
 
-    const leanJoin = { type: "livekit_join", passthrough: false, initial_state: null };
+    const leanJoin = { type: "livekit_join", passthrough: false };
     const initialPrompt = { type: "prompt", prompt: "wear a hat", enhance_prompt: false };
     expect(ws.sentMessages).toEqual([leanJoin, initialPrompt]);
 
@@ -899,7 +899,7 @@ describe("StreamSession startup orchestration", () => {
     session.on("connectionChange", (state) => states.push(state));
     session.on("remoteStream", (stream) => remoteStreams.push(stream));
 
-    const leanJoin = { type: "livekit_join", passthrough: true, initial_state: null };
+    const leanJoin = { type: "livekit_join", passthrough: true };
     const bootstrapImage = { type: "set_image", image_data: null, prompt: null };
 
     const connectPromise = session.connect();

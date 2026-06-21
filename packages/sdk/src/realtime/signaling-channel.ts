@@ -159,7 +159,6 @@ export class SignalingChannel {
     const joinMessage: LiveKitJoinMessage = {
       type: "livekit_join",
       passthrough: opts.passthrough ?? !userSetInitialState,
-      initial_state: null,
     };
 
     if (!this.writeMessage(joinMessage)) {

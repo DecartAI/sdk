@@ -85,7 +85,6 @@ describe("SignalingChannel", () => {
       expect(JSON.parse(ws.sent[0])).toMatchObject({
         type: "livekit_join",
         passthrough: false,
-        initial_state: null,
       });
       expect(JSON.parse(ws.sent[1])).toMatchObject({ type: "prompt", prompt: "a calm lake" });
 
@@ -105,7 +104,7 @@ describe("SignalingChannel", () => {
     }
   });
 
-  it("always sends the initial_state field (null when empty) as a capability marker", async () => {
+  it("sends a passthrough join when no initial state is set", async () => {
     const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
 
     let socket: MockWebSocket | null = null;
@@ -143,8 +142,6 @@ describe("SignalingChannel", () => {
       const ws = socket as MockWebSocket;
       const join = JSON.parse(ws.sent[0]);
       expect(join.type).toBe("livekit_join");
-      expect("initial_state" in join).toBe(true);
-      expect(join.initial_state).toBeNull();
       expect(join.passthrough).toBe(true);
 
       ws.deliver({
