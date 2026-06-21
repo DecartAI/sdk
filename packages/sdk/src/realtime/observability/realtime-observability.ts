@@ -1,7 +1,6 @@
 import type { Room } from "livekit-client";
 import type { Logger } from "../../utils/logger";
 import { REALTIME_CONFIG } from "../config-realtime";
-import type { SetupTimingMessage } from "../types";
 import { ConnectionQualityEvaluator, type ConnectionQualityReport } from "./connection-quality";
 import type {
   ClientSessionConnectionBreakdownPhase,
@@ -106,19 +105,6 @@ export class RealtimeObservability {
     this.options.logger.debug(name, data as Record<string, unknown>);
     this.options.onDiagnostic?.({ name, data } as DiagnosticEvent);
     this.addTelemetryDiagnostic(name, data, timestamp);
-  }
-
-  recordServerSetupTiming(msg: SetupTimingMessage): void {
-    this.diagnostic("server-setup-timing", {
-      source: msg.source,
-      sessionId: msg.session_id ?? null,
-      totalMs: msg.total_ms,
-      marks: (msg.marks ?? []).map((mark) => ({
-        label: mark.label,
-        atMs: mark.at_ms,
-        ...(mark.duration_ms !== undefined ? { durationMs: mark.duration_ms } : {}),
-      })),
-    });
   }
 
   beginConnectionBreakdown(attempt: number, initialImageSizeKb: number | null): void {

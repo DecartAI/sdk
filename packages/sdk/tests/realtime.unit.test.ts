@@ -11,7 +11,6 @@ const liveKitMock = vi.hoisted(() => {
     TrackSubscribed: "trackSubscribed",
     Disconnected: "disconnected",
     ConnectionStateChanged: "connectionStateChanged",
-    SignalConnected: "signalConnected",
   } as const;
   const Track = {
     Kind: { Video: "video", Audio: "audio" },
@@ -44,17 +43,6 @@ const liveKitMock = vi.hoisted(() => {
       handlers.push(handler);
       this.handlers.set(event, handlers);
       return this;
-    }
-
-    once(event: string, handler: (...args: unknown[]) => void): this {
-      const wrapper = (...args: unknown[]) => {
-        this.handlers.set(
-          event,
-          (this.handlers.get(event) ?? []).filter((h) => h !== wrapper),
-        );
-        handler(...args);
-      };
-      return this.on(event, wrapper);
     }
 
     emit(event: string, ...args: unknown[]): void {

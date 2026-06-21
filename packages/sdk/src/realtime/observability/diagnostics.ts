@@ -27,22 +27,8 @@ export type VideoStallEvent = {
   durationMs: number;
 };
 
-export type ServerSetupTimingMark = {
-  label: string;
-  atMs: number;
-  durationMs?: number;
-};
-
-export type ServerSetupTimingEvent = {
-  source: string;
-  sessionId: string | null;
-  totalMs: number;
-  marks: ServerSetupTimingMark[];
-};
-
 export type DiagnosticEvents = {
   "client-session-connection-breakdown": ClientSessionConnectionBreakdownEvent;
-  "server-setup-timing": ServerSetupTimingEvent;
   reconnect: ReconnectEvent;
   videoStall: VideoStallEvent;
 };

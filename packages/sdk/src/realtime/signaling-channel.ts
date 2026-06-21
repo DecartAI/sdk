@@ -422,9 +422,6 @@ export class SignalingChannel {
           queueSize: msg.queue_size,
         });
         break;
-      case "setup_timing":
-        this.config.observability?.recordServerSetupTiming(msg);
-        break;
       case "generation_started":
         this.events.emit("generationStarted");
         break;
