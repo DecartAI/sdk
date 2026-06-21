@@ -211,6 +211,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialImage,
         initialImageRef,
         initialPrompt,
+        initialPassthrough: initialState?.passthrough,
         logger,
         videoCodec: publishCodec,
       });

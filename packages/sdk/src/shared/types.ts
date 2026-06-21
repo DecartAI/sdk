@@ -14,5 +14,6 @@ export const modelStateSchema = z.object({
    * server-side reference instead of base64.
    */
   image: z.union([z.instanceof(Blob), z.instanceof(File), z.string()]).optional(),
+  passthrough: z.boolean().optional(),
 });
 export type ModelState = z.infer<typeof modelStateSchema>;

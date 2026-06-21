@@ -63,6 +63,7 @@ export type OpenAndJoinOptions = {
   connectTimeout?: number;
   handshakeTimeout?: number;
   initialState?: InitialState;
+  passthrough?: boolean;
 };
 
 export type OpenAndJoinResult = {
@@ -152,8 +153,12 @@ export class SignalingChannel {
     // (multi-MB) image to upload, so the upload overlaps the SFU connect rather
     // than blocking room_info. Order matters: the join must be written first.
     const initialStateRequest = buildInitialStateRequest(opts.initialState);
+    const userSetInitialState =
+      opts.initialState != null &&
+      (opts.initialState.image != null || opts.initialState.imageRef != null || opts.initialState.prompt != null);
     const joinMessage: LiveKitJoinMessage = {
       type: "livekit_join",
+      passthrough: opts.passthrough ?? !userSetInitialState,
       initial_state: null,
     };
 

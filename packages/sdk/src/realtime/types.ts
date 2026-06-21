@@ -47,6 +47,7 @@ export type GenerationStartedMessage = {
 
 export type LiveKitJoinMessage = {
   type: "livekit_join";
+  passthrough: boolean;
   initial_state?: SetImageMessage | PromptMessage | null;
 };
 
@@ -128,7 +129,6 @@ export type SetupTimingMark = {
   label: string;
   at_ms: number;
   duration_ms?: number;
-  [key: string]: unknown;
 };
 
 export type SetupTimingMessage = {
