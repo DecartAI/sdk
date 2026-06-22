@@ -58,6 +58,7 @@ interface StreamSessionConfig {
   initialImage?: string;
   initialImageRef?: string;
   initialPrompt?: InitialPrompt;
+  initialPassthrough?: boolean;
   logger?: Logger;
   videoCodec?: VideoCodec;
 }
@@ -174,6 +175,7 @@ export class StreamSession {
       const { roomInfo, initialStateAck } = await this.signaling.openAndJoin({
         connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
         initialState,
+        passthrough: this.config.initialPassthrough,
       });
       this.watchInitialStateAck(initialStateAck, attempt);
 
