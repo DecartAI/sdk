@@ -1128,6 +1128,37 @@ describe("Tokens API", () => {
       });
       expect(result.constraints).toEqual({ realtime: { maxSessionDuration: 120 } });
     });
+
+    it("returns the signed JWT from response", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", () => {
+          return HttpResponse.json({
+            apiKey: "ek_test123",
+            token: "eyJhbGciOiJFZERTQS.signed.jwt",
+            expiresAt: "2024-12-15T12:10:00Z",
+          });
+        }),
+      );
+
+      const result = await decart.tokens.create();
+
+      expect(result.token).toBe("eyJhbGciOiJFZERTQS.signed.jwt");
+    });
+
+    it("leaves token undefined when omitted from response", async () => {
+      server.use(
+        http.post("http://localhost/v1/client/tokens", () => {
+          return HttpResponse.json({
+            apiKey: "ek_test123",
+            expiresAt: "2024-12-15T12:10:00Z",
+          });
+        }),
+      );
+
+      const result = await decart.tokens.create();
+
+      expect(result.token).toBeUndefined();
+    });
   });
 });
 
