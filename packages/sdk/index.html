@@ -317,7 +317,12 @@
         <div class="control-group">
             <label for="api-key">API Key:</label>
             <input type="password" autocomplete="off" id="api-key" placeholder="Enter your Decart API key">
-            <button id="mint-jwt-btn" type="button">Transform to JWKS</button>
+            <fieldset id="auth-mode">
+                <legend>Connect with</legend>
+                <label><input type="radio" name="auth-mode" value="parent" checked> Parent key</label>
+                <label><input type="radio" name="auth-mode" value="ephemeral"> Ephemeral key</label>
+                <label><input type="radio" name="auth-mode" value="jwt"> JWKS token</label>
+            </fieldset>
         </div>
         <div class="control-group">
             <label for="realtime-base-url">Realtime Base URL (optional):</label>
@@ -599,7 +604,6 @@
         // DOM elements
         const elements = {
             apiKey: document.getElementById('api-key'),
-            mintJwtBtn: document.getElementById('mint-jwt-btn'),
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             resolutionSelect: document.getElementById('resolution-select'),
@@ -902,26 +906,27 @@
         elements.checkConnectivityBtn.addEventListener('click', runConnectivityCheck);
         elements.activeProbeBtn.addEventListener('click', runActivePreflight);
 
-        // Dev helper: mint a client-token JWT from a parent key and drop it into the
-        // API Key field, so you can test JWT (offline-verified) realtime auth.
-        elements.mintJwtBtn.addEventListener('click', async () => {
+        // The API Key field always holds the parent key — minting reads from it,
+        // so overwriting it would burn the only key we can mint from.
+        async function resolveCredential() {
             const parentKey = elements.apiKey.value.trim();
-            if (!parentKey) { addLog('Enter a parent API key first', 'error'); return; }
+            if (!parentKey) { addLog('Please enter an API key', 'error'); return null; }
+            const authMode = document.querySelector('input[name="auth-mode"]:checked').value;
+            if (authMode === 'parent') return parentKey;
             const wsBase = elements.realtimeBaseUrl.value.trim();
             const baseUrl = wsBase ? wsBase.replace(/^wss?:/i, 'https:') : undefined;
-            elements.mintJwtBtn.disabled = true;
             try {
                 const minter = createDecartClient({ apiKey: parentKey, ...(baseUrl && { baseUrl }), logger: createDemoLogger('debug') });
                 const res = await minter.tokens.create({ allowedModels: [model.name], expiresIn: 600, metadata: { service_tier: 2 } });
-                if (!res.token) { addLog('No JWT returned (signing failed upstream) — opaque key only', 'error'); return; }
-                elements.apiKey.value = res.token;
-                addLog(`Minted JWT for [${model.name}] → filled API Key field (expires ${res.expiresAt})`, 'info');
+                const cred = authMode === 'jwt' ? res.token : res.apiKey;
+                if (!cred) { addLog(`No ${authMode} credential returned (signing failed upstream)`, 'error'); return null; }
+                addLog(`Minted ${authMode} credential for [${model.name}] (expires ${res.expiresAt})`, 'info');
+                return cred;
             } catch (e) {
                 addLog(`Mint failed: ${e?.message || e}`, 'error');
-            } finally {
-                elements.mintJwtBtn.disabled = false;
+                return null;
             }
-        });
+        }
 
         function syncPublisherSubscribeToken() {
             if (activeConnectionMode !== 'publisher' || !decartRealtime?.getSubscribeToken) {
@@ -1046,12 +1051,9 @@
         
         // Connect to Decart
         elements.connectBtn.addEventListener('click', async () => {
-            const apiKey = elements.apiKey.value.trim();
-            if (!apiKey) {
-                addLog('Please enter an API key', 'error');
-                return;
-            }
-            
+            const apiKey = await resolveCredential();
+            if (!apiKey) return;
+
             if (!localStream) {
                 addLog('Please start camera first', 'error');
                 return;
@@ -1198,11 +1200,8 @@
         });
 
         elements.subscribeBtn.addEventListener('click', async () => {
-            const apiKey = elements.apiKey.value.trim();
-            if (!apiKey) {
-                addLog('Please enter an API key', 'error');
-                return;
-            }
+            const apiKey = await resolveCredential();
+            if (!apiKey) return;
 
             const token = elements.subscribeTokenInput.value.trim();
             if (!token) {
@@ -1477,12 +1476,9 @@
         
         // Process video file
         elements.processVideo.addEventListener('click', async () => {
-            const apiKey = elements.apiKey.value.trim();
-            if (!apiKey) {
-                addLog('Please enter an API key', 'error');
-                return;
-            }
-            
+            const apiKey = await resolveCredential();
+            if (!apiKey) return;
+
             const file = elements.videoFile.files[0];
             if (!file) {
                 addLog('Please select a video file', 'error');
