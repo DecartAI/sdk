@@ -28,6 +28,8 @@ export type CreateTokenOptions = {
 
 export type CreateTokenResponse = {
   apiKey: string;
+  /** Signed JWT mirroring `apiKey`, verifiable offline via the public JWKS. */
+  token?: string;
   expiresAt: string;
   /** Present when `allowedModels` and/or `allowedOrigins` were set on the request. */
   permissions?: {
@@ -48,7 +50,7 @@ export type TokensClient = {
    * ```ts
    * const client = createDecartClient({ apiKey: process.env.DECART_API_KEY });
    * const token = await client.tokens.create();
-   * // Returns: { apiKey: "ek_...", expiresAt: "2024-12-15T12:10:00Z" }
+   * // Returns: { apiKey: "ek_...", token: "eyJhbGciOiJFZERTQS...", expiresAt: "2024-12-15T12:10:00Z" }
    *
    * // With metadata:
    * const token = await client.tokens.create({ metadata: { role: "viewer" } });

@@ -15,6 +15,7 @@ run(async () => {
 
   console.log("Token created successfully:");
   console.log(`  API Key: ${token.apiKey.slice(0, 10)}...`);
+  console.log(`  JWT: ${token.token ? `${token.token.slice(0, 16)}...` : "(not issued)"}`);
   console.log(`  Expires At: ${token.expiresAt}`);
   console.log(`  Allowed Origins: ${token.permissions?.origins?.join(", ") ?? "(any)"}`);
 
