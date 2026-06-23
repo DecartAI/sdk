@@ -317,6 +317,7 @@
         <div class="control-group">
             <label for="api-key">API Key:</label>
             <input type="password" autocomplete="off" id="api-key" placeholder="Enter your Decart API key">
+            <button id="mint-jwt-btn" type="button">Mint JWT from key → fill field</button>
         </div>
         <div class="control-group">
             <label for="realtime-base-url">Realtime Base URL (optional):</label>
@@ -598,6 +599,7 @@
         // DOM elements
         const elements = {
             apiKey: document.getElementById('api-key'),
+            mintJwtBtn: document.getElementById('mint-jwt-btn'),
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             resolutionSelect: document.getElementById('resolution-select'),
@@ -899,6 +901,27 @@
 
         elements.checkConnectivityBtn.addEventListener('click', runConnectivityCheck);
         elements.activeProbeBtn.addEventListener('click', runActivePreflight);
+
+        // Dev helper: mint a client-token JWT from a parent key and drop it into the
+        // API Key field, so you can test JWT (offline-verified) realtime auth.
+        elements.mintJwtBtn.addEventListener('click', async () => {
+            const parentKey = elements.apiKey.value.trim();
+            if (!parentKey) { addLog('Enter a parent API key first', 'error'); return; }
+            const wsBase = elements.realtimeBaseUrl.value.trim();
+            const baseUrl = wsBase ? wsBase.replace(/^wss?:/i, 'https:') : undefined;
+            elements.mintJwtBtn.disabled = true;
+            try {
+                const minter = createDecartClient({ apiKey: parentKey, ...(baseUrl && { baseUrl }), logger: createDemoLogger('debug') });
+                const res = await minter.tokens.create({ allowedModels: [model.name], expiresIn: 600, metadata: { service_tier: 2 } });
+                if (!res.token) { addLog('No JWT returned (signing failed upstream) — opaque key only', 'error'); return; }
+                elements.apiKey.value = res.token;
+                addLog(`Minted JWT for [${model.name}] → filled API Key field (expires ${res.expiresAt})`, 'info');
+            } catch (e) {
+                addLog(`Mint failed: ${e?.message || e}`, 'error');
+            } finally {
+                elements.mintJwtBtn.disabled = false;
+            }
+        });
 
         function syncPublisherSubscribeToken() {
             if (activeConnectionMode !== 'publisher' || !decartRealtime?.getSubscribeToken) {
