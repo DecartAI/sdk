@@ -986,6 +986,9 @@
             model = models.realtime(selectedModel);
             elements.cameraFps.value = String(resolveCameraFps(model.fps));
             addLog(`Selected model: ${selectedModel}`, 'info');
+
+            const authMode = document.querySelector('input[name="auth-mode"]:checked').value;
+            if (authMode !== 'parent') mintCredential(authMode);
             
             // If camera is already started, stop it so user can restart with new model settings.
             if (localStream) {
