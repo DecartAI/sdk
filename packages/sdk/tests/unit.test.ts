@@ -1099,12 +1099,12 @@ describe("Tokens API", () => {
       });
     });
 
-    it("returns permissions and constraints from response", async () => {
+    it("returns all fields from response", async () => {
       server.use(
-        http.post("http://localhost/v1/client/tokens", async ({ request }) => {
-          lastRequest = request;
+        http.post("http://localhost/v1/client/tokens", () => {
           return HttpResponse.json({
             apiKey: "ek_test123",
+            token: "eyJhbGciOiJFZERTQS.signed.jwt",
             expiresAt: "2024-12-15T12:15:00Z",
             permissions: {
               models: ["lucy-pro-v2v", "lucy-restyle-v2v"],
@@ -1121,43 +1121,16 @@ describe("Tokens API", () => {
         constraints: { realtime: { maxSessionDuration: 120 } },
       });
 
-      expect(result.apiKey).toBe("ek_test123");
-      expect(result.permissions).toEqual({
-        models: ["lucy-pro-v2v", "lucy-restyle-v2v"],
-        origins: ["https://example.com"],
+      expect(result).toEqual({
+        apiKey: "ek_test123",
+        token: "eyJhbGciOiJFZERTQS.signed.jwt",
+        expiresAt: "2024-12-15T12:15:00Z",
+        permissions: {
+          models: ["lucy-pro-v2v", "lucy-restyle-v2v"],
+          origins: ["https://example.com"],
+        },
+        constraints: { realtime: { maxSessionDuration: 120 } },
       });
-      expect(result.constraints).toEqual({ realtime: { maxSessionDuration: 120 } });
-    });
-
-    it("returns the signed JWT from response", async () => {
-      server.use(
-        http.post("http://localhost/v1/client/tokens", () => {
-          return HttpResponse.json({
-            apiKey: "ek_test123",
-            token: "eyJhbGciOiJFZERTQS.signed.jwt",
-            expiresAt: "2024-12-15T12:10:00Z",
-          });
-        }),
-      );
-
-      const result = await decart.tokens.create();
-
-      expect(result.token).toBe("eyJhbGciOiJFZERTQS.signed.jwt");
-    });
-
-    it("leaves token undefined when omitted from response", async () => {
-      server.use(
-        http.post("http://localhost/v1/client/tokens", () => {
-          return HttpResponse.json({
-            apiKey: "ek_test123",
-            expiresAt: "2024-12-15T12:10:00Z",
-          });
-        }),
-      );
-
-      const result = await decart.tokens.create();
-
-      expect(result.token).toBeUndefined();
     });
   });
 });
