@@ -28,6 +28,7 @@ export type CreateTokenOptions = {
 
 export type CreateTokenResponse = {
   apiKey: string;
+  token?: string;
   expiresAt: string;
   /** Present when `allowedModels` and/or `allowedOrigins` were set on the request. */
   permissions?: {
