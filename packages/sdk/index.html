@@ -236,9 +236,10 @@
             <label for="model-select">Model:</label>
             <select id="model-select">
                 <option value="mirage">Mirage</option>
-                <option value="mirage_v2" selected>Mirage v2</option>
+                <option value="mirage_v2">Mirage v2</option>
                 <option value="lucy_v2v_720p_rt">Lucy v2v 720p RT</option>
                 <option value="lucy_2_rt">Lucy 2 RT</option>
+                <option value="lucy-2.1" selected>Lucy 2.1</option>
             </select>
         </div>
         <div class="control-group">
@@ -371,7 +372,7 @@
         let isConnected = false;
         let processedVideoUrl = null;
         let currentSessionId = null;
-        let model = models.realtime("mirage_v2");
+        let model = models.realtime("lucy-2.1");
         
         // DOM elements
         const elements = {
@@ -527,7 +528,7 @@
 
                 // Load initial reference image only when there's an actual prompt
                 let initialImage;
-                if (promptValue && (model.name === 'lucy_2_rt' || model.name === 'mirage_v2')) {
+                if (promptValue && (model.name === 'lucy_2_rt' || model.name === 'mirage_v2' || model.name === 'lucy-2.1')) {
                     const initialImageResponse = await fetch('./tests/fixtures/image.png');
                     initialImage = await initialImageResponse.blob();
                 }
