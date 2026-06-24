@@ -4,6 +4,7 @@ import { REALTIME_CONFIG } from "../config-realtime";
 import { ConnectionQualityEvaluator, type ConnectionQualityReport } from "./connection-quality";
 import type {
   ClientSessionConnectionBreakdownPhase,
+  ClientSessionConnectionBreakdownSpan,
   DiagnosticEvent,
   DiagnosticEventName,
   DiagnosticEvents,
@@ -39,11 +40,29 @@ type PhaseEntry = {
   error?: string;
 };
 
+export type RealtimeTraceSpan = {
+  functionName: string;
+  startedAt: number;
+  endedAt?: number;
+  success?: boolean;
+  detail?: string;
+  error?: string;
+};
+
 type ConnectionBreakdownBuffer = {
   attempt: number;
   connectStartedAt: number;
   initialImageSizeKb: number | null;
   phases: Map<string, PhaseEntry>;
+  spans: RealtimeTraceSpan[];
+};
+
+const CONNECTION_PHASE_FUNCTION_NAMES: Record<string, string> = {
+  "websocket-open": "SignalingChannel.openSocket",
+  "room-join": "SignalingChannel.waitForRoomInfo",
+  "initial-state-handshake": "SignalingChannel.flushInitialState",
+  "webrtc-handshake": "MediaChannel.connect",
+  "publish-local-track": "MediaChannel.publishLocalTracks",
 };
 
 export class RealtimeObservability {
@@ -113,7 +132,29 @@ export class RealtimeObservability {
       connectStartedAt: Date.now(),
       initialImageSizeKb,
       phases: new Map(),
+      spans: [],
     };
+  }
+
+  startSpan(functionName: string, detail?: string): RealtimeTraceSpan | null {
+    if (!this.connectionBreakdown) return null;
+    const span: RealtimeTraceSpan = {
+      functionName,
+      startedAt: Date.now(),
+      ...(detail !== undefined ? { detail } : {}),
+    };
+    this.connectionBreakdown.spans.push(span);
+    return span;
+  }
+
+  endSpan(
+    span: RealtimeTraceSpan | null | undefined,
+    opts: { success: boolean; error?: string } = { success: true },
+  ): void {
+    if (!span || span.endedAt !== undefined) return;
+    span.endedAt = Date.now();
+    span.success = opts.success;
+    if (opts.error !== undefined) span.error = opts.error;
   }
 
   startPhase(name: string): void {
@@ -140,6 +181,7 @@ export class RealtimeObservability {
 
     const now = Date.now();
     const phases: ClientSessionConnectionBreakdownPhase[] = [];
+    const spans: ClientSessionConnectionBreakdownSpan[] = [];
     for (const [phase, entry] of buffer.phases) {
       const unfinished = entry.endedAt === undefined;
       const endedAt = entry.endedAt ?? now;
@@ -147,8 +189,25 @@ export class RealtimeObservability {
       const error = entry.error ?? (unfinished && !opts.success ? opts.error : undefined);
       phases.push({
         phase,
+        functionName: CONNECTION_PHASE_FUNCTION_NAMES[phase] ?? phase,
+        startedAtMs: entry.startedAt - buffer.connectStartedAt,
+        endedAtMs: endedAt - buffer.connectStartedAt,
         durationMs: endedAt - entry.startedAt,
         success,
+        ...(error !== undefined ? { error } : {}),
+      });
+    }
+    for (const entry of buffer.spans) {
+      const unfinished = entry.endedAt === undefined;
+      const endedAt = entry.endedAt ?? now;
+      const error = entry.error ?? (unfinished && !opts.success ? opts.error : undefined);
+      spans.push({
+        functionName: entry.functionName,
+        startedAtMs: entry.startedAt - buffer.connectStartedAt,
+        endedAtMs: endedAt - buffer.connectStartedAt,
+        durationMs: endedAt - entry.startedAt,
+        success: entry.success ?? false,
+        ...(entry.detail !== undefined ? { detail: entry.detail } : {}),
         ...(error !== undefined ? { error } : {}),
       });
     }
@@ -161,6 +220,7 @@ export class RealtimeObservability {
         totalDurationMs: now - buffer.connectStartedAt,
         initialImageSizeKb: buffer.initialImageSizeKb,
         phases,
+        spans,
         ...(opts.error !== undefined ? { error: opts.error } : {}),
       },
       now,

@@ -450,6 +450,19 @@ describe("SignalingChannel initial handshake", () => {
     vi.unstubAllGlobals();
   });
 
+  it("rejects early server errors before room-info wait is armed", async () => {
+    const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
+    const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
+
+    const openPromise = channel.openAndJoin();
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    ws.receive({ type: "error", error: "Invalid API key" });
+
+    await expect(openPromise).rejects.toThrow("Invalid API key");
+    expect(ws.sentMessages).toEqual([]);
+  });
+
   it("sends lean livekit_join then initial set_image as its own frame, exposes ack as a separate promise", async () => {
     const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
     const channel = new SignalingChannel({ url: "wss://example.test/realtime" });
@@ -731,6 +744,22 @@ describe("StreamSession startup orchestration", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it("does not retry permanent early server errors", async () => {
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+    });
+
+    const connectPromise = session.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    ws.receive({ type: "error", error: "Invalid API key" });
+
+    await expect(connectPromise).rejects.toThrow("Invalid API key");
+    expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
   it("starts LiveKit after room info, then resolves connect before caller initial-state ack", async () => {

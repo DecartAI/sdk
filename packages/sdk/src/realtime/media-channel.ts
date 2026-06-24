@@ -73,6 +73,7 @@ export class MediaChannel {
   }
 
   async connect(opts: MediaConnectOptions): Promise<void> {
+    const connectSpan = this.config.observability?.startSpan("MediaChannel.connect");
     this.room ??= new Room(REALTIME_CONFIG.livekit.roomOptions);
     const room = this.room;
 
@@ -108,16 +109,38 @@ export class MediaChannel {
     });
 
     this.config.observability?.startPhase("webrtc-handshake");
-    await room.connect(opts.url, opts.token);
-    this.config.observability?.endPhase("webrtc-handshake", { success: true });
-    this.config.observability?.setLiveKitRoom(room);
+    const roomConnectSpan = this.config.observability?.startSpan("Room.connect");
+    try {
+      await room.connect(opts.url, opts.token);
+      this.config.observability?.endSpan(roomConnectSpan);
+      this.config.observability?.endPhase("webrtc-handshake", { success: true });
+      const statsSpan = this.config.observability?.startSpan("RealtimeObservability.setLiveKitRoom");
+      this.config.observability?.setLiveKitRoom(room);
+      this.config.observability?.endSpan(statsSpan);
+      this.config.observability?.endSpan(connectSpan);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.config.observability?.endSpan(roomConnectSpan, { success: false, error: message });
+      this.config.observability?.endPhase("webrtc-handshake", { success: false, error: message });
+      this.config.observability?.endSpan(connectSpan, { success: false, error: message });
+      throw error;
+    }
   }
 
   async publishLocalTracks(): Promise<void> {
     if (!this.config.localStream) return;
+    const span = this.config.observability?.startSpan("MediaChannel.publishLocalTracks");
     this.config.observability?.startPhase("publish-local-track");
-    await this.publishTracks(this.config.localStream);
-    this.config.observability?.endPhase("publish-local-track", { success: true });
+    try {
+      await this.publishTracks(this.config.localStream);
+      this.config.observability?.endPhase("publish-local-track", { success: true });
+      this.config.observability?.endSpan(span);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.config.observability?.endPhase("publish-local-track", { success: false, error: message });
+      this.config.observability?.endSpan(span, { success: false, error: message });
+      throw error;
+    }
   }
 
   disconnect(): void {
@@ -132,12 +155,28 @@ export class MediaChannel {
 
   private async publishTracks(stream: MediaStream): Promise<void> {
     if (!this.room) return;
-    for (const track of stream.getTracks()) {
-      if (track.kind === "video") {
-        await this.room.localParticipant.publishTrack(track, getDefaultVideoPublishOptions(this.config.videoCodec));
-      } else {
-        await this.room.localParticipant.publishTrack(track);
+    const span = this.config.observability?.startSpan("MediaChannel.publishTracks");
+    try {
+      for (const track of stream.getTracks()) {
+        const publishTrackSpan = this.config.observability?.startSpan(
+          "LocalParticipant.publishTrack",
+          `${track.kind}:${track.id}`,
+        );
+        if (track.kind === "video") {
+          const optionsSpan = this.config.observability?.startSpan("getDefaultVideoPublishOptions");
+          const options = getDefaultVideoPublishOptions(this.config.videoCodec);
+          this.config.observability?.endSpan(optionsSpan);
+          await this.room.localParticipant.publishTrack(track, options);
+        } else {
+          await this.room.localParticipant.publishTrack(track);
+        }
+        this.config.observability?.endSpan(publishTrackSpan);
       }
+      this.config.observability?.endSpan(span);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.config.observability?.endSpan(span, { success: false, error: message });
+      throw error;
     }
   }
 }

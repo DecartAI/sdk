@@ -218,6 +218,72 @@
             border-left-color: #4CAF50;
             background: #e8f5e8;
         }
+
+        .setup-timing-table-wrap {
+            overflow-x: auto;
+        }
+
+        .setup-timing-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        .setup-timing-table th,
+        .setup-timing-table td {
+            border-bottom: 1px solid #e0e0e0;
+            padding: 6px 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .setup-timing-table th {
+            background: #f8f9fa;
+            color: #333;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .setup-timing-row {
+            cursor: pointer;
+        }
+
+        .setup-timing-row:hover {
+            background: #f8f9fa;
+        }
+
+        .setup-timing-row.is-expanded {
+            background: #eef6ff;
+        }
+
+        .setup-timing-detail-cell {
+            background: #fbfcfd;
+            padding: 10px 12px;
+        }
+
+        .setup-flame-chart {
+            min-width: 720px;
+        }
+
+        .setup-flame-chart svg {
+            display: block;
+            width: 100%;
+            height: auto;
+            font-family: Arial, sans-serif;
+        }
+
+        .setup-flame-note {
+            margin: 0 0 8px 0;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .setup-copy-btn {
+            padding: 5px 9px;
+            margin: 0;
+            font-size: 12px;
+            white-space: nowrap;
+        }
         
         .inline-controls {
             display: flex;
@@ -308,6 +374,35 @@
                 <input type="text" id="publisher-subscribe-token" readonly placeholder="Connect as publisher to generate a token">
                 <button id="copy-subscribe-token" class="secondary" disabled>Copy Subscribe Token</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Setup Timing History -->
+    <div class="controls">
+        <h3>Setup Timing History</h3>
+        <div class="inline-controls" style="margin-bottom: 8px;">
+            <button id="clear-setup-timings-btn" class="secondary">Clear History</button>
+        </div>
+        <div class="setup-timing-table-wrap">
+            <table class="setup-timing-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Session ID</th>
+                        <th>API Host</th>
+                        <th>Setup</th>
+                        <th>SDK Connect</th>
+                        <th>Remote Stream</th>
+                        <th>First Frame Gap</th>
+                        <th>JSON</th>
+                    </tr>
+                </thead>
+                <tbody id="setup-timing-history-body">
+                    <tr>
+                        <td colspan="8">No setup timings recorded yet.</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
     
@@ -591,6 +686,7 @@
     
     <script type="module">
         // Import the Decart SDK (with cache busting timestamp)
+        import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
         import { createConsoleLogger, createDecartClient, models } from './dist/index.js';
 
         
@@ -652,6 +748,8 @@
             connectivityHeadline: document.getElementById('connectivity-headline'),
             connectivityMetrics: document.getElementById('connectivity-metrics'),
             connectivityReasons: document.getElementById('connectivity-reasons'),
+            setupTimingHistoryBody: document.getElementById('setup-timing-history-body'),
+            clearSetupTimingsBtn: document.getElementById('clear-setup-timings-btn'),
             // Image reference elements
             referenceImage: document.getElementById('reference-image'),
             setImage: document.getElementById('send-image'),
@@ -763,6 +861,575 @@
                 },
             };
         }
+
+        // ---------- Setup timing history ----------
+        const SETUP_TIMING_STORAGE_KEY = 'decart.debug.setupTimingHistory.v1';
+        const SETUP_TIMING_HISTORY_LIMIT = 50;
+        let activeSetupTiming = null;
+
+        function formatMs(ms) {
+            return ms == null ? '-' : `${Math.round(ms)}ms`;
+        }
+
+        function readSetupTimingHistory() {
+            try {
+                const raw = localStorage.getItem(SETUP_TIMING_STORAGE_KEY);
+                if (!raw) return [];
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (error) {
+                addLog(`Failed to read setup timing history: ${error.message ?? error}`, 'error');
+                return [];
+            }
+        }
+
+        function writeSetupTimingHistory(history) {
+            try {
+                localStorage.setItem(
+                    SETUP_TIMING_STORAGE_KEY,
+                    JSON.stringify(history.slice(0, SETUP_TIMING_HISTORY_LIMIT)),
+                );
+            } catch (error) {
+                addLog(`Failed to write setup timing history: ${error.message ?? error}`, 'error');
+            }
+        }
+
+        let expandedSetupTimingId = null;
+
+        function renderSetupTimingHistory() {
+            const history = readSetupTimingHistory();
+            elements.setupTimingHistoryBody.innerHTML = '';
+
+            if (history.length === 0) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 8;
+                cell.textContent = 'No setup timings recorded yet.';
+                row.appendChild(cell);
+                elements.setupTimingHistoryBody.appendChild(row);
+                return;
+            }
+
+            for (const record of history) {
+                const row = document.createElement('tr');
+                row.className = `setup-timing-row${expandedSetupTimingId === record.id ? ' is-expanded' : ''}`;
+                const cells = [
+                    new Date(record.date).toLocaleString(),
+                    record.sessionId || '-',
+                    record.realtimeHost || '-',
+                    formatMs(record.setupTimeMs),
+                    formatMs(record.sdkConnectTotalMs),
+                    formatMs(record.remoteStreamMs),
+                    formatMs(record.setupTimeMs != null && record.remoteStreamMs != null
+                        ? record.setupTimeMs - record.remoteStreamMs
+                        : null),
+                ];
+
+                for (const text of cells) {
+                    const cell = document.createElement('td');
+                    cell.textContent = text;
+                    row.appendChild(cell);
+                }
+
+                const copyCell = document.createElement('td');
+                const copyButton = document.createElement('button');
+                copyButton.type = 'button';
+                copyButton.className = 'secondary setup-copy-btn';
+                copyButton.textContent = 'Copy JSON';
+                copyButton.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    copySetupTimingJson(record);
+                });
+                copyCell.appendChild(copyButton);
+                row.appendChild(copyCell);
+
+                row.addEventListener('click', () => {
+                    expandedSetupTimingId = expandedSetupTimingId === record.id ? null : record.id;
+                    renderSetupTimingHistory();
+                });
+
+                elements.setupTimingHistoryBody.appendChild(row);
+
+                if (expandedSetupTimingId === record.id) {
+                    const detailRow = document.createElement('tr');
+                    const detailCell = document.createElement('td');
+                    detailCell.colSpan = 8;
+                    detailCell.className = 'setup-timing-detail-cell';
+                    const chart = document.createElement('div');
+                    chart.className = 'setup-flame-chart';
+                    detailCell.appendChild(chart);
+                    detailRow.appendChild(detailCell);
+                    elements.setupTimingHistoryBody.appendChild(detailRow);
+                    renderSetupTimingFlameChart(record, chart);
+                }
+            }
+        }
+
+        async function copySetupTimingJson(record) {
+            const payload = buildSetupTimingCopyPayload(record);
+            const json = JSON.stringify(payload, null, 2);
+            try {
+                await navigator.clipboard.writeText(json);
+                addLog(`Copied setup timing JSON for ${record.sessionId || record.id}`, 'success');
+            } catch {
+                const textarea = document.createElement('textarea');
+                textarea.value = json;
+                textarea.style.position = 'fixed';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                textarea.remove();
+                addLog(`Copied setup timing JSON for ${record.sessionId || record.id} using fallback`, 'success');
+            }
+        }
+
+        function getLegacyPhaseFunctionName(phase) {
+            return {
+                'websocket-open': 'SignalingChannel.openSocket',
+                'room-join': 'SignalingChannel.waitForRoomInfo',
+                'initial-state-handshake': 'SignalingChannel.flushInitialState',
+                'webrtc-handshake': 'MediaChannel.connect',
+                'publish-local-track': 'MediaChannel.publishLocalTracks',
+            }[phase] || phase;
+        }
+
+        const BROAD_SETUP_TIMING_SPANS = new Set([
+            'connect button handler',
+            'decartClient.realtime.connect',
+            'SignalingChannel.openAndJoin',
+            'MediaChannel.connect',
+            'MediaChannel.publishLocalTracks',
+            'MediaChannel.publishTracks',
+        ]);
+
+        function getSpanDuration(span) {
+            return span.durationMs ?? span.endedAtMs - span.startedAtMs;
+        }
+
+        function getSpanSpecificity(span) {
+            let score = 0;
+            if (span.detail) score += 4;
+            if (!BROAD_SETUP_TIMING_SPANS.has(span.functionName)) score += 2;
+            if (span.functionName.startsWith('SignalingChannel') || span.functionName.startsWith('MediaChannel')) {
+                score += 1;
+            }
+            return score;
+        }
+
+        function cleanSetupTimingSpans(spans) {
+            const byWindow = new Map();
+            for (const span of spans) {
+                const durationMs = Math.round(getSpanDuration(span));
+                if (!Number.isFinite(durationMs) || durationMs < 1) continue;
+                const normalized = {
+                    ...span,
+                    startedAtMs: Math.round(span.startedAtMs),
+                    endedAtMs: Math.round(span.endedAtMs),
+                    durationMs,
+                };
+                const key = `${normalized.startedAtMs}:${normalized.endedAtMs}:${normalized.durationMs}`;
+                const previous = byWindow.get(key);
+                if (!previous || getSpanSpecificity(normalized) >= getSpanSpecificity(previous)) {
+                    byWindow.set(key, normalized);
+                }
+            }
+            return [...byWindow.values()].sort(
+                (a, b) => a.startedAtMs - b.startedAtMs || b.endedAtMs - a.endedAtMs,
+            );
+        }
+
+        function getSetupTimingSpans(record) {
+            if (Array.isArray(record.spans) && record.spans.length > 0) {
+                return {
+                    legacy: false,
+                    spans: cleanSetupTimingSpans(
+                        record.spans.filter((span) => span.startedAtMs != null && span.endedAtMs != null),
+                    ),
+                };
+            }
+
+            let cursor = 0;
+            const spans = [];
+            let legacy = false;
+
+            for (const phase of record.phases || []) {
+                if (phase.startedAtMs == null || phase.endedAtMs == null) {
+                    legacy = true;
+                    spans.push({
+                        functionName: getLegacyPhaseFunctionName(phase.phase),
+                        startedAtMs: cursor,
+                        endedAtMs: cursor + phase.durationMs,
+                        durationMs: phase.durationMs,
+                        success: phase.success,
+                        source: 'legacy',
+                    });
+                    cursor += phase.durationMs;
+                    continue;
+                }
+
+                spans.push({
+                    functionName: phase.functionName || getLegacyPhaseFunctionName(phase.phase),
+                    startedAtMs: phase.startedAtMs,
+                    endedAtMs: phase.endedAtMs,
+                    durationMs: phase.durationMs,
+                    success: phase.success,
+                    ...(phase.error ? { error: phase.error } : {}),
+                });
+            }
+
+            return { legacy, spans: cleanSetupTimingSpans(spans) };
+        }
+
+        function buildSetupTimingCopyPayload(record) {
+            const { legacy, spans } = getSetupTimingSpans(record);
+            return {
+                id: record.id,
+                date: record.date,
+                sessionId: record.sessionId,
+                setupTimeMs: record.setupTimeMs,
+                setupTimeSeconds: record.setupTimeSeconds,
+                model: record.model,
+                resolution: record.resolution,
+                preferredVideoCodec: record.preferredVideoCodec,
+                realtimeBaseUrl: record.realtimeBaseUrl,
+                realtimeHost: record.realtimeHost,
+                remoteStreamMs: record.remoteStreamMs,
+                firstFrameAt: record.firstFrameAt,
+                firstFrameSource: record.firstFrameSource,
+                sdkConnectTotalMs: record.sdkConnectTotalMs,
+                legacy,
+                phases: record.phases || [],
+                spans,
+            };
+        }
+
+        function colorForSetupTimingSpan(span) {
+            if (span.success === false) return '#d9534f';
+            if (span.functionName.startsWith('SignalingChannel')) return '#4f81bd';
+            if (span.functionName.startsWith('MediaChannel')) return '#70ad47';
+            if (span.functionName.startsWith('HTMLVideoElement')) return '#8064a2';
+            if (span.functionName === 'onRemoteStream') return '#c55a11';
+            return '#888';
+        }
+
+        function renderSetupTimingFlameChart(record, container) {
+            const { legacy, spans } = getSetupTimingSpans(record);
+            container.innerHTML = '';
+
+            if (legacy) {
+                const note = document.createElement('p');
+                note.className = 'setup-flame-note';
+                note.textContent = 'Legacy record: exact overlap unavailable';
+                container.appendChild(note);
+            }
+
+            if (spans.length === 0) {
+                const note = document.createElement('p');
+                note.className = 'setup-flame-note';
+                note.textContent = 'No chartable timing spans recorded.';
+                container.appendChild(note);
+                return;
+            }
+
+            const rows = spans.map((span, index) => ({ ...span, rowIndex: index }));
+            const margin = { top: 24, right: 16, bottom: 30, left: 270 };
+            const width = 1040;
+            const rowHeight = 28;
+            const height = margin.top + margin.bottom + rows.length * rowHeight;
+            const maxMs = Math.max(
+                record.setupTimeMs || 0,
+                ...spans.map((span) => span.endedAtMs),
+            );
+            const x = d3.scaleLinear([0, Math.max(maxMs, 1)], [margin.left, width - margin.right]);
+
+            const svg = d3
+                .select(container)
+                .append('svg')
+                .attr('viewBox', `0 0 ${width} ${height}`)
+                .attr('role', 'img');
+
+            svg
+                .append('g')
+                .attr('transform', `translate(0,${height - margin.bottom})`)
+                .call(d3.axisBottom(x).ticks(8).tickFormat((value) => `${value}ms`));
+
+            svg
+                .append('text')
+                .attr('x', margin.left)
+                .attr('y', 14)
+                .attr('fill', '#333')
+                .attr('font-size', 12)
+                .text('milliseconds since Connect button press');
+
+            for (const row of rows) {
+                const rowY = margin.top + row.rowIndex * rowHeight;
+                const label = row.detail ? `${row.functionName} (${row.detail})` : row.functionName;
+                svg
+                    .append('text')
+                    .attr('x', margin.left - 10)
+                    .attr('y', rowY + 18)
+                    .attr('text-anchor', 'end')
+                    .attr('fill', '#333')
+                    .attr('font-size', 12)
+                    .text(label.length > 43 ? `${label.slice(0, 40)}...` : label)
+                    .append('title')
+                    .text(label);
+
+                svg
+                    .append('line')
+                    .attr('x1', margin.left)
+                    .attr('x2', width - margin.right)
+                    .attr('y1', rowY + rowHeight - 4)
+                    .attr('y2', rowY + rowHeight - 4)
+                    .attr('stroke', '#eee');
+            }
+
+            const bar = svg
+                .append('g')
+                .selectAll('g')
+                .data(rows)
+                .join('g');
+
+            bar
+                .append('rect')
+                .attr('x', (span) => x(span.startedAtMs))
+                .attr('y', (span) => margin.top + span.rowIndex * rowHeight + 4)
+                .attr('width', (span) => Math.max(2, x(span.endedAtMs) - x(span.startedAtMs)))
+                .attr('height', rowHeight - 10)
+                .attr('rx', 3)
+                .attr('fill', colorForSetupTimingSpan)
+                .attr('opacity', 0.88);
+
+            bar
+                .append('title')
+                .text((span) => [
+                    span.functionName,
+                    `start: ${formatMs(span.startedAtMs)}`,
+                    `end: ${formatMs(span.endedAtMs)}`,
+                    `duration: ${formatMs(span.durationMs ?? span.endedAtMs - span.startedAtMs)}`,
+                    `success: ${span.success !== false}`,
+                    span.error ? `error: ${span.error}` : null,
+                ].filter(Boolean).join('\n'));
+
+            bar
+                .append('text')
+                .attr('x', (span) => x(span.startedAtMs) + 5)
+                .attr('y', (span) => margin.top + span.rowIndex * rowHeight + 18)
+                .attr('fill', '#fff')
+                .attr('font-size', 11)
+                .attr('pointer-events', 'none')
+                .text((span) => {
+                    const widthPx = x(span.endedAtMs) - x(span.startedAtMs);
+                    return widthPx > 70 ? formatMs(span.durationMs ?? span.endedAtMs - span.startedAtMs) : '';
+                });
+        }
+
+        function createSetupTimingId() {
+            if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+            return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        }
+
+        function resolveRealtimeBaseUrl() {
+            return elements.realtimeBaseUrl.value.trim() || 'wss://api3.decart.ai';
+        }
+
+        function resolveRealtimeHost(baseUrl) {
+            try {
+                return new URL(baseUrl).host;
+            } catch {
+                return baseUrl || '-';
+            }
+        }
+
+        function setupTimingOffsetNow() {
+            if (!activeSetupTiming) return null;
+            return performance.now() - activeSetupTiming.connectPressedAtMs;
+        }
+
+        function startSetupTimingSpan(functionName) {
+            const startedAtMs = setupTimingOffsetNow();
+            if (startedAtMs == null) return null;
+            return { functionName, startedAtMs };
+        }
+
+        function finishSetupTimingSpan(span, opts = {}) {
+            if (!activeSetupTiming || !span || span.finished) return;
+            const endedAtMs = setupTimingOffsetNow();
+            if (endedAtMs == null) return;
+            span.finished = true;
+            activeSetupTiming.spans.push({
+                functionName: span.functionName,
+                startedAtMs: Math.round(span.startedAtMs),
+                endedAtMs: Math.round(endedAtMs),
+                durationMs: Math.max(0, Math.round(endedAtMs - span.startedAtMs)),
+                success: opts.success !== false,
+                ...(opts.error ? { error: opts.error } : {}),
+            });
+        }
+
+        function beginSetupTiming() {
+            const realtimeBaseUrl = resolveRealtimeBaseUrl();
+            activeSetupTiming = {
+                id: createSetupTimingId(),
+                date: new Date().toISOString(),
+                connectPressedAtMs: performance.now(),
+                sdkConnectStartedAtMs: null,
+                model: model.name,
+                resolution: elements.resolutionSelect.value,
+                preferredVideoCodec: elements.codecSelect.value || 'default',
+                realtimeBaseUrl,
+                realtimeHost: resolveRealtimeHost(realtimeBaseUrl),
+                sessionId: null,
+                remoteStreamMs: null,
+                setupTimeMs: null,
+                firstFrameAt: null,
+                firstFrameSource: null,
+                sdkConnectTotalMs: null,
+                phases: [],
+                spans: [],
+            };
+            addLog('Setup timer started at Connect button press', 'info');
+        }
+
+        function buildSetupTimingRecord() {
+            if (activeSetupTiming?.setupTimeMs == null) return null;
+            return {
+                id: activeSetupTiming.id,
+                date: activeSetupTiming.date,
+                sessionId: activeSetupTiming.sessionId || currentSessionId || null,
+                setupTimeMs: activeSetupTiming.setupTimeMs,
+                setupTimeSeconds: Number((activeSetupTiming.setupTimeMs / 1000).toFixed(3)),
+                model: activeSetupTiming.model,
+                resolution: activeSetupTiming.resolution,
+                preferredVideoCodec: activeSetupTiming.preferredVideoCodec,
+                realtimeBaseUrl: activeSetupTiming.realtimeBaseUrl,
+                realtimeHost: activeSetupTiming.realtimeHost,
+                remoteStreamMs: activeSetupTiming.remoteStreamMs,
+                firstFrameAt: activeSetupTiming.firstFrameAt,
+                firstFrameSource: activeSetupTiming.firstFrameSource,
+                sdkConnectTotalMs: activeSetupTiming.sdkConnectTotalMs,
+                phases: activeSetupTiming.phases,
+                spans: activeSetupTiming.spans,
+            };
+        }
+
+        function upsertActiveSetupTimingRecord() {
+            const record = buildSetupTimingRecord();
+            if (!record) return;
+
+            const history = readSetupTimingHistory();
+            const existingIndex = history.findIndex((item) => item.id === record.id);
+            if (existingIndex >= 0) {
+                history[existingIndex] = record;
+            } else {
+                history.unshift(record);
+            }
+
+            writeSetupTimingHistory(history);
+            renderSetupTimingHistory();
+        }
+
+        function noteSetupTimingSessionId(sessionId) {
+            if (!activeSetupTiming || !sessionId) return;
+            activeSetupTiming.sessionId = sessionId;
+            upsertActiveSetupTimingRecord();
+        }
+
+        function noteRemoteStreamReceived() {
+            if (!activeSetupTiming || activeSetupTiming.remoteStreamMs != null) return;
+            activeSetupTiming.remoteStreamMs = Math.round(performance.now() - activeSetupTiming.connectPressedAtMs);
+        }
+
+        function noteConnectionBreakdown(event) {
+            if (!activeSetupTiming || event.name !== 'client-session-connection-breakdown') return;
+            activeSetupTiming.sdkConnectTotalMs = event.data.totalDurationMs;
+            activeSetupTiming.phases = event.data.phases.map((phase) => ({
+                phase: phase.phase,
+                functionName: phase.functionName,
+                startedAtMs: phase.startedAtMs,
+                endedAtMs: phase.endedAtMs,
+                durationMs: phase.durationMs,
+                success: phase.success,
+                ...(phase.error ? { error: phase.error } : {}),
+            }));
+            const sdkOffset = activeSetupTiming.sdkConnectStartedAtMs ?? 0;
+            activeSetupTiming.spans = activeSetupTiming.spans.filter((span) => span.source !== 'sdk-diagnostic');
+            const diagnosticSpans = Array.isArray(event.data.spans) && event.data.spans.length > 0
+                ? event.data.spans
+                : event.data.phases.map((phase) => ({
+                    functionName: phase.functionName || getLegacyPhaseFunctionName(phase.phase),
+                    startedAtMs: phase.startedAtMs,
+                    endedAtMs: phase.endedAtMs,
+                    durationMs: phase.durationMs,
+                    success: phase.success,
+                    ...(phase.error ? { error: phase.error } : {}),
+                }));
+
+            for (const span of diagnosticSpans) {
+                if (span.startedAtMs == null || span.endedAtMs == null) continue;
+                activeSetupTiming.spans.push({
+                    functionName: span.functionName,
+                    startedAtMs: Math.round(sdkOffset + span.startedAtMs),
+                    endedAtMs: Math.round(sdkOffset + span.endedAtMs),
+                    durationMs: span.durationMs,
+                    success: span.success,
+                    source: 'sdk-diagnostic',
+                    ...(span.detail ? { detail: span.detail } : {}),
+                    ...(span.error ? { error: span.error } : {}),
+                });
+            }
+            upsertActiveSetupTimingRecord();
+        }
+
+        function recordFirstRemoteFrame(source) {
+            if (!activeSetupTiming || activeSetupTiming.setupTimeMs != null) return;
+
+            activeSetupTiming.setupTimeMs = Math.round(performance.now() - activeSetupTiming.connectPressedAtMs);
+            activeSetupTiming.firstFrameAt = new Date().toISOString();
+            activeSetupTiming.firstFrameSource = source;
+            activeSetupTiming.sessionId = currentSessionId || decartRealtime?.sessionId || null;
+            finishSetupTimingSpan(activeSetupTiming.firstFrameWatchSpan);
+            upsertActiveSetupTimingRecord();
+
+            addLog(
+                `First remote frame arrived after ${formatMs(activeSetupTiming.setupTimeMs)} (session ${activeSetupTiming.sessionId || 'pending'})`,
+                'success',
+            );
+        }
+
+        function armFirstRemoteFrameWatcher() {
+            if (!activeSetupTiming) return;
+            const timingId = activeSetupTiming.id;
+            const video = elements.remoteVideo;
+            let done = false;
+            const record = (source) => {
+                if (done || activeSetupTiming?.id !== timingId) return;
+                done = true;
+                recordFirstRemoteFrame(source);
+            };
+
+            if ('requestVideoFrameCallback' in video) {
+                activeSetupTiming.firstFrameWatchSpan = startSetupTimingSpan('HTMLVideoElement.requestVideoFrameCallback');
+                video.requestVideoFrameCallback(() => record('requestVideoFrameCallback'));
+            } else {
+                activeSetupTiming.firstFrameWatchSpan = startSetupTimingSpan('HTMLVideoElement.loadeddata/playing');
+                video.addEventListener('loadeddata', () => record('loadeddata'), { once: true });
+                video.addEventListener('playing', () => record('playing'), { once: true });
+            }
+
+            video.play().catch((error) => {
+                addLog(`Remote video play() failed while timing first frame: ${error.message ?? error}`, 'error');
+            });
+        }
+
+        elements.clearSetupTimingsBtn.addEventListener('click', () => {
+            localStorage.removeItem(SETUP_TIMING_STORAGE_KEY);
+            renderSetupTimingHistory();
+            addLog('Cleared setup timing history', 'info');
+        });
+
+        renderSetupTimingHistory();
         
         // Update connection status
         function updateStatus(status) {
@@ -959,6 +1626,7 @@
 
             currentSessionId = decartRealtime.sessionId;
             elements.sessionIdText.textContent = currentSessionId || '-';
+            noteSetupTimingSessionId(currentSessionId);
 
             const previousSubscribeToken = currentSubscribeToken;
             currentSubscribeToken = decartRealtime.getSubscribeToken();
@@ -1091,7 +1759,11 @@
                 return;
             }
             
+            let connectHandlerSpan = null;
+            let sdkConnectSpan = null;
             try {
+                beginSetupTiming();
+                connectHandlerSpan = startSetupTimingSpan('connect button handler');
                 updateStatus('connecting');
                 elements.connectBtn.disabled = true;
                 elements.subscribeBtn.disabled = true;
@@ -1101,11 +1773,13 @@
                 addLog('Initializing Decart client...', 'info');
                 
                 const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
+                const createClientSpan = startSetupTimingSpan('createDecartClient');
                 decartClient = createDecartClient({
                     apiKey,
                     ...(realtimeBaseUrl && { realtimeBaseUrl }),
                     logger: createDemoLogger("debug"),
                 });
+                finishSetupTimingSpan(createClientSpan);
                 
                 addLog('Connecting to Decart server via LiveKit...', 'info');
                 
@@ -1138,14 +1812,20 @@
                     addLog('Debug-quality (glass-to-glass) measurement ON (marker visible bottom-left of output)', 'info');
                 }
 
+                sdkConnectSpan = startSetupTimingSpan('decartClient.realtime.connect');
+                activeSetupTiming.sdkConnectStartedAtMs = Math.round(sdkConnectSpan?.startedAtMs ?? 0);
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     resolution,
                     ...(preferredVideoCodec && { preferredVideoCodec }),
                     ...(debugQuality && { debugQuality: true }),
                     onRemoteStream: (stream) => {
+                        const onRemoteStreamSpan = startSetupTimingSpan('onRemoteStream');
                         addLog('Received remote stream from Decart', 'success');
+                        noteRemoteStreamReceived();
                         elements.remoteVideo.srcObject = stream;
+                        armFirstRemoteFrameWatcher();
+                        finishSetupTimingSpan(onRemoteStreamSpan);
                     },
                     onConnectionChange: (state) => {
                         updateStatus(state);
@@ -1168,6 +1848,9 @@
                         ...(initialImage && { image: initialImage }),
                     },
                 });
+                finishSetupTimingSpan(sdkConnectSpan);
+
+                decartRealtime.on('diagnostic', noteConnectionBreakdown);
                 
                 // Check connection status
                 if (decartRealtime.isConnected()) {
@@ -1189,11 +1872,15 @@
                     addLog('Successfully connected to Decart!', 'success');
                     addLog(`Session ID: ${currentSessionId || '(pending)'}`, 'success');
                     updateUseRefAsImageBtnState();
+                    finishSetupTimingSpan(connectHandlerSpan);
+                    upsertActiveSetupTimingRecord();
                 } else {
                     throw new Error('Connection established but not in connected state');
                 }
                 
             } catch (error) {
+                finishSetupTimingSpan(sdkConnectSpan, { success: false, error: error.message });
+                finishSetupTimingSpan(connectHandlerSpan, { success: false, error: error.message });
                 addLog(`Failed to connect: ${error.message}`, 'error');
                 updateStatus('disconnected');
                 elements.connectBtn.disabled = false;
@@ -1202,6 +1889,7 @@
                 activeConnectionMode = null;
                 currentSessionId = null;
                 currentSubscribeToken = null;
+                activeSetupTiming = null;
                 elements.sessionInfo.style.display = 'none';
                 elements.publisherTokenInfo.style.display = 'none';
                 elements.subscribeBtn.disabled = false;
@@ -1317,6 +2005,7 @@
             currentSessionId = null;
             currentSubscribeToken = null;
             activeConnectionMode = null;
+            activeSetupTiming = null;
             
             // Reset UI
             elements.startCamera.disabled = false;

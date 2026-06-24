@@ -1,7 +1,20 @@
 export type ClientSessionConnectionBreakdownPhase = {
   phase: string;
+  functionName?: string;
+  startedAtMs?: number;
+  endedAtMs?: number;
   durationMs: number;
   success: boolean;
+  error?: string;
+};
+
+export type ClientSessionConnectionBreakdownSpan = {
+  functionName: string;
+  startedAtMs: number;
+  endedAtMs: number;
+  durationMs: number;
+  success: boolean;
+  detail?: string;
   error?: string;
 };
 
@@ -11,6 +24,7 @@ export type ClientSessionConnectionBreakdownEvent = {
   totalDurationMs: number;
   initialImageSizeKb: number | null;
   phases: ClientSessionConnectionBreakdownPhase[];
+  spans?: ClientSessionConnectionBreakdownSpan[];
   error?: string;
 };
 
