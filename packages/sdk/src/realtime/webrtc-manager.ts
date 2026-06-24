@@ -11,6 +11,7 @@ export interface WebRTCConfig {
   logger?: Logger;
   observability: RealtimeObservability;
   onRemoteStream: (stream: MediaStream) => void;
+  onPeerConnection?: (pc: RTCPeerConnection) => void;
   onConnectionStateChange?: (state: ConnectionState) => void;
   onError?: (error: Error) => void;
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
@@ -18,6 +19,7 @@ export interface WebRTCConfig {
   vp8StartBitrate?: number;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
+  seiLatency?: boolean;
 }
 
 const PERMANENT_ERRORS = [
@@ -58,6 +60,7 @@ export class WebRTCManager {
     this.observability = config.observability;
     this.connection = new WebRTCConnection({
       onRemoteStream: config.onRemoteStream,
+      onPeerConnection: config.onPeerConnection,
       onStateChange: (state) => this.handleConnectionStateChange(state),
       onError: config.onError,
       customizeOffer: config.customizeOffer,
@@ -65,6 +68,7 @@ export class WebRTCManager {
       vp8StartBitrate: config.vp8StartBitrate,
       initialImage: config.initialImage,
       initialPrompt: config.initialPrompt,
+      seiLatency: config.seiLatency,
       logger: this.logger,
       observability: this.observability,
     });

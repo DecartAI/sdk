@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SEI Glass-to-Glass — through-server demo</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; max-width: 1000px; margin: 0 auto; padding: 16px; background: #0f1115; color: #e6e6e6; }
+    h1 { font-size: 20px; } p.lede { color: #9aa4b2; font-size: 13px; line-height: 1.5; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+    input, select { padding: 7px 9px; border: 1px solid #2a2f3a; border-radius: 7px; background: #1a1d24; color: #e6e6e6; font-size: 13px; }
+    input[type=text], input[type=password] { min-width: 240px; }
+    button { background: #2a2f3a; color: #e6e6e6; border: 1px solid #3a4150; border-radius: 8px; padding: 7px 13px; font-size: 13px; cursor: pointer; }
+    button:hover:not(:disabled) { background: #343a47; } button:disabled { opacity: .5; cursor: not-allowed; }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }
+    .metric { background: #1a1d24; border: 1px solid #2a2f3a; border-radius: 10px; padding: 12px; }
+    .metric .label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #8a93a3; }
+    .metric .value { font-size: 26px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .videos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    video { width: 100%; background: #000; border-radius: 8px; aspect-ratio: 16/9; object-fit: contain; }
+    figcaption { font-size: 12px; color: #8a93a3; margin-bottom: 6px; }
+    #status { font-family: ui-monospace, monospace; font-size: 12px; padding: 8px 10px; border-radius: 8px; background: #1a1d24; border: 1px solid #2a2f3a; margin: 10px 0; white-space: pre-wrap; }
+    .err { color: #ff6b6b; } .ok { color: #4caf50; }
+  </style>
+</head>
+<body>
+  <h1>SEI Glass-to-Glass — through-server demo</h1>
+  <p class="lede">
+    Camera → H.264 (forced) → <strong>your local bit-invert RT server</strong> → back. The SDK injects an SEI
+    marker on the uplink; the server's SEI bridge echoes it onto the output; this page parses it on the
+    downlink and reports true glass-to-glass latency. Prompts are sent over the data channel.
+  </p>
+
+  <div class="row">
+    <input type="password" id="api-key" placeholder="API key (local dev key)" />
+    <input type="text" id="base-url" placeholder="Realtime base URL (e.g. wss://api.decart.local)" value="wss://api.decart.local" />
+    <select id="model">
+      <option value="lucy-2.1" selected>lucy-2.1</option>
+      <option value="mirage_v2">mirage_v2</option>
+      <option value="lucy-restyle-2">lucy-restyle-2</option>
+    </select>
+  </div>
+  <div class="row">
+    <button id="start-camera">Start camera</button>
+    <button id="connect" disabled>Connect (SEI)</button>
+    <button id="disconnect" disabled>Disconnect</button>
+  </div>
+  <div class="row">
+    <input type="text" id="prompt" placeholder="prompt…" disabled />
+    <button id="send-prompt" disabled>Send prompt</button>
+  </div>
+
+  <div id="status">idle</div>
+  <div id="diag" style="font-size:12px; color:#8a93a3; margin:6px 0; font-family:ui-monospace,monospace;"></div>
+
+  <div class="metrics">
+    <div class="metric"><div class="label">SEI g2g latency</div><div class="value" id="m-latency">—</div></div>
+    <div class="metric"><div class="label">avg (last 30)</div><div class="value" id="m-avg">—</div></div>
+    <div class="metric"><div class="label">negotiated codec</div><div class="value" id="m-codec" style="font-size:18px">—</div></div>
+    <div class="metric"><div class="label">SEI frames matched</div><div class="value" id="m-count">0</div></div>
+  </div>
+
+  <div class="videos">
+    <figure style="margin:0"><figcaption>📷 camera (sent)</figcaption><video id="local" autoplay muted playsinline></video></figure>
+    <figure style="margin:0"><figcaption>🤖 server output (received)</figcaption><video id="remote" autoplay playsinline></video></figure>
+  </div>
+
+  <script type="module">
+    import { createDecartClient, models } from "./src/index.ts";
+
+    const $ = (id) => document.getElementById(id);
+    const status = (m, cls = "") => { $("status").className = cls; $("status").textContent = m; };
+
+    let localStream = null, rt = null, worker = null;
+    const recent = []; let matched = 0;
+
+    // URL params for headless/manual driving: ?canvas=1 (no camera), ?base=, ?key=
+    const params = new URLSearchParams(location.search);
+    if (params.get("base")) $("base-url").value = params.get("base");
+    if (params.get("key")) $("api-key").value = params.get("key");
+    const useCanvas = params.get("canvas") === "1";
+
+    async function makeSource() {
+      if (!useCanvas) return navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: false });
+      const c = document.createElement("canvas");
+      c.width = 640; c.height = 360;
+      const ctx = c.getContext("2d");
+      const draw = () => {
+        const t = Date.now() / 1000;
+        ctx.fillStyle = "#101826"; ctx.fillRect(0, 0, 640, 360);
+        ctx.fillStyle = `hsl(${(t * 60) % 360},80%,60%)`;
+        ctx.fillRect((Math.sin(t) * 0.5 + 0.5) * 560, (Math.cos(t * 0.7) * 0.5 + 0.5) * 280, 80, 80);
+        ctx.fillStyle = "#fff"; ctx.font = "20px monospace"; ctx.fillText(new Date().toISOString().slice(11, 23), 16, 32);
+      };
+      setInterval(draw, 33); draw(); // setInterval survives a backgrounded tab
+      return c.captureStream(30);
+    }
+
+    $("start-camera").onclick = async () => {
+      try {
+        localStream = await makeSource();
+        $("local").srcObject = localStream;
+        $("connect").disabled = false;
+        status(useCanvas ? "canvas source ready" : "camera started", "ok");
+      } catch (e) { status(`❌ source: ${e}`, "err"); }
+    };
+
+    function ensureWorker() {
+      if (worker) return worker;
+      if (typeof RTCRtpScriptTransform === "undefined") { status("❌ no RTCRtpScriptTransform in this browser", "err"); return null; }
+      worker = new Worker(new URL("./src/realtime/sei/sei-worker.ts", import.meta.url), { type: "module" });
+      const diag = { inject: false, parse: false, injected: 0, parseSeen: 0, parseMatched: 0 };
+      const renderDiag = () => {
+        $("diag").textContent =
+          `uplink: transform=${diag.inject ? "✅" : "…"} injected=${diag.injected}  |  ` +
+          `downlink: transform=${diag.parse ? "✅" : "…"} framesSeen=${diag.parseSeen} seiFound=${diag.parseMatched}`;
+      };
+      worker.onmessage = (e) => {
+        const m = e.data;
+        if (m.type === "sei-latency") {
+          matched++; $("m-count").textContent = String(matched);
+          $("m-latency").textContent = `${m.latencyMs} ms`; $("m-latency").classList.add("ok");
+          recent.push(m.latencyMs); if (recent.length > 30) recent.shift();
+          $("m-avg").textContent = `${(recent.reduce((a, b) => a + b, 0) / recent.length).toFixed(1)} ms`;
+          status(`✅ SEI echoed through the server — ${matched} frames matched`, "ok");
+        } else if (m.type === "sei-attached") {
+          if (m.operation === "inject") diag.inject = true;
+          if (m.operation === "parse") diag.parse = true;
+          renderDiag();
+        } else if (m.type === "sei-stats") {
+          if (m.injected != null) diag.injected = m.injected;
+          if (m.parseSeen != null) { diag.parseSeen = m.parseSeen; diag.parseMatched = m.parseMatched; }
+          renderDiag();
+        } else if (m.type === "sei-error") status(`worker: ${m.message}`, "err");
+      };
+      return worker;
+    }
+
+    // Uplink: install BEFORE the offer (media not flowing yet) so frames route through the transform.
+    function installInject(pc) {
+      const w = ensureWorker(); if (!w) return;
+      const vs = pc.getSenders().find((s) => s.track?.kind === "video");
+      if (vs) vs.transform = new RTCRtpScriptTransform(w, { operation: "inject" });
+      setInterval(async () => {
+        const stats = await pc.getStats(); const codecs = new Map();
+        stats.forEach((r) => { if (r.type === "codec") codecs.set(r.id, r.mimeType); });
+        stats.forEach((r) => { if (r.type === "inbound-rtp" && r.kind === "video" && r.codecId) $("m-codec").textContent = codecs.get(r.codecId) || "?"; });
+      }, 1000);
+    }
+
+    // Downlink: install at ontrack (onRemoteStream), before the decoder consumes frames.
+    // Match the EXACT receiver for the delivered remote track — a sendrecv
+    // transceiver also exposes a recv-side video receiver that carries no media,
+    // so matching by kind alone can attach to the wrong (silent) receiver.
+    function installParse(pc, stream) {
+      const w = ensureWorker(); if (!w) return;
+      const vtrack = stream?.getVideoTracks?.()[0] ?? null;
+      const vr = (vtrack && pc.getReceivers().find((r) => r.track === vtrack))
+        || pc.getReceivers().find((r) => r.track?.kind === "video");
+      if (vr) vr.transform = new RTCRtpScriptTransform(w, { operation: "parse" });
+    }
+
+    $("connect").onclick = async () => {
+      const apiKey = $("api-key").value.trim();
+      const baseUrl = $("base-url").value.trim();
+      if (!localStream) return status("start camera first", "err");
+      try {
+        status("connecting…");
+        $("connect").disabled = true;
+        let seiPc = null;
+        const client = createDecartClient({ apiKey, ...(baseUrl && { realtimeBaseUrl: baseUrl }) });
+        rt = await client.realtime.connect(localStream, {
+          model: models.realtime($("model").value),
+          seiLatency: true,
+          // Both transforms attach BEFORE the offer. The client is the offerer, so
+          // its ontrack fires only at setRemoteDescription(answer) — too late to bind
+          // a receiver transform. aiortc reuses this sendrecv transceiver for its
+          // output, so the recv side exists pre-offer and catches the server's frames.
+          onPeerConnection: (pc) => { seiPc = pc; installInject(pc); installParse(pc); },
+          onRemoteStream: (s) => { $("remote").srcObject = s; },
+          onConnectionChange: (st) => status(`state: ${st}`),
+        });
+        $("disconnect").disabled = false; $("prompt").disabled = false; $("send-prompt").disabled = false;
+        status("connected — waiting for SEI frames…", "ok");
+      } catch (e) { status(`❌ connect: ${e?.message ?? e}`, "err"); $("connect").disabled = false; }
+    };
+
+    $("send-prompt").onclick = () => { const p = $("prompt").value.trim(); if (p && rt) { rt.setPrompt(p, { enhance: false }); status(`sent prompt: ${p}`, "ok"); } };
+    $("disconnect").onclick = () => { rt?.disconnect(); worker?.terminate(); status("disconnected"); $("disconnect").disabled = true; $("connect").disabled = false; };
+  </script>
+</body>
+</html>

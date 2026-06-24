@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SEI Glass-to-Glass Loopback Proof</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; max-width: 980px; margin: 0 auto; padding: 16px; background: #0f1115; color: #e6e6e6; }
+    h1 { font-size: 20px; }
+    p.lede { color: #9aa4b2; font-size: 13px; line-height: 1.5; }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 16px 0; }
+    .metric { background: #1a1d24; border: 1px solid #2a2f3a; border-radius: 10px; padding: 12px; }
+    .metric .label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #8a93a3; }
+    .metric .value { font-size: 28px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .metric .value.ok { color: #4caf50; }
+    .videos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .videos figure { margin: 0; }
+    .videos figcaption { font-size: 12px; color: #8a93a3; margin-bottom: 6px; }
+    canvas, video { width: 100%; background: #000; border-radius: 8px; aspect-ratio: 16/9; object-fit: contain; }
+    #status { font-family: ui-monospace, monospace; font-size: 12px; padding: 8px 10px; border-radius: 8px; background: #1a1d24; border: 1px solid #2a2f3a; margin-bottom: 12px; white-space: pre-wrap; }
+    .err { color: #ff6b6b; }
+    .ok { color: #4caf50; }
+    button { background:#2a2f3a; color:#e6e6e6; border:1px solid #3a4150; border-radius:8px; padding:6px 12px; font-size:13px; cursor:pointer; }
+    button:hover { background:#343a47; }
+  </style>
+</head>
+<body>
+  <h1>SEI Glass-to-Glass Loopback Proof</h1>
+  <p class="lede">
+    Pure browser proof that JavaScript can <strong>read and write H.264 SEI</strong>. A canvas (no camera) is
+    encoded to H.264 and sent over a local <code>RTCPeerConnection</code> loopback. On the sender,
+    a <code>RTCRtpScriptTransform</code> worker injects an SEI NAL stamped with <code>Date.now()</code>;
+    on the receiver, the worker parses it back and reports glass-to-glass latency. No server, no SDK signaling.
+  </p>
+
+  <div style="margin:12px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    <button id="use-canvas">🎨 Canvas source</button>
+    <button id="use-camera">📷 Camera source</button>
+    <span style="font-size:12px; color:#8a93a3;">canvas runs headless; camera needs permission &amp; localhost/HTTPS</span>
+  </div>
+
+  <div id="status">initializing…</div>
+
+  <div class="metrics">
+    <div class="metric"><div class="label">SEI g2g latency</div><div class="value" id="m-latency">—</div></div>
+    <div class="metric"><div class="label">avg (last 30)</div><div class="value" id="m-avg">—</div></div>
+    <div class="metric"><div class="label">negotiated codec</div><div class="value" id="m-codec" style="font-size:18px">—</div></div>
+    <div class="metric"><div class="label">SEI frames matched</div><div class="value" id="m-count">0</div></div>
+  </div>
+
+  <div class="videos">
+    <figure><figcaption>📤 source (sent)</figcaption><canvas id="src" width="640" height="360"></canvas><video id="src-cam" autoplay muted playsinline style="display:none"></video></figure>
+    <figure><figcaption>📥 received (decoded)</figcaption><video id="dst" autoplay muted playsinline></video></figure>
+  </div>
+
+  <script type="module">
+    const $ = (id) => document.getElementById(id);
+    const status = (msg, cls = "") => { $("status").className = cls; $("status").textContent = msg; };
+
+    // ---- animated canvas source (so the encoder always has fresh frames) ----
+    const canvas = $("src");
+    const ctx = canvas.getContext("2d");
+    function draw() {
+      const t = Date.now() / 1000;
+      ctx.fillStyle = "#101826";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const x = (Math.sin(t) * 0.5 + 0.5) * (canvas.width - 80);
+      const y = (Math.cos(t * 0.7) * 0.5 + 0.5) * (canvas.height - 80);
+      ctx.fillStyle = `hsl(${(t * 60) % 360}, 80%, 60%)`;
+      ctx.fillRect(x, y, 80, 80);
+      ctx.fillStyle = "#fff";
+      ctx.font = "20px monospace";
+      ctx.fillText(new Date().toISOString().slice(11, 23), 16, 32);
+    }
+    // setInterval (not rAF) so frames keep flowing even when the tab is backgrounded.
+    setInterval(draw, 33);
+    draw();
+
+    if (typeof RTCRtpScriptTransform === "undefined") {
+      status("❌ RTCRtpScriptTransform is not available in this browser. Use Chrome/Safari/recent Firefox.", "err");
+      throw new Error("no RTCRtpScriptTransform");
+    }
+
+    const worker = new Worker(new URL("./src/realtime/sei/sei-worker.ts", import.meta.url), { type: "module" });
+    const recent = [];
+    let matched = 0;
+    let sender = null, canvasTrack = null, cameraStream = null;
+    worker.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.type === "sei-latency") {
+        matched++;
+        $("m-count").textContent = String(matched);
+        $("m-latency").textContent = `${msg.latencyMs} ms`;
+        $("m-latency").classList.add("ok");
+        recent.push(msg.latencyMs);
+        if (recent.length > 30) recent.shift();
+        const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
+        $("m-avg").textContent = `${avg.toFixed(1)} ms`;
+        status(`✅ reading SEI off decoded H.264 frames — ${matched} frames matched`, "ok");
+      } else if (msg.type === "sei-error") {
+        status(`worker error: ${msg.message}`, "err");
+      }
+    };
+
+    function forceH264(pc, sender) {
+      const tr = pc.getTransceivers().find((t) => t.sender === sender);
+      const caps = RTCRtpSender.getCapabilities("video");
+      if (!tr || !caps) return;
+      const h264 = caps.codecs.filter((c) => c.mimeType.toLowerCase() === "video/h264");
+      const others = caps.codecs.filter((c) => c.mimeType.toLowerCase() !== "video/h264");
+      if (h264.length) tr.setCodecPreferences([...h264, ...others]);
+    }
+
+    async function main() {
+      status("setting up loopback…");
+      const stream = canvas.captureStream(30);
+
+      const pc1 = new RTCPeerConnection();
+      const pc2 = new RTCPeerConnection();
+      pc1.onicecandidate = (e) => e.candidate && pc2.addIceCandidate(e.candidate);
+      pc2.onicecandidate = (e) => e.candidate && pc1.addIceCandidate(e.candidate);
+
+      pc2.ontrack = (e) => {
+        e.receiver.transform = new RTCRtpScriptTransform(worker, { operation: "parse" });
+        $("dst").srcObject = e.streams[0] || new MediaStream([e.track]);
+      };
+
+      const [track] = stream.getVideoTracks();
+      canvasTrack = track;
+      sender = pc1.addTrack(track, stream);
+      forceH264(pc1, sender);
+      sender.transform = new RTCRtpScriptTransform(worker, { operation: "inject" });
+
+      const offer = await pc1.createOffer();
+      await pc1.setLocalDescription(offer);
+      await pc2.setRemoteDescription(offer);
+      const answer = await pc2.createAnswer();
+      await pc2.setLocalDescription(answer);
+      await pc1.setRemoteDescription(answer);
+
+      status("connecting…");
+      pc1.onconnectionstatechange = () => {
+        if (pc1.connectionState === "connected") status("connected — waiting for SEI frames…");
+      };
+
+      // Periodically surface the negotiated codec + decoded frame count from stats.
+      setInterval(async () => {
+        const stats = await pc2.getStats();
+        let codec = "?";
+        let frames = 0;
+        const codecs = new Map();
+        stats.forEach((r) => { if (r.type === "codec") codecs.set(r.id, r.mimeType); });
+        stats.forEach((r) => {
+          if (r.type === "inbound-rtp" && r.kind === "video") {
+            frames = r.framesDecoded || 0;
+            if (r.codecId && codecs.has(r.codecId)) codec = codecs.get(r.codecId);
+          }
+        });
+        $("m-codec").textContent = codec;
+      }, 1000);
+    }
+
+    async function useCamera() {
+      if (!sender) return;
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: false });
+        await sender.replaceTrack(cameraStream.getVideoTracks()[0]);
+        $("src-cam").srcObject = cameraStream;
+        $("src-cam").style.display = "block";
+        $("src").style.display = "none";
+        status("📷 camera → H.264 → SEI loopback");
+      } catch (e) {
+        status(`❌ camera: ${e}`, "err");
+      }
+    }
+    async function useCanvas() {
+      if (!sender || !canvasTrack) return;
+      await sender.replaceTrack(canvasTrack);
+      if (cameraStream) { cameraStream.getTracks().forEach((t) => t.stop()); cameraStream = null; }
+      $("src-cam").style.display = "none";
+      $("src").style.display = "block";
+    }
+    $("use-camera").onclick = useCamera;
+    $("use-canvas").onclick = useCanvas;
+
+    main().catch((e) => status(`❌ ${e}`, "err"));
+  </script>
+</body>
+</html>

@@ -19,6 +19,9 @@ const SETUP_TIMEOUT_MS = 30_000; // 30 seconds
 
 interface ConnectionCallbacks {
   onRemoteStream?: (stream: MediaStream) => void;
+  // Fired right after the RTCPeerConnection + local tracks are set up, before
+  // the offer/media — early enough to attach encoded-frame transforms.
+  onPeerConnection?: (pc: RTCPeerConnection) => void;
   onStateChange?: (state: ConnectionState) => void;
   onError?: (error: Error) => void;
   customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
@@ -26,6 +29,7 @@ interface ConnectionCallbacks {
   vp8StartBitrate?: number;
   initialImage?: string;
   initialPrompt?: { text: string; enhance?: boolean };
+  seiLatency?: boolean;
   logger?: Logger;
   observability: RealtimeObservability;
 }
@@ -62,7 +66,8 @@ export class WebRTCConnection {
     // Add user agent as query parameter (browsers don't support WS headers)
     const userAgent = encodeURIComponent(buildUserAgent(integration));
     const separator = url.includes("?") ? "&" : "?";
-    const wsUrl = `${url}${separator}user_agent=${userAgent}`;
+    let wsUrl = `${url}${separator}user_agent=${userAgent}`;
+    if (this.callbacks.seiLatency) wsUrl += "&sei_latency=1";
 
     // Shared abort mechanism: any phase failure aborts the entire connect flow.
     // connectionReject is set once and stays active across all phases so that
@@ -257,9 +262,10 @@ export class WebRTCConnection {
 
       switch (msg.type) {
         case "ready": {
-          await this.applyCodecPreference("video/VP8");
+          // SEI g2g requires H.264 (SEI is an H.264/H.265 NAL); otherwise VP8.
+          await this.applyCodecPreference(this.callbacks.seiLatency ? "video/H264" : "video/VP8");
           const offer = await this.pc.createOffer();
-          this.modifyVP8Bitrate(offer);
+          if (!this.callbacks.seiLatency) this.modifyVP8Bitrate(offer);
           await this.callbacks.customizeOffer?.(offer);
           await this.pc.setLocalDescription(offer);
           this.send({ type: "offer", sdp: offer.sdp || "" });
@@ -434,6 +440,10 @@ export class WebRTCConnection {
         this.callbacks.onRemoteStream?.(fallbackStream);
       }
     };
+
+    // Hand the PC to the caller before the offer (media not flowing yet) so it
+    // can install RTCRtpScriptTransform on the sender in time to catch frames.
+    this.callbacks.onPeerConnection?.(this.pc);
 
     this.pc.onicecandidate = (e) => {
       this.send({ type: "ice-candidate", candidate: e.candidate });

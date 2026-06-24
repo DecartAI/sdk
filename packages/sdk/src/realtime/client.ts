@@ -91,6 +91,7 @@ const realTimeClientConnectOptionsSchema = z.object({
   onRemoteStream: z.custom<OnRemoteStreamFn>((val) => typeof val === "function", {
     message: "onRemoteStream must be a function",
   }),
+  onPeerConnection: z.custom<(pc: RTCPeerConnection) => void>((val) => typeof val === "function").optional(),
   initialState: realTimeClientInitialStateSchema.optional(),
   customizeOffer: createAsyncFunctionSchema(z.function()).optional(),
   /**
@@ -102,6 +103,13 @@ const realTimeClientConnectOptionsSchema = z.object({
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
   /** Output resolution. Defaults to "720p". */
   resolution: z.enum(["720p", "1080p"]).optional(),
+  /**
+   * Opt-in SEI glass-to-glass latency. Forces H.264 and adds `?sei_latency=1`
+   * to signaling; the caller attaches encoded-frame transforms via
+   * getPeerConnection(). Requires a server that echoes the SEI marker (e.g.
+   * bit-invert with the SEI bridge).
+   */
+  seiLatency: z.boolean().optional(),
 });
 export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
   model: ModelDefinition | CustomModelDefinition;
@@ -129,6 +137,9 @@ export type RealTimeClient = {
     image: Blob | File | string | null,
     options?: { prompt?: string; enhance?: boolean; timeout?: number },
   ) => Promise<void>;
+  /** The live RTCPeerConnection (or null) — lets callers attach encoded-frame
+   *  transforms, e.g. for SEI glass-to-glass latency. */
+  getPeerConnection: () => RTCPeerConnection | null;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
@@ -143,7 +154,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       throw parsedOptions.error;
     }
 
-    const { onRemoteStream, initialState, resolution } = parsedOptions.data;
+    const { onRemoteStream, onPeerConnection, initialState, resolution, seiLatency } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
 
     let inputStream: MediaStream = stream ?? new MediaStream();
@@ -199,6 +210,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         logger,
         observability,
         onRemoteStream,
+        onPeerConnection,
         onConnectionStateChange: (state) => {
           emitOrBuffer("connectionChange", state);
         },
@@ -211,6 +223,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         vp8StartBitrate: 600,
         initialImage,
         initialPrompt,
+        seiLatency,
       });
 
       const manager = webrtcManager;
@@ -263,6 +276,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           const base64 = await imageToBase64(image);
           return manager.setImage(base64, options);
         },
+        getPeerConnection: () => manager.getPeerConnection(),
       };
 
       flush();
