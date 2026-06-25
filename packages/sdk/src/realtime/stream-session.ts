@@ -250,10 +250,6 @@ export class StreamSession {
       };
     }
 
-    if (this.config.localStream) {
-      return { image: null, prompt: null };
-    }
-
     return undefined;
   }
 
