@@ -132,7 +132,9 @@ export class StreamSession {
 
   async replaceVideoTrack(track: MediaStreamTrack): Promise<void> {
     this.assertConnected();
-    return this.media.replaceVideoTrack(track);
+    await this.media.replaceVideoTrack(track);
+    const previous = this.config.localStream;
+    this.config.localStream = new MediaStream(previous ? [track, ...previous.getAudioTracks()] : [track]);
   }
 
   disconnect(): void {

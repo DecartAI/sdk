@@ -86,6 +86,10 @@ class FakeMediaStream {
     return this.tracks.filter((track) => (track as { kind?: string }).kind === "video");
   }
 
+  getAudioTracks(): unknown[] {
+    return this.tracks.filter((track) => (track as { kind?: string }).kind === "audio");
+  }
+
   addTrack(track: unknown): void {
     this.tracks.push(track);
   }
@@ -950,6 +954,8 @@ describe("StreamSession startup orchestration", () => {
     await session.replaceVideoTrack(newTrack);
 
     expect(publication.videoTrack.replaceTrack).toHaveBeenCalledWith(newTrack);
+    const stored = (session as unknown as { config: { localStream: MediaStream } }).config.localStream;
+    expect(stored.getVideoTracks()[0]).toBe(newTrack);
   });
 
   it("replaceVideoTrack rejects when not connected", async () => {
