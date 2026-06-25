@@ -887,7 +887,7 @@ describe("StreamSession startup orchestration", () => {
     await flushMicrotasks();
   });
 
-  it("does not gate remoteStream or connected state on the internal null-image bootstrap ack", async () => {
+  it("sends only a lean passthrough join for a bare localStream connect (no set_image bootstrap)", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const localStream = createLocalStream();
     const session = new StreamSession({
@@ -900,17 +900,16 @@ describe("StreamSession startup orchestration", () => {
     session.on("remoteStream", (stream) => remoteStreams.push(stream));
 
     const leanJoin = { type: "livekit_join", passthrough: true };
-    const bootstrapImage = { type: "set_image", image_data: null, prompt: null };
 
     const connectPromise = session.connect();
     const ws = FakeWebSocket.instances[0];
     ws.onopen?.();
     await flushMicrotasks();
-    expect(ws.sentMessages).toEqual([leanJoin, bootstrapImage]);
+    expect(ws.sentMessages).toEqual([leanJoin]);
 
     sendRoomInfo(ws);
     await flushMicrotasks();
-    expect(ws.sentMessages).toEqual([leanJoin, bootstrapImage]);
+    expect(ws.sentMessages).toEqual([leanJoin]);
     subscribeRemoteTrack();
 
     const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
@@ -918,9 +917,6 @@ describe("StreamSession startup orchestration", () => {
     expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
     expect(remoteStreams).toHaveLength(1);
     expect(states).toEqual(["connecting", "connected"]);
-
-    ws.receive({ type: "set_image_ack", success: true, error: null });
-    await flushMicrotasks();
   });
 
   it("emits async errors without retrying when caller initial-state ack fails after connect", async () => {
