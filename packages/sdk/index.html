@@ -394,10 +394,33 @@
             <input type="checkbox" id="stream-audio-toggle" unchecked>
             <label for="stream-audio-toggle" style="margin: 0; font-weight: normal;">Stream microphone audio</label>
         </div>
+        <div class="control-group checkbox-group">
+            <input type="checkbox" id="no-video-toggle">
+            <label for="no-video-toggle" style="margin: 0; font-weight: normal;">Connect without video track (i2v / no-input — passes <code>null</code> stream)</label>
+        </div>
+        <div class="control-group checkbox-group">
+            <input type="checkbox" id="start-paused-toggle">
+            <label for="start-paused-toggle" style="margin: 0; font-weight: normal;">Start paused (<code>pause_mode</code> on join — output appears after resume)</label>
+        </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
             <button id="connect-btn" disabled>Connect to Decart</button>
             <button id="disconnect-btn" disabled>Disconnect</button>
+        </div>
+    </div>
+
+    <!-- Pause / Resume -->
+    <div class="controls">
+        <h3>Pause / Resume</h3>
+        <p style="margin: 0 0 10px 0; font-size: 12px; color: #666;">
+            <code>pause()</code> / <code>resume()</code> resolve on the server ack. While paused the output holds (v2v: black frame; i2v / no-input: nothing until resume). Publisher sessions only.
+        </p>
+        <div class="inline-controls">
+            <button id="pause-btn" disabled>Pause</button>
+            <button id="resume-btn" class="secondary" disabled>Resume</button>
+        </div>
+        <div id="pause-resume-status" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 6px; display: none;">
+            <strong>Status:</strong> <span id="pause-resume-status-text">Ready</span>
         </div>
     </div>
 
@@ -616,9 +639,15 @@
             initialImage: document.getElementById('initial-image'),
             cameraFps: document.getElementById('camera-fps'),
             streamAudioToggle: document.getElementById('stream-audio-toggle'),
+            noVideoToggle: document.getElementById('no-video-toggle'),
+            startPausedToggle: document.getElementById('start-paused-toggle'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
             disconnectBtn: document.getElementById('disconnect-btn'),
+            pauseBtn: document.getElementById('pause-btn'),
+            resumeBtn: document.getElementById('resume-btn'),
+            pauseResumeStatus: document.getElementById('pause-resume-status'),
+            pauseResumeStatusText: document.getElementById('pause-resume-status-text'),
             localVideo: document.getElementById('local-video'),
             remoteVideo: document.getElementById('remote-video'),
             promptInput: document.getElementById('prompt-input'),
@@ -1076,13 +1105,28 @@
             }
         });
         
+        elements.noVideoToggle.addEventListener('change', () => {
+            if (isConnected) return;
+            if (elements.noVideoToggle.checked) {
+                stopCameraResources();
+                elements.startCamera.disabled = true;
+                elements.connectBtn.disabled = false;
+                addLog('No-video mode on: connect will pass a null stream (no track published)', 'info');
+            } else {
+                elements.startCamera.disabled = false;
+                elements.connectBtn.disabled = !localStream;
+                addLog('No-video mode off: start the camera to connect with a video track', 'info');
+            }
+        });
+
         // Connect to Decart
         elements.connectBtn.addEventListener('click', async () => {
             const apiKey = resolveCredential();
             if (!apiKey) return;
 
-            if (!localStream) {
-                addLog('Please start camera first', 'error');
+            const noVideo = elements.noVideoToggle.checked;
+            if (!noVideo && !localStream) {
+                addLog('Please start camera first (or check "Connect without video track")', 'error');
                 return;
             }
 
@@ -1138,11 +1182,15 @@
                     addLog('Debug-quality (glass-to-glass) measurement ON (marker visible bottom-left of output)', 'info');
                 }
 
-                decartRealtime = await decartClient.realtime.connect(localStream, {
+                const startPaused = elements.startPausedToggle.checked;
+                addLog(`Start paused: ${startPaused}; video track: ${noVideo ? 'none (null stream)' : 'published'}`, 'info');
+
+                decartRealtime = await decartClient.realtime.connect(noVideo ? null : localStream, {
                     model,
                     resolution,
                     ...(preferredVideoCodec && { preferredVideoCodec }),
                     ...(debugQuality && { debugQuality: true }),
+                    ...(startPaused && { startPaused: true }),
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;
@@ -1179,6 +1227,8 @@
                     elements.promisePromptInput.disabled = false;
                     elements.sendPromisePrompt.disabled = false;
                     elements.referenceImage.disabled = false;
+                    elements.pauseBtn.disabled = false;
+                    elements.resumeBtn.disabled = false;
                     elements.subscribeBtn.disabled = true;
 
                     // Show session ID
@@ -1322,6 +1372,13 @@
             elements.startCamera.disabled = false;
             elements.connectBtn.disabled = true;
             elements.subscribeBtn.disabled = false;
+            elements.pauseBtn.disabled = true;
+            elements.resumeBtn.disabled = true;
+            elements.pauseResumeStatus.style.display = 'none';
+            if (elements.noVideoToggle.checked) {
+                elements.startCamera.disabled = true;
+                elements.connectBtn.disabled = false;
+            }
             elements.disconnectBtn.disabled = true;
             elements.promptInput.disabled = true;
             elements.sendPrompt.disabled = true;
@@ -1434,6 +1491,35 @@
                 sendPromisePrompt();
             }
         });
+
+        async function runPauseResume(action) {
+            if (!decartRealtime || !isConnected || activeConnectionMode !== 'publisher') {
+                addLog('Not connected to Decart as a publisher', 'error');
+                return;
+            }
+            const isPause = action === 'pause';
+            const btn = isPause ? elements.pauseBtn : elements.resumeBtn;
+            try {
+                elements.pauseResumeStatus.style.display = 'block';
+                elements.pauseResumeStatusText.textContent = isPause ? '⏳ Pausing…' : '⏳ Resuming…';
+                elements.pauseResumeStatusText.style.color = '#ff9800';
+                btn.disabled = true;
+                addLog(`${isPause ? 'Pausing' : 'Resuming'} session…`, 'info');
+                await (isPause ? decartRealtime.pause() : decartRealtime.resume());
+                elements.pauseResumeStatusText.textContent = isPause ? '⏸️ Paused (ack received)' : '▶️ Resumed (ack received)';
+                elements.pauseResumeStatusText.style.color = '#4CAF50';
+                addLog(`Session ${isPause ? 'paused' : 'resumed'} (${action}_ack)`, 'success');
+            } catch (error) {
+                elements.pauseResumeStatusText.textContent = `❌ ${isPause ? 'Pause' : 'Resume'} failed: ${error.message ?? error}`;
+                elements.pauseResumeStatusText.style.color = '#f44336';
+                addLog(`${isPause ? 'Pause' : 'Resume'} failed: ${error.message ?? error}`, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        elements.pauseBtn.addEventListener('click', () => runPauseResume('pause'));
+        elements.resumeBtn.addEventListener('click', () => runPauseResume('resume'));
 
         // Reference image selection handler
         elements.referenceImage.addEventListener('change', (e) => {
