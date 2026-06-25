@@ -13,10 +13,12 @@ import type {
   InitialState,
   LiveKitJoinMessage,
   OutgoingRealtimeMessage,
+  PauseAckMessage,
   PromptAckMessage,
   PromptMessage,
   PromptSendOptions,
   QueuePosition,
+  ResumeAckMessage,
   ServerError,
   SetImageAckMessage,
   SetImageMessage,
@@ -64,6 +66,7 @@ export type OpenAndJoinOptions = {
   handshakeTimeout?: number;
   initialState?: InitialState;
   passthrough?: boolean;
+  startPaused?: boolean;
 };
 
 export type OpenAndJoinResult = {
@@ -158,7 +161,8 @@ export class SignalingChannel {
       (opts.initialState.image != null || opts.initialState.imageRef != null || opts.initialState.prompt != null);
     const joinMessage: LiveKitJoinMessage = {
       type: "livekit_join",
-      passthrough: opts.passthrough ?? !userSetInitialState,
+      passthrough: opts.startPaused ? false : (opts.passthrough ?? !userSetInitialState),
+      ...(opts.startPaused ? { pause_mode: true } : {}),
     };
 
     if (!this.writeMessage(joinMessage)) {
@@ -245,6 +249,26 @@ export class SignalingChannel {
       label: "Image send",
     });
     if (!ack.success) throw new Error(ack.error ?? "Failed to send image");
+  }
+
+  async pause(): Promise<void> {
+    const ack = await this.request<PauseAckMessage>({
+      message: { type: "pause" },
+      matchAck: (msg) => msg.type === "pause_ack",
+      timeoutMs: REALTIME_CONFIG.signaling.requestTimeoutMs,
+      label: "Pause",
+    });
+    if (!ack.success) throw new Error(ack.error ?? "Failed to pause");
+  }
+
+  async resume(): Promise<void> {
+    const ack = await this.request<ResumeAckMessage>({
+      message: { type: "resume" },
+      matchAck: (msg) => msg.type === "resume_ack",
+      timeoutMs: REALTIME_CONFIG.signaling.requestTimeoutMs,
+      label: "Resume",
+    });
+    if (!ack.success) throw new Error(ack.error ?? "Failed to resume");
   }
 
   private async openSocket(timeout: number): Promise<void> {

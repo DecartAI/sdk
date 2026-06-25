@@ -58,6 +58,7 @@ const realTimeClientConnectOptionsSchema = z.object({
     })
     .optional(),
   initialState: realTimeClientInitialStateSchema.optional(),
+  startPaused: z.boolean().optional(),
   queryParams: z.record(z.string(), z.string()).optional(),
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
   resolution: z.enum(["720p", "1080p"]).optional(),
@@ -92,6 +93,8 @@ export type Events = {
 export type RealTimeClient = {
   set: (input: SetInput) => Promise<void>;
   setPrompt: (prompt: string, { enhance }?: { enhance?: boolean }) => Promise<void>;
+  pause: () => Promise<void>;
+  resume: () => Promise<void>;
   isConnected: () => boolean;
   getConnectionState: () => ConnectionState;
   /** Latest interpreted connection-quality verdict, or null before any stats arrive. */
@@ -128,6 +131,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       onConnectionQuality,
       onQueuePosition,
       initialState,
+      startPaused,
       resolution,
       preferredVideoCodec,
     } = parsedOptions.data;
@@ -212,6 +216,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialImageRef,
         initialPrompt,
         initialPassthrough: initialState?.passthrough,
+        startPaused,
         logger,
         videoCodec: publishCodec,
       });

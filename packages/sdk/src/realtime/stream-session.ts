@@ -59,6 +59,7 @@ interface StreamSessionConfig {
   initialImageRef?: string;
   initialPrompt?: InitialPrompt;
   initialPassthrough?: boolean;
+  startPaused?: boolean;
   logger?: Logger;
   videoCodec?: VideoCodec;
 }
@@ -130,6 +131,16 @@ export class StreamSession {
     return this.signaling.setImage(payload, opts);
   }
 
+  async pause(): Promise<void> {
+    this.assertConnected();
+    return this.signaling.pause();
+  }
+
+  async resume(): Promise<void> {
+    this.assertConnected();
+    return this.signaling.resume();
+  }
+
   disconnect(): void {
     this.disposed = true;
     this.tearDown();
@@ -176,6 +187,7 @@ export class StreamSession {
         connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
         initialState,
         passthrough: this.config.initialPassthrough,
+        startPaused: this.config.startPaused,
       });
       this.watchInitialStateAck(initialStateAck, attempt);
 
@@ -248,10 +260,6 @@ export class StreamSession {
         prompt: this.config.initialPrompt.text,
         enhance: this.config.initialPrompt.enhance,
       };
-    }
-
-    if (this.config.localStream) {
-      return { image: null, prompt: null };
     }
 
     return undefined;

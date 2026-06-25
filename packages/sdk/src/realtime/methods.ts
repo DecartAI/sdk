@@ -55,5 +55,13 @@ export const realtimeMethods = (
     });
   };
 
-  return { set, setPrompt };
+  const pause = async (): Promise<void> => {
+    await session.pause();
+  };
+
+  const resume = async (): Promise<void> => {
+    await session.resume();
+  };
+
+  return { set, setPrompt, pause, resume };
 };

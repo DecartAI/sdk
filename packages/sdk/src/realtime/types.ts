@@ -33,6 +33,26 @@ export type SetImageAckMessage = {
   error: null | string;
 };
 
+export type PauseMessage = {
+  type: "pause";
+};
+
+export type ResumeMessage = {
+  type: "resume";
+};
+
+export type PauseAckMessage = {
+  type: "pause_ack";
+  success: boolean;
+  error: null | string;
+};
+
+export type ResumeAckMessage = {
+  type: "resume_ack";
+  success: boolean;
+  error: null | string;
+};
+
 export type GenerationTickMessage = GenerationTick & {
   type: "generation_tick";
 };
@@ -48,6 +68,7 @@ export type GenerationStartedMessage = {
 export type LiveKitJoinMessage = {
   type: "livekit_join";
   passthrough: boolean;
+  pause_mode?: boolean;
 };
 
 export type LiveKitRoomInfoMessage = {
@@ -129,6 +150,8 @@ export type IncomingRealtimeMessage =
   | PromptAckMessage
   | ErrorMessage
   | SetImageAckMessage
+  | PauseAckMessage
+  | ResumeAckMessage
   | GenerationTickMessage
   | GenerationEndedMessage
   | GenerationStartedMessage
@@ -136,6 +159,11 @@ export type IncomingRealtimeMessage =
   | QueuePositionMessage;
 
 // Outgoing message types (to server)
-export type OutgoingRealtimeMessage = LiveKitJoinMessage | PromptMessage | SetImageMessage;
+export type OutgoingRealtimeMessage =
+  | LiveKitJoinMessage
+  | PromptMessage
+  | SetImageMessage
+  | PauseMessage
+  | ResumeMessage;
 
 export type OutgoingMessage = PromptMessage | SetImageMessage;
