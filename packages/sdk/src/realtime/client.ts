@@ -109,6 +109,7 @@ export type RealTimeClient = {
    * - `null`: clear the current image.
    */
   setImage: (image: Blob | File | string | null, options?: ImageSetOptions) => Promise<void>;
+  replaceVideoTrack: (track: MediaStreamTrack) => Promise<void>;
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {

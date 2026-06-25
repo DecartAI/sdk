@@ -130,6 +130,11 @@ export class StreamSession {
     return this.signaling.setImage(payload, opts);
   }
 
+  async replaceVideoTrack(track: MediaStreamTrack): Promise<void> {
+    this.assertConnected();
+    return this.media.replaceVideoTrack(track);
+  }
+
   disconnect(): void {
     this.disposed = true;
     this.tearDown();

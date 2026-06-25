@@ -120,6 +120,15 @@ export class MediaChannel {
     this.config.observability?.endPhase("publish-local-track", { success: true });
   }
 
+  async replaceVideoTrack(track: MediaStreamTrack): Promise<void> {
+    const room = this.room;
+    if (!room) throw new Error("Cannot replace video track: media channel is not connected");
+    const publication = [...room.localParticipant.videoTrackPublications.values()][0];
+    const videoTrack = publication?.videoTrack;
+    if (!videoTrack) throw new Error("Cannot replace video track: no published video track");
+    await videoTrack.replaceTrack(track);
+  }
+
   disconnect(): void {
     const room = this.room;
     this.room = null;
