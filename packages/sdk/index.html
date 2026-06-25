@@ -372,6 +372,14 @@
             </label>
         </div>
         <div class="control-group">
+            <label for="passthrough-select">Passthrough (initial):</label>
+            <select id="passthrough-select">
+                <option value="" selected>Default (auto — on when no initial state)</option>
+                <option value="true">On (echo input)</option>
+                <option value="false">Off (generate)</option>
+            </select>
+        </div>
+        <div class="control-group">
             <label for="initial-prompt">Initial Prompt (empty = passthrough):</label>
             <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
         </div>
@@ -393,6 +401,11 @@
         <div class="control-group checkbox-group">
             <input type="checkbox" id="stream-audio-toggle" unchecked>
             <label for="stream-audio-toggle" style="margin: 0; font-weight: normal;">Stream microphone audio</label>
+        </div>
+        <div class="control-group checkbox-group">
+            <input type="checkbox" id="replace-test-toggle">
+            <label for="replace-test-toggle" style="margin: 0; font-weight: normal;">Replace-track test (publish green frames at model resolution)</label>
+            <button id="replace-with-camera-btn" disabled>Request camera + replace track</button>
         </div>
         <div class="inline-controls">
             <button id="start-camera">Start Camera</button>
@@ -612,10 +625,13 @@
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             resolutionSelect: document.getElementById('resolution-select'),
             codecSelect: document.getElementById('codec-select'),
+            passthroughSelect: document.getElementById('passthrough-select'),
             initialPrompt: document.getElementById('initial-prompt'),
             initialImage: document.getElementById('initial-image'),
             cameraFps: document.getElementById('camera-fps'),
             streamAudioToggle: document.getElementById('stream-audio-toggle'),
+            replaceTestToggle: document.getElementById('replace-test-toggle'),
+            replaceWithCameraBtn: document.getElementById('replace-with-camera-btn'),
             startCamera: document.getElementById('start-camera'),
             connectBtn: document.getElementById('connect-btn'),
             disconnectBtn: document.getElementById('disconnect-btn'),
@@ -1076,6 +1092,91 @@
             }
         });
         
+        let greenTest = null;
+        let replaceCameraStream = null;
+
+        function startGreenTest() {
+            stopGreenTest();
+            const camera = getSelectedCameraSettings();
+            const canvas = document.createElement('canvas');
+            canvas.width = camera.width;
+            canvas.height = camera.height;
+            const ctx = canvas.getContext('2d');
+            const draw = () => {
+                ctx.fillStyle = '#00ff00';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                if (greenTest) greenTest.rafId = requestAnimationFrame(draw);
+            };
+            const stream = canvas.captureStream(camera.fps);
+            greenTest = { rafId: 0, stream };
+            draw();
+            localStream = stream;
+            elements.localVideo.srcObject = stream;
+            addLog(`Replace-track test: publishing green ${camera.width}×${camera.height} @ ${camera.fps}fps`, 'info');
+        }
+
+        function stopGreenTest() {
+            if (greenTest) {
+                cancelAnimationFrame(greenTest.rafId);
+                greenTest.stream.getTracks().forEach((track) => {
+                    track.stop();
+                });
+                greenTest = null;
+            }
+            if (replaceCameraStream) {
+                replaceCameraStream.getTracks().forEach((track) => {
+                    track.stop();
+                });
+                replaceCameraStream = null;
+            }
+        }
+
+        elements.replaceTestToggle.addEventListener('change', () => {
+            if (isConnected) {
+                elements.replaceTestToggle.checked = !elements.replaceTestToggle.checked;
+                addLog('Toggle the replace-track test before connecting', 'error');
+                return;
+            }
+            if (elements.replaceTestToggle.checked) {
+                stopCameraResources();
+                startGreenTest();
+                elements.startCamera.disabled = true;
+                elements.connectBtn.disabled = false;
+            } else {
+                stopGreenTest();
+                localStream = null;
+                elements.localVideo.srcObject = null;
+                elements.startCamera.disabled = false;
+                elements.connectBtn.disabled = true;
+            }
+        });
+
+        elements.replaceWithCameraBtn.addEventListener('click', async () => {
+            if (!decartRealtime || !isConnected || activeConnectionMode !== 'publisher') {
+                addLog('Not connected to Decart as a publisher', 'error');
+                return;
+            }
+            try {
+                elements.replaceWithCameraBtn.disabled = true;
+                addLog('Requesting camera to replace the green track…', 'info');
+                const camera = getSelectedCameraSettings();
+                const cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: camera.width }, height: { ideal: camera.height }, frameRate: { ideal: camera.fps } },
+                    audio: false,
+                });
+                const cameraTrack = cameraStream.getVideoTracks()[0];
+                if (!cameraTrack) throw new Error('No camera video track available');
+                await decartRealtime.replaceVideoTrack(cameraTrack);
+                replaceCameraStream = cameraStream;
+                elements.localVideo.srcObject = cameraStream;
+                addLog('Replaced green track with camera track (no reconnect)', 'success');
+            } catch (error) {
+                addLog(`Replace with camera failed: ${error.message ?? error}`, 'error');
+            } finally {
+                elements.replaceWithCameraBtn.disabled = false;
+            }
+        });
+
         // Connect to Decart
         elements.connectBtn.addEventListener('click', async () => {
             const apiKey = resolveCredential();
@@ -1138,6 +1239,10 @@
                     addLog('Debug-quality (glass-to-glass) measurement ON (marker visible bottom-left of output)', 'info');
                 }
 
+                const passthroughChoice = elements.passthroughSelect.value;
+                const passthrough = passthroughChoice === '' ? undefined : passthroughChoice === 'true';
+                addLog(`Initial passthrough: ${passthrough === undefined ? 'default (auto)' : passthrough}`, 'info');
+
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     resolution,
@@ -1166,6 +1271,7 @@
                     initialState: {
                         ...(promptValue && { prompt: promptValue }),
                         ...(initialImage && { image: initialImage }),
+                        ...(passthrough !== undefined && { passthrough }),
                     },
                 });
                 
@@ -1179,6 +1285,7 @@
                     elements.promisePromptInput.disabled = false;
                     elements.sendPromisePrompt.disabled = false;
                     elements.referenceImage.disabled = false;
+                    if (elements.replaceTestToggle.checked) elements.replaceWithCameraBtn.disabled = false;
                     elements.subscribeBtn.disabled = true;
 
                     // Show session ID
@@ -1336,6 +1443,9 @@
             elements.copySubscribeToken.disabled = true;
             elements.referenceImage.disabled = true;
             elements.setImage.disabled = true;
+            elements.replaceWithCameraBtn.disabled = true;
+            elements.replaceTestToggle.checked = false;
+            stopGreenTest();
             elements.referenceImage.value = '';
             elements.imageStatus.style.display = 'none';
             elements.imagePreview.style.display = 'none';

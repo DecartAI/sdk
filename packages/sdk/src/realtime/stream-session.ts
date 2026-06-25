@@ -130,6 +130,13 @@ export class StreamSession {
     return this.signaling.setImage(payload, opts);
   }
 
+  async replaceVideoTrack(track: MediaStreamTrack): Promise<void> {
+    this.assertConnected();
+    await this.media.replaceVideoTrack(track);
+    const previous = this.config.localStream;
+    this.config.localStream = new MediaStream(previous ? [track, ...previous.getAudioTracks()] : [track]);
+  }
+
   disconnect(): void {
     this.disposed = true;
     this.tearDown();
@@ -248,10 +255,6 @@ export class StreamSession {
         prompt: this.config.initialPrompt.text,
         enhance: this.config.initialPrompt.enhance,
       };
-    }
-
-    if (this.config.localStream) {
-      return { image: null, prompt: null };
     }
 
     return undefined;

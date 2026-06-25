@@ -29,13 +29,23 @@ const liveKitMock = vi.hoisted(() => {
     handlers = new Map<string, Array<(...args: unknown[]) => void>>();
     state = ConnectionState.Connected;
     localParticipant = {
-      publishTrack: vi.fn().mockResolvedValue(undefined),
+      publishTrack: vi.fn(),
+      videoTrackPublications: new Map<string, { videoTrack: { replaceTrack: ReturnType<typeof vi.fn> } }>(),
     };
     connect = vi.fn().mockImplementation(() => connectMocks.shift()?.() ?? Promise.resolve());
     disconnect = vi.fn().mockResolvedValue(undefined);
 
     constructor() {
       roomInstances.push(this);
+      const lp = this.localParticipant;
+      lp.publishTrack.mockImplementation((track: { kind?: string }) => {
+        if (track?.kind === "video") {
+          lp.videoTrackPublications.set("camera", {
+            videoTrack: { replaceTrack: vi.fn().mockResolvedValue(undefined) },
+          });
+        }
+        return Promise.resolve(undefined);
+      });
     }
 
     on(event: string, handler: (...args: unknown[]) => void): this {
@@ -74,6 +84,10 @@ class FakeMediaStream {
 
   getVideoTracks(): unknown[] {
     return this.tracks.filter((track) => (track as { kind?: string }).kind === "video");
+  }
+
+  getAudioTracks(): unknown[] {
+    return this.tracks.filter((track) => (track as { kind?: string }).kind === "audio");
   }
 
   addTrack(track: unknown): void {
@@ -887,7 +901,7 @@ describe("StreamSession startup orchestration", () => {
     await flushMicrotasks();
   });
 
-  it("does not gate remoteStream or connected state on the internal null-image bootstrap ack", async () => {
+  it("sends only a lean passthrough join for a bare localStream connect (no set_image bootstrap)", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const localStream = createLocalStream();
     const session = new StreamSession({
@@ -900,17 +914,16 @@ describe("StreamSession startup orchestration", () => {
     session.on("remoteStream", (stream) => remoteStreams.push(stream));
 
     const leanJoin = { type: "livekit_join", passthrough: true };
-    const bootstrapImage = { type: "set_image", image_data: null, prompt: null };
 
     const connectPromise = session.connect();
     const ws = FakeWebSocket.instances[0];
     ws.onopen?.();
     await flushMicrotasks();
-    expect(ws.sentMessages).toEqual([leanJoin, bootstrapImage]);
+    expect(ws.sentMessages).toEqual([leanJoin]);
 
     sendRoomInfo(ws);
     await flushMicrotasks();
-    expect(ws.sentMessages).toEqual([leanJoin, bootstrapImage]);
+    expect(ws.sentMessages).toEqual([leanJoin]);
     subscribeRemoteTrack();
 
     const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
@@ -918,9 +931,39 @@ describe("StreamSession startup orchestration", () => {
     expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
     expect(remoteStreams).toHaveLength(1);
     expect(states).toEqual(["connecting", "connected"]);
+  });
 
-    ws.receive({ type: "set_image_ack", success: true, error: null });
+  it("replaceVideoTrack swaps the published video track without reconnecting", async () => {
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const localStream = createLocalStream();
+    const session = new StreamSession({ url: "wss://example.test/realtime", localStream });
+
+    const connectPromise = session.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
     await flushMicrotasks();
+    sendRoomInfo(ws);
+    await flushMicrotasks();
+    subscribeRemoteTrack();
+    await expect(connectPromise).resolves.toBeUndefined();
+
+    const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
+    const publication = [...room.localParticipant.videoTrackPublications.values()][0];
+    const newTrack = { id: "replacement", kind: "video" } as unknown as MediaStreamTrack;
+
+    await session.replaceVideoTrack(newTrack);
+
+    expect(publication.videoTrack.replaceTrack).toHaveBeenCalledWith(newTrack);
+    const stored = (session as unknown as { config: { localStream: MediaStream } }).config.localStream;
+    expect(stored.getVideoTracks()[0]).toBe(newTrack);
+  });
+
+  it("replaceVideoTrack rejects when not connected", async () => {
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({ url: "wss://example.test/realtime", localStream: createLocalStream() });
+    const newTrack = { id: "replacement", kind: "video" } as unknown as MediaStreamTrack;
+
+    await expect(session.replaceVideoTrack(newTrack)).rejects.toThrow(/connection is disconnected/);
   });
 
   it("emits async errors without retrying when caller initial-state ack fails after connect", async () => {

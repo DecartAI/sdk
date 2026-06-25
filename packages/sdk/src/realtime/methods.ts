@@ -55,5 +55,9 @@ export const realtimeMethods = (
     });
   };
 
-  return { set, setPrompt };
+  const replaceVideoTrack = async (track: MediaStreamTrack): Promise<void> => {
+    await session.replaceVideoTrack(track);
+  };
+
+  return { set, setPrompt, replaceVideoTrack };
 };
