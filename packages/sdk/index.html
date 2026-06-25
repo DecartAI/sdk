@@ -372,6 +372,14 @@
             </label>
         </div>
         <div class="control-group">
+            <label for="passthrough-select">Passthrough (initial):</label>
+            <select id="passthrough-select">
+                <option value="" selected>Default (auto — on when no initial state)</option>
+                <option value="true">On (echo input)</option>
+                <option value="false">Off (generate)</option>
+            </select>
+        </div>
+        <div class="control-group">
             <label for="initial-prompt">Initial Prompt (empty = passthrough):</label>
             <input type="text" id="initial-prompt" placeholder="e.g. Lego World">
         </div>
@@ -612,6 +620,7 @@
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
             resolutionSelect: document.getElementById('resolution-select'),
             codecSelect: document.getElementById('codec-select'),
+            passthroughSelect: document.getElementById('passthrough-select'),
             initialPrompt: document.getElementById('initial-prompt'),
             initialImage: document.getElementById('initial-image'),
             cameraFps: document.getElementById('camera-fps'),
@@ -1138,6 +1147,10 @@
                     addLog('Debug-quality (glass-to-glass) measurement ON (marker visible bottom-left of output)', 'info');
                 }
 
+                const passthroughChoice = elements.passthroughSelect.value;
+                const passthrough = passthroughChoice === '' ? undefined : passthroughChoice === 'true';
+                addLog(`Initial passthrough: ${passthrough === undefined ? 'default (auto)' : passthrough}`, 'info');
+
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     resolution,
@@ -1166,6 +1179,7 @@
                     initialState: {
                         ...(promptValue && { prompt: promptValue }),
                         ...(initialImage && { image: initialImage }),
+                        ...(passthrough !== undefined && { passthrough }),
                     },
                 });
                 
