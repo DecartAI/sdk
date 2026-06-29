@@ -3,7 +3,6 @@ import { createModelNotFoundError } from "../utils/errors";
 
 const CANONICAL_MODEL_NAMES = [
   "lucy-2.1",
-  "lucy-2.1-vton",
   "lucy-vton-2",
   "lucy-vton-3",
   "lucy-restyle-2",
@@ -13,7 +12,6 @@ const CANONICAL_MODEL_NAMES = [
 
 const CANONICAL_REALTIME_MODEL_NAMES = [
   "lucy-2.1",
-  "lucy-2.1-vton",
   "lucy-vton-2",
   "lucy-vton-3",
   "lucy-restyle-2",
@@ -21,7 +19,6 @@ const CANONICAL_REALTIME_MODEL_NAMES = [
 const CANONICAL_VIDEO_MODEL_NAMES = [
   "lucy-clip",
   "lucy-2.1",
-  "lucy-2.1-vton",
   "lucy-vton-2",
   "lucy-vton-3",
   "lucy-restyle-2",
@@ -40,7 +37,6 @@ export type CanonicalModel = z.infer<typeof canonicalModelSchema>;
  */
 export const modelAliases = {
   mirage_v2: "lucy-restyle-2",
-  "lucy-vton": "lucy-2.1-vton",
   "lucy-2.1-vton-2": "lucy-vton-2",
   "lucy-pro-v2v": "lucy-clip",
   "lucy-restyle-v2v": "lucy-restyle-2",
@@ -67,7 +63,6 @@ function warnDeprecated(model: string): void {
 export const realtimeModels = z.union([
   // Canonical names
   z.literal("lucy-2.1"),
-  z.literal("lucy-2.1-vton"),
   z.literal("lucy-vton-2"),
   z.literal("lucy-vton-3"),
   z.literal("lucy-restyle-2"),
@@ -77,14 +72,12 @@ export const realtimeModels = z.union([
   z.literal("lucy-restyle-latest"),
   // Deprecated names (use canonical names above instead)
   z.literal("mirage_v2"),
-  z.literal("lucy-vton"),
   z.literal("lucy-2.1-vton-2"),
 ]);
 export const videoModels = z.union([
   // Canonical names
   z.literal("lucy-clip"),
   z.literal("lucy-2.1"),
-  z.literal("lucy-2.1-vton"),
   z.literal("lucy-vton-2"),
   z.literal("lucy-vton-3"),
   z.literal("lucy-restyle-2"),
@@ -94,7 +87,6 @@ export const videoModels = z.union([
   z.literal("lucy-restyle-latest"),
   z.literal("lucy-clip-latest"),
   // Deprecated names (use canonical names above instead)
-  z.literal("lucy-vton"),
   z.literal("lucy-2.1-vton-2"),
   z.literal("lucy-pro-v2v"),
   z.literal("lucy-restyle-v2v"),
@@ -262,7 +254,6 @@ export const modelInputSchemas = {
   "lucy-image-2": imageEditSchema,
   "lucy-restyle-2": restyleSchema,
   "lucy-2.1": videoEdit2Schema,
-  "lucy-2.1-vton": videoEdit2Schema,
   "lucy-vton-2": videoEdit2Schema,
   "lucy-vton-3": videoEdit2Schema,
   // Latest aliases (server-side resolution)
@@ -272,7 +263,6 @@ export const modelInputSchemas = {
   "lucy-clip-latest": videoEditSchema,
   "lucy-image-latest": imageEditSchema,
   // Deprecated names (kept for backward compatibility)
-  "lucy-vton": videoEdit2Schema,
   "lucy-2.1-vton-2": videoEdit2Schema,
   "lucy-pro-v2v": videoEditSchema,
   "lucy-pro-i2i": imageEditSchema,
@@ -350,14 +340,6 @@ const _models = {
       height: 624,
       inputSchema: z.object({}),
     },
-    "lucy-2.1-vton": {
-      urlPath: "/v1/stream",
-      name: "lucy-2.1-vton" as const,
-      fps: { ideal: 30, max: 30 },
-      width: 1088,
-      height: 624,
-      inputSchema: z.object({}),
-    },
     "lucy-vton-2": {
       urlPath: "/v1/stream",
       name: "lucy-vton-2" as const,
@@ -415,14 +397,6 @@ const _models = {
       fps: { ideal: 30, max: 30 },
       width: 1280,
       height: 704,
-      inputSchema: z.object({}),
-    },
-    "lucy-vton": {
-      urlPath: "/v1/stream",
-      name: "lucy-vton" as const,
-      fps: { ideal: 30, max: 30 },
-      width: 1088,
-      height: 624,
       inputSchema: z.object({}),
     },
     "lucy-2.1-vton-2": {
@@ -485,15 +459,6 @@ const _models = {
       width: 1088,
       height: 624,
       inputSchema: modelInputSchemas["lucy-2.1"],
-    },
-    "lucy-2.1-vton": {
-      urlPath: "/v1/generate/lucy-2.1-vton",
-      queueUrlPath: "/v1/jobs/lucy-2.1-vton",
-      name: "lucy-2.1-vton" as const,
-      fps: 20,
-      width: 1088,
-      height: 624,
-      inputSchema: modelInputSchemas["lucy-2.1-vton"],
     },
     "lucy-vton-2": {
       urlPath: "/v1/generate/lucy-vton-2",
@@ -561,15 +526,6 @@ const _models = {
       inputSchema: modelInputSchemas["lucy-clip-latest"],
     },
     // Deprecated names (use canonical names above instead)
-    "lucy-vton": {
-      urlPath: "/v1/generate/lucy-vton",
-      queueUrlPath: "/v1/jobs/lucy-vton",
-      name: "lucy-vton" as const,
-      fps: 20,
-      width: 1088,
-      height: 624,
-      inputSchema: modelInputSchemas["lucy-vton"],
-    },
     "lucy-2.1-vton-2": {
       urlPath: "/v1/generate/lucy-2.1-vton-2",
       queueUrlPath: "/v1/jobs/lucy-2.1-vton-2",
@@ -634,7 +590,6 @@ export const models = {
    *
    * Available options:
    *   - `"lucy-2.1"` - Lucy 2.1 realtime video editing
-   *   - `"lucy-2.1-vton"` - Lucy 2.1 virtual try-on
    *   - `"lucy-vton-2"` - Lucy virtual try-on 2
    *   - `"lucy-vton-3"` - Lucy virtual try-on 3
    *   - `"lucy-restyle-2"` - Realtime video restyling
@@ -653,7 +608,6 @@ export const models = {
    * Available options:
    *   - `"lucy-clip"` - Video-to-video editing
    *   - `"lucy-2.1"` - Long-form video editing (Lucy 2.1)
-   *   - `"lucy-2.1-vton"` - Virtual try-on video editing
    *   - `"lucy-vton-2"` - Virtual try-on 2 video editing
    *   - `"lucy-vton-3"` - Virtual try-on 3 video editing
    *   - `"lucy-restyle-2"` - Video restyling

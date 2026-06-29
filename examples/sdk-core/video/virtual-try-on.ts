@@ -12,12 +12,12 @@ run(async () => {
     apiKey,
   });
 
-  console.log("Processing virtual try-on with lucy-2.1-vton...");
+  console.log("Processing virtual try-on with lucy-vton-3...");
 
   const inputVideo = fs.readFileSync("input.mp4");
 
   const result = await client.queue.submitAndPoll({
-    model: models.video("lucy-2.1-vton"),
+    model: models.video("lucy-vton-3"),
     prompt: "Wearing a red leather jacket",
     data: new Blob([inputVideo]),
     onStatusChange: (job) => {

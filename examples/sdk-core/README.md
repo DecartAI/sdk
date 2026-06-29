@@ -49,7 +49,6 @@ See `examples/nextjs-realtime` or `examples/react-vite` for runnable demos.
 
 - `realtime/mirage-v2-basic.ts` - Realtime style transformation with `lucy-restyle-2`
 - `realtime/lucy-2.1.ts` - Lucy 2.1 realtime video editing with reference image support
-- `realtime/lucy-2.1-vton.ts` - Lucy 2.1 virtual try-on
 - `realtime/lucy-vton-2.ts` - Lucy VTON 2
 - `realtime/connection-events.ts` - Handling connection state and errors
 - `realtime/prompt-update.ts` - Updating prompt dynamically

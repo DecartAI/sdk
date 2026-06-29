@@ -59,7 +59,6 @@ const REALTIME_MODELS: RealTimeModels[] = [
   // Actively served realtime video models and supported aliases.
   "lucy-restyle-2",
   "lucy-2.1",
-  "lucy-2.1-vton",
   "lucy-vton-2",
   "lucy-vton-3",
   "mirage_v2",
