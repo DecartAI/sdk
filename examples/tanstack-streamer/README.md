@@ -54,5 +54,4 @@ pnpm dev
 This example uses `lucy-2.1` for video editing with reference image support. You can also use:
 
 - `lucy-restyle-2` - MirageLSD v2 for style transformation
-- `lucy-2.1-vton` - Lucy 2.1 virtual try-on
 - `lucy-vton-2` - Lucy VTON 2

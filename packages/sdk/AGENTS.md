@@ -69,22 +69,20 @@
 
 ### Realtime Models (WebRTC)
 - `lucy-2.1` - Real-time video editing (supports reference image)
-- `lucy-2.1-vton` - Real-time virtual try-on
 - `lucy-vton-2` - Real-time virtual try-on 2
 - `lucy-vton-3` - Real-time virtual try-on 3
 - `lucy-restyle-2` - Real-time video restyling
 - `lucy-latest`, `lucy-vton-latest`, `lucy-restyle-latest` - Server-resolved aliases for the latest stable version (`lucy-vton-latest` → `lucy-vton-3`)
-- Deprecated: `lucy-vton` → `lucy-2.1-vton`, `lucy-2.1-vton-2` → `lucy-vton-2`
+- Deprecated: `lucy-2.1-vton-2` → `lucy-vton-2`
 
 ### Video Models (Queue API)
 - `lucy-clip` - video-to-video editing
 - `lucy-2.1` - long-form video editing (720p)
-- `lucy-2.1-vton` - virtual try-on video editing
 - `lucy-vton-2` - virtual try-on 2 video editing
 - `lucy-vton-3` - virtual try-on 3 video editing
 - `lucy-restyle-2` - video restyling
 - `lucy-latest`, `lucy-vton-latest`, `lucy-restyle-latest`, `lucy-clip-latest` - Server-resolved aliases (`lucy-vton-latest` → `lucy-vton-3`)
-- Deprecated: `lucy-vton` → `lucy-2.1-vton`, `lucy-2.1-vton-2` → `lucy-vton-2`
+- Deprecated: `lucy-2.1-vton-2` → `lucy-vton-2`
 
 ### Image Models (Process API)
 - `lucy-image-2` - image-to-image editing

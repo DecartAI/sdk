@@ -2423,31 +2423,17 @@ describe("Canonical Model Names", () => {
       "lucy-clip-latest",
       "lucy-image-latest",
     ];
-    const deprecatedAliases = [
-      "mirage_v2",
-      "lucy-vton",
-      "lucy-2.1-vton-2",
-      "lucy-pro-v2v",
-      "lucy-restyle-v2v",
-      "lucy-pro-i2i",
-    ];
+    const deprecatedAliases = ["mirage_v2", "lucy-2.1-vton-2", "lucy-pro-v2v", "lucy-restyle-v2v", "lucy-pro-i2i"];
 
     it("canonical schemas exclude deprecated and latest aliases", () => {
       for (const alias of [...latestAliases, ...deprecatedAliases]) {
         expect(canonicalModelSchema.safeParse(alias).success).toBe(false);
       }
 
-      expect(canonicalRealtimeModels.options).toEqual([
-        "lucy-2.1",
-        "lucy-2.1-vton",
-        "lucy-vton-2",
-        "lucy-vton-3",
-        "lucy-restyle-2",
-      ]);
+      expect(canonicalRealtimeModels.options).toEqual(["lucy-2.1", "lucy-vton-2", "lucy-vton-3", "lucy-restyle-2"]);
       expect(canonicalVideoModels.options).toEqual([
         "lucy-clip",
         "lucy-2.1",
-        "lucy-2.1-vton",
         "lucy-vton-2",
         "lucy-vton-3",
         "lucy-restyle-2",
@@ -2510,7 +2496,7 @@ describe("Canonical Model Names", () => {
     it("lists all models when called without options", () => {
       const listedModels = listModels();
 
-      expect(listedModels).toHaveLength(28);
+      expect(listedModels).toHaveLength(24);
       expect(listedModels.some((model) => model.kind === "realtime" && model.name === "lucy-2.1")).toBe(true);
       expect(listedModels.some((model) => model.kind === "video" && model.name === "lucy-clip")).toBe(true);
       expect(listedModels.some((model) => model.kind === "image" && model.name === "lucy-image-2")).toBe(true);
@@ -2575,16 +2561,6 @@ describe("Canonical Model Names", () => {
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);
     });
-
-    it("lucy-2.1-vton canonical name works", () => {
-      const model = models.realtime("lucy-2.1-vton");
-      expect(model.name).toBe("lucy-2.1-vton");
-      expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toEqual({ ideal: 30, max: 30 });
-      expect(model.width).toBe(1088);
-      expect(model.height).toBe(624);
-    });
-
     it("lucy-vton-2 canonical name works", () => {
       const model = models.realtime("lucy-vton-2");
       expect(model.name).toBe("lucy-vton-2");
@@ -2626,14 +2602,6 @@ describe("Canonical Model Names", () => {
       expect(model.queueUrlPath).toBe("/v1/jobs/lucy-2.1");
       expect(model.fps).toBe(20);
     });
-
-    it("lucy-2.1-vton as video model works", () => {
-      const model = models.video("lucy-2.1-vton");
-      expect(model.name).toBe("lucy-2.1-vton");
-      expect(model.urlPath).toBe("/v1/generate/lucy-2.1-vton");
-      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-2.1-vton");
-    });
-
     it("lucy-vton-2 as video model works", () => {
       const model = models.video("lucy-vton-2");
       expect(model.name).toBe("lucy-vton-2");
@@ -2681,7 +2649,7 @@ describe("Canonical Model Names", () => {
       expect(model.height).toBe(624);
     });
 
-    it("lucy-vton-latest works as realtime model and resolves server-side to lucy-vton-2", () => {
+    it("lucy-vton-latest works as realtime model and resolves server-side to lucy-vton-3", () => {
       const model = models.realtime("lucy-vton-latest");
       expect(model.name).toBe("lucy-vton-latest");
       expect(model.urlPath).toBe("/v1/stream");
@@ -2709,7 +2677,7 @@ describe("Canonical Model Names", () => {
       expect(model.height).toBe(624);
     });
 
-    it("lucy-vton-latest works as video model and resolves server-side to lucy-vton-2", () => {
+    it("lucy-vton-latest works as video model and resolves server-side to lucy-vton-3", () => {
       const model = models.video("lucy-vton-latest");
       expect(model.name).toBe("lucy-vton-latest");
       expect(model.urlPath).toBe("/v1/generate/lucy-vton-latest");
@@ -2781,19 +2749,9 @@ describe("Canonical Model Names", () => {
       expect(isVideoModel("lucy-2.1")).toBe(true);
     });
 
-    it("lucy-2.1-vton is both a realtime and video model", () => {
-      expect(isRealtimeModel("lucy-2.1-vton")).toBe(true);
-      expect(isVideoModel("lucy-2.1-vton")).toBe(true);
-    });
-
     it("lucy-vton-2 is both a realtime and video model", () => {
       expect(isRealtimeModel("lucy-vton-2")).toBe(true);
       expect(isVideoModel("lucy-vton-2")).toBe(true);
-    });
-
-    it("lucy-vton is a deprecated alias for lucy-2.1-vton on both surfaces", () => {
-      expect(isRealtimeModel("lucy-vton")).toBe(true);
-      expect(isVideoModel("lucy-vton")).toBe(true);
     });
 
     it("lucy-2.1-vton-2 is a deprecated alias for lucy-vton-2 on both surfaces", () => {
@@ -2812,26 +2770,6 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("mirage_v2");
       expect(model.name).toBe("mirage_v2");
     });
-
-    it("lucy-vton still works as realtime and video alias", () => {
-      _resetDeprecationWarnings();
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-      const realtimeModel = models.realtime("lucy-vton");
-      const videoModel = models.video("lucy-vton");
-
-      expect(realtimeModel.name).toBe("lucy-vton");
-      expect(videoModel.name).toBe("lucy-vton");
-      expect(videoModel.urlPath).toBe("/v1/generate/lucy-vton");
-      expect(videoModel.queueUrlPath).toBe("/v1/jobs/lucy-vton");
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Model "lucy-vton" is deprecated. Use "lucy-2.1-vton" instead.'),
-      );
-
-      warnSpy.mockRestore();
-    });
-
     it("lucy-2.1-vton-2 still works as realtime and video alias", () => {
       _resetDeprecationWarnings();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -2871,14 +2809,6 @@ describe("Canonical Model Names", () => {
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('Model "lucy-pro-v2v" is deprecated. Use "lucy-clip" instead.'),
       );
-
-      warnSpy.mockClear();
-      _resetDeprecationWarnings();
-      models.realtime("lucy-vton");
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Model "lucy-vton" is deprecated. Use "lucy-2.1-vton" instead.'),
-      );
-
       warnSpy.mockClear();
       _resetDeprecationWarnings();
       models.video("lucy-2.1-vton-2");
