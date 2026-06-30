@@ -10,19 +10,8 @@ const CANONICAL_MODEL_NAMES = [
   "lucy-image-2",
 ] as const;
 
-const CANONICAL_REALTIME_MODEL_NAMES = [
-  "lucy-2.1",
-  "lucy-vton-2",
-  "lucy-vton-3",
-  "lucy-restyle-2",
-] as const;
-const CANONICAL_VIDEO_MODEL_NAMES = [
-  "lucy-clip",
-  "lucy-2.1",
-  "lucy-vton-2",
-  "lucy-vton-3",
-  "lucy-restyle-2",
-] as const;
+const CANONICAL_REALTIME_MODEL_NAMES = ["lucy-2.1", "lucy-vton-2", "lucy-vton-3", "lucy-restyle-2"] as const;
+const CANONICAL_VIDEO_MODEL_NAMES = ["lucy-clip", "lucy-2.1", "lucy-vton-2", "lucy-vton-3", "lucy-restyle-2"] as const;
 const CANONICAL_IMAGE_MODEL_NAMES = ["lucy-image-2"] as const;
 
 export const canonicalRealtimeModels = z.enum(CANONICAL_REALTIME_MODEL_NAMES);

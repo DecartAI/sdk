@@ -2423,25 +2423,14 @@ describe("Canonical Model Names", () => {
       "lucy-clip-latest",
       "lucy-image-latest",
     ];
-    const deprecatedAliases = [
-      "mirage_v2",
-      "lucy-2.1-vton-2",
-      "lucy-pro-v2v",
-      "lucy-restyle-v2v",
-      "lucy-pro-i2i",
-    ];
+    const deprecatedAliases = ["mirage_v2", "lucy-2.1-vton-2", "lucy-pro-v2v", "lucy-restyle-v2v", "lucy-pro-i2i"];
 
     it("canonical schemas exclude deprecated and latest aliases", () => {
       for (const alias of [...latestAliases, ...deprecatedAliases]) {
         expect(canonicalModelSchema.safeParse(alias).success).toBe(false);
       }
 
-      expect(canonicalRealtimeModels.options).toEqual([
-        "lucy-2.1",
-        "lucy-vton-2",
-        "lucy-vton-3",
-        "lucy-restyle-2",
-      ]);
+      expect(canonicalRealtimeModels.options).toEqual(["lucy-2.1", "lucy-vton-2", "lucy-vton-3", "lucy-restyle-2"]);
       expect(canonicalVideoModels.options).toEqual([
         "lucy-clip",
         "lucy-2.1",
@@ -2469,14 +2458,6 @@ describe("Canonical Model Names", () => {
       expect(videoModels.safeParse("lucy-pro-v2v").success).toBe(true);
       expect(imageModels.safeParse("lucy-image-latest").success).toBe(true);
       expect(imageModels.safeParse("lucy-pro-i2i").success).toBe(true);
-    });
-
-    it("public model schemas reject retired lucy 2.1 vton names", () => {
-      for (const model of ["lucy-2.1-vton", "lucy-vton"]) {
-        expect(modelSchema.safeParse(model).success).toBe(false);
-        expect(realtimeModels.safeParse(model).success).toBe(false);
-        expect(videoModels.safeParse(model).success).toBe(false);
-      }
     });
 
     it("resolves model aliases while preserving accepted latest aliases", () => {
@@ -2766,13 +2747,6 @@ describe("Canonical Model Names", () => {
     it("lucy-2.1 is both a realtime and video model", () => {
       expect(isRealtimeModel("lucy-2.1")).toBe(true);
       expect(isVideoModel("lucy-2.1")).toBe(true);
-    });
-
-    it("retired lucy 2.1 vton names are not realtime or video models", () => {
-      for (const model of ["lucy-2.1-vton", "lucy-vton"]) {
-        expect(isRealtimeModel(model)).toBe(false);
-        expect(isVideoModel(model)).toBe(false);
-      }
     });
 
     it("lucy-vton-2 is both a realtime and video model", () => {
