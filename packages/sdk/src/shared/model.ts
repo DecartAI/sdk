@@ -3,6 +3,7 @@ import { createModelNotFoundError } from "../utils/errors";
 
 const CANONICAL_MODEL_NAMES = [
   "lucy-2.1",
+  "lucy-2.5",
   "lucy-vton-2",
   "lucy-vton-3",
   "lucy-restyle-2",
@@ -10,7 +11,13 @@ const CANONICAL_MODEL_NAMES = [
   "lucy-image-2",
 ] as const;
 
-const CANONICAL_REALTIME_MODEL_NAMES = ["lucy-2.1", "lucy-vton-2", "lucy-vton-3", "lucy-restyle-2"] as const;
+const CANONICAL_REALTIME_MODEL_NAMES = [
+  "lucy-2.1",
+  "lucy-2.5",
+  "lucy-vton-2",
+  "lucy-vton-3",
+  "lucy-restyle-2",
+] as const;
 const CANONICAL_VIDEO_MODEL_NAMES = ["lucy-clip", "lucy-2.1", "lucy-vton-2", "lucy-vton-3", "lucy-restyle-2"] as const;
 const CANONICAL_IMAGE_MODEL_NAMES = ["lucy-image-2"] as const;
 
@@ -52,6 +59,7 @@ function warnDeprecated(model: string): void {
 export const realtimeModels = z.union([
   // Canonical names
   z.literal("lucy-2.1"),
+  z.literal("lucy-2.5"),
   z.literal("lucy-vton-2"),
   z.literal("lucy-vton-3"),
   z.literal("lucy-restyle-2"),
@@ -243,6 +251,7 @@ export const modelInputSchemas = {
   "lucy-image-2": imageEditSchema,
   "lucy-restyle-2": restyleSchema,
   "lucy-2.1": videoEdit2Schema,
+  "lucy-2.5": videoEdit2Schema,
   "lucy-vton-2": videoEdit2Schema,
   "lucy-vton-3": videoEdit2Schema,
   // Latest aliases (server-side resolution)
@@ -325,6 +334,14 @@ const _models = {
       urlPath: "/v1/stream",
       name: "lucy-2.1" as const,
       fps: { ideal: 30, max: 30 },
+      width: 1088,
+      height: 624,
+      inputSchema: z.object({}),
+    },
+    "lucy-2.5": {
+      urlPath: "/v1/stream",
+      name: "lucy-2.5" as const,
+      fps: 20,
       width: 1088,
       height: 624,
       inputSchema: z.object({}),
@@ -579,6 +596,7 @@ export const models = {
    *
    * Available options:
    *   - `"lucy-2.1"` - Lucy 2.1 realtime video editing
+   *   - `"lucy-2.5"` - Lucy 2.5 realtime video editing
    *   - `"lucy-vton-2"` - Lucy virtual try-on 2
    *   - `"lucy-vton-3"` - Lucy virtual try-on 3
    *   - `"lucy-restyle-2"` - Realtime video restyling

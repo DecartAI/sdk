@@ -69,6 +69,7 @@
 
 ### Realtime Models (WebRTC)
 - `lucy-2.1` - Real-time video editing (supports reference image)
+- `lucy-2.5` - Real-time video editing (supports reference image)
 - `lucy-vton-2` - Real-time virtual try-on 2
 - `lucy-vton-3` - Real-time virtual try-on 3
 - `lucy-restyle-2` - Real-time video restyling

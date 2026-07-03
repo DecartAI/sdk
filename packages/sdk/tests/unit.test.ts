@@ -2430,7 +2430,13 @@ describe("Canonical Model Names", () => {
         expect(canonicalModelSchema.safeParse(alias).success).toBe(false);
       }
 
-      expect(canonicalRealtimeModels.options).toEqual(["lucy-2.1", "lucy-vton-2", "lucy-vton-3", "lucy-restyle-2"]);
+      expect(canonicalRealtimeModels.options).toEqual([
+        "lucy-2.1",
+        "lucy-2.5",
+        "lucy-vton-2",
+        "lucy-vton-3",
+        "lucy-restyle-2",
+      ]);
       expect(canonicalVideoModels.options).toEqual([
         "lucy-clip",
         "lucy-2.1",
@@ -2496,7 +2502,7 @@ describe("Canonical Model Names", () => {
     it("lists all models when called without options", () => {
       const listedModels = listModels();
 
-      expect(listedModels).toHaveLength(24);
+      expect(listedModels).toHaveLength(25);
       expect(listedModels.some((model) => model.kind === "realtime" && model.name === "lucy-2.1")).toBe(true);
       expect(listedModels.some((model) => model.kind === "video" && model.name === "lucy-clip")).toBe(true);
       expect(listedModels.some((model) => model.kind === "image" && model.name === "lucy-image-2")).toBe(true);
@@ -2561,6 +2567,16 @@ describe("Canonical Model Names", () => {
       expect(model.width).toBe(1088);
       expect(model.height).toBe(624);
     });
+
+    it("lucy-2.5 canonical name works", () => {
+      const model = models.realtime("lucy-2.5");
+      expect(model.name).toBe("lucy-2.5");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
+    });
+
     it("lucy-vton-2 canonical name works", () => {
       const model = models.realtime("lucy-vton-2");
       expect(model.name).toBe("lucy-vton-2");
