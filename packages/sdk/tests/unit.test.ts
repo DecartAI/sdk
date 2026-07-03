@@ -2440,6 +2440,7 @@ describe("Canonical Model Names", () => {
       expect(canonicalVideoModels.options).toEqual([
         "lucy-clip",
         "lucy-2.1",
+        "lucy-2.5",
         "lucy-vton-2",
         "lucy-vton-3",
         "lucy-restyle-2",
@@ -2502,7 +2503,7 @@ describe("Canonical Model Names", () => {
     it("lists all models when called without options", () => {
       const listedModels = listModels();
 
-      expect(listedModels).toHaveLength(25);
+      expect(listedModels).toHaveLength(26);
       expect(listedModels.some((model) => model.kind === "realtime" && model.name === "lucy-2.1")).toBe(true);
       expect(listedModels.some((model) => model.kind === "video" && model.name === "lucy-clip")).toBe(true);
       expect(listedModels.some((model) => model.kind === "image" && model.name === "lucy-image-2")).toBe(true);
@@ -2617,6 +2618,16 @@ describe("Canonical Model Names", () => {
       expect(model.urlPath).toBe("/v1/generate/lucy-2.1");
       expect(model.queueUrlPath).toBe("/v1/jobs/lucy-2.1");
       expect(model.fps).toBe(20);
+    });
+
+    it("lucy-2.5 as video model works", () => {
+      const model = models.video("lucy-2.5");
+      expect(model.name).toBe("lucy-2.5");
+      expect(model.urlPath).toBe("/v1/generate/lucy-2.5");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-2.5");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1088);
+      expect(model.height).toBe(624);
     });
     it("lucy-vton-2 as video model works", () => {
       const model = models.video("lucy-vton-2");
