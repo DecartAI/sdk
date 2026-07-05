@@ -79,6 +79,7 @@
 ### Video Models (Queue API)
 - `lucy-clip` - video-to-video editing
 - `lucy-2.1` - long-form video editing (720p)
+- `lucy-2.5` - long-form video editing (720p)
 - `lucy-vton-2` - virtual try-on 2 video editing
 - `lucy-vton-3` - virtual try-on 3 video editing
 - `lucy-restyle-2` - video restyling

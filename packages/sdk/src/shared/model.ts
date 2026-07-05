@@ -18,7 +18,14 @@ const CANONICAL_REALTIME_MODEL_NAMES = [
   "lucy-vton-3",
   "lucy-restyle-2",
 ] as const;
-const CANONICAL_VIDEO_MODEL_NAMES = ["lucy-clip", "lucy-2.1", "lucy-vton-2", "lucy-vton-3", "lucy-restyle-2"] as const;
+const CANONICAL_VIDEO_MODEL_NAMES = [
+  "lucy-clip",
+  "lucy-2.1",
+  "lucy-2.5",
+  "lucy-vton-2",
+  "lucy-vton-3",
+  "lucy-restyle-2",
+] as const;
 const CANONICAL_IMAGE_MODEL_NAMES = ["lucy-image-2"] as const;
 
 export const canonicalRealtimeModels = z.enum(CANONICAL_REALTIME_MODEL_NAMES);
@@ -75,6 +82,7 @@ export const videoModels = z.union([
   // Canonical names
   z.literal("lucy-clip"),
   z.literal("lucy-2.1"),
+  z.literal("lucy-2.5"),
   z.literal("lucy-vton-2"),
   z.literal("lucy-vton-3"),
   z.literal("lucy-restyle-2"),
@@ -466,6 +474,15 @@ const _models = {
       height: 624,
       inputSchema: modelInputSchemas["lucy-2.1"],
     },
+    "lucy-2.5": {
+      urlPath: "/v1/generate/lucy-2.5",
+      queueUrlPath: "/v1/jobs/lucy-2.5",
+      name: "lucy-2.5" as const,
+      fps: 20,
+      width: 1088,
+      height: 624,
+      inputSchema: modelInputSchemas["lucy-2.5"],
+    },
     "lucy-vton-2": {
       urlPath: "/v1/generate/lucy-vton-2",
       queueUrlPath: "/v1/jobs/lucy-vton-2",
@@ -615,6 +632,7 @@ export const models = {
    * Available options:
    *   - `"lucy-clip"` - Video-to-video editing
    *   - `"lucy-2.1"` - Long-form video editing (Lucy 2.1)
+   *   - `"lucy-2.5"` - Long-form video editing (Lucy 2.5)
    *   - `"lucy-vton-2"` - Virtual try-on 2 video editing
    *   - `"lucy-vton-3"` - Virtual try-on 3 video editing
    *   - `"lucy-restyle-2"` - Video restyling
