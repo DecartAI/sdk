@@ -349,9 +349,9 @@ const _models = {
     "lucy-2.5": {
       urlPath: "/v1/stream",
       name: "lucy-2.5" as const,
-      fps: 20,
-      width: 1088,
-      height: 624,
+      fps: { ideal: 30, max: 30 },
+      width: 1280,
+      height: 720,
       inputSchema: z.object({}),
     },
     "lucy-vton-2": {
@@ -479,8 +479,8 @@ const _models = {
       queueUrlPath: "/v1/jobs/lucy-2.5",
       name: "lucy-2.5" as const,
       fps: 20,
-      width: 1088,
-      height: 624,
+      width: 1280,
+      height: 720,
       inputSchema: modelInputSchemas["lucy-2.5"],
     },
     "lucy-vton-2": {

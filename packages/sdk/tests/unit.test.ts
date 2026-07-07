@@ -2573,9 +2573,9 @@ describe("Canonical Model Names", () => {
       const model = models.realtime("lucy-2.5");
       expect(model.name).toBe("lucy-2.5");
       expect(model.urlPath).toBe("/v1/stream");
-      expect(model.fps).toBe(20);
-      expect(model.width).toBe(1088);
-      expect(model.height).toBe(624);
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
+      expect(model.width).toBe(1280);
+      expect(model.height).toBe(720);
     });
 
     it("lucy-vton-2 canonical name works", () => {
@@ -2626,8 +2626,8 @@ describe("Canonical Model Names", () => {
       expect(model.urlPath).toBe("/v1/generate/lucy-2.5");
       expect(model.queueUrlPath).toBe("/v1/jobs/lucy-2.5");
       expect(model.fps).toBe(20);
-      expect(model.width).toBe(1088);
-      expect(model.height).toBe(624);
+      expect(model.width).toBe(1280);
+      expect(model.height).toBe(720);
     });
     it("lucy-vton-2 as video model works", () => {
       const model = models.video("lucy-vton-2");
