@@ -2423,7 +2423,7 @@ describe("Canonical Model Names", () => {
       "lucy-clip-latest",
       "lucy-image-latest",
     ];
-    const deprecatedAliases = ["mirage_v2", "lucy-2.1-vton-2", "lucy-pro-v2v", "lucy-restyle-v2v", "lucy-pro-i2i"];
+    const deprecatedAliases = ["lucy-2.1-vton-2", "lucy-pro-v2v", "lucy-restyle-v2v", "lucy-pro-i2i"];
 
     it("canonical schemas exclude deprecated and latest aliases", () => {
       for (const alias of [...latestAliases, ...deprecatedAliases]) {
@@ -2460,7 +2460,6 @@ describe("Canonical Model Names", () => {
       }
 
       expect(realtimeModels.safeParse("lucy-latest").success).toBe(true);
-      expect(realtimeModels.safeParse("mirage_v2").success).toBe(true);
       expect(videoModels.safeParse("lucy-clip-latest").success).toBe(true);
       expect(videoModels.safeParse("lucy-pro-v2v").success).toBe(true);
       expect(imageModels.safeParse("lucy-image-latest").success).toBe(true);
@@ -2503,7 +2502,7 @@ describe("Canonical Model Names", () => {
     it("lists all models when called without options", () => {
       const listedModels = listModels();
 
-      expect(listedModels).toHaveLength(26);
+      expect(listedModels).toHaveLength(25);
       expect(listedModels.some((model) => model.kind === "realtime" && model.name === "lucy-2.1")).toBe(true);
       expect(listedModels.some((model) => model.kind === "video" && model.name === "lucy-clip")).toBe(true);
       expect(listedModels.some((model) => model.kind === "image" && model.name === "lucy-image-2")).toBe(true);
@@ -2515,7 +2514,7 @@ describe("Canonical Model Names", () => {
 
       expect(realtimeModels.every((model) => model.kind === "realtime")).toBe(true);
       expect(realtimeNames).toContain("lucy-latest");
-      expect(realtimeNames).toContain("mirage_v2");
+      expect(realtimeNames).toContain("lucy-2.1-vton-2");
     });
 
     it("lists canonical model definitions without latest or deprecated aliases", () => {
@@ -2793,10 +2792,6 @@ describe("Canonical Model Names", () => {
   });
 
   describe("Deprecated names still work", () => {
-    it("mirage_v2 still works as realtime model", () => {
-      const model = models.realtime("mirage_v2");
-      expect(model.name).toBe("mirage_v2");
-    });
     it("lucy-2.1-vton-2 still works as realtime and video alias", () => {
       _resetDeprecationWarnings();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});

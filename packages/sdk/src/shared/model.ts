@@ -39,7 +39,6 @@ export type CanonicalModel = z.infer<typeof canonicalModelSchema>;
  * Old names still work but will log a deprecation warning.
  */
 export const modelAliases = {
-  mirage_v2: "lucy-restyle-2",
   "lucy-2.1-vton-2": "lucy-vton-2",
   "lucy-pro-v2v": "lucy-clip",
   "lucy-restyle-v2v": "lucy-restyle-2",
@@ -75,7 +74,6 @@ export const realtimeModels = z.union([
   z.literal("lucy-vton-latest"),
   z.literal("lucy-restyle-latest"),
   // Deprecated names (use canonical names above instead)
-  z.literal("mirage_v2"),
   z.literal("lucy-2.1-vton-2"),
 ]);
 export const videoModels = z.union([
@@ -405,14 +403,6 @@ const _models = {
       inputSchema: z.object({}),
     },
     // Deprecated names (use canonical names above instead)
-    mirage_v2: {
-      urlPath: "/v1/stream",
-      name: "mirage_v2" as const,
-      fps: { ideal: 30, max: 30 },
-      width: 1280,
-      height: 704,
-      inputSchema: z.object({}),
-    },
     "lucy-2.1-vton-2": {
       urlPath: "/v1/stream",
       name: "lucy-2.1-vton-2" as const,

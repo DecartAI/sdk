@@ -1,6 +1,6 @@
 /**
  * Browser-only example - requires WebRTC APIs
- * Mirage v2 for realtime style transformation
+ * Lucy Restyle for realtime style transformation
  * See examples/nextjs-realtime or examples/react-vite for runnable demos
  */
 
