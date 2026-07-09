@@ -272,7 +272,7 @@ export const createDecartClient = (options: DecartClientOptions = {}) => {
        * if (quality === "critical") showFallbackUI(reasons);
        *
        * // Accurate, measured glass-to-glass verdict
-       * const probe = await client.realtime.checkConnectivity({ deep: true, model: models.realtime("mirage") });
+       * const probe = await client.realtime.checkConnectivity({ deep: true, model: models.realtime("lucy-restyle-2") });
        * console.log(probe.metrics.g2gMs);
        * ```
        */
