@@ -16,6 +16,7 @@ export type {
   RealTimeClient,
   RealTimeClientConnectOptions,
   RealTimeClientInitialState,
+  RealtimeMediaStream,
 } from "./realtime/client";
 export type { SetInput } from "./realtime/methods";
 export type {

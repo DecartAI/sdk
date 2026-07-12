@@ -293,7 +293,7 @@ const cameraStream = await mediaDevices.getUserMedia({
   },
 });
 
-const realtimeClient = await client.realtime.connect(cameraStream as unknown as globalThis.MediaStream, {
+const realtimeClient = await client.realtime.connect(cameraStream, {
   model,
   preferredVideoCodec: "vp8",
   onRemoteStream,

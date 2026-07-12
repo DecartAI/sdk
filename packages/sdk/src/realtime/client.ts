@@ -92,8 +92,18 @@ const realTimeClientConnectOptionsSchema = z.object({
    */
   debugQuality: z.boolean().optional(),
 });
-export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
+export type RealtimeMediaStream = {
+  getTracks(): unknown[];
+  getAudioTracks(): unknown[];
+  getVideoTracks(): unknown[];
+};
+
+export type RealTimeClientConnectOptions<TStream extends RealtimeMediaStream = MediaStream> = Omit<
+  z.infer<typeof realTimeClientConnectOptionsSchema>,
+  "model" | "onRemoteStream"
+> & {
   model: ModelDefinition | CustomModelDefinition;
+  onRemoteStream: (stream: TStream) => void;
 };
 
 export type Events = {

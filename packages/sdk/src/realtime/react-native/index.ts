@@ -1,4 +1,4 @@
-import { createRealTimeClient } from "../client";
+import { createRealTimeClient, type RealTimeClientConnectOptions } from "../client";
 import type { CreateRealtime } from "../factory";
 import { createRealTimeSubscribeClient } from "../subscribe-client";
 import { createReactNativePreflight } from "./preflight";
@@ -26,7 +26,8 @@ export const createReactNativeRealtime: CreateRealtime = (options) => {
   const preflight = createReactNativePreflight({ logger: options.logger });
 
   return {
-    connect: publish.connect,
+    connect: (stream, connectOptions) =>
+      publish.connect(stream as MediaStream | null, connectOptions as unknown as RealTimeClientConnectOptions),
     subscribe: (subscribeOptions) => {
       assertReactNativeReady();
       return subscribe.subscribe(subscribeOptions);

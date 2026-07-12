@@ -1,5 +1,5 @@
 import type { Logger } from "../utils/logger";
-import type { RealTimeClient, RealTimeClientConnectOptions } from "./client";
+import type { RealTimeClient, RealTimeClientConnectOptions, RealtimeMediaStream } from "./client";
 import type { CheckConnectivityOptions, ConnectivityReport } from "./preflight-types";
 import type { RealTimeSubscribeClient, SubscribeOptions } from "./subscribe-client";
 
@@ -13,7 +13,10 @@ export type RealtimeFactoryOptions = {
 };
 
 export type Realtime = {
-  connect(stream: MediaStream | null, options: RealTimeClientConnectOptions): Promise<RealTimeClient>;
+  connect<TStream extends RealtimeMediaStream = MediaStream>(
+    stream: TStream | null,
+    options: RealTimeClientConnectOptions<TStream>,
+  ): Promise<RealTimeClient>;
   subscribe(options: SubscribeOptions): Promise<RealTimeSubscribeClient>;
   checkConnectivity(options?: CheckConnectivityOptions): Promise<ConnectivityReport>;
 };

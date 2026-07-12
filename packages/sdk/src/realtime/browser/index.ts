@@ -1,4 +1,4 @@
-import { createRealTimeClient } from "../client";
+import { createRealTimeClient, type RealTimeClientConnectOptions } from "../client";
 import type { CreateRealtime } from "../factory";
 import { createRealTimeSubscribeClient } from "../subscribe-client";
 import { createPreflight } from "./preflight";
@@ -22,7 +22,8 @@ export const createBrowserRealtime: CreateRealtime = (options) => {
   const preflight = createPreflight({ logger: options.logger, connect: publish.connect });
 
   return {
-    connect: publish.connect,
+    connect: (stream, connectOptions) =>
+      publish.connect(stream as MediaStream | null, connectOptions as unknown as RealTimeClientConnectOptions),
     subscribe: subscribe.subscribe,
     checkConnectivity: preflight.checkConnectivity,
   };
