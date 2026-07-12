@@ -10,6 +10,7 @@ export function validateLiveKitModule(module: LiveKitClientModule): LiveKitClien
     typeof module.Room !== "function" && "Room",
     (typeof module.RoomEvent !== "object" || module.RoomEvent === null) && "RoomEvent",
     (module.Track === null || (typeof module.Track !== "object" && typeof module.Track !== "function")) && "Track",
+    module.Track?.Source?.Camera !== "camera" && "Track.Source.Camera",
     (typeof module.ConnectionState !== "object" || module.ConnectionState === null) && "ConnectionState",
   ].filter((name): name is string => name !== false);
   if (invalid.length > 0) {

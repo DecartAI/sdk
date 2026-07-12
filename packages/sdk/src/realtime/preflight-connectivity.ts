@@ -10,6 +10,10 @@ function candidateType(candidate: RTCIceCandidate): string {
 
 type GatherResult = { transport: ConnectivityTransport; rttMs: number | null };
 
+function nowMs(): number {
+  return globalThis.performance?.now?.() ?? Date.now();
+}
+
 export async function gatherIceCandidates(
   iceServers: RTCIceServer[],
   timeoutMs: number,
@@ -33,25 +37,28 @@ export async function gatherIceCandidates(
     let sawSrflx = false;
     let sawOtherCandidate = false;
     let firstSrflxAt: number | null = null;
-    const start = performance.now();
+    const start = nowMs();
 
     await new Promise<void>((resolve) => {
       let settled = false;
+      let timer: ReturnType<typeof setTimeout>;
       const finish = () => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        signal?.removeEventListener("abort", finish);
         resolve();
       };
-      const timer = setTimeout(finish, timeoutMs);
+      timer = setTimeout(finish, timeoutMs);
       signal?.addEventListener("abort", finish, { once: true });
+      if (signal?.aborted) finish();
 
       const peer = pc as RTCPeerConnection;
       peer.onicecandidate = (event) => {
         if (!event.candidate || event.candidate.candidate === "") return finish();
         if (candidateType(event.candidate) === "srflx") {
           sawSrflx = true;
-          if (firstSrflxAt === null) firstSrflxAt = performance.now();
+          if (firstSrflxAt === null) firstSrflxAt = nowMs();
         } else {
           sawOtherCandidate = true;
         }

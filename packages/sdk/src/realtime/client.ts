@@ -186,7 +186,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
             emitOrBuffer("connectionQuality", report);
             onConnectionQuality?.(report);
           },
-          debugQuality,
         },
       });
       observability = preparedConnection.observability;

@@ -8,7 +8,10 @@ import type { RealtimeObservability } from "./observability/realtime-observabili
 
 export type VideoCodec = "h264" | "vp8" | "vp9" | "av1";
 
-export function getDefaultVideoPublishOptions(videoCodec?: VideoCodec): TrackPublishOptions {
+export function getDefaultVideoPublishOptions(
+  source: TrackPublishOptions["source"],
+  videoCodec?: VideoCodec,
+): TrackPublishOptions {
   const resolvedCodec = videoCodec ?? REALTIME_CONFIG.livekit.defaultVideoCodec;
   const maxBitrate =
     resolvedCodec === "vp9"
@@ -16,7 +19,7 @@ export function getDefaultVideoPublishOptions(videoCodec?: VideoCodec): TrackPub
       : REALTIME_CONFIG.livekit.defaultMaxVideoBitrateBps;
 
   return {
-    source: "camera" as TrackPublishOptions["source"],
+    source,
     videoCodec: resolvedCodec,
     simulcast: resolvedCodec !== "vp9",
     videoEncoding: {
@@ -57,6 +60,7 @@ export type MediaChannelFactory = (config: MediaChannelConfig) => MediaChannel;
 
 export class LiveKitMediaChannel implements MediaChannel {
   private room: Room | null = null;
+  private cameraTrackSource: TrackPublishOptions["source"] | null = null;
   private remoteStream: MediaStream | null = null;
   private events: Emitter<MediaChannelEvents> = mitt();
   private readonly logger: Logger;
@@ -78,7 +82,8 @@ export class LiveKitMediaChannel implements MediaChannel {
   }
 
   async connect(opts: MediaConnectOptions): Promise<void> {
-    const { Room: LiveKitRoom, RoomEvent } = await loadLiveKitClient();
+    const { Room: LiveKitRoom, RoomEvent, Track } = await loadLiveKitClient();
+    this.cameraTrackSource = Track.Source.Camera;
     this.room ??= new LiveKitRoom(REALTIME_CONFIG.livekit.roomOptions);
     const room = this.room;
 
@@ -138,6 +143,7 @@ export class LiveKitMediaChannel implements MediaChannel {
   disconnect(): void {
     const room = this.room;
     this.room = null;
+    this.cameraTrackSource = null;
     this.remoteStream = null;
     this.config.observability?.setLiveKitRoom(null);
     if (room) {
@@ -149,7 +155,11 @@ export class LiveKitMediaChannel implements MediaChannel {
     if (!this.room) return;
     for (const track of stream.getTracks()) {
       if (track.kind === "video") {
-        await this.room.localParticipant.publishTrack(track, getDefaultVideoPublishOptions(this.config.videoCodec));
+        if (!this.cameraTrackSource) throw new Error("Cannot publish video track: media channel is not connected");
+        await this.room.localParticipant.publishTrack(
+          track,
+          getDefaultVideoPublishOptions(this.cameraTrackSource, this.config.videoCodec),
+        );
       } else {
         await this.room.localParticipant.publishTrack(track);
       }

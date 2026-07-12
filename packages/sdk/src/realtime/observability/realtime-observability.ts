@@ -22,8 +22,6 @@ export type RealtimeObservabilityOptions = {
   onDiagnostic?: (event: DiagnosticEvent) => void;
   onStats?: (stats: WebRTCStats) => void;
   onConnectionQuality?: (report: ConnectionQualityReport) => void;
-  /** Opt-in diagnostic: measure true glass-to-glass latency via the pixel-marker pipeline (visible marker). */
-  debugQuality?: boolean;
   /** @internal Platform-owned implementation; absent on runtimes without pixel diagnostics. */
   glassToGlass?: GlassToGlassDiagnostics;
 };

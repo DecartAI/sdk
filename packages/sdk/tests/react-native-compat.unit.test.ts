@@ -115,6 +115,7 @@ describe("React Native compatibility", () => {
 
   it.each([
     ["mirror", { mirror: true }],
+    ["mirror: auto", { mirror: "auto" as const }],
     ["debugQuality", { debugQuality: true }],
   ])("rejects unsupported %s sessions", async (_feature, unsupportedOption) => {
     stubReactNative(true);
@@ -147,11 +148,23 @@ describe("React Native compatibility", () => {
     } catch (error) {
       expect(error).toMatchObject({ code: "LIVEKIT_INITIALIZATION_ERROR" });
     }
+
+    expect(() =>
+      validateLiveKitModule({
+        Room: class {},
+        RoomEvent: {},
+        Track: { Source: { Camera: "changed" } },
+        ConnectionState: {},
+      } as unknown as typeof LiveKitClient),
+    ).toThrow(/Track\.Source\.Camera/);
   });
 
   it("builds VP8 publish options", async () => {
-    const { getDefaultVideoPublishOptions } = await import("../src/realtime/media-channel.js");
-    expect(getDefaultVideoPublishOptions("vp8")).toMatchObject({
+    const [{ getDefaultVideoPublishOptions }, { Track }] = await Promise.all([
+      import("../src/realtime/media-channel.js"),
+      import("livekit-client"),
+    ]);
+    expect(getDefaultVideoPublishOptions(Track.Source.Camera, "vp8")).toMatchObject({
       source: "camera",
       videoCodec: "vp8",
       simulcast: true,

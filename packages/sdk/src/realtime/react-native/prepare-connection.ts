@@ -26,7 +26,7 @@ export const prepareReactNativeConnection: PrepareConnection = ({
 
   return {
     stream: stream ?? new MediaStream(),
-    observability: new RealtimeObservability({ ...observabilityOptions, debugQuality: false }),
+    observability: new RealtimeObservability(observabilityOptions),
     videoCodec: preferredVideoCodec,
     createMediaChannel: createLiveKitMediaChannel,
     dispose: () => {},
