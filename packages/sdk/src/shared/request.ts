@@ -1,5 +1,6 @@
 import type { FileInput, ReactNativeFile } from "../process/types";
 import { createInvalidInputError } from "../utils/errors";
+import { isGlobalInstance } from "../utils/runtime";
 import { buildUserAgent } from "../utils/user-agent";
 
 /**
@@ -25,16 +26,16 @@ export async function fileInputToBlob(input: FileInput): Promise<Blob | ReactNat
     return input;
   }
 
-  if (input instanceof Blob || input instanceof File) {
+  if (isGlobalInstance<Blob>(input, "Blob") || isGlobalInstance<File>(input, "File")) {
     return input;
   }
 
-  if (input instanceof ReadableStream) {
+  if (isGlobalInstance<ReadableStream>(input, "ReadableStream")) {
     const response = new Response(input);
     return response.blob();
   }
 
-  if (typeof input === "string" || input instanceof URL) {
+  if (typeof input === "string" || isGlobalInstance<URL>(input, "URL")) {
     const url = typeof input === "string" ? input : input.toString();
 
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
@@ -76,7 +77,7 @@ export function buildFormData(inputs: Record<string, unknown>): FormData {
       // React Native file object - append as-is for native file upload handling
       if (isReactNativeFile(value)) {
         formData.append(key, value as unknown as Blob);
-      } else if (value instanceof Blob) {
+      } else if (isGlobalInstance<Blob>(value, "Blob")) {
         formData.append(key, value);
       } else if (typeof value === "object" && value !== null) {
         formData.append(key, JSON.stringify(value));

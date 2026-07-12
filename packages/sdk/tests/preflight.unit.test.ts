@@ -1,13 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { classifyActiveProbe, classifyConnectivity, createPreflight } from "../src/realtime/browser/preflight.js";
 import type { RealTimeClient } from "../src/realtime/client.js";
 import { REALTIME_CONFIG } from "../src/realtime/config-realtime.js";
-import {
-  type ConnectivityMetrics,
-  classifyActiveProbe,
-  classifyConnectivity,
-  createPreflight,
-  type PreflightRttThresholds,
-} from "../src/realtime/preflight.js";
+import type { ConnectivityMetrics, PreflightRttThresholds } from "../src/realtime/preflight-types.js";
 import { models } from "../src/shared/model.js";
 
 const logger = { debug() {}, info() {}, warn() {}, error() {} };

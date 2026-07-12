@@ -1,218 +1,19 @@
-import { type CustomModelDefinition, type ModelDefinition, resolveFpsNumber } from "../shared/model";
-import type { Logger } from "../utils/logger";
-import type { RealTimeClient, RealTimeClientConnectOptions } from "./client";
-import { REALTIME_CONFIG } from "./config-realtime";
-import { type ConnectionQuality, extractSignals, scoreLowerBetter, worst } from "./observability/connection-quality";
-import type { WebRTCStats } from "./observability/webrtc-stats";
+import { type CustomModelDefinition, type ModelDefinition, resolveFpsNumber } from "../../shared/model";
+import type { Logger } from "../../utils/logger";
+import type { RealTimeClient } from "../client";
+import { REALTIME_CONFIG } from "../config-realtime";
+import { type ConnectionQuality, extractSignals, scoreLowerBetter, worst } from "../observability/connection-quality";
+import type { WebRTCStats } from "../observability/webrtc-stats";
+import { classifyConnectivity, gatherIceCandidates } from "../preflight-connectivity";
+import type {
+  CheckConnectivityOptions,
+  ConnectivityMetrics,
+  ConnectivityReport,
+  PreflightOptions,
+  RealtimeConnect,
+} from "../preflight-types";
 
-/**
- * SDK-only connectivity preflight — run before `realtime.connect()` to decide
- * whether to show the integration. Spins up a throwaway `RTCPeerConnection`
- * against public STUN (no session, no inference) to check whether WebRTC can
- * leave the network over UDP and roughly how laggy the path is. It does not
- * measure throughput — use the in-session `connectionQuality` signal for that.
- */
-export type ConnectivityTransport = "udp" | "relay" | "failed";
-
-export type ConnectivityMetrics = {
-  /** "udp" = direct UDP works · "relay" = will need TURN (unverified SDK-only) · "failed" = no connectivity. */
-  transport: ConnectivityTransport;
-  /** Approximate network round-trip time (ms) from time-to-first STUN candidate (or real RTT in deep mode), or null. */
-  rttMs: number | null;
-  /** Active-probe only: measured mid-stream (steady-state) glass-to-glass latency (ms), or null. */
-  g2gMs?: number | null;
-  /** Active-probe only: time-to-first-frame (ms) — startup latency to the first rendered model frame, or null. */
-  ttffMs?: number | null;
-  /** Active-probe only: end-to-end frame drop ratio (0–1), or null. */
-  g2gDropRatio?: number | null;
-  /** Active-probe only: server's view of upstream jitter (ms), or null. */
-  upstreamJitterMs?: number | null;
-  /** Active-probe only: server-reported upstream packet loss (0–1), or null. */
-  packetLoss?: number | null;
-  /** Active-probe only: number of glass-to-glass samples collected. */
-  sampleCount?: number;
-};
-
-export type ConnectivityReport = {
-  /** Pre-connect quality on the same `good → critical` scale as the in-session signal — you decide what to do. */
-  quality: ConnectionQuality;
-  metrics: ConnectivityMetrics;
-  /** Human-readable explanations for any non-"good" verdict. */
-  reasons: string[];
-};
-
-export type CheckConnectivityOptions = {
-  /** Override the ICE servers used for the probe. Defaults to public STUN. */
-  iceServers?: RTCIceServer[];
-  /** Abort candidate gathering after this long. Defaults to config. */
-  iceGatherTimeoutMs?: number;
-  /** Abort the probe early. */
-  signal?: AbortSignal;
-  /**
-   * Opt-in "deep" probe: instead of the STUN-only network check, briefly open a
-   * real session with a synthetic source, measure true glass-to-glass latency,
-   * then tear it down. Requires `model`. Costs a short GPU session.
-   */
-  deep?: boolean;
-  /** Required when `deep`: the realtime model to probe (latency is model-specific). */
-  model?: ModelDefinition | CustomModelDefinition;
-  /** Deep-probe duration (ms). Defaults to config. */
-  durationMs?: number;
-};
-
-/** Realtime `connect` injected by the SDK root so the active probe can open a session. */
-type RealtimeConnect = (stream: MediaStream | null, options: RealTimeClientConnectOptions) => Promise<RealTimeClient>;
-
-export type PreflightOptions = {
-  logger: Logger;
-  /** Injected by the SDK root; enables the opt-in active probe. */
-  connect?: RealtimeConnect;
-};
-
-export type PreflightRttThresholds = { goodMs: number; marginalMs: number };
-
-/** Extract the candidate type ("host" | "srflx" | "prflx" | "relay") from an ICE candidate. */
-function candidateType(candidate: RTCIceCandidate): string {
-  if (candidate.type) return candidate.type;
-  const match = /\btyp (\w+)/.exec(candidate.candidate);
-  return match?.[1] ?? "";
-}
-
-type GatherResult = { transport: ConnectivityTransport; rttMs: number | null };
-
-async function gatherIceCandidates(
-  iceServers: RTCIceServer[],
-  timeoutMs: number,
-  signal: AbortSignal | undefined,
-  logger: Logger,
-): Promise<GatherResult> {
-  // Already-aborted signal: bail before allocating a peer connection or waiting.
-  if (signal?.aborted) {
-    return { transport: "failed", rttMs: null };
-  }
-
-  // biome-ignore lint/suspicious/noExplicitAny: runtime capability detection
-  const PC = (globalThis as any)?.RTCPeerConnection as typeof RTCPeerConnection | undefined;
-  if (typeof PC !== "function") {
-    logger.warn("preflight: RTCPeerConnection unavailable in this environment");
-    return { transport: "failed", rttMs: null };
-  }
-
-  let pc: RTCPeerConnection | null = null;
-  try {
-    pc = new PC({ iceServers });
-    // A data channel gives us an m-section so ICE gathering actually runs,
-    // without needing camera permission or any media tracks.
-    pc.createDataChannel("decart-preflight");
-
-    let sawSrflx = false;
-    // host or relay candidate — proves we gathered *something* but not direct UDP egress.
-    let sawOtherCandidate = false;
-    let firstSrflxAt: number | null = null;
-    const start = performance.now();
-
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve();
-      };
-      const timer = setTimeout(finish, timeoutMs);
-      signal?.addEventListener("abort", finish, { once: true });
-
-      const peer = pc as RTCPeerConnection;
-      peer.onicecandidate = (event) => {
-        if (!event.candidate || event.candidate.candidate === "") {
-          finish(); // end-of-candidates
-          return;
-        }
-        if (candidateType(event.candidate) === "srflx") {
-          sawSrflx = true;
-          if (firstSrflxAt === null) firstSrflxAt = performance.now();
-        } else {
-          sawOtherCandidate = true;
-        }
-      };
-      peer.onicegatheringstatechange = () => {
-        if (peer.iceGatheringState === "complete") finish();
-      };
-
-      peer
-        .createOffer()
-        .then((offer) => peer.setLocalDescription(offer))
-        .catch((error) => {
-          logger.warn("preflight: failed to create offer", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          finish();
-        });
-    });
-
-    const rttMs = firstSrflxAt !== null ? Math.round(firstSrflxAt - start) : null;
-
-    // srflx → confirmed UDP egress; any other candidate but no srflx → STUN
-    // unreachable over UDP, the session will need TURN; nothing at all → failed.
-    let transport: ConnectivityTransport;
-    if (sawSrflx) {
-      transport = "udp";
-    } else if (sawOtherCandidate) {
-      transport = "relay";
-    } else {
-      transport = "failed";
-    }
-    return { transport, rttMs };
-  } catch (error) {
-    logger.warn("preflight: connectivity probe threw", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { transport: "failed", rttMs: null };
-  } finally {
-    try {
-      pc?.close();
-    } catch {
-      // ignore teardown errors
-    }
-  }
-}
-
-/** Map probe metrics to a connectivity quality verdict. Pure. */
-export function classifyConnectivity(
-  metrics: { transport: ConnectivityTransport; rttMs: number | null },
-  thresholds: PreflightRttThresholds,
-): ConnectivityReport {
-  const reasons: string[] = [];
-  let quality: ConnectionQuality;
-
-  if (metrics.transport === "failed") {
-    quality = "critical";
-    reasons.push(
-      "Could not establish any WebRTC connectivity (no ICE candidates gathered). Real-time streaming is unlikely to work on this network.",
-    );
-  } else if (metrics.transport === "relay") {
-    quality = "poor";
-    reasons.push(
-      "Direct UDP connectivity could not be confirmed; the session will need a TURN relay, which adds latency and can't be verified without starting a session.",
-    );
-  } else if (metrics.rttMs != null && metrics.rttMs > thresholds.marginalMs) {
-    quality = "poor";
-    reasons.push(
-      `Network round-trip time is high (~${metrics.rttMs}ms > ${thresholds.marginalMs}ms); the real-time experience may feel laggy.`,
-    );
-  } else if (metrics.rttMs != null && metrics.rttMs > thresholds.goodMs) {
-    quality = "fair";
-    reasons.push(`Network round-trip time is elevated (~${metrics.rttMs}ms > ${thresholds.goodMs}ms).`);
-  } else {
-    quality = "good";
-  }
-
-  return {
-    quality,
-    metrics: { transport: metrics.transport, rttMs: metrics.rttMs },
-    reasons,
-  };
-}
+export { classifyConnectivity } from "../preflight-connectivity";
 
 // --- Active probe (opt-in) ---------------------------------------------------
 
@@ -401,15 +202,23 @@ const ABORTED_DEEP_PROBE: ConnectivityReport = {
 /** Unblock `promise` early when `signal` aborts. */
 function raceAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   if (!signal) return promise;
-  if (signal.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  if (signal.aborted) throw signal.reason ?? createAbortError();
   return Promise.race([
     promise,
     new Promise<never>((_, reject) => {
-      signal.addEventListener("abort", () => reject(signal.reason ?? new DOMException("Aborted", "AbortError")), {
+      signal.addEventListener("abort", () => reject(signal.reason ?? createAbortError()), {
         once: true,
       });
     }),
   ]);
+}
+
+function createAbortError(): Error {
+  const DOMExceptionConstructor = (globalThis as { DOMException?: typeof DOMException }).DOMException;
+  if (typeof DOMExceptionConstructor === "function") return new DOMExceptionConstructor("Aborted", "AbortError");
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
 }
 
 /** Resolve once enough g2g samples exist or the probe window elapses (never rejects). */

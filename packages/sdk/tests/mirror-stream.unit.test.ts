@@ -3,7 +3,7 @@ import {
   createMirroredStream,
   isMediaStreamTrackProcessorSupported,
   shouldMirrorTrack,
-} from "../src/realtime/mirror-stream.js";
+} from "../src/realtime/browser/mirror-stream.js";
 
 function fakeTrack(overrides: Partial<MediaStreamTrack> & { settings?: MediaTrackSettings }): MediaStreamTrack {
   const settings = overrides.settings ?? {};

@@ -1,0 +1,26 @@
+{
+  "name": "decart-react-native-compat-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "bundle:android": "react-native bundle --platform android --dev false --entry-file index.js --bundle-output .tmp/android.jsbundle",
+    "bundle:ios": "react-native bundle --platform ios --dev false --entry-file index.js --bundle-output .tmp/ios.jsbundle"
+  },
+  "dependencies": {
+    "@decartai/sdk": "file:../../..",
+    "@livekit/react-native": "2.11.1",
+    "@livekit/react-native-webrtc": "144.1.1",
+    "livekit-client": "2.20.1",
+    "react": "19.1.1",
+    "react-native": "0.82.1"
+  },
+  "devDependencies": {
+    "@babel/core": "7.28.5",
+    "@babel/plugin-transform-export-namespace-from": "7.27.1",
+    "@react-native-community/cli": "20.0.0",
+    "@react-native-community/cli-platform-android": "20.0.0",
+    "@react-native-community/cli-platform-ios": "20.0.0",
+    "@react-native/babel-preset": "0.82.1",
+    "@react-native/metro-config": "0.82.1"
+  }
+}

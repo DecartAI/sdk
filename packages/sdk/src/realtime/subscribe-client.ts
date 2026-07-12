@@ -1,16 +1,10 @@
-import {
-  ConnectionState as LiveKitConnectionState,
-  type RemoteParticipant,
-  type RemoteTrack,
-  Room,
-  RoomEvent,
-  Track,
-} from "livekit-client";
+import type { RemoteParticipant, RemoteTrack, Room } from "livekit-client";
 
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import { createEventBuffer } from "./event-buffer";
+import { loadLiveKitClient } from "./livekit";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import { RealtimeObservability } from "./observability/realtime-observability";
 import type { ConnectionState } from "./types";
@@ -70,16 +64,16 @@ export type RealTimeSubscribeClientOptions = {
   logger: Logger;
 };
 
-function mapLiveKitState(state: LiveKitConnectionState): ConnectionState {
+function mapLiveKitState(state: string): ConnectionState {
   switch (state) {
-    case LiveKitConnectionState.Connecting:
+    case "connecting":
       return "connecting";
-    case LiveKitConnectionState.Connected:
+    case "connected":
       return "connected";
-    case LiveKitConnectionState.Reconnecting:
-    case LiveKitConnectionState.SignalReconnecting:
+    case "reconnecting":
+    case "signalReconnecting":
       return "reconnecting";
-    case LiveKitConnectionState.Disconnected:
+    case "disconnected":
       return "disconnected";
     default:
       return "disconnected";
@@ -130,6 +124,7 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
     };
 
     try {
+      const { Room: LiveKitRoom, RoomEvent } = await loadLiveKitClient();
       observability = new RealtimeObservability({
         telemetryEnabled: false,
         apiKey,
@@ -142,12 +137,12 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
 
       const creds = await fetchWatchStreamCredentials({ baseUrl, apiKey, roomName });
 
-      room = new Room(REALTIME_CONFIG.livekit.roomOptions);
+      room = new LiveKitRoom(REALTIME_CONFIG.livekit.roomOptions);
       const activeRoom = room;
 
       activeRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
         if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) return;
-        if (track.kind !== Track.Kind.Video && track.kind !== Track.Kind.Audio) return;
+        if (track.kind !== "video" && track.kind !== "audio") return;
 
         const mediaStreamTrack = track.mediaStreamTrack;
         if (!mediaStreamTrack) return;
@@ -176,7 +171,7 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
       setState("connected");
 
       const client: RealTimeSubscribeClient = {
-        isConnected: () => activeRoom.state === LiveKitConnectionState.Connected,
+        isConnected: () => activeRoom.state === "connected",
         getConnectionState: () => mapLiveKitState(activeRoom.state),
         disconnect: () => {
           observability?.stop();

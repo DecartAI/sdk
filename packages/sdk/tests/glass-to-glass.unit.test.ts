@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SeqTracker } from "../src/realtime/observability/glass-to-glass.js";
+import { SeqTracker } from "../src/realtime/browser/glass-to-glass.js";
 
 // Mid-stream samples are only counted past a 2s warm-up after the first frame,
 // so tests establish a first frame, then feed steady-state samples well past it.

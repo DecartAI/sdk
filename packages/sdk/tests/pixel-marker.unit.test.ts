@@ -5,7 +5,7 @@ import {
   type RGBAImageData,
   read,
   stamp,
-} from "../src/realtime/observability/pixel-marker.js";
+} from "../src/realtime/browser/pixel-marker.js";
 
 function makeImage(width: number, height: number, fill = 0): RGBAImageData {
   const data = new Uint8ClampedArray(width * height * 4);

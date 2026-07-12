@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createModelNotFoundError } from "../utils/errors";
+import { globalInstanceSchema } from "../utils/runtime";
 
 const CANONICAL_MODEL_NAMES = [
   "lucy-2.1",
@@ -161,10 +162,10 @@ export function resolveCanonicalModelAlias(model: string): CanonicalModel | unde
 }
 
 const fileInputSchema = z.union([
-  z.instanceof(File),
-  z.instanceof(Blob),
-  z.instanceof(ReadableStream),
-  z.instanceof(URL),
+  globalInstanceSchema<File>("File"),
+  globalInstanceSchema<Blob>("Blob"),
+  globalInstanceSchema<ReadableStream>("ReadableStream"),
+  globalInstanceSchema<URL>("URL"),
   z.url(),
   // React Native file object format
   z.object({

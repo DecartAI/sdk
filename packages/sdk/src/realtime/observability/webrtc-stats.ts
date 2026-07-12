@@ -1,5 +1,5 @@
 import { REALTIME_CONFIG } from "../config-realtime";
-import type { G2GMetrics } from "./glass-to-glass";
+import type { G2GMetrics } from "./g2g";
 
 export type WebRTCStats = {
   timestamp: number;
