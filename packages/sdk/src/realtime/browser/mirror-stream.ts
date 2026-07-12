@@ -1,4 +1,4 @@
-// Not in lib.dom yet.
+// Browser-only frame processing. These APIs are not all in lib.dom yet.
 interface MediaStreamTrackProcessorCtor {
   new (init: { track: MediaStreamTrack }): { readable: ReadableStream<VideoFrame> };
 }

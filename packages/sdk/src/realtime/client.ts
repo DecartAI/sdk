@@ -10,14 +10,12 @@ import { modelStateSchema } from "../shared/types";
 import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { imageToBase64 } from "../utils/media";
-import { isDesktopSafari } from "../utils/platform";
 import { createEventBuffer } from "./event-buffer";
-import type { VideoCodec } from "./media-channel";
+import type { MediaChannelFactory, VideoCodec } from "./media-channel";
 import { realtimeMethods, type SetInput } from "./methods";
-import { createMirroredStream, type MirroredStream, shouldMirrorTrack } from "./mirror-stream";
 import type { ConnectionQualityReport } from "./observability/connection-quality";
 import type { DiagnosticEvent } from "./observability/diagnostics";
-import { RealtimeObservability } from "./observability/realtime-observability";
+import type { RealtimeObservability, RealtimeObservabilityOptions } from "./observability/realtime-observability";
 import type { WebRTCStats } from "./observability/webrtc-stats";
 import { StreamSession } from "./stream-session";
 import type { ConnectionState, GenerationEnded, GenerationTick, ImageSetOptions, QueuePosition } from "./types";
@@ -28,7 +26,27 @@ export type RealTimeClientOptions = {
   integration?: string;
   logger: Logger;
   telemetryEnabled: boolean;
+  prepareConnection: PrepareConnection;
 };
+
+export type PreparedConnection = {
+  stream: MediaStream;
+  observability: RealtimeObservability;
+  videoCodec?: VideoCodec;
+  queryParams?: Record<string, string>;
+  createMediaChannel: MediaChannelFactory;
+  dispose(): void;
+};
+
+export type PrepareConnection = (options: {
+  stream: MediaStream | null;
+  mirror: "auto" | boolean;
+  debugQuality: boolean;
+  preferredVideoCodec?: VideoCodec;
+  fps: number;
+  logger: Logger;
+  observability: RealtimeObservabilityOptions;
+}) => PreparedConnection;
 
 const realTimeClientInitialStateSchema = modelStateSchema;
 type OnRemoteStreamFn = (stream: MediaStream) => void;
@@ -62,7 +80,7 @@ const realTimeClientConnectOptionsSchema = z.object({
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
   resolution: z.enum(["720p", "1080p"]).optional(),
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
-  preferredVideoCodec: z.enum(["h264", "vp9"]).optional(),
+  preferredVideoCodec: z.enum(["h264", "vp8", "vp9"]).optional(),
   /**
    * Opt-in DEBUG-quality measurement: stamps a pixel marker into every outgoing
    * frame and reads it back off the rendered output (the server re-stamps it) to
@@ -74,8 +92,18 @@ const realTimeClientConnectOptionsSchema = z.object({
    */
   debugQuality: z.boolean().optional(),
 });
-export type RealTimeClientConnectOptions = Omit<z.infer<typeof realTimeClientConnectOptionsSchema>, "model"> & {
+export type RealtimeMediaStream = {
+  getTracks(): unknown[];
+  getAudioTracks(): unknown[];
+  getVideoTracks(): unknown[];
+};
+
+export type RealTimeClientConnectOptions<TStream extends RealtimeMediaStream = MediaStream> = Omit<
+  z.infer<typeof realTimeClientConnectOptionsSchema>,
+  "model" | "onRemoteStream"
+> & {
   model: ModelDefinition | CustomModelDefinition;
+  onRemoteStream: (stream: TStream) => void;
 };
 
 export type Events = {
@@ -122,7 +150,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
   ): Promise<RealTimeClient> => {
     const parsedOptions = realTimeClientConnectOptionsSchema.safeParse(options);
     if (!parsedOptions.success) throw parsedOptions.error;
-
     const {
       onRemoteStream,
       onConnectionChange,
@@ -133,29 +160,11 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       preferredVideoCodec,
     } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
-    let inputStream: MediaStream = stream ?? new MediaStream();
-
-    let mirroredStream: MirroredStream | undefined;
-    if (mirror !== false) {
-      try {
-        const firstVideoTrack = inputStream.getVideoTracks?.()[0];
-        if (firstVideoTrack && (mirror === true || shouldMirrorTrack(firstVideoTrack))) {
-          mirroredStream = createMirroredStream(inputStream, { fps: resolveFpsNumber(options.model.fps) });
-          inputStream = mirroredStream.stream;
-        } else if (mirror === true && !firstVideoTrack) {
-          logger.warn("mirror: true requested but no video track was found on the input stream");
-        }
-      } catch (error) {
-        logger.warn("Failed to mirror input stream; falling back to un-mirrored input", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
     const debugQuality = parsedOptions.data.debugQuality ?? false;
 
     let session: StreamSession | undefined;
     let observability: RealtimeObservability | undefined;
+    let preparedConnection: PreparedConnection | undefined;
 
     try {
       const initialImageRef = isFileRefId(initialState?.image) ? initialState.image : undefined;
@@ -168,37 +177,32 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       const url = `${baseUrl}${options.model.urlPath}`;
       const { emitter: eventEmitter, emitOrBuffer, flush, stop } = createEventBuffer<Events>();
 
-      observability = new RealtimeObservability({
-        telemetryEnabled: opts.telemetryEnabled,
-        apiKey,
-        model: options.model.name,
-        integration,
-        logger,
-        onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
-        onStats: (stats) => emitOrBuffer("stats", stats),
-        onConnectionQuality: (report) => {
-          emitOrBuffer("connectionQuality", report);
-          onConnectionQuality?.(report);
-        },
+      preparedConnection = opts.prepareConnection({
+        stream,
+        mirror,
         debugQuality,
+        preferredVideoCodec: preferredVideoCodec as VideoCodec | undefined,
+        fps: resolveFpsNumber(options.model.fps),
+        logger,
+        observability: {
+          telemetryEnabled: opts.telemetryEnabled,
+          apiKey,
+          model: options.model.name,
+          integration,
+          logger,
+          onDiagnostic: (event) => emitOrBuffer("diagnostic", event),
+          onStats: (stats) => emitOrBuffer("stats", stats),
+          onConnectionQuality: (report) => {
+            emitOrBuffer("connectionQuality", report);
+            onConnectionQuality?.(report);
+          },
+        },
       });
-
-      // Stamp the marker into the outgoing stream (after any mirror, so it isn't
-      // flipped). The pump is owned by observability so it shares the tracker's
-      // lifecycle with the marker reader and survives reconnects.
-      if (debugQuality) {
-        inputStream = observability.attachOutgoingStream(inputStream, resolveFpsNumber(options.model.fps));
-      }
-
-      const safariCodec = isDesktopSafari() ? "vp8" : undefined;
-      const publishCodec: VideoCodec | undefined = safariCodec ?? preferredVideoCodec;
+      observability = preparedConnection.observability;
 
       const queryParams = new URLSearchParams({
-        ...(safariCodec ? { livekit_server_codec: safariCodec } : {}),
+        ...(preparedConnection.queryParams ?? {}),
         ...(options.queryParams ?? {}),
-        // Ask the server to re-stamp the pixel marker from input to output so the
-        // client can read glass-to-glass latency back off the rendered frames.
-        ...(debugQuality ? { pixel_latency: "1" } : {}),
         api_key: apiKey,
         model: options.model.name,
         ...(resolution ? { resolution } : {}),
@@ -208,13 +212,14 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         url: `${url}?${queryParams.toString()}`,
         integration,
         observability,
-        localStream: inputStream,
+        localStream: preparedConnection.stream,
         initialImage,
         initialImageRef,
         initialPrompt,
         initialPassthrough: initialState?.passthrough,
         logger,
-        videoCodec: publishCodec,
+        videoCodec: preparedConnection.videoCodec,
+        createMediaChannel: preparedConnection.createMediaChannel,
       });
 
       let sessionId: string | null = null;
@@ -260,7 +265,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           observability?.stop();
           stop();
           activeSession.disconnect();
-          mirroredStream?.dispose();
+          preparedConnection?.dispose();
         },
         on: eventEmitter.on,
         off: eventEmitter.off,
@@ -286,7 +291,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     } catch (error) {
       observability?.stop();
       session?.disconnect();
-      mirroredStream?.dispose();
+      preparedConnection?.dispose();
       throw error;
     }
   };

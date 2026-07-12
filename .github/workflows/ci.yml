@@ -36,6 +36,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Verify built package entrypoints
+        run: pnpm test:package
+
       - name: Lint
         run: pnpm lint
 
@@ -47,6 +50,22 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Install React Native compatibility fixture
+        run: |
+          npm install --prefix tests/fixtures/react-native --ignore-scripts --package-lock=false
+          SDK_TARBALL=$(npm pack . --pack-destination /tmp --silent)
+          npm install --prefix tests/fixtures/react-native "/tmp/$SDK_TARBALL" --ignore-scripts --package-lock=false --no-save
+
+      - name: Bundle React Native compatibility fixture
+        run: |
+          mkdir -p tests/fixtures/react-native/.tmp
+          npm run --prefix tests/fixtures/react-native bundle:android
+          npm run --prefix tests/fixtures/react-native bundle:ios
+          if grep -Eq "createFrameTransformPump requires a DOM|deep connectivity probe requires a DOM|Failed to mirror input stream" tests/fixtures/react-native/.tmp/*.jsbundle; then
+            echo "React Native bundle unexpectedly contains browser-only realtime code"
+            exit 1
+          fi
 
   test-proxy:
     runs-on: ubuntu-latest

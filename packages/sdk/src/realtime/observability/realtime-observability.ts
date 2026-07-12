@@ -8,7 +8,7 @@ import type {
   DiagnosticEventName,
   DiagnosticEvents,
 } from "./diagnostics";
-import { createMarkerReader, createStampPump, type MarkerReader, SeqTracker, type StampPump } from "./glass-to-glass";
+import type { G2GMetrics } from "./g2g";
 import { createLiveKitStatsProvider } from "./livekit-stats-provider";
 import { type ITelemetryReporter, NullTelemetryReporter, TelemetryReporter } from "./telemetry-reporter";
 import { type StatsProvider, type WebRTCStats, WebRTCStatsCollector } from "./webrtc-stats";
@@ -22,9 +22,17 @@ export type RealtimeObservabilityOptions = {
   onDiagnostic?: (event: DiagnosticEvent) => void;
   onStats?: (stats: WebRTCStats) => void;
   onConnectionQuality?: (report: ConnectionQualityReport) => void;
-  /** Opt-in diagnostic: measure true glass-to-glass latency via the pixel-marker pipeline (visible marker). */
-  debugQuality?: boolean;
+  /** @internal Platform-owned implementation; absent on runtimes without pixel diagnostics. */
+  glassToGlass?: GlassToGlassDiagnostics;
 };
+
+export interface GlassToGlassDiagnostics {
+  attachOutgoingStream(stream: MediaStream, fps: number): MediaStream;
+  attachRemoteVideoTrack(track: MediaStreamTrack): void;
+  markStart(): void;
+  snapshot(): G2GMetrics;
+  dispose(): void;
+}
 
 type PendingTelemetryDiagnostic = {
   name: DiagnosticEvent["name"];
@@ -57,14 +65,10 @@ export class RealtimeObservability {
   private stallStartMs = 0;
   private connectionBreakdown: ConnectionBreakdownBuffer | null = null;
   private readonly connectionQuality = new ConnectionQualityEvaluator();
-  /** Glass-to-glass: shared tracker, outgoing stamp pump, and incoming reader. Null unless `debugQuality`. */
-  private readonly seqTracker: SeqTracker | null;
-  private readonly markerReader: MarkerReader | null;
-  private stampPump: StampPump | null = null;
+  private readonly glassToGlass: GlassToGlassDiagnostics | undefined;
 
   constructor(private readonly options: RealtimeObservabilityOptions) {
-    this.seqTracker = options.debugQuality ? new SeqTracker() : null;
-    this.markerReader = this.seqTracker ? createMarkerReader(this.seqTracker) : null;
+    this.glassToGlass = options.glassToGlass;
   }
 
   /**
@@ -74,10 +78,9 @@ export class RealtimeObservability {
    * writer and reader of the tracker share one lifecycle and survive reconnects.
    */
   attachOutgoingStream(stream: MediaStream, fps: number): MediaStream {
-    if (!this.seqTracker) return stream;
+    if (!this.glassToGlass) return stream;
     try {
-      this.stampPump = createStampPump(stream, { tracker: this.seqTracker, fps });
-      return this.stampPump.stream;
+      return this.glassToGlass.attachOutgoingStream(stream, fps);
     } catch (error) {
       this.options.logger.warn("Failed to start glass-to-glass stamp pump; continuing without it", {
         error: error instanceof Error ? error.message : String(error),
@@ -88,7 +91,7 @@ export class RealtimeObservability {
 
   /** Feed the remote video track to the marker reader (called from the media channel). */
   attachRemoteVideoTrack(track: MediaStreamTrack): void {
-    this.markerReader?.attach(track);
+    this.glassToGlass?.attachRemoteVideoTrack(track);
   }
 
   /**
@@ -98,7 +101,7 @@ export class RealtimeObservability {
    * measurement is on.
    */
   markGlassToGlassStart(): void {
-    this.seqTracker?.markStart(performance.now());
+    this.glassToGlass?.markStart();
   }
 
   diagnostic<K extends DiagnosticEventName>(name: K, data: DiagnosticEvents[K], timestamp: number = Date.now()): void {
@@ -240,8 +243,7 @@ export class RealtimeObservability {
 
   stop(): void {
     this.stopStats();
-    this.stampPump?.dispose();
-    this.markerReader?.dispose();
+    this.glassToGlass?.dispose();
     this.telemetryReporter.stop();
     this.telemetryReporter = new NullTelemetryReporter();
     this.telemetryReporterReady = false;
@@ -254,7 +256,7 @@ export class RealtimeObservability {
   }
 
   private handleStats(stats: WebRTCStats): void {
-    if (this.seqTracker) stats.glassToGlass = this.seqTracker.snapshot();
+    if (this.glassToGlass) stats.glassToGlass = this.glassToGlass.snapshot();
     this.options.onStats?.(stats);
     this.telemetryReporter.addStats(stats);
     this.detectVideoStall(stats);

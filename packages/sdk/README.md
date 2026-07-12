@@ -243,6 +243,90 @@ if (status.status === "completed") {
 }
 ```
 
+### React Native / Expo
+
+React Native realtime requires [LiveKit's React Native packages](https://github.com/livekit/client-sdk-react-native)
+and an early `registerGlobals()` call. Plain `react-native-webrtc` is not
+supported. SDK imports and `createDecartClient(...)` usage stay the same.
+
+```sh
+npm install @decartai/sdk livekit-client@2.20.1 \
+  @livekit/react-native@2.11.1 \
+  @livekit/react-native-webrtc@144.1.1
+```
+
+Call LiveKit setup from a side-effect module that runs before your router or app
+entrypoint:
+
+```ts
+// livekit-bootstrap.ts
+import { registerGlobals } from "@livekit/react-native";
+
+registerGlobals();
+```
+
+```ts
+// index.ts
+import "./livekit-bootstrap";
+import "expo-router/entry"; // or import your root App component
+```
+
+With the globals registered, realtime usage is the same as on the web. Use the
+model's numeric FPS when configuring native camera capture, then pass that
+`MediaStream` to the SDK:
+
+```ts
+import { createDecartClient, models, resolveFpsNumber } from "@decartai/sdk";
+import { mediaDevices } from "@livekit/react-native-webrtc";
+
+const client = createDecartClient({ apiKey: "your-api-key-here" });
+const model = models.realtime("lucy-2.5");
+const captureFps = resolveFpsNumber(model.fps);
+
+const cameraStream = await mediaDevices.getUserMedia({
+  audio: false,
+  video: {
+    facingMode: "user",
+    frameRate: captureFps,
+    width: model.width,
+    height: model.height,
+  },
+});
+
+const realtimeClient = await client.realtime.connect(cameraStream, {
+  model,
+  preferredVideoCodec: "vp8",
+  onRemoteStream,
+});
+```
+
+For Expo, install the config plugins:
+
+```sh
+npm install @livekit/react-native-expo-plugin@1.0.2 \
+  @config-plugins/react-native-webrtc
+```
+
+Add them to `app.json`:
+
+```json
+{
+  "expo": {
+    "plugins": [
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc"
+    ]
+  }
+}
+```
+
+Run `npx expo prebuild` and rebuild the native app. LiveKit does not run in Expo
+Go. Bare React Native apps must follow LiveKit's native setup instructions.
+
+Outgoing `mirror`, `debugQuality`, and deep connectivity preflight are browser-only
+and fail with `UNSUPPORTED_PLATFORM_FEATURE` on React Native. Mirror the local
+preview with your native video view instead.
+
 ## Development
 
 ### Setup

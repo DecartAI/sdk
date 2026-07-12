@@ -1,5 +1,23 @@
 export type Platform = "mobile" | "desktop";
 
+const REACT_NATIVE_REALTIME_GLOBALS = [
+  "LiveKitReactNativeGlobal",
+  "RTCPeerConnection",
+  "MediaStream",
+  "MediaStreamTrack",
+  "DOMException",
+  "ReadableStream",
+  "WritableStream",
+  "TransformStream",
+  "URL",
+  "URLSearchParams",
+] as const;
+
+export function missingReactNativeRealtimeGlobals(): string[] {
+  const g = globalThis as unknown as Record<string, unknown>;
+  return REACT_NATIVE_REALTIME_GLOBALS.filter((name) => g[name] === undefined);
+}
+
 export function detectPlatform(): Platform {
   // biome-ignore lint/suspicious/noExplicitAny: runtime detection
   const g = globalThis as any;

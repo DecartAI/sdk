@@ -1,13 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { classifyActiveProbe, classifyConnectivity, createPreflight } from "../src/realtime/browser/preflight.js";
 import type { RealTimeClient } from "../src/realtime/client.js";
 import { REALTIME_CONFIG } from "../src/realtime/config-realtime.js";
-import {
-  type ConnectivityMetrics,
-  classifyActiveProbe,
-  classifyConnectivity,
-  createPreflight,
-  type PreflightRttThresholds,
-} from "../src/realtime/preflight.js";
+import { gatherIceCandidates } from "../src/realtime/preflight-connectivity.js";
+import type { ConnectivityMetrics, PreflightRttThresholds } from "../src/realtime/preflight-types.js";
 import { models } from "../src/shared/model.js";
 
 const logger = { debug() {}, info() {}, warn() {}, error() {} };
@@ -145,6 +141,43 @@ function stubDeepProbeDom() {
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 0));
   vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id));
 }
+
+class SuccessfulPeerConnection {
+  onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null;
+  onicegatheringstatechange: (() => void) | null = null;
+  iceGatheringState: RTCIceGatheringState = "new";
+
+  createDataChannel() {}
+  async createOffer(): Promise<RTCSessionDescriptionInit> {
+    return { type: "offer", sdp: "" };
+  }
+  async setLocalDescription(): Promise<void> {
+    this.onicecandidate?.({
+      candidate: { candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ srflx", type: "srflx" },
+    } as RTCPeerConnectionIceEvent);
+    this.onicecandidate?.({ candidate: null } as RTCPeerConnectionIceEvent);
+  }
+  close() {}
+}
+
+describe("gatherIceCandidates", () => {
+  it("works without performance and removes its abort listener after completion", async () => {
+    vi.stubGlobal("RTCPeerConnection", SuccessfulPeerConnection);
+    vi.stubGlobal("performance", undefined);
+    const controller = new AbortController();
+    const removeEventListener = vi.spyOn(controller.signal, "removeEventListener");
+
+    try {
+      await expect(gatherIceCandidates([], 1_000, controller.signal, logger)).resolves.toMatchObject({
+        transport: "udp",
+        rttMs: expect.any(Number),
+      });
+      expect(removeEventListener).toHaveBeenCalledWith("abort", expect.any(Function));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
 
 describe("checkConnectivity", () => {
   it("reports critical/failed when WebRTC is unavailable in the environment", async () => {

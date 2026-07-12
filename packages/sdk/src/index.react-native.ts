@@ -1,8 +1,8 @@
 import { createDecartClientForPlatform } from "./create-client";
-import { createBrowserRealtime } from "./realtime/browser";
+import { createReactNativeRealtime } from "./realtime/react-native";
 
 export type { DecartClientOptions } from "./create-client";
 export * from "./public-api";
 
 export const createDecartClient = (options: import("./create-client").DecartClientOptions = {}) =>
-  createDecartClientForPlatform(createBrowserRealtime, options);
+  createDecartClientForPlatform(createReactNativeRealtime, options);

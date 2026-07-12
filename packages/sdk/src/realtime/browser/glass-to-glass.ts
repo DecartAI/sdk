@@ -16,7 +16,8 @@
  * the consumer displays.
  */
 
-import { createFrameTransformPump, type FramePump } from "../mirror-stream";
+import type { G2GMetrics } from "../observability/g2g";
+import { createFrameTransformPump, type FramePump } from "./mirror-stream";
 import {
   MAX_MARKER_HEIGHT,
   MIN_MARKER_HEIGHT,
@@ -25,36 +26,6 @@ import {
   read,
   stamp,
 } from "./pixel-marker";
-
-/**
- * Aggregated glass-to-glass metrics. TTFF (startup) and mid-stream (steady
- * state) are measured separately — they differ by an order of magnitude and the
- * cold-start frames must not pollute the steady-state numbers.
- */
-export type G2GMetrics = {
-  /**
-   * Time-to-first-frame (ms): from the connect attempt start to the first
-   * rendered model output. A one-shot startup metric, ~seconds. Null until the
-   * first frame arrives.
-   */
-  ttffMs: number | null;
-  /**
-   * Median mid-stream (steady-state) glass-to-glass latency (ms), excluding the
-   * warm-up after the first frame. Null until past warm-up. This is the
-   * per-frame responsiveness, distinct from `ttffMs`.
-   */
-  medianMs: number | null;
-  /** p90 mid-stream glass-to-glass latency (ms), or null until past warm-up. */
-  p90Ms: number | null;
-  /** Mid-stream latency samples in the window (post-warm-up). */
-  sampleCount: number;
-  /**
-   * End-to-end frame drop ratio (0–1): seqs stamped but never rendered, over
-   * recent post-warm-up outcomes. Null until enough frames have completed the
-   * round trip — short sessions/probes may never produce it.
-   */
-  dropRatio: number | null;
-};
 
 /** Bound on in-flight seqs; a seq that ages out unmatched is an end-to-end drop. Cf. server `_MAX_PENDING`. */
 const MAX_PENDING = 256;

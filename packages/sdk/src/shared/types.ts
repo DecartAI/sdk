@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { globalInstanceSchema } from "../utils/runtime";
 
 export const modelStateSchema = z.object({
   prompt: z
@@ -13,7 +14,7 @@ export const modelStateSchema = z.object({
    * `client.files.upload(...)`.id — the SDK detects the prefix and sends a
    * server-side reference instead of base64.
    */
-  image: z.union([z.instanceof(Blob), z.instanceof(File), z.string()]).optional(),
+  image: z.union([globalInstanceSchema<Blob>("Blob"), globalInstanceSchema<File>("File"), z.string()]).optional(),
   passthrough: z.boolean().optional(),
 });
 export type ModelState = z.infer<typeof modelStateSchema>;

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { models } from "../src/index.js";
+import { prepareBrowserConnection } from "../src/realtime/browser/prepare-connection.js";
 import { REALTIME_CONFIG } from "../src/realtime/config-realtime.js";
+import { createLiveKitMediaChannel, type MediaChannel } from "../src/realtime/media-channel.js";
 import type { ServerError } from "../src/realtime/types.js";
 
 const liveKitMock = vi.hoisted(() => {
@@ -393,6 +395,7 @@ describe("realtime.connect options", () => {
       apiKey: "test-key",
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       telemetryEnabled: false,
+      prepareConnection: prepareBrowserConnection,
     });
 
     const realtimeClient = await client.connect(null, {
@@ -413,6 +416,7 @@ describe("realtime.connect options", () => {
       apiKey: "test-key",
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       telemetryEnabled: false,
+      prepareConnection: prepareBrowserConnection,
     });
 
     await expect(
@@ -747,11 +751,48 @@ describe("StreamSession startup orchestration", () => {
     vi.useRealTimers();
   });
 
+  it("drives an injected media transport without importing transport details into the session", async () => {
+    const connect = vi.fn().mockResolvedValue(undefined);
+    const publishLocalTracks = vi.fn().mockResolvedValue(undefined);
+    const disconnect = vi.fn();
+    const mediaChannel: MediaChannel = {
+      localStream: null,
+      on: vi.fn(),
+      off: vi.fn(),
+      connect,
+      publishLocalTracks,
+      replaceVideoTrack: vi.fn().mockResolvedValue(undefined),
+      disconnect,
+    };
+    const createMediaChannel = vi.fn(() => mediaChannel);
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+      createMediaChannel,
+    });
+
+    const connectPromise = session.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    await flushMicrotasks();
+    sendRoomInfo(ws);
+    await expect(connectPromise).resolves.toBeUndefined();
+
+    expect(createMediaChannel).toHaveBeenCalledOnce();
+    expect(connect).toHaveBeenCalledWith({ url: "wss://livekit.example.test", token: "token" });
+    expect(publishLocalTracks).toHaveBeenCalledOnce();
+
+    session.disconnect();
+    expect(disconnect).toHaveBeenCalledOnce();
+  });
+
   it("starts LiveKit after room info, then resolves connect before caller initial-state ack", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const session = new StreamSession({
       url: "wss://example.test/realtime",
       localStream: null,
+      createMediaChannel: createLiveKitMediaChannel,
       initialPrompt: { text: "wear a hat", enhance: false },
     });
     const states: string[] = [];
@@ -768,6 +809,7 @@ describe("StreamSession startup orchestration", () => {
 
     sendRoomInfo(ws);
     await flushMicrotasks();
+    await vi.waitFor(() => expect(liveKitMock.roomInstances).toHaveLength(1));
 
     expect(ws.sentMessages).toEqual([leanJoin, initialPrompt]);
 
@@ -787,6 +829,7 @@ describe("StreamSession startup orchestration", () => {
     const session = new StreamSession({
       url: "wss://example.test/realtime",
       localStream: null,
+      createMediaChannel: createLiveKitMediaChannel,
       initialPrompt: { text: "wear a hat", enhance: false },
     });
     const states: string[] = [];
@@ -819,6 +862,7 @@ describe("StreamSession startup orchestration", () => {
     const session = new StreamSession({
       url: "wss://example.test/realtime",
       localStream: null,
+      createMediaChannel: createLiveKitMediaChannel,
       initialPrompt: { text: "wear a hat", enhance: false },
     });
     const states: string[] = [];
@@ -846,6 +890,7 @@ describe("StreamSession startup orchestration", () => {
     const session = new StreamSession({
       url: "wss://example.test/realtime",
       localStream: null,
+      createMediaChannel: createLiveKitMediaChannel,
       initialImage: "base64-image",
       initialPrompt: { text: "wear a hat" },
     });
@@ -876,6 +921,7 @@ describe("StreamSession startup orchestration", () => {
     const session = new StreamSession({
       url: "wss://example.test/realtime",
       localStream,
+      createMediaChannel: createLiveKitMediaChannel,
       initialPrompt: { text: "wear a hat", enhance: false },
     });
 
@@ -907,6 +953,7 @@ describe("StreamSession startup orchestration", () => {
     const session = new StreamSession({
       url: "wss://example.test/realtime",
       localStream,
+      createMediaChannel: createLiveKitMediaChannel,
     });
     const states: string[] = [];
     const remoteStreams: MediaStream[] = [];
@@ -936,7 +983,11 @@ describe("StreamSession startup orchestration", () => {
   it("replaceVideoTrack swaps the published video track without reconnecting", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const localStream = createLocalStream();
-    const session = new StreamSession({ url: "wss://example.test/realtime", localStream });
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream,
+      createMediaChannel: createLiveKitMediaChannel,
+    });
 
     const connectPromise = session.connect();
     const ws = FakeWebSocket.instances[0];
@@ -960,7 +1011,11 @@ describe("StreamSession startup orchestration", () => {
 
   it("replaceVideoTrack rejects when not connected", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
-    const session = new StreamSession({ url: "wss://example.test/realtime", localStream: createLocalStream() });
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: createLocalStream(),
+      createMediaChannel: createLiveKitMediaChannel,
+    });
     const newTrack = { id: "replacement", kind: "video" } as unknown as MediaStreamTrack;
 
     await expect(session.replaceVideoTrack(newTrack)).rejects.toThrow(/connection is disconnected/);
@@ -971,6 +1026,7 @@ describe("StreamSession startup orchestration", () => {
     const session = new StreamSession({
       url: "wss://example.test/realtime",
       localStream: null,
+      createMediaChannel: createLiveKitMediaChannel,
       initialImage: "base64-image",
     });
     const errors: Error[] = [];
@@ -1007,6 +1063,7 @@ describe("StreamSession startup orchestration", () => {
       const session = new StreamSession({
         url: "wss://example.test/realtime",
         localStream: null,
+        createMediaChannel: createLiveKitMediaChannel,
         initialPrompt: { text: "wear a hat" },
       });
       const errors: Error[] = [];
@@ -1046,6 +1103,7 @@ describe("StreamSession startup orchestration", () => {
     const session = new StreamSession({
       url: "wss://example.test/realtime",
       localStream: createLocalStream(),
+      createMediaChannel: createLiveKitMediaChannel,
       initialPrompt: { text: "make it cinematic" },
     });
 

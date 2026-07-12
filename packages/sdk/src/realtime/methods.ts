@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isFileRefId } from "../files/types";
+import { globalInstanceSchema } from "../utils/runtime";
 import { REALTIME_CONFIG } from "./config-realtime";
 import type { StreamSession } from "./stream-session";
 import type { PromptSendOptions } from "./types";
@@ -12,7 +13,9 @@ const setInputSchema = z
      * - `Blob`/`File`/data:/http(s):/base64 string: bytes traverse the wire as base64.
      * - `"file_..."` id (from `client.files.upload(...).id`): sent as a server-side reference.
      */
-    image: z.union([z.instanceof(Blob), z.instanceof(File), z.string(), z.null()]).optional(),
+    image: z
+      .union([globalInstanceSchema<Blob>("Blob"), globalInstanceSchema<File>("File"), z.string(), z.null()])
+      .optional(),
   })
   .refine((data) => data.prompt !== undefined || data.image !== undefined, {
     message: "At least one of 'prompt' or 'image' must be provided",

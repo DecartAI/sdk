@@ -20,6 +20,9 @@ export const ERROR_CODES = {
   FILES_UPLOAD_ERROR: "FILES_UPLOAD_ERROR",
   FILES_GET_ERROR: "FILES_GET_ERROR",
   FILES_DELETE_ERROR: "FILES_DELETE_ERROR",
+  REACT_NATIVE_SETUP_REQUIRED: "REACT_NATIVE_SETUP_REQUIRED",
+  UNSUPPORTED_PLATFORM_FEATURE: "UNSUPPORTED_PLATFORM_FEATURE",
+  LIVEKIT_INITIALIZATION_ERROR: "LIVEKIT_INITIALIZATION_ERROR",
   // WebRTC-specific error codes
   WEBRTC_WEBSOCKET_ERROR: "WEBRTC_WEBSOCKET_ERROR",
   WEBRTC_ICE_ERROR: "WEBRTC_ICE_ERROR",
@@ -46,6 +49,25 @@ export function createInvalidApiKeyError(): DecartSDKError {
 
 export function createInvalidBaseUrlError(url?: string): DecartSDKError {
   return createSDKError(ERROR_CODES.INVALID_BASE_URL, `Invalid base URL${url ? `: ${url}` : ""}`);
+}
+
+export function createReactNativeSetupRequiredError(missing: string[]): DecartSDKError {
+  return createSDKError(
+    ERROR_CODES.REACT_NATIVE_SETUP_REQUIRED,
+    "React Native realtime requires @livekit/react-native registerGlobals() before calling Decart realtime APIs.",
+    { missing },
+  );
+}
+
+export function createUnsupportedPlatformFeatureError(feature: string, platform: string): DecartSDKError {
+  return createSDKError(ERROR_CODES.UNSUPPORTED_PLATFORM_FEATURE, `${feature} is not supported on ${platform}.`, {
+    feature,
+    platform,
+  });
+}
+
+export function createLiveKitInitializationError(message: string, cause?: Error): DecartSDKError {
+  return createSDKError(ERROR_CODES.LIVEKIT_INITIALIZATION_ERROR, message, undefined, cause);
 }
 
 export function createWebrtcWebsocketError(error: Error): DecartSDKError {
