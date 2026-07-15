@@ -136,13 +136,18 @@ describe("SignalingChannel", () => {
 
     try {
       const channel = new SignalingChannel({ url: "wss://example.com/realtime", logger });
-      const joinPromise = channel.openAndJoin({ connectTimeout: 50, handshakeTimeout: 200 });
+      const joinPromise = channel.openAndJoin({
+        connectTimeout: 50,
+        handshakeTimeout: 200,
+        frameTiming: true,
+      });
 
       await vi.waitFor(() => expect(socket?.sent.length ?? 0).toBeGreaterThan(0));
       const ws = socket as MockWebSocket;
       const join = JSON.parse(ws.sent[0]);
       expect(join.type).toBe("livekit_join");
       expect(join.passthrough).toBe(true);
+      expect(join.client_capabilities).toEqual({ frame_timing: true });
 
       ws.deliver({
         type: "livekit_room_info",

@@ -2,7 +2,7 @@ import { isDesktopSafari } from "../../utils/platform";
 import type { PrepareConnection } from "../client";
 import { createLiveKitMediaChannel } from "../media-channel";
 import { RealtimeObservability } from "../observability/realtime-observability";
-import { createBrowserGlassToGlassDiagnostics } from "./glass-to-glass-diagnostics";
+import { createBrowserFrameMetadataDiagnostics, createFrameMetadataWorker } from "./frame-metadata-diagnostics";
 import { createMirroredStream, shouldMirrorTrack } from "./mirror-stream";
 
 export const prepareBrowserConnection: PrepareConnection = ({
@@ -36,20 +36,23 @@ export const prepareBrowserConnection: PrepareConnection = ({
 
   const observability = new RealtimeObservability({
     ...observabilityOptions,
-    glassToGlass: debugQuality ? createBrowserGlassToGlassDiagnostics() : undefined,
+    glassToGlass: debugQuality ? createBrowserFrameMetadataDiagnostics() : undefined,
   });
-  if (debugQuality) inputStream = observability.attachOutgoingStream(inputStream, fps);
 
   const safariCodec = isDesktopSafari() ? "vp8" : undefined;
   return {
     stream: inputStream,
     observability,
+    frameTiming: debugQuality,
     videoCodec: safariCodec ?? preferredVideoCodec,
     queryParams: {
       ...(safariCodec ? { livekit_server_codec: safariCodec } : {}),
-      ...(debugQuality ? { pixel_latency: "1" } : {}),
     },
-    createMediaChannel: createLiveKitMediaChannel,
+    createMediaChannel: (config) =>
+      createLiveKitMediaChannel({
+        ...config,
+        createFrameMetadataWorker: debugQuality ? createFrameMetadataWorker : undefined,
+      }),
     dispose: disposeMirroring,
   };
 };

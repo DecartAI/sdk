@@ -1,4 +1,4 @@
-import type { Room } from "livekit-client";
+import type { RemoteVideoTrack, Room } from "livekit-client";
 import type { Logger } from "../../utils/logger";
 import { REALTIME_CONFIG } from "../config-realtime";
 import { ConnectionQualityEvaluator, type ConnectionQualityReport } from "./connection-quality";
@@ -27,8 +27,7 @@ export type RealtimeObservabilityOptions = {
 };
 
 export interface GlassToGlassDiagnostics {
-  attachOutgoingStream(stream: MediaStream, fps: number): MediaStream;
-  attachRemoteVideoTrack(track: MediaStreamTrack): void;
+  attachRemoteVideoTrack(track: RemoteVideoTrack): void;
   markStart(): void;
   snapshot(): G2GMetrics;
   dispose(): void;
@@ -71,26 +70,8 @@ export class RealtimeObservability {
     this.glassToGlass = options.glassToGlass;
   }
 
-  /**
-   * Wrap the outgoing stream so each frame carries a marker, feeding the shared
-   * tracker that the reader matches against. Returns the stream to publish
-   * (unchanged when g2g is off or stamping can't start). Owned here so the
-   * writer and reader of the tracker share one lifecycle and survive reconnects.
-   */
-  attachOutgoingStream(stream: MediaStream, fps: number): MediaStream {
-    if (!this.glassToGlass) return stream;
-    try {
-      return this.glassToGlass.attachOutgoingStream(stream, fps);
-    } catch (error) {
-      this.options.logger.warn("Failed to start glass-to-glass stamp pump; continuing without it", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return stream;
-    }
-  }
-
-  /** Feed the remote video track to the marker reader (called from the media channel). */
-  attachRemoteVideoTrack(track: MediaStreamTrack): void {
+  /** Feed the LiveKit remote video track to the frame-metadata reader. */
+  attachRemoteVideoTrack(track: RemoteVideoTrack): void {
     this.glassToGlass?.attachRemoteVideoTrack(track);
   }
 

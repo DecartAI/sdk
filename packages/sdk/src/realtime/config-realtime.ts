@@ -68,7 +68,7 @@ export const REALTIME_CONFIG = {
       /**
        * Mid-stream (steady-state) true glass-to-glass latency bands (ms) — the
        * real per-frame camera→display latency through the model, used for the
-       * latency dimension *instead of* RTT when pixel-marker measurement is on.
+       * latency dimension *instead of* RTT when frame-metadata measurement is on.
        * Already includes both network legs, so relayExtraMs does not apply.
        * Excludes startup (see `ttff`). Anchored to Datadog
        * `rt.stream.pipeline_latency_ms` (server-side median ~285ms / p95 ~510ms)
@@ -84,7 +84,7 @@ export const REALTIME_CONFIG = {
       ttff: { goodMs: 4_000, fairMs: 6_000, poorMs: 10_000 },
       /** Fraction of outbound packets the server reports lost (0..1). */
       loss: { good: 0.001, fair: 0.01, poor: 0.05 },
-      /** End-to-end frame drop ratio (0..1) inferred from the pixel-marker seq stream (backpressure/overload). */
+      /** End-to-end frame drop ratio (0..1), when a frame identity is available. */
       g2gDrop: { good: 0.001, fair: 0.01, poor: 0.05 },
       /** Upstream headroom = available BWE ÷ the intended publish bitrate (requiredUpstreamKbps). */
       upstream: { goodRatio: 1.0, fairRatio: 0.8, poorRatio: 0.5, requiredUpstreamKbps: 3500 },
@@ -106,7 +106,7 @@ export const REALTIME_CONFIG = {
     rtt: { goodMs: 150, marginalMs: 300 },
     /**
      * Deep probe (`checkConnectivity({ deep: true, model })`): briefly opens a
-     * real session with a synthetic source + pixel-marker measurement to get a
+     * real session with a synthetic source + frame-metadata measurement to get a
      * true glass-to-glass verdict, then tears it down. Costs a short GPU session.
      * The verdict reuses the in-session `connectionQuality` bands. Duration must
      * cover TTFF (~4–5s) + mid-stream warm-up (~2s) before steady-state samples
