@@ -87,10 +87,13 @@ describe("FrameMetadataTracker", () => {
 
   it("correlates LiveKit time-sync events and detaches the listener on reconnect", () => {
     const listeners = new Map<string, (update: { timestamp: number; rtpTimestamp: number }) => void>();
-    const lookupFrameMetadata = vi.fn(({ rtpTimestamp }: { rtpTimestamp: number }) => ({
-      userTimestamp: captureTimestamp(rtpTimestamp, 250),
-      frameId: 0,
-    }));
+    // LiveKit's timeSyncUpdate `timestamp` is the sync-source playout time as a
+    // DOMHighResTimeStamp (relative to performance.timeOrigin), whereas
+    // userTimestamp is epoch microseconds. The reader must reconcile the two,
+    // so drive the event with a relative timestamp like the real SDK does.
+    const LATENCY_MS = 250;
+    let nextUserTimestampUs = 0n;
+    const lookupFrameMetadata = vi.fn(() => ({ userTimestamp: nextUserTimestampUs, frameId: 0 }));
     const track = {
       lookupFrameMetadata,
       on: vi.fn((event: string, listener: (update: { timestamp: number; rtpTimestamp: number }) => void) => {
@@ -105,15 +108,17 @@ describe("FrameMetadataTracker", () => {
     diagnostics.markStart();
     diagnostics.attachRemoteVideoTrack(track);
 
-    const firstRtpTimestamp = Math.round(performance.now() + 100);
-    const firstPlayout = performance.timeOrigin + firstRtpTimestamp;
-    listeners.get("timeSyncUpdate")?.({ timestamp: firstPlayout, rtpTimestamp: firstRtpTimestamp });
-    const steadyRtpTimestamp = firstRtpTimestamp + PAST_WARMUP;
-    const steadyPlayout = performance.timeOrigin + steadyRtpTimestamp;
-    listeners.get("timeSyncUpdate")?.({ timestamp: steadyPlayout, rtpTimestamp: steadyRtpTimestamp });
+    const emit = (playoutRelMs: number, rtpTimestamp: number) => {
+      nextUserTimestampUs = BigInt(Math.round((performance.timeOrigin + playoutRelMs - LATENCY_MS) * 1_000));
+      listeners.get("timeSyncUpdate")?.({ timestamp: playoutRelMs, rtpTimestamp });
+    };
 
-    expect(lookupFrameMetadata).toHaveBeenCalledWith({ rtpTimestamp: steadyRtpTimestamp });
-    expect(diagnostics.snapshot()).toMatchObject({ medianMs: 250, sampleCount: 1 });
+    const startRel = performance.now();
+    emit(startRel, 1); // first frame within warm-up → sets TTFF only
+    emit(startRel + PAST_WARMUP, 2); // steady-state sample
+
+    expect(lookupFrameMetadata).toHaveBeenCalledWith({ rtpTimestamp: 2 });
+    expect(diagnostics.snapshot()).toMatchObject({ medianMs: LATENCY_MS, sampleCount: 1 });
 
     diagnostics.markStart();
     expect(track.off).toHaveBeenCalledWith("timeSyncUpdate", expect.any(Function));

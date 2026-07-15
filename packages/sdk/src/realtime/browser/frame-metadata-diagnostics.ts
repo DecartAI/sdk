@@ -76,7 +76,10 @@ function createFrameReader(tracker: FrameMetadataTracker): {
 
   const onTimeSyncUpdate = ({ timestamp, rtpTimestamp }: { timestamp: number; rtpTimestamp: number }) => {
     const frameMetadata = attachedTrack?.lookupFrameMetadata({ rtpTimestamp });
-    if (frameMetadata) tracker.recordFrame(frameMetadata.userTimestamp, timestamp);
+    // `timestamp` is the sync-source playout time as a DOMHighResTimeStamp
+    // (relative to performance.timeOrigin); convert to epoch ms so it lines up
+    // with the publisher's epoch `userTimestamp` and the epoch `startMs`.
+    if (frameMetadata) tracker.recordFrame(frameMetadata.userTimestamp, performance.timeOrigin + timestamp);
   };
 
   const detach = () => {
