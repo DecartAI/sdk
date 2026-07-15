@@ -34,16 +34,44 @@ export const prepareBrowserConnection: PrepareConnection = ({
     }
   }
 
+  // Create the frame-metadata strip worker up front so we only advertise
+  // `frame_timing` to the server once we know the room will have a strip
+  // transform. Once frame timing is advertised the server appends a packet
+  // trailer to every outgoing frame; a subscriber without the worker can't
+  // strip it and the VP8/VP9 decoder then fails on every frame. Worker
+  // availability is environment-deterministic, so this also predicts reconnects.
+  let pendingWorker: Worker | undefined;
+  if (debugQuality) {
+    try {
+      pendingWorker = createFrameMetadataWorker();
+    } catch (error) {
+      logger.warn("Frame-metadata worker unavailable; glass-to-glass latency measurement disabled", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  const frameTiming = pendingWorker !== undefined;
+  // Hand the pre-created worker to the first connect, then create a fresh one
+  // per reconnect (LiveKit terminates the worker when its room disconnects).
+  const takeFrameMetadataWorker = () => {
+    if (pendingWorker) {
+      const worker = pendingWorker;
+      pendingWorker = undefined;
+      return worker;
+    }
+    return createFrameMetadataWorker();
+  };
+
   const observability = new RealtimeObservability({
     ...observabilityOptions,
-    glassToGlass: debugQuality ? createBrowserFrameMetadataDiagnostics() : undefined,
+    glassToGlass: frameTiming ? createBrowserFrameMetadataDiagnostics() : undefined,
   });
 
   const safariCodec = isDesktopSafari() ? "vp8" : undefined;
   return {
     stream: inputStream,
     observability,
-    frameTiming: debugQuality,
+    frameTiming,
     videoCodec: safariCodec ?? preferredVideoCodec,
     queryParams: {
       ...(safariCodec ? { livekit_server_codec: safariCodec } : {}),
@@ -51,8 +79,12 @@ export const prepareBrowserConnection: PrepareConnection = ({
     createMediaChannel: (config) =>
       createLiveKitMediaChannel({
         ...config,
-        createFrameMetadataWorker: debugQuality ? createFrameMetadataWorker : undefined,
+        createFrameMetadataWorker: frameTiming ? takeFrameMetadataWorker : undefined,
       }),
-    dispose: disposeMirroring,
+    dispose: () => {
+      disposeMirroring();
+      // Terminate the worker if connect never consumed it (e.g. aborted setup).
+      pendingWorker?.terminate();
+    },
   };
 };
