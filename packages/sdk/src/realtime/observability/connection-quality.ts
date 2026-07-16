@@ -21,7 +21,7 @@ export type ConnectionQualityMetrics = {
   /**
    * Mid-stream (steady-state) glass-to-glass latency (ms) — the real per-frame
    * camera→display latency through the model, excluding startup. Only populated
-   * when the opt-in pixel-marker measurement is on (`connect({ debugQuality: true })`)
+   * when the opt-in frame-metadata measurement is on (`connect({ debugQuality: true })`)
    * and past warm-up; null otherwise. When present it drives the latency verdict
    * instead of `rttMs`.
    */
@@ -40,8 +40,8 @@ export type ConnectionQualityMetrics = {
   /** Server's view of upstream (client→server) jitter in ms, or null. Observational. */
   upstreamJitterMs: number | null;
   /**
-   * End-to-end frame drop ratio (0–1) inferred from the pixel-marker seq stream.
-   * Only populated under the opt-in g2g measurement; null otherwise.
+   * End-to-end frame drop ratio (0–1). Null until frame identity is propagated
+   * end-to-end; latency measurement itself only requires the capture timestamp.
    */
   g2gDropRatio: number | null;
   /** Estimated available upstream bandwidth in kbps. Chromium-only — null on Safari/Firefox. */
@@ -144,7 +144,7 @@ export function scoreMetrics(
   options: ScoreOptions = {},
 ): { quality: ConnectionQuality; limitingFactor: ConnectionQualityLimitingFactor } {
   // Prefer measured glass-to-glass — the real experienced latency — when the
-  // opt-in pixel-marker measurement is active. It already includes both network
+  // opt-in frame-metadata measurement is active. It already includes both network
   // legs, so relay headroom doesn't apply. Fall back to RTT otherwise.
   const relayExtra = signals.isRelayed ? thresholds.rtt.relayExtraMs : 0;
   const latency =

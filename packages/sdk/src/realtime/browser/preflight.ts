@@ -70,11 +70,11 @@ export function classifyActiveProbe(
   if (metrics.ttffMs == null && metrics.g2gMs == null) {
     if (metrics.rttMs != null) {
       reasons.push(
-        "Could not measure glass-to-glass latency during the probe (no marker round-trip); using network RTT instead.",
+        "Could not measure glass-to-glass latency during the probe (no frame metadata); using network RTT instead.",
       );
       dims.push(scoreLowerBetter(metrics.rttMs, thresholds.rtt.goodMs, thresholds.rtt.fairMs, thresholds.rtt.poorMs));
     } else {
-      reasons.push("The probe connected but could not measure latency (no marker round-trip and no RTT sample).");
+      reasons.push("The probe connected but could not measure latency (no frame metadata and no RTT sample).");
     }
   }
 
@@ -139,10 +139,9 @@ function activeMetricsFromStats(stats: WebRTCStats | null): ConnectivityMetrics 
 }
 
 /**
- * Animated synthetic video source — no camera permission needed; content is
- * irrelevant to the marker. Sized to the model's exact input dimensions so the
- * server doesn't resize/crop the frame, which would move the bottom-left marker
- * out of where the server reads it (breaking the round trip).
+ * Animated synthetic video source — no camera permission needed. It uses the
+ * model's input dimensions to exercise the same encode/inference path as a real
+ * session without unnecessary server-side resizing.
  */
 function createSyntheticSource(
   width: number,
@@ -257,8 +256,7 @@ async function runActiveProbe(args: {
   if (signal?.aborted) return ABORTED_DEEP_PROBE;
 
   try {
-    // Match the model's exact input resolution so the server processes the frame
-    // without reshaping it (which would corrupt the bottom-left pixel marker).
+    // Match the model's exact input resolution to exercise the normal path.
     source = createSyntheticSource(model.width, model.height, resolveFpsNumber(model.fps));
 
     const connectTask = connect(source.stream, {

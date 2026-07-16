@@ -64,6 +64,7 @@ export type OpenAndJoinOptions = {
   handshakeTimeout?: number;
   initialState?: InitialState;
   passthrough?: boolean;
+  frameTiming?: boolean;
 };
 
 export type OpenAndJoinResult = {
@@ -159,6 +160,7 @@ export class SignalingChannel {
     const joinMessage: LiveKitJoinMessage = {
       type: "livekit_join",
       passthrough: opts.passthrough ?? !userSetInitialState,
+      ...(opts.frameTiming ? { client_capabilities: { frame_timing: true } } : {}),
     };
 
     if (!this.writeMessage(joinMessage)) {

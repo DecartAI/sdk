@@ -164,23 +164,38 @@ realtimeClient.on("connectionQuality", (report) => { /* ... */ });
 realtimeClient.getConnectionQuality(); // latest report, or null before the first sample
 ```
 
+> `onConnectionQuality` and the `connectionQuality` event are **debounced** — they only re-fire
+> when the verdict (`quality`/`limitingFactor`) changes, so they're not a live metrics feed. For a
+> continuous read of the raw numbers, updated every stats tick (~1/s), use the `stats` event or
+> poll `getConnectionQuality()?.metrics`:
+>
+> ```typescript
+> realtimeClient.on("stats", (s) => updateLatencyHud(s.glassToGlass?.medianMs, s.video?.framesPerSecond));
+> // or, on your own interval:
+> setInterval(() => console.log(realtimeClient.getConnectionQuality()?.metrics.g2gMs), 1000);
+> ```
+
 **Glass-to-glass latency (opt-in, diagnostic).** Network RTT hides the dominant cost in
 real-time video — model inference — so a session can read "good" while actually feeling laggy.
-Set `debugQuality: true` to measure the *real* camera→display latency: the SDK stamps a pixel
-marker into each outgoing frame and reads it back off the rendered output, surfacing **startup**
-(`ttffMs`) and **steady-state** (`g2gMs`) latency plus end-to-end frame drops (`g2gDropRatio`).
-When present, glass-to-glass drives the latency verdict instead of RTT.
+Set `debugQuality: true` to measure the *real* camera→display latency. The SDK attaches a capture
+timestamp using LiveKit frame metadata; the server propagates it through inference and the SDK
+matches it to output playout. This surfaces **startup** (`ttffMs`) and **steady-state**
+(`g2gMs`) latency. When present, glass-to-glass drives the latency verdict instead of RTT.
 
-> ⚠️ Diagnostic only. The marker is **visible** (bottom-left of the published and rendered video)
-> and adds per-frame pixel work — don't enable it for production / end-user sessions.
+> Frame metadata is currently experimental in LiveKit and requires encoded-transform support.
+> It does not alter visible pixels. `g2gDropRatio` remains `null` until frame IDs are propagated
+> through the server pipeline as well as timestamps.
 
 ```typescript
 const realtimeClient = await client.realtime.connect(stream, {
   model,
   debugQuality: true,
-  onConnectionQuality: ({ quality, metrics }) => {
-    console.log(metrics.ttffMs, metrics.g2gMs, metrics.g2gDropRatio);
-  },
+});
+
+// g2g updates every stats tick — read it from the `stats` event (the
+// `connectionQuality` verdict is debounced and would go stale between changes):
+realtimeClient.on("stats", ({ glassToGlass }) => {
+  console.log(glassToGlass?.ttffMs, glassToGlass?.medianMs);
 });
 ```
 

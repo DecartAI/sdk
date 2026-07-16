@@ -1,4 +1,11 @@
-import type { DisconnectReason, RemoteParticipant, RemoteTrack, Room, TrackPublishOptions } from "livekit-client";
+import type {
+  DisconnectReason,
+  RemoteParticipant,
+  RemoteTrack,
+  RemoteVideoTrack,
+  Room,
+  TrackPublishOptions,
+} from "livekit-client";
 import mitt, { type Emitter } from "mitt";
 
 import { createConsoleLogger, type Logger } from "../utils/logger";
@@ -11,6 +18,7 @@ export type VideoCodec = "h264" | "vp8" | "vp9" | "av1";
 export function getDefaultVideoPublishOptions(
   source: TrackPublishOptions["source"],
   videoCodec?: VideoCodec,
+  frameMetadata = false,
 ): TrackPublishOptions {
   const resolvedCodec = videoCodec ?? REALTIME_CONFIG.livekit.defaultVideoCodec;
   const maxBitrate =
@@ -26,6 +34,7 @@ export function getDefaultVideoPublishOptions(
       maxBitrate,
       maxFramerate: REALTIME_CONFIG.livekit.defaultPublishFps,
     },
+    ...(frameMetadata ? { frameMetadata: { timestamp: true } } : {}),
   };
 }
 
@@ -39,6 +48,7 @@ export interface MediaChannelConfig {
   localStream: MediaStream | null;
   logger?: Logger;
   videoCodec?: VideoCodec;
+  createFrameMetadataWorker?: () => Worker;
 }
 
 export type MediaConnectOptions = {
@@ -62,6 +72,7 @@ export class LiveKitMediaChannel implements MediaChannel {
   private room: Room | null = null;
   private cameraTrackSource: TrackPublishOptions["source"] | null = null;
   private remoteStream: MediaStream | null = null;
+  private frameMetadataEnabled = false;
   private events: Emitter<MediaChannelEvents> = mitt();
   private readonly logger: Logger;
 
@@ -84,7 +95,29 @@ export class LiveKitMediaChannel implements MediaChannel {
   async connect(opts: MediaConnectOptions): Promise<void> {
     const { Room: LiveKitRoom, RoomEvent, Track } = await loadLiveKitClient();
     this.cameraTrackSource = Track.Source.Camera;
-    this.room ??= new LiveKitRoom(REALTIME_CONFIG.livekit.roomOptions);
+    if (!this.room) {
+      let worker: Worker | undefined;
+      if (this.config.createFrameMetadataWorker) {
+        try {
+          worker = this.config.createFrameMetadataWorker();
+        } catch (error) {
+          this.logger.warn("Failed to create LiveKit frame-metadata worker; continuing without latency metrics", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      this.frameMetadataEnabled = worker !== undefined;
+      try {
+        this.room = new LiveKitRoom({
+          ...REALTIME_CONFIG.livekit.roomOptions,
+          ...(worker ? { frameMetadata: { worker } } : {}),
+        });
+      } catch (error) {
+        worker?.terminate();
+        this.frameMetadataEnabled = false;
+        throw error;
+      }
+    }
     const room = this.room;
 
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
@@ -93,10 +126,10 @@ export class LiveKitMediaChannel implements MediaChannel {
 
       const mediaStreamTrack = track.mediaStreamTrack;
       if (mediaStreamTrack) {
-        // Feed the rendered remote video to the glass-to-glass marker reader
-        // (no-op unless g2g measurement is enabled).
+        // Feed the LiveKit track to the frame-metadata render reader (a no-op
+        // unless opt-in glass-to-glass measurement is enabled).
         if (track.kind === "video") {
-          this.config.observability?.attachRemoteVideoTrack(mediaStreamTrack);
+          this.config.observability?.attachRemoteVideoTrack(track as RemoteVideoTrack);
         }
         // Emit a fresh MediaStream whenever the track set changes. Consumers
         // assign this to an element's `srcObject`; mutating the existing stream
@@ -145,6 +178,7 @@ export class LiveKitMediaChannel implements MediaChannel {
     this.room = null;
     this.cameraTrackSource = null;
     this.remoteStream = null;
+    this.frameMetadataEnabled = false;
     this.config.observability?.setLiveKitRoom(null);
     if (room) {
       room.disconnect().catch(() => {});
@@ -158,7 +192,7 @@ export class LiveKitMediaChannel implements MediaChannel {
         if (!this.cameraTrackSource) throw new Error("Cannot publish video track: media channel is not connected");
         await this.room.localParticipant.publishTrack(
           track,
-          getDefaultVideoPublishOptions(this.cameraTrackSource, this.config.videoCodec),
+          getDefaultVideoPublishOptions(this.cameraTrackSource, this.config.videoCodec, this.frameMetadataEnabled),
         );
       } else {
         await this.room.localParticipant.publishTrack(track);

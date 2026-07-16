@@ -32,6 +32,7 @@ export type RealTimeClientOptions = {
 export type PreparedConnection = {
   stream: MediaStream;
   observability: RealtimeObservability;
+  frameTiming?: boolean;
   videoCodec?: VideoCodec;
   queryParams?: Record<string, string>;
   createMediaChannel: MediaChannelFactory;
@@ -82,13 +83,11 @@ const realTimeClientConnectOptionsSchema = z.object({
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp8", "vp9"]).optional(),
   /**
-   * Opt-in DEBUG-quality measurement: stamps a pixel marker into every outgoing
-   * frame and reads it back off the rendered output (the server re-stamps it) to
-   * measure true glass-to-glass latency, surfaced as `g2gMs` / `ttffMs` /
-   * `g2gDropRatio` on the `stats` and `connectionQuality` signals. Diagnostic
-   * only: the marker is **visible** (bottom-left of the published + rendered
-   * video) and adds per-frame pixel work — do not enable it for production /
-   * end-user sessions.
+   * Opt-in quality measurement using LiveKit frame metadata. The capture
+   * timestamp is propagated through inference and matched to output playout to
+   * surface true glass-to-glass `g2gMs` / `ttffMs` on the `stats` and
+   * `connectionQuality` signals. Browser-only and experimental because it
+   * relies on LiveKit's frame-metadata worker and encoded transforms.
    */
   debugQuality: z.boolean().optional(),
 });
@@ -212,6 +211,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         url: `${url}?${queryParams.toString()}`,
         integration,
         observability,
+        frameTiming: preparedConnection.frameTiming,
         localStream: preparedConnection.stream,
         initialImage,
         initialImageRef,

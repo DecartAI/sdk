@@ -36,8 +36,10 @@ const liveKitMock = vi.hoisted(() => {
     };
     connect = vi.fn().mockImplementation(() => connectMocks.shift()?.() ?? Promise.resolve());
     disconnect = vi.fn().mockResolvedValue(undefined);
+    readonly options: unknown;
 
-    constructor() {
+    constructor(options?: unknown) {
+      this.options = options;
       roomInstances.push(this);
       const lp = this.localParticipant;
       lp.publishTrack.mockImplementation((track: { kind?: string }) => {
@@ -945,6 +947,26 @@ describe("StreamSession startup orchestration", () => {
 
     ws.receive({ type: "prompt_ack", prompt: "wear a hat", success: true, error: null });
     await flushMicrotasks();
+  });
+
+  it("configures the LiveKit worker and timestamps published video when frame timing is enabled", async () => {
+    const localStream = createLocalStream();
+    const worker = {} as Worker;
+    const channel = createLiveKitMediaChannel({
+      localStream,
+      createFrameMetadataWorker: () => worker,
+    });
+
+    await channel.connect({ url: "wss://livekit.example.test", token: "token" });
+    await channel.publishLocalTracks();
+
+    const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
+    expect(room.options).toMatchObject({ frameMetadata: { worker } });
+    expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(
+      1,
+      localStream.getTracks()[0],
+      expect.objectContaining({ frameMetadata: { timestamp: true } }),
+    );
   });
 
   it("sends only a lean passthrough join for a bare localStream connect (no set_image bootstrap)", async () => {

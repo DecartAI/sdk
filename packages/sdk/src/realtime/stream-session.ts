@@ -54,6 +54,7 @@ interface StreamSessionConfig {
   url: string;
   integration?: string;
   observability?: RealtimeObservability;
+  frameTiming?: boolean;
   localStream: MediaStream | null;
   initialImage?: string;
   initialImageRef?: string;
@@ -184,6 +185,7 @@ export class StreamSession {
         connectTimeout: REALTIME_CONFIG.session.connectionTimeoutMs,
         initialState,
         passthrough: this.config.initialPassthrough,
+        frameTiming: this.config.frameTiming,
       });
       this.watchInitialStateAck(initialStateAck, attempt);
 

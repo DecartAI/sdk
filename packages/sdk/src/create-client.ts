@@ -177,7 +177,7 @@ export const createDecartClientForPlatform = (createRealtime: CreateRealtime, op
        * need) and approximate latency via a throwaway peer connection — no
        * session, instant. Opt-in deep probe (`{ deep: true, model }`): briefly
        * opens a real session with a synthetic source and measures *true*
-       * glass-to-glass latency (and end-to-end drops / upstream loss+jitter),
+       * glass-to-glass latency (plus upstream loss/jitter),
        * then tears it down — accurate, but costs a short GPU session.
        *
        * @example

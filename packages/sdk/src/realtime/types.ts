@@ -48,6 +48,9 @@ export type GenerationStartedMessage = {
 export type LiveKitJoinMessage = {
   type: "livekit_join";
   passthrough: boolean;
+  client_capabilities?: {
+    frame_timing: boolean;
+  };
 };
 
 export type LiveKitRoomInfoMessage = {

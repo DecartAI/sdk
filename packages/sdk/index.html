@@ -366,7 +366,7 @@
         <div class="control-group">
             <label>
                 <input type="checkbox" id="measure-g2g" />
-                Measure glass-to-glass latency (pixel marker; visible bottom-left, opt-in)
+                Measure glass-to-glass latency (frame metadata; opt-in)
             </label>
         </div>
         <div class="control-group">
@@ -1234,7 +1234,7 @@
 
                 const debugQuality = elements.measureG2g.checked;
                 if (debugQuality) {
-                    addLog('Debug-quality (glass-to-glass) measurement ON (marker visible bottom-left of output)', 'info');
+                    addLog('Debug-quality (glass-to-glass) measurement ON via frame metadata', 'info');
                 }
 
                 const passthroughChoice = elements.passthroughSelect.value;
