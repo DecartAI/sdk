@@ -247,6 +247,45 @@ describe("RealtimeObservability", () => {
     expect(body.stats).toHaveLength(1);
   });
 
+  it("pushes connection metrics on every stats tick while the quality verdict stays coarse", async () => {
+    const { RealtimeObservability } = await import("../src/realtime/observability/realtime-observability.js");
+
+    vi.useFakeTimers();
+    // Stable, healthy stats so the verdict does not flap tick to tick.
+    let framesDecoded = 0;
+    const source = {
+      getStats: vi.fn().mockImplementation(async () => {
+        framesDecoded += 30;
+        return new Map([
+          ["video", { type: "inbound-rtp", kind: "video", framesPerSecond: 30, framesDecoded }],
+        ]) as unknown as RTCStatsReport;
+      }),
+    };
+
+    const metricsEvents: Array<Record<string, unknown>> = [];
+    const qualityEvents: unknown[] = [];
+    const observability = new RealtimeObservability({
+      telemetryEnabled: false,
+      apiKey: "test-key",
+      logger,
+      onConnectionMetrics: (metrics) => metricsEvents.push(metrics as Record<string, unknown>),
+      onConnectionQuality: (report) => qualityEvents.push(report),
+    });
+
+    observability.setStatsProvider(source);
+    const ticks = 4;
+    for (let i = 0; i < ticks; i++) {
+      await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.observability.statsDefaultIntervalMs);
+    }
+    observability.stop();
+
+    // Metrics push once per stats tick (continuous), unlike the debounced verdict.
+    expect(metricsEvents).toHaveLength(ticks);
+    expect(metricsEvents.length).toBeGreaterThan(qualityEvents.length);
+    expect(metricsEvents[0]).toHaveProperty("g2gMs");
+    expect(metricsEvents[0]).toHaveProperty("rttMs");
+  });
+
   it("replaces the stats provider without leaving the old polling loop running", async () => {
     const { RealtimeObservability } = await import("../src/realtime/observability/realtime-observability.js");
 
