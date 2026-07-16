@@ -13,7 +13,7 @@ import { imageToBase64 } from "../utils/media";
 import { createEventBuffer } from "./event-buffer";
 import type { MediaChannelFactory, VideoCodec } from "./media-channel";
 import { realtimeMethods, type SetInput } from "./methods";
-import type { ConnectionQualityMetrics, ConnectionQualityReport } from "./observability/connection-quality";
+import type { ConnectionQualityReport } from "./observability/connection-quality";
 import type { DiagnosticEvent } from "./observability/diagnostics";
 import type { RealtimeObservability, RealtimeObservabilityOptions } from "./observability/realtime-observability";
 import type { WebRTCStats } from "./observability/webrtc-stats";
@@ -53,7 +53,6 @@ const realTimeClientInitialStateSchema = modelStateSchema;
 type OnRemoteStreamFn = (stream: MediaStream) => void;
 type OnConnectionChangeFn = (state: ConnectionState) => void;
 type OnConnectionQualityFn = (report: ConnectionQualityReport) => void;
-type OnConnectionMetricsFn = (metrics: ConnectionQualityMetrics) => void;
 type OnQueuePositionFn = (queuePosition: QueuePosition) => void;
 export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialStateSchema>;
 
@@ -72,17 +71,6 @@ const realTimeClientConnectOptionsSchema = z.object({
       message: "onConnectionQuality must be a function",
     })
     .optional(),
-  /**
-   * Continuous connection metrics, emitted on every stats tick (~1/s) — not
-   * debounced like `onConnectionQuality`, which only re-fires when the verdict
-   * changes. Use this (or the `connectionMetrics` event) for a live latency
-   * readout, e.g. `metrics.g2gMs` under `debugQuality`.
-   */
-  onConnectionMetrics: z
-    .custom<OnConnectionMetricsFn>((val) => typeof val === "function", {
-      message: "onConnectionMetrics must be a function",
-    })
-    .optional(),
   onQueuePosition: z
     .custom<OnQueuePositionFn>((val) => typeof val === "function", {
       message: "onQueuePosition must be a function",
@@ -97,12 +85,9 @@ const realTimeClientConnectOptionsSchema = z.object({
   /**
    * Opt-in quality measurement using LiveKit frame metadata. The capture
    * timestamp is propagated through inference and matched to output playout to
-   * surface true glass-to-glass `g2gMs` / `ttffMs`. Read it live via the
-   * `connectionMetrics` event / `onConnectionMetrics` (or poll
-   * `getConnectionQuality()?.metrics`), both updated every stats tick — not the
-   * `connectionQuality` verdict event, which only re-fires on a level change.
-   * Browser-only and experimental because it relies on LiveKit's frame-metadata
-   * worker and encoded transforms.
+   * surface true glass-to-glass `g2gMs` / `ttffMs` on the `stats` and
+   * `connectionQuality` signals. Browser-only and experimental because it
+   * relies on LiveKit's frame-metadata worker and encoded transforms.
    */
   debugQuality: z.boolean().optional(),
 });
@@ -123,7 +108,6 @@ export type RealTimeClientConnectOptions<TStream extends RealtimeMediaStream = M
 export type Events = {
   connectionChange: ConnectionState;
   connectionQuality: ConnectionQualityReport;
-  connectionMetrics: ConnectionQualityMetrics;
   queuePosition: QueuePosition;
   error: DecartSDKError;
   generationTick: GenerationTick;
@@ -137,13 +121,7 @@ export type RealTimeClient = {
   setPrompt: (prompt: string, { enhance }?: { enhance?: boolean }) => Promise<void>;
   isConnected: () => boolean;
   getConnectionState: () => ConnectionState;
-  /**
-   * Latest interpreted connection-quality report, or null before any stats
-   * arrive. Refreshed every stats tick, so this is the pull path for a live
-   * latency read (`getConnectionQuality()?.metrics.g2gMs`); the
-   * `connectionMetrics` event / `onConnectionMetrics` is the push equivalent.
-   * The `connectionQuality` event only re-fires on a verdict change.
-   */
+  /** Latest interpreted connection-quality verdict, or null before any stats arrive. */
   getConnectionQuality: () => ConnectionQualityReport | null;
   disconnect: () => void;
   on: <K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void;
@@ -175,7 +153,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       onRemoteStream,
       onConnectionChange,
       onConnectionQuality,
-      onConnectionMetrics,
       onQueuePosition,
       initialState,
       resolution,
@@ -217,10 +194,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
           onConnectionQuality: (report) => {
             emitOrBuffer("connectionQuality", report);
             onConnectionQuality?.(report);
-          },
-          onConnectionMetrics: (metrics) => {
-            emitOrBuffer("connectionMetrics", metrics);
-            onConnectionMetrics?.(metrics);
           },
         },
       });

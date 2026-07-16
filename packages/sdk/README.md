@@ -164,20 +164,16 @@ realtimeClient.on("connectionQuality", (report) => { /* ... */ });
 realtimeClient.getConnectionQuality(); // latest report, or null before the first sample
 ```
 
-`onConnectionQuality` / the `connectionQuality` event are **debounced** — they only re-fire when
-the verdict (`quality`/`limitingFactor`) changes, so they're not a live metrics feed. For a
-continuous read of the underlying numbers (updated every stats tick, ~1/s), use
-`onConnectionMetrics` / the `connectionMetrics` event, or poll `getConnectionQuality()?.metrics`:
-
-```typescript
-const realtimeClient = await client.realtime.connect(stream, {
-  model,
-  onRemoteStream: (s) => { videoElement.srcObject = s; },
-  onConnectionMetrics: ({ rttMs, g2gMs, fps }) => updateLatencyHud(rttMs, g2gMs, fps),
-});
-
-realtimeClient.on("connectionMetrics", (metrics) => { /* every tick */ });
-```
+> `onConnectionQuality` and the `connectionQuality` event are **debounced** — they only re-fire
+> when the verdict (`quality`/`limitingFactor`) changes, so they're not a live metrics feed. For a
+> continuous read of the raw numbers, updated every stats tick (~1/s), use the `stats` event or
+> poll `getConnectionQuality()?.metrics`:
+>
+> ```typescript
+> realtimeClient.on("stats", (s) => updateLatencyHud(s.glassToGlass?.medianMs, s.video?.framesPerSecond));
+> // or, on your own interval:
+> setInterval(() => console.log(realtimeClient.getConnectionQuality()?.metrics.g2gMs), 1000);
+> ```
 
 **Glass-to-glass latency (opt-in, diagnostic).** Network RTT hides the dominant cost in
 real-time video — model inference — so a session can read "good" while actually feeling laggy.
@@ -194,10 +190,12 @@ matches it to output playout. This surfaces **startup** (`ttffMs`) and **steady-
 const realtimeClient = await client.realtime.connect(stream, {
   model,
   debugQuality: true,
-  // Read g2g live — this fires every stats tick, unlike the debounced verdict.
-  onConnectionMetrics: ({ ttffMs, g2gMs, g2gDropRatio }) => {
-    console.log(ttffMs, g2gMs, g2gDropRatio);
-  },
+});
+
+// g2g updates every stats tick — read it from the `stats` event (the
+// `connectionQuality` verdict is debounced and would go stale between changes):
+realtimeClient.on("stats", ({ glassToGlass }) => {
+  console.log(glassToGlass?.ttffMs, glassToGlass?.medianMs);
 });
 ```
 

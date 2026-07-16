@@ -1,11 +1,7 @@
 import type { RemoteVideoTrack, Room } from "livekit-client";
 import type { Logger } from "../../utils/logger";
 import { REALTIME_CONFIG } from "../config-realtime";
-import {
-  ConnectionQualityEvaluator,
-  type ConnectionQualityMetrics,
-  type ConnectionQualityReport,
-} from "./connection-quality";
+import { ConnectionQualityEvaluator, type ConnectionQualityReport } from "./connection-quality";
 import type {
   ClientSessionConnectionBreakdownPhase,
   DiagnosticEvent,
@@ -26,7 +22,6 @@ export type RealtimeObservabilityOptions = {
   onDiagnostic?: (event: DiagnosticEvent) => void;
   onStats?: (stats: WebRTCStats) => void;
   onConnectionQuality?: (report: ConnectionQualityReport) => void;
-  onConnectionMetrics?: (metrics: ConnectionQualityMetrics) => void;
   /** @internal Platform-owned implementation; absent on runtimes without pixel diagnostics. */
   glassToGlass?: GlassToGlassDiagnostics;
 };
@@ -196,12 +191,7 @@ export class RealtimeObservability {
     this.resetStallDetection();
     this.statsCollectorSource = source;
 
-    if (
-      !this.options.telemetryEnabled &&
-      !this.options.onStats &&
-      !this.options.onConnectionQuality &&
-      !this.options.onConnectionMetrics
-    ) {
+    if (!this.options.telemetryEnabled && !this.options.onStats && !this.options.onConnectionQuality) {
       return;
     }
 
@@ -252,13 +242,6 @@ export class RealtimeObservability {
     this.telemetryReporter.addStats(stats);
     this.detectVideoStall(stats);
     const report = this.connectionQuality.update(stats);
-    // `update()` refreshes the live metrics every tick but only returns a report
-    // when the verdict changes. Push the fresh metrics each tick so consumers get
-    // continuous latency/g2g reads without polling; the verdict event stays coarse.
-    if (this.options.onConnectionMetrics) {
-      const metrics = this.connectionQuality.current()?.metrics;
-      if (metrics) this.options.onConnectionMetrics(metrics);
-    }
     if (report) this.options.onConnectionQuality?.(report);
   }
 
