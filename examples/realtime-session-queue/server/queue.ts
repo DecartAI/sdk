@@ -27,8 +27,8 @@ export type TicketStatus =
   /** Unknown, expired, or already released ticket. */
   | { state: "expired" };
 
-type Waiter = { ticketId: string; userId: string; lastSeenMs: number };
-type Lease = { userId: string; expiresAtMs: number; session: GrantedSession | null };
+type Waiter = { ticketId: string; lastSeenMs: number };
+type Lease = { expiresAtMs: number; session: GrantedSession | null };
 
 export type QueueOptions = {
   capacity: number;
@@ -45,30 +45,16 @@ export type QueueOptions = {
 export class Queue {
   private waiting: Waiter[] = [];
   private leases = new Map<string, Lease>();
-  private ticketByUser = new Map<string, string>();
 
   constructor(private opts: QueueOptions) {}
 
-  /** Join the line. Idempotent per user: rejoining (extra tab, app restart)
-   *  returns the existing live ticket instead of a second spot. */
-  join(userId: string, nowMs: number): { ticketId: string } & TicketStatus {
+  /** Join the line. Every join takes a fresh spot — one spot per try-on.
+   *  The unguessable ticket id is the only handle a client needs; keeping
+   *  it lets the client rejoin its own spot (poll is idempotent). */
+  join(nowMs: number): { ticketId: string } & TicketStatus {
     this.prune(nowMs);
-    const existing = this.ticketByUser.get(userId);
-    if (existing) {
-      if (this.leases.has(existing)) {
-        // Still holds a slot (e.g. restarted mid-session); the first poll
-        // hands the credentials back.
-        return { ticketId: existing, state: "waiting", position: 0, queueSize: this.waiting.length };
-      }
-      const waiter = this.waiting.find((w) => w.ticketId === existing);
-      if (waiter) {
-        waiter.lastSeenMs = nowMs;
-        return { ticketId: existing, ...this.waitingStatus(existing) };
-      }
-    }
     const ticketId = randomUUID();
-    this.waiting.push({ ticketId, userId, lastSeenMs: nowMs });
-    this.ticketByUser.set(userId, ticketId);
+    this.waiting.push({ ticketId, lastSeenMs: nowMs });
     return { ticketId, ...this.waitingStatus(ticketId) };
   }
 
@@ -88,10 +74,10 @@ export class Queue {
       if (lease.session && Date.parse(lease.session.expiresAt) > nowMs) {
         return { state: "ready", session: lease.session };
       }
-      // The token lapsed before this client connected — the app restarted,
-      // or a tab rejoined past the 60s connect window. The slot is still
-      // theirs; mint fresh credentials for it. (`session` is also null
-      // while another poll's mint is in flight — a double mint is rare and
+      // The token lapsed before this client connected (e.g. an app that
+      // kept its ticket id across a restart). The slot is still theirs;
+      // mint fresh credentials for it. (`session` is also null while
+      // another poll's mint is in flight — a double mint is rare and
       // harmless, the last one wins.)
       return this.mintFor(ticketId, lease, nowMs);
     }
@@ -105,8 +91,8 @@ export class Queue {
 
     // Head of the line + free slot. Reserve the lease *before* awaiting the
     // mint so concurrent polls can't grant past capacity.
-    const [waiter] = this.waiting.splice(index, 1);
-    const reserved: Lease = { userId: waiter.userId, expiresAtMs: nowMs + this.opts.claimGraceMs, session: null };
+    this.waiting.splice(index, 1);
+    const reserved: Lease = { expiresAtMs: nowMs + this.opts.claimGraceMs, session: null };
     this.leases.set(ticketId, reserved);
     return this.mintFor(ticketId, reserved, nowMs);
   }
@@ -120,7 +106,7 @@ export class Queue {
     } catch (error) {
       console.error("Token mint failed, returning the slot to the line:", error);
       this.leases.delete(ticketId);
-      this.waiting.unshift({ ticketId, userId: lease.userId, lastSeenMs: nowMs });
+      this.waiting.unshift({ ticketId, lastSeenMs: nowMs });
       return { state: "waiting", position: 1, queueSize: this.waiting.length };
     }
   }
@@ -138,21 +124,12 @@ export class Queue {
   /** `requeue` is the 1013 backstop: the ticket goes back to the *head* of
    *  the line, so the user recovers their place instead of losing it. */
   release(ticketId: string, requeue: boolean, nowMs: number): void {
-    const lease = this.leases.get(ticketId);
-    if (lease) {
-      this.leases.delete(ticketId);
-      if (requeue) {
-        this.waiting.unshift({ ticketId, userId: lease.userId, lastSeenMs: nowMs });
-      } else {
-        this.ticketByUser.delete(lease.userId);
-      }
+    if (this.leases.delete(ticketId)) {
+      if (requeue) this.waiting.unshift({ ticketId, lastSeenMs: nowMs });
       return;
     }
     const index = this.waiting.findIndex((w) => w.ticketId === ticketId);
-    if (index !== -1) {
-      this.ticketByUser.delete(this.waiting[index].userId);
-      this.waiting.splice(index, 1);
-    }
+    if (index !== -1) this.waiting.splice(index, 1);
   }
 
   stats(nowMs: number): { waiting: number; active: number; capacity: number } {
@@ -167,15 +144,8 @@ export class Queue {
 
   private prune(nowMs: number): void {
     for (const [ticketId, lease] of this.leases) {
-      if (lease.expiresAtMs <= nowMs) {
-        this.leases.delete(ticketId);
-        this.ticketByUser.delete(lease.userId);
-      }
+      if (lease.expiresAtMs <= nowMs) this.leases.delete(ticketId);
     }
-    this.waiting = this.waiting.filter((waiter) => {
-      if (nowMs - waiter.lastSeenMs <= this.opts.waitingTtlMs) return true;
-      this.ticketByUser.delete(waiter.userId);
-      return false;
-    });
+    this.waiting = this.waiting.filter((waiter) => nowMs - waiter.lastSeenMs <= this.opts.waitingTtlMs);
   }
 }

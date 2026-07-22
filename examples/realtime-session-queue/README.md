@@ -68,7 +68,7 @@ pnpm dev                   # gatekeeper on :3000, web app on :5173
 
 Open http://localhost:5173, pick a garment photo, and hit *Try it on*.
 
-**Watching the queue actually queue:** set `TRYON_CAPACITY=1` in `.env`, open two browser tabs, and start a session in each. Each tab acts as a distinct user (per-tab identity), so the second tab waits with a live position and is granted the slot as soon as the first session ends — or after at most `MAX_SESSION_SECONDS`. Reloading a tab keeps its identity: a user who restarts mid-session gets their held slot back with fresh credentials.
+**Watching the queue actually queue:** set `TRYON_CAPACITY=1` in `.env`, open two browser tabs, and start a session in each. Every join is its own spot in line, so the second tab waits with a live position and is granted the slot as soon as the first session ends — or after at most `MAX_SESSION_SECONDS`.
 
 ```sh
 curl -s localhost:3000/api/tryon/stats   # { waiting, active, capacity }
@@ -80,7 +80,7 @@ The queue semantics (FIFO, no-show reclaim, session bound, requeue-at-head, ...)
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/tryon/tickets` | Join the line (idempotent per user — no cutting the line with extra tabs). Header `x-user-id` stands in for your real auth. |
+| `POST /api/tryon/tickets` | Join the line. Every join takes a fresh spot — capacity limits concurrent *sessions*, not users. |
 | `POST /api/tryon/tickets/:id/poll` | Poll every ~2s. Returns `waiting` (position), `ready` (session credentials), or `410` if the ticket expired. **Polling is also the claim**: the poll that finds you at the head of a free slot mints your token. |
 | `POST /api/tryon/tickets/:id/started` | Once, when `realtime.connect()` succeeds — extends the lease from the claim grace to the full session bound. |
 | `POST /api/tryon/tickets/:id/release` | `{ reason: "ended" \| "limit_reached" }`. `limit_reached` requeues at the head. |
@@ -94,13 +94,13 @@ The queue client (`web/src/hooks/useQueue.ts`) intentionally uses only `fetch`, 
 
 - **Realtime SDK**: `@decartai/sdk` ships a React Native entry point; the camera/rendering component (`TryOnSession.tsx`) is the only part you rewrite, same as any RN port.
 - **Release on app close**: RN `fetch` has no `keepalive`; hook `AppState` changes to fire `release` when backgrounding. If the app is killed outright, the lease expires on its own — that's what it's for.
-- **User identity**: replace the `localStorage` stand-in with your account/device id.
+- **Reclaiming a spot after an app restart**: the ticket id is the only handle. This example keeps it in memory (restart = new spot), but if you persist it, `poll` is idempotent — a restarted app polling its old ticket gets its held slot back with freshly minted credentials.
 
 ## Hardening for production
 
 This example keeps every mechanism that makes the queue *correct* and drops what a demo doesn't need. Before shipping:
 
-- **Auth**: replace the `x-user-id` header with your real user authentication on every endpoint.
+- **Auth**: the join route is unauthenticated here — anyone who can call it can take spots in line. Put your real user authentication in front of it, and add a per-user spot limit (one map keyed by your auth's user id) if you need to stop hoarding.
 - **Never ship your API key in the app.** The app only ever sees the short-lived token (that's the point of this whole design).
 - **Multiple server instances**: the in-memory state in `server/queue.ts` assumes one instance. The state maps directly onto a shared store — waiting line → sorted set keyed by a monotonic sequence, leases → sorted set keyed by expiry — with one rule: the head-of-line check and lease reservation in `poll()` must be atomic (a Redis Lua script, or a transactional `SELECT ... FOR UPDATE`). This is the same technique Decart's own limiter uses.
 - **Faster reclaim of crashed apps**: the lease is only reclaimed at the session bound (~2.5 min worst case) if the app dies mid-session without releasing. If that's too slow, have the app heartbeat every ~10s and expire leases ~30s after the last beat.

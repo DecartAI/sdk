@@ -31,7 +31,7 @@ async function post(path: string, init?: RequestInit): Promise<Response> {
   return fetch(`/api/tryon${path}`, { method: "POST", ...init });
 }
 
-export function useQueue(userId: string) {
+export function useQueue() {
   const [status, setStatus] = useState<QueueStatus>({ phase: "idle" });
   const ticketRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,7 +75,7 @@ export function useQueue(userId: string) {
   const join = useCallback(async () => {
     if (ticketRef.current) return;
     try {
-      const response = await post("/tickets", { headers: { "x-user-id": userId } });
+      const response = await post("/tickets");
       if (!response.ok) throw new Error(`join failed with ${response.status}`);
       const body = await response.json();
       ticketRef.current = body.ticketId;
@@ -84,7 +84,7 @@ export function useQueue(userId: string) {
     } catch (error) {
       setStatus({ phase: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [userId, pollOnce]);
+  }, [pollOnce]);
 
   const releaseTicket = useCallback((reason: "ended" | "limit_reached") => {
     const ticketId = ticketRef.current;

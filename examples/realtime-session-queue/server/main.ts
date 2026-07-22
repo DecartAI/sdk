@@ -35,20 +35,11 @@ function asyncHandler(fn: (req: express.Request, res: express.Response) => Promi
   return (req, res, next) => fn(req, res).catch(next);
 }
 
-/** Stand-in for real user authentication — see README before shipping. */
-function requireUserId(req: express.Request, res: express.Response): string | null {
-  const userId = req.header("x-user-id");
-  if (!userId) {
-    res.status(401).json({ error: "missing x-user-id header" });
-    return null;
-  }
-  return userId;
-}
-
-app.post("/api/tryon/tickets", (req, res) => {
-  const userId = requireUserId(req, res);
-  if (!userId) return;
-  res.json(queue.join(userId, Date.now()));
+// Every join takes a fresh spot in line — capacity limits concurrent
+// *sessions*, not users. Authenticate this route before shipping (see
+// README): anyone who can call it can take spots.
+app.post("/api/tryon/tickets", (_req, res) => {
+  res.json(queue.join(Date.now()));
 });
 
 app.post(

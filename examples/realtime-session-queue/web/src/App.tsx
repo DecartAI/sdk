@@ -1,23 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { TryOnSession } from "./components/TryOnSession";
 import { useQueue } from "./hooks/useQueue";
 
-// Stand-in for your real user identity (account id, device id, ...). The
-// gatekeeper dedupes tickets by this, so one user holds one spot in line.
-// sessionStorage on purpose: each browser tab acts as a distinct demo user
-// (so extra tabs queue up), while reloading a tab keeps its identity and
-// exercises the rejoin-a-held-slot path.
-function getUserId(): string {
-  const existing = sessionStorage.getItem("tryon-user-id");
-  if (existing) return existing;
-  const created = crypto.randomUUID();
-  sessionStorage.setItem("tryon-user-id", created);
-  return created;
-}
-
 export function App() {
-  const userId = useMemo(getUserId, []);
-  const { status, join, leave, sessionConnected, endSession, reportLimitReached } = useQueue(userId);
+  const { status, join, leave, sessionConnected, endSession, reportLimitReached } = useQueue();
   const [garment, setGarment] = useState<File | null>(null);
   const [garmentUrl, setGarmentUrl] = useState<string | null>(null);
   useEffect(() => {
