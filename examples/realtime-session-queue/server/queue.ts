@@ -48,9 +48,8 @@ export class Queue {
 
   constructor(private opts: QueueOptions) {}
 
-  /** Join the line. Every join takes a fresh spot — one spot per try-on.
-   *  The unguessable ticket id is the only handle a client needs; keeping
-   *  it lets the client rejoin its own spot (poll is idempotent). */
+  /** Join the line. The unguessable ticket id is the only handle a client
+   *  needs; keeping it lets the client return to its spot (poll is idempotent). */
   join(nowMs: number): { ticketId: string } & TicketStatus {
     this.prune(nowMs);
     const ticketId = randomUUID();

@@ -35,9 +35,8 @@ function asyncHandler(fn: (req: express.Request, res: express.Response) => Promi
   return (req, res, next) => fn(req, res).catch(next);
 }
 
-// Every join takes a fresh spot in line — capacity limits concurrent
-// *sessions*, not users. Authenticate this route before shipping (see
-// README): anyone who can call it can take spots.
+// Authenticate this route before shipping (see README): anyone who can
+// call it can take a spot in line.
 app.post("/api/tryon/tickets", (_req, res) => {
   res.json(queue.join(Date.now()));
 });

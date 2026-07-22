@@ -80,7 +80,7 @@ The queue semantics (FIFO, no-show reclaim, session bound, requeue-at-head, ...)
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/tryon/tickets` | Join the line. Every join takes a fresh spot — capacity limits concurrent *sessions*, not users. |
+| `POST /api/tryon/tickets` | Join the line. Returns the ticket id — the client's only handle for the rest of the flow. |
 | `POST /api/tryon/tickets/:id/poll` | Poll every ~2s. Returns `waiting` (position), `ready` (session credentials), or `410` if the ticket expired. **Polling is also the claim**: the poll that finds you at the head of a free slot mints your token. |
 | `POST /api/tryon/tickets/:id/started` | Once, when `realtime.connect()` succeeds — extends the lease from the claim grace to the full session bound. |
 | `POST /api/tryon/tickets/:id/release` | `{ reason: "ended" \| "limit_reached" }`. `limit_reached` requeues at the head. |

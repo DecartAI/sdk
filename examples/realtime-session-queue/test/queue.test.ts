@@ -39,7 +39,7 @@ test("FIFO grants up to capacity, then queues with positions", async () => {
   assert.deepEqual(await queue.poll(c.ticketId, t0 + 12), { state: "waiting", position: 1, queueSize: 1 });
 });
 
-test("every join takes its own spot — capacity limits sessions, not users", async () => {
+test("every join takes its own spot in line", async () => {
   const queue = makeQueue();
   const first = queue.join(1000);
   const second = queue.join(1001);
