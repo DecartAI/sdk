@@ -1,0 +1,141 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f5f5f7;
+  color: #1d1d1f;
+}
+
+main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+h1 {
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  color: #6e6e73;
+  margin-top: 0;
+}
+
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 2rem;
+  margin: 1.5rem auto;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+
+button {
+  padding: 0.6rem 1.4rem;
+  border: none;
+  border-radius: 8px;
+  background: #1d1d1f;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.garment-picker,
+.change-garment {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.garment-preview {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #d2d2d7;
+  border-top-color: #1d1d1f;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.eta {
+  color: #6e6e73;
+  margin: 0;
+}
+
+.error {
+  color: #b00020;
+}
+
+.session {
+  margin-top: 1.5rem;
+}
+
+.session-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.status-pill {
+  background: #e8f0fe;
+  color: #1a56db;
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.countdown {
+  font-variant-numeric: tabular-nums;
+  color: #6e6e73;
+}
+
+.videos {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.videos video {
+  width: 400px;
+  max-width: 100%;
+  border-radius: 12px;
+  background: #000;
+}
+
+.videos h3 {
+  margin: 0 0 0.5rem;
+}
+
+.change-garment {
+  margin-top: 1rem;
+  align-items: center;
+}
