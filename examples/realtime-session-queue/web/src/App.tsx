@@ -4,11 +4,14 @@ import { useQueue } from "./hooks/useQueue";
 
 // Stand-in for your real user identity (account id, device id, ...). The
 // gatekeeper dedupes tickets by this, so one user holds one spot in line.
+// sessionStorage on purpose: each browser tab acts as a distinct demo user
+// (so extra tabs queue up), while reloading a tab keeps its identity and
+// exercises the rejoin-a-held-slot path.
 function getUserId(): string {
-  const existing = localStorage.getItem("tryon-user-id");
+  const existing = sessionStorage.getItem("tryon-user-id");
   if (existing) return existing;
   const created = crypto.randomUUID();
-  localStorage.setItem("tryon-user-id", created);
+  sessionStorage.setItem("tryon-user-id", created);
   return created;
 }
 

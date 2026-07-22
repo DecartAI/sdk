@@ -68,7 +68,7 @@ pnpm dev                   # gatekeeper on :3000, web app on :5173
 
 Open http://localhost:5173, pick a garment photo, and hit *Try it on*.
 
-**Watching the queue actually queue:** set `TRYON_CAPACITY=1` in `.env`, open two browser windows (one in private browsing, so it gets a different user id), and start a session in each. The second window waits with a live position, and is granted the slot as soon as the first session ends — or after at most `MAX_SESSION_SECONDS`.
+**Watching the queue actually queue:** set `TRYON_CAPACITY=1` in `.env`, open two browser tabs, and start a session in each. Each tab acts as a distinct user (per-tab identity), so the second tab waits with a live position and is granted the slot as soon as the first session ends — or after at most `MAX_SESSION_SECONDS`. Reloading a tab keeps its identity: a user who restarts mid-session gets their held slot back with fresh credentials.
 
 ```sh
 curl -s localhost:3000/api/tryon/stats   # { waiting, active, capacity }
