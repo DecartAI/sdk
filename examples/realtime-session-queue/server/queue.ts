@@ -100,8 +100,14 @@ export class Queue {
    *  head of the line so the user keeps their place. */
   private async mintFor(ticketId: string, lease: Lease, nowMs: number): Promise<TicketStatus> {
     try {
-      lease.session = await this.opts.mint();
-      return { state: "ready", session: lease.session };
+      const session = await this.opts.mint();
+      if (this.leases.get(ticketId) !== lease) {
+        // The claim grace lapsed during a slow mint and the slot moved on;
+        // handing out these credentials would grant past capacity.
+        return { state: "expired" };
+      }
+      lease.session = session;
+      return { state: "ready", session };
     } catch (error) {
       console.error("Token mint failed, returning the slot to the line:", error);
       this.leases.delete(ticketId);
@@ -121,14 +127,14 @@ export class Queue {
   }
 
   /** `requeue` is the 1013 backstop: the ticket goes back to the *head* of
-   *  the line, so the user recovers their place instead of losing it. */
+   *  the line, so the user recovers their place instead of losing it. It
+   *  works even when the claim grace already reclaimed the lease — a refused
+   *  connect can spend longer retrying than the grace allows. */
   release(ticketId: string, requeue: boolean, nowMs: number): void {
-    if (this.leases.delete(ticketId)) {
-      if (requeue) this.waiting.unshift({ ticketId, lastSeenMs: nowMs });
-      return;
-    }
+    this.leases.delete(ticketId);
     const index = this.waiting.findIndex((w) => w.ticketId === ticketId);
     if (index !== -1) this.waiting.splice(index, 1);
+    if (requeue) this.waiting.unshift({ ticketId, lastSeenMs: nowMs });
   }
 
   stats(nowMs: number): { waiting: number; active: number; capacity: number } {

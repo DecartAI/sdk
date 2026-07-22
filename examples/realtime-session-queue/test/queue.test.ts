@@ -102,6 +102,44 @@ test("limit_reached requeues at the head of the line, same ticket id", async () 
   assert.equal((await queue.poll(a.ticketId, t0 + 22)).state, "ready");
 });
 
+test("limit_reached requeues even after the claim grace reclaimed the lease", async () => {
+  const queue = makeQueue({ capacity: 1 });
+  const t0 = 1000;
+  const a = queue.join(t0);
+  assert.equal((await queue.poll(a.ticketId, t0)).state, "ready");
+
+  // The refused connect spent longer retrying than the grace allows; the
+  // lease is long gone by the time the client reports limit_reached.
+  queue.release(a.ticketId, true, t0 + 150);
+  assert.equal((await queue.poll(a.ticketId, t0 + 151)).state, "ready");
+});
+
+test("a mint that outlives the claim grace does not hand out a slot", async () => {
+  let resolveMint: (value: GrantedSession) => void = () => {};
+  let calls = 0;
+  const queue = makeQueue({
+    capacity: 1,
+    mint: () => {
+      calls += 1;
+      if (calls === 1)
+        return new Promise((resolve) => {
+          resolveMint = resolve;
+        });
+      return Promise.resolve(session);
+    },
+  });
+  const t0 = 1000;
+  const a = queue.join(t0);
+  const b = queue.join(t0);
+
+  const stalled = queue.poll(a.ticketId, t0); // wins the slot, mint hangs
+  // The claim grace lapses mid-mint and the slot moves on to b...
+  assert.equal((await queue.poll(b.ticketId, t0 + 150)).state, "ready");
+  // ...so the stalled mint must not hand out a second slot.
+  resolveMint(session);
+  assert.equal((await stalled).state, "expired");
+});
+
 test("mint failure returns the slot and keeps the user at the head", async () => {
   let failMint = true;
   const queue = makeQueue({

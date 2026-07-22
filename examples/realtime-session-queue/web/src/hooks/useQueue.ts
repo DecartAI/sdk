@@ -46,6 +46,8 @@ export function useQueue() {
     if (!ticketId) return;
     try {
       const response = await post(`/tickets/${ticketId}/poll`);
+      // The user left or the session ended while this poll was in flight.
+      if (ticketRef.current !== ticketId) return;
       if (response.status === 410) {
         stopPolling();
         ticketRef.current = null;
@@ -64,14 +66,6 @@ export function useQueue() {
     pollTimerRef.current = setTimeout(pollOnce, POLL_INTERVAL_MS);
   }, [stopPolling]);
 
-  /** Call once the realtime connection is established: extends the server
-   *  lease from the 45s claim grace to the full session bound. Deliberately
-   *  not at grant — a client stuck on the camera prompt stays reclaimable. */
-  const sessionConnected = useCallback(() => {
-    const ticketId = ticketRef.current;
-    if (ticketId) void post(`/tickets/${ticketId}/started`).catch(() => {});
-  }, []);
-
   const join = useCallback(async () => {
     if (ticketRef.current) return;
     try {
@@ -86,25 +80,24 @@ export function useQueue() {
     }
   }, [pollOnce]);
 
-  const releaseTicket = useCallback((reason: "ended" | "limit_reached") => {
+  const releaseTicket = useCallback((reason: "ended" | "limit_reached"): Promise<unknown> => {
     const ticketId = ticketRef.current;
-    if (!ticketId) return;
-    // keepalive lets the request survive page navigation/close. React
-    // Native's fetch has no keepalive; fire-and-forget works the same, and
-    // the server-side lease expiry covers the app being killed outright.
-    void post(`/tickets/${ticketId}/release`, {
+    if (!ticketId) return Promise.resolve();
+    // keepalive lets the request survive page navigation/close.
+    const request = post(`/tickets/${ticketId}/release`, {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ reason }),
       keepalive: true,
     }).catch(() => {});
     if (reason !== "limit_reached") ticketRef.current = null;
+    return request;
   }, []);
 
   /** Session finished — cleanly or with an error (shown to the user). */
   const endSession = useCallback(
     (message?: string) => {
       stopPolling();
-      releaseTicket("ended");
+      void releaseTicket("ended");
       setStatus(message ? { phase: "error", message } : { phase: "idle" });
     },
     [stopPolling, releaseTicket],
@@ -112,24 +105,43 @@ export function useQueue() {
 
   /** Backstop: Decart refused the connect with its concurrency close code.
    *  The server puts us back at the head of the line; resume polling. */
-  const reportLimitReached = useCallback(() => {
+  const reportLimitReached = useCallback(async () => {
     stopPolling();
-    releaseTicket("limit_reached");
     setStatus({ phase: "waiting", position: 1, queueSize: 1 });
+    // Wait for the requeue to land before polling again, so a fast poll
+    // can't see the old lease and hand the dead credentials back.
+    await releaseTicket("limit_reached");
     pollTimerRef.current = setTimeout(pollOnce, POLL_INTERVAL_MS);
   }, [stopPolling, releaseTicket, pollOnce]);
 
   /** Leave the line before being granted a session. */
   const leave = useCallback(() => {
     stopPolling();
-    releaseTicket("ended");
+    void releaseTicket("ended");
     setStatus({ phase: "idle" });
   }, [stopPolling, releaseTicket]);
+
+  /** Call once the realtime connection is established: extends the server
+   *  lease from the 45s claim grace to the full session bound. Deliberately
+   *  not at grant — a client stuck on the camera prompt stays reclaimable.
+   *  A 410 means the grace lapsed before we connected and the slot may
+   *  already be someone else's — end the now-unaccounted session. */
+  const sessionConnected = useCallback(() => {
+    const ticketId = ticketRef.current;
+    if (!ticketId) return;
+    post(`/tickets/${ticketId}/started`)
+      .then((response) => {
+        if (response.status === 410 && ticketRef.current === ticketId) {
+          endSession("Starting took too long and your slot was released. Please rejoin.");
+        }
+      })
+      .catch(() => {});
+  }, [endSession]);
 
   useEffect(() => {
     return () => {
       stopPolling();
-      releaseTicket("ended");
+      void releaseTicket("ended");
     };
   }, [stopPolling, releaseTicket]);
 
