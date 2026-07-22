@@ -28,7 +28,7 @@ export type QueueStatus =
 const POLL_INTERVAL_MS = 2000;
 
 async function post(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`/api/tryon${path}`, { method: "POST", ...init });
+  return fetch(`/api/queue${path}`, { method: "POST", ...init });
 }
 
 export function useQueue() {

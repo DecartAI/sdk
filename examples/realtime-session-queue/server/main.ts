@@ -37,19 +37,19 @@ function asyncHandler(fn: (req: express.Request, res: express.Response) => Promi
 
 // Authenticate this route before shipping (see README): anyone who can
 // call it can take a spot in line.
-app.post("/api/tryon/tickets", (_req, res) => {
+app.post("/api/queue/tickets", (_req, res) => {
   res.json(queue.join(Date.now()));
 });
 
 app.post(
-  "/api/tryon/tickets/:ticketId/poll",
+  "/api/queue/tickets/:ticketId/poll",
   asyncHandler(async (req, res) => {
     const status = await queue.poll(req.params.ticketId, Date.now());
     res.status(status.state === "expired" ? 410 : 200).json(status);
   }),
 );
 
-app.post("/api/tryon/tickets/:ticketId/started", (req, res) => {
+app.post("/api/queue/tickets/:ticketId/started", (req, res) => {
   if (!queue.started(req.params.ticketId, Date.now())) {
     res.status(410).json({ state: "expired" });
     return;
@@ -57,7 +57,7 @@ app.post("/api/tryon/tickets/:ticketId/started", (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/tryon/tickets/:ticketId/release", (req, res) => {
+app.post("/api/queue/tickets/:ticketId/release", (req, res) => {
   const reason = req.body?.reason;
   if (reason !== "ended" && reason !== "limit_reached") {
     res.status(400).json({ error: 'reason must be "ended" or "limit_reached"' });
@@ -67,7 +67,7 @@ app.post("/api/tryon/tickets/:ticketId/release", (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/tryon/stats", (_req, res) => {
+app.get("/api/queue/stats", (_req, res) => {
   res.json(queue.stats(Date.now()));
 });
 

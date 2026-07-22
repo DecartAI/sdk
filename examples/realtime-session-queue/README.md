@@ -12,7 +12,7 @@ Your backend already has to hold your Decart API key and mint [ephemeral client 
 
 ```
 App                        Your gatekeeper (this example)              Decart
- │  POST /api/tryon/tickets  │                                           │
+ │  POST /api/queue/tickets  │                                           │
  ├──────────────────────────>│ enqueue                                   │
  │   { ticketId, position }  │                                           │
  │  POST .../poll (every 2s) │                                           │
@@ -71,7 +71,7 @@ Open http://localhost:5173 and hit *Try it on* — a sample garment photo is pre
 **Watching the queue actually queue:** set `TRYON_CAPACITY=1` in `.env`, open two browser tabs, and start a session in each. Every join is its own spot in line, so the second tab waits with a live position and is granted the slot as soon as the first session ends — or after at most `MAX_SESSION_SECONDS`.
 
 ```sh
-curl -s localhost:3000/api/tryon/stats   # { waiting, active, capacity }
+curl -s localhost:3000/api/queue/stats   # { waiting, active, capacity }
 ```
 
 The queue semantics (FIFO, no-show reclaim, session bound, requeue-at-head, ...) are covered by `pnpm test` — the queue takes time and token-minting as inputs (`server/queue.ts`), so the tests are instant and deterministic.
@@ -80,11 +80,11 @@ The queue semantics (FIFO, no-show reclaim, session bound, requeue-at-head, ...)
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/tryon/tickets` | Join the line. Returns the ticket id — the client's only handle for the rest of the flow. |
-| `POST /api/tryon/tickets/:id/poll` | Poll every ~2s. Returns `waiting` (position), `ready` (session credentials), or `410` if the ticket expired. **Polling is also the claim**: the poll that finds you at the head of a free slot mints your token. |
-| `POST /api/tryon/tickets/:id/started` | Once, when `realtime.connect()` succeeds — extends the lease from the claim grace to the full session bound. |
-| `POST /api/tryon/tickets/:id/release` | `{ reason: "ended" \| "limit_reached" }`. `limit_reached` requeues at the head. |
-| `GET /api/tryon/stats` | `{ waiting, active, capacity }` for dashboards/ops. |
+| `POST /api/queue/tickets` | Join the line. Returns the ticket id — the client's only handle for the rest of the flow. |
+| `POST /api/queue/tickets/:id/poll` | Poll every ~2s. Returns `waiting` (position), `ready` (session credentials), or `410` if the ticket expired. **Polling is also the claim**: the poll that finds you at the head of a free slot mints your token. |
+| `POST /api/queue/tickets/:id/started` | Once, when `realtime.connect()` succeeds — extends the lease from the claim grace to the full session bound. |
+| `POST /api/queue/tickets/:id/release` | `{ reason: "ended" \| "limit_reached" }`. `limit_reached` requeues at the head. |
+| `GET /api/queue/stats` | `{ waiting, active, capacity }` for dashboards/ops. |
 
 Plain short-poll keeps mobile clients simple and robust (backgrounding, flaky networks). If you want snappier updates later, swap the poll loop for SSE/WebSocket pushes without touching the queue.
 
