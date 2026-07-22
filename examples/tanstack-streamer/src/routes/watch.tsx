@@ -1,8 +1,4 @@
-import {
-  type ConnectionState,
-  createDecartClient,
-  type RealTimeSubscribeClient,
-} from "@decartai/sdk";
+import { type ConnectionState, createDecartClient, type RealTimeSubscribeClient } from "@decartai/sdk";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
@@ -77,9 +73,7 @@ function WatchPage() {
   return (
     <div style={{ padding: "2rem", fontFamily: "system-ui, sans-serif" }}>
       <h1>Viewer</h1>
-      <p style={{ color: "#666" }}>
-        Watching a live-styled stream via subscribe token.
-      </p>
+      <p style={{ color: "#666" }}>Watching a live-styled stream via subscribe token.</p>
 
       <p>
         Status: <strong>{status}</strong>

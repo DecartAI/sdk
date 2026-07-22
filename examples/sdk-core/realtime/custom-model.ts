@@ -9,8 +9,8 @@
  * See examples/nextjs-realtime or examples/react-vite for runnable demos
  */
 
-import { createDecartClient } from "@decartai/sdk";
 import type { CustomModelDefinition } from "@decartai/sdk";
+import { createDecartClient } from "@decartai/sdk";
 
 async function main() {
   // Define a custom model that isn't in the SDK's built-in registry.
