@@ -20,7 +20,7 @@ export const config = {
   decartApiKey,
   model: "lucy-vton-latest" as const,
   /** Concurrent sessions to allow. Must not exceed your account's realtime concurrency limit. */
-  capacity: int("TRYON_CAPACITY", 10),
+  capacity: int("QUEUE_CAPACITY", 10),
   /** Hard per-session cap. Decart enforces it server-side via the token constraint, so a
    *  killed app can never squat a slot longer than this — it's what keeps the queue moving. */
   maxSessionSeconds: int("MAX_SESSION_SECONDS", 120),

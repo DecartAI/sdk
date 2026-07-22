@@ -68,7 +68,7 @@ pnpm dev                   # gatekeeper on :3000, web app on :5173
 
 Open http://localhost:5173 and hit *Try it on* — a sample garment photo is preloaded (pick a file to use your own).
 
-**Watching the queue actually queue:** set `TRYON_CAPACITY=1` in `.env`, open two browser tabs, and start a session in each. Every join is its own spot in line, so the second tab waits with a live position and is granted the slot as soon as the first session ends — or after at most `MAX_SESSION_SECONDS`.
+**Watching the queue actually queue:** set `QUEUE_CAPACITY=1` in `.env`, open two browser tabs, and start a session in each. Every join is its own spot in line, so the second tab waits with a live position and is granted the slot as soon as the first session ends — or after at most `MAX_SESSION_SECONDS`.
 
 ```sh
 curl -s localhost:3000/api/queue/stats   # { waiting, active, capacity }
@@ -88,14 +88,6 @@ The queue semantics (FIFO, no-show reclaim, session bound, requeue-at-head, ...)
 
 Plain short-poll keeps mobile clients simple and robust (backgrounding, flaky networks). If you want snappier updates later, swap the poll loop for SSE/WebSocket pushes without touching the queue.
 
-## Porting the client to React Native
-
-The queue client (`web/src/hooks/useQueue.ts`) intentionally uses only `fetch`, timers, and React state — it runs under React Native unchanged. What differs:
-
-- **Realtime SDK**: `@decartai/sdk` ships a React Native entry point; the camera/rendering component (`TryOnSession.tsx`) is the only part you rewrite, same as any RN port.
-- **Release on app close**: RN `fetch` has no `keepalive`; hook `AppState` changes to fire `release` when backgrounding. If the app is killed outright, the lease expires on its own — that's what it's for.
-- **Reclaiming a spot after an app restart**: the ticket id is the only handle. This example keeps it in memory (restart = new spot), but if you persist it, `poll` is idempotent — a restarted app polling its old ticket gets its held slot back with freshly minted credentials.
-
 ## Hardening for production
 
 This example keeps every mechanism that makes the queue *correct* and drops what a demo doesn't need. Before shipping:
@@ -106,6 +98,7 @@ This example keeps every mechanism that makes the queue *correct* and drops what
 - **Faster reclaim of crashed apps**: the lease is only reclaimed at the session bound (~2.5 min worst case) if the app dies mid-session without releasing. If that's too slow, have the app heartbeat every ~10s and expire leases ~30s after the last beat.
 - **Wait-time estimates**: track recent session durations and show `position × avg ÷ capacity` next to the position.
 - **Shrinking the race window**: `GET /v1/realtime/quota` (with your API key) returns your live `{ limit, active, remaining }` — cross-check it before granting if you want to make `limit_reached` even rarer.
-- **Capacity**: run `TRYON_CAPACITY` at your account limit; the backstop handles the rare race. Remember the limit is org-wide — other realtime usage on the same account eats into it.
+- **Capacity**: run `QUEUE_CAPACITY` at your account limit; the backstop handles the rare race. Remember the limit is org-wide — other realtime usage on the same account eats into it.
+- **Surviving app restarts**: the ticket id is the client's only handle. This example keeps it in memory (restart = new spot), but if you persist it, `poll` is idempotent — a restarted app polling its old ticket gets its held slot back with freshly minted credentials.
 - **Tune `MAX_SESSION_SECONDS`** — it's the single biggest lever on queue throughput: wait time ≈ position × session length ÷ capacity.
 - **Priority tiers**, if you need them later, are one change: order the waiting line by (tier, arrival) instead of arrival alone.
