@@ -84,10 +84,16 @@ export class Queue {
 
     const lease = this.leases.get(ticketId);
     if (lease) {
-      // `session` is null only while another poll's mint is in flight.
-      return lease.session
-        ? { state: "ready", session: lease.session }
-        : { state: "waiting", position: 1, queueSize: this.waiting.length + 1 };
+      // Hand back the stored credentials while their connect window lasts.
+      if (lease.session && Date.parse(lease.session.expiresAt) > nowMs) {
+        return { state: "ready", session: lease.session };
+      }
+      // The token lapsed before this client connected — the app restarted,
+      // or a tab rejoined past the 60s connect window. The slot is still
+      // theirs; mint fresh credentials for it. (`session` is also null
+      // while another poll's mint is in flight — a double mint is rare and
+      // harmless, the last one wins.)
+      return this.mintFor(ticketId, lease, nowMs);
     }
 
     const index = this.waiting.findIndex((w) => w.ticketId === ticketId);
@@ -102,13 +108,19 @@ export class Queue {
     const [waiter] = this.waiting.splice(index, 1);
     const reserved: Lease = { userId: waiter.userId, expiresAtMs: nowMs + this.opts.claimGraceMs, session: null };
     this.leases.set(ticketId, reserved);
+    return this.mintFor(ticketId, reserved, nowMs);
+  }
+
+  /** Mint credentials for a held slot; on failure the slot returns to the
+   *  head of the line so the user keeps their place. */
+  private async mintFor(ticketId: string, lease: Lease, nowMs: number): Promise<TicketStatus> {
     try {
-      reserved.session = await this.opts.mint();
-      return { state: "ready", session: reserved.session };
+      lease.session = await this.opts.mint();
+      return { state: "ready", session: lease.session };
     } catch (error) {
       console.error("Token mint failed, returning the slot to the line:", error);
       this.leases.delete(ticketId);
-      this.waiting.unshift(waiter);
+      this.waiting.unshift({ ticketId, userId: lease.userId, lastSeenMs: nowMs });
       return { state: "waiting", position: 1, queueSize: this.waiting.length };
     }
   }

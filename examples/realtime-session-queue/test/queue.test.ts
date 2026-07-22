@@ -4,7 +4,13 @@ import { type GrantedSession, Queue, type QueueOptions } from "../server/queue.j
 
 // Time is passed in explicitly and minting is injected, so the tests are
 // instant and deterministic — no sleeping, no network.
-const session: GrantedSession = { apiKey: "ek_test", expiresAt: "", model: "m", maxSessionSeconds: 1 };
+// Token expiry far beyond every timestamp used in these tests.
+const session: GrantedSession = {
+  apiKey: "ek_test",
+  expiresAt: new Date(100_000).toISOString(),
+  model: "m",
+  maxSessionSeconds: 1,
+};
 
 function makeQueue(overrides: Partial<QueueOptions> = {}) {
   return new Queue({
@@ -110,6 +116,24 @@ test("mint failure returns the slot and keeps the user at the head", async () =>
   assert.deepEqual(await queue.poll(a.ticketId, t0 + 10), { state: "waiting", position: 1, queueSize: 1 });
   failMint = false;
   assert.equal((await queue.poll(a.ticketId, t0 + 20)).state, "ready");
+});
+
+test("rejoining after the token's connect window re-mints fresh credentials", async () => {
+  let minted = 0;
+  const shortLived = () => ({ ...session, apiKey: `ek_${++minted}`, expiresAt: new Date(1050).toISOString() });
+  const queue = makeQueue({ capacity: 1, mint: async () => shortLived() });
+  const a = queue.join("user-a", 1000);
+  assert.equal((await queue.poll(a.ticketId, 1000)).state, "ready");
+  queue.started(a.ticketId, 1000);
+
+  // Same user comes back (app restart, second tab) after the 60s-equivalent
+  // connect window — the slot is still theirs, but the old token is dead.
+  const again = await queue.poll(a.ticketId, 1100);
+  assert.deepEqual(again, {
+    state: "ready",
+    session: { ...session, apiKey: "ek_2", expiresAt: new Date(1050).toISOString() },
+  });
+  assert.equal(minted, 2);
 });
 
 test("waiting tickets that stop polling leave the line", async () => {
