@@ -57,9 +57,11 @@ test("a granted slot that never starts is reclaimed after the claim grace (no-sh
 
   // Before the grace lapses the slot is still held...
   assert.equal((await queue.poll(b.ticketId, t0 + 10 + 99)).state, "waiting");
-  // ...after it, the no-show's slot goes to the next in line.
-  assert.equal((await queue.poll(b.ticketId, t0 + 10 + 101)).state, "ready");
-  assert.equal((await queue.poll(a.ticketId, t0 + 10 + 102)).state, "expired");
+  // ...after it, the no-show's slot goes to the next in line, and a late
+  // `started` cannot revive the reclaimed lease.
+  assert.equal(queue.started(a.ticketId, t0 + 10 + 101), false);
+  assert.equal((await queue.poll(b.ticketId, t0 + 10 + 102)).state, "ready");
+  assert.equal((await queue.poll(a.ticketId, t0 + 10 + 103)).state, "expired");
 });
 
 test("started extends the lease to the session bound — which still expires", async () => {
@@ -165,7 +167,7 @@ test("rejoining after the token's connect window re-mints fresh credentials", as
   assert.equal((await queue.poll(a.ticketId, 1000)).state, "ready");
   queue.started(a.ticketId, 1000);
 
-  // Same user comes back (app restart, second tab) after the 60s-equivalent
+  // Same user comes back (app restart, second tab) after the token's
   // connect window — the slot is still theirs, but the old token is dead.
   const again = await queue.poll(a.ticketId, 1100);
   assert.deepEqual(again, {

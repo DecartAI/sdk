@@ -31,7 +31,7 @@ App                        Your gatekeeper (this example)              Decart
 
 Three properties make this robust without needing to be clever:
 
-1. **The token is the no-show timeout.** A granted token expires in 60s (`expiresIn`) — that's the *connect window*, not the session length. If the user never connects, the token dies on its own and the slot's claim grace (45s) returns it to the line.
+1. **The token is the no-show timeout.** A granted token's `expiresIn` matches the queue's 45s claim grace — that's the *connect window*, not the session length. If the user never connects, the token dies exactly when the slot returns to the line.
 2. **Decart enforces the session cap for you.** The token carries `constraints.realtime.maxSessionDuration` (120s here). Decart kills the session server-side when it's up — even if the app was backgrounded or killed — so a slot can never be squatted and the queue always moves.
 3. **Decart is the backstop for races.** The gate keeps you at/below the limit, but if a connect still gets refused (see below), the app reports `limit_reached` and the server requeues that ticket **at the head of the line** — the user recovers on the next poll instead of losing their place.
 

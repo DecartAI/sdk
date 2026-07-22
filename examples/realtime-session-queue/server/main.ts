@@ -5,15 +5,19 @@ import { type GrantedSession, Queue } from "./queue.js";
 
 const decart = createDecartClient({ apiKey: config.decartApiKey });
 
+// The window the client has to *connect*, not the session length. The token
+// lifetime and the queue's claim grace share this clock, so a no-show's
+// token dies exactly when its slot returns to the line.
+const CONNECT_WINDOW_SECONDS = 45;
+
 const queue = new Queue({
   capacity: config.capacity,
-  claimGraceMs: 45_000,
+  claimGraceMs: CONNECT_WINDOW_SECONDS * 1000,
   sessionLeaseMs: (config.maxSessionSeconds + 30) * 1000,
   waitingTtlMs: 30_000,
   mint: async (): Promise<GrantedSession> => {
     const token = await decart.tokens.create({
-      // The window the client has to *connect*, not the session length.
-      expiresIn: 60,
+      expiresIn: CONNECT_WINDOW_SECONDS,
       allowedModels: [config.model],
       constraints: { realtime: { maxSessionDuration: config.maxSessionSeconds } },
     });

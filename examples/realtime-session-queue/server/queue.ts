@@ -120,6 +120,7 @@ export class Queue {
    *  grace to the full session bound. Deliberately a one-shot transition —
    *  a client stuck on the camera prompt stays reclaimable. */
   started(ticketId: string, nowMs: number): boolean {
+    this.prune(nowMs);
     const lease = this.leases.get(ticketId);
     if (!lease) return false;
     lease.expiresAtMs = nowMs + this.opts.sessionLeaseMs;
