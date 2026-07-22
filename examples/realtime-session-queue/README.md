@@ -66,7 +66,7 @@ cp .env.example .env       # add your DECART_API_KEY
 pnpm dev                   # gatekeeper on :3000, web app on :5173
 ```
 
-Open http://localhost:5173, pick a garment photo, and hit *Try it on*.
+Open http://localhost:5173 and hit *Try it on* — a sample garment photo is preloaded (pick a file to use your own).
 
 **Watching the queue actually queue:** set `TRYON_CAPACITY=1` in `.env`, open two browser tabs, and start a session in each. Every join is its own spot in line, so the second tab waits with a live position and is granted the slot as soon as the first session ends — or after at most `MAX_SESSION_SECONDS`.
 

@@ -1,10 +1,24 @@
 import { useEffect, useState } from "react";
+import garmentExampleUrl from "./assets/garment-example.webp";
 import { TryOnSession } from "./components/TryOnSession";
 import { useQueue } from "./hooks/useQueue";
 
 export function App() {
   const { status, join, leave, sessionConnected, endSession, reportLimitReached } = useQueue();
   const [garment, setGarment] = useState<File | null>(null);
+
+  // Preload the bundled sample so "Try it on" works with zero setup; picking
+  // a file replaces it. The functional update keeps a user-chosen file if
+  // the fetch resolves after they've already picked one.
+  useEffect(() => {
+    fetch(garmentExampleUrl)
+      .then((response) => response.blob())
+      .then((blob) => {
+        const sample = new File([blob], "garment-example.webp", { type: "image/webp" });
+        setGarment((current) => current ?? sample);
+      })
+      .catch(() => {});
+  }, []);
   const [garmentUrl, setGarmentUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!garment) {
@@ -24,7 +38,7 @@ export function App() {
       {status.phase === "idle" && (
         <section className="card">
           <label className="garment-picker">
-            Pick a garment photo
+            Garment photo (a sample is preloaded)
             <input type="file" accept="image/*" onChange={(event) => setGarment(event.target.files?.[0] ?? null)} />
           </label>
           {garmentUrl && <img className="garment-preview" src={garmentUrl} alt="Selected garment" />}
