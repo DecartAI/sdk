@@ -72,9 +72,8 @@
 - `lucy-2.5` - Real-time video editing (supports reference image)
 - `lucy-vton-2` - Real-time virtual try-on 2
 - `lucy-vton-3` - Real-time virtual try-on 3
-- `lucy-vton-3.5` - Real-time virtual try-on 3.5
 - `lucy-restyle-2` - Real-time video restyling
-- `lucy-latest`, `lucy-vton-latest`, `lucy-restyle-latest` - Server-resolved aliases for the latest stable version (`lucy-vton-latest` → `lucy-vton-3.5`)
+- `lucy-latest`, `lucy-vton-latest`, `lucy-restyle-latest` - Server-resolved aliases for the latest stable version (`lucy-vton-latest` → `lucy-vton-3`)
 - Deprecated: `lucy-2.1-vton-2` → `lucy-vton-2`
 
 ### Video Models (Queue API)
@@ -83,9 +82,8 @@
 - `lucy-2.5` - long-form video editing (720p)
 - `lucy-vton-2` - virtual try-on 2 video editing
 - `lucy-vton-3` - virtual try-on 3 video editing
-- `lucy-vton-3.5` - virtual try-on 3.5 video editing
 - `lucy-restyle-2` - video restyling
-- `lucy-latest`, `lucy-vton-latest`, `lucy-restyle-latest`, `lucy-clip-latest` - Server-resolved aliases (`lucy-vton-latest` → `lucy-vton-3.5`)
+- `lucy-latest`, `lucy-vton-latest`, `lucy-restyle-latest`, `lucy-clip-latest` - Server-resolved aliases (`lucy-vton-latest` → `lucy-vton-3`)
 - Deprecated: `lucy-2.1-vton-2` → `lucy-vton-2`
 
 ### Image Models (Process API)

@@ -7,7 +7,6 @@ const CANONICAL_MODEL_NAMES = [
   "lucy-2.5",
   "lucy-vton-2",
   "lucy-vton-3",
-  "lucy-vton-3.5",
   "lucy-restyle-2",
   "lucy-clip",
   "lucy-image-2",
@@ -18,7 +17,6 @@ const CANONICAL_REALTIME_MODEL_NAMES = [
   "lucy-2.5",
   "lucy-vton-2",
   "lucy-vton-3",
-  "lucy-vton-3.5",
   "lucy-restyle-2",
 ] as const;
 const CANONICAL_VIDEO_MODEL_NAMES = [
@@ -27,7 +25,6 @@ const CANONICAL_VIDEO_MODEL_NAMES = [
   "lucy-2.5",
   "lucy-vton-2",
   "lucy-vton-3",
-  "lucy-vton-3.5",
   "lucy-restyle-2",
 ] as const;
 const CANONICAL_IMAGE_MODEL_NAMES = ["lucy-image-2"] as const;
@@ -72,7 +69,6 @@ export const realtimeModels = z.union([
   z.literal("lucy-2.5"),
   z.literal("lucy-vton-2"),
   z.literal("lucy-vton-3"),
-  z.literal("lucy-vton-3.5"),
   z.literal("lucy-restyle-2"),
   // Latest aliases (server-side resolution)
   z.literal("lucy-latest"),
@@ -88,7 +84,6 @@ export const videoModels = z.union([
   z.literal("lucy-2.5"),
   z.literal("lucy-vton-2"),
   z.literal("lucy-vton-3"),
-  z.literal("lucy-vton-3.5"),
   z.literal("lucy-restyle-2"),
   // Latest aliases (server-side resolution)
   z.literal("lucy-latest"),
@@ -266,7 +261,6 @@ export const modelInputSchemas = {
   "lucy-2.5": videoEdit2Schema,
   "lucy-vton-2": videoEdit2Schema,
   "lucy-vton-3": videoEdit2Schema,
-  "lucy-vton-3.5": videoEdit2Schema,
   // Latest aliases (server-side resolution)
   "lucy-latest": videoEdit2Schema,
   "lucy-vton-latest": videoEdit2Schema,
@@ -375,14 +369,6 @@ const _models = {
       height: 624,
       inputSchema: z.object({}),
     },
-    "lucy-vton-3.5": {
-      urlPath: "/v1/stream",
-      name: "lucy-vton-3.5" as const,
-      fps: { ideal: 30, max: 30 },
-      width: 1088,
-      height: 624,
-      inputSchema: z.object({}),
-    },
     "lucy-restyle-2": {
       urlPath: "/v1/stream",
       name: "lucy-restyle-2" as const,
@@ -400,7 +386,7 @@ const _models = {
       height: 624,
       inputSchema: z.object({}),
     },
-    // Server-side alias currently resolves to lucy-vton-3.5.
+    // Server-side alias currently resolves to lucy-vton-3.
     "lucy-vton-latest": {
       urlPath: "/v1/stream",
       name: "lucy-vton-latest" as const,
@@ -506,15 +492,6 @@ const _models = {
       height: 624,
       inputSchema: modelInputSchemas["lucy-vton-3"],
     },
-    "lucy-vton-3.5": {
-      urlPath: "/v1/generate/lucy-vton-3.5",
-      queueUrlPath: "/v1/jobs/lucy-vton-3.5",
-      name: "lucy-vton-3.5" as const,
-      fps: 20,
-      width: 1088,
-      height: 624,
-      inputSchema: modelInputSchemas["lucy-vton-3.5"],
-    },
     "lucy-restyle-2": {
       urlPath: "/v1/generate/lucy-restyle-2",
       queueUrlPath: "/v1/jobs/lucy-restyle-2",
@@ -534,7 +511,7 @@ const _models = {
       height: 624,
       inputSchema: modelInputSchemas["lucy-latest"],
     },
-    // Server-side alias currently resolves to lucy-vton-3.5.
+    // Server-side alias currently resolves to lucy-vton-3.
     "lucy-vton-latest": {
       urlPath: "/v1/generate/lucy-vton-latest",
       queueUrlPath: "/v1/jobs/lucy-vton-latest",
@@ -630,7 +607,6 @@ export const models = {
    *   - `"lucy-2.5"` - Lucy 2.5 realtime video editing
    *   - `"lucy-vton-2"` - Lucy virtual try-on 2
    *   - `"lucy-vton-3"` - Lucy virtual try-on 3
-   *   - `"lucy-vton-3.5"` - Lucy virtual try-on 3.5 (latest)
    *   - `"lucy-restyle-2"` - Realtime video restyling
    */
   realtime: <T extends RealTimeModels>(model: T): ModelDefinition<T> => {
@@ -650,7 +626,6 @@ export const models = {
    *   - `"lucy-2.5"` - Long-form video editing (Lucy 2.5)
    *   - `"lucy-vton-2"` - Virtual try-on 2 video editing
    *   - `"lucy-vton-3"` - Virtual try-on 3 video editing
-   *   - `"lucy-vton-3.5"` - Virtual try-on 3.5 video editing (latest)
    *   - `"lucy-restyle-2"` - Video restyling
    */
   video: <T extends VideoModels>(model: T): ModelDefinition<T> & { fps: number; queueUrlPath: string } => {
