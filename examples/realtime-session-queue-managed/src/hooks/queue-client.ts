@@ -1,0 +1,158 @@
+/**
+ * Client for Decart's managed session queue, as a plain framework-free class
+ * — React subscribes to it via useSyncExternalStore (see useQueue.ts). All
+ * the stateful machinery (poll loop, cancellation, transitions) lives here
+ * as ordinary code instead of hook callbacks and refs.
+ *
+ * The whole contract: join() → "waiting" (polled every POLL_INTERVAL_MS) →
+ * "ready" (short-lived Decart token in hand) → connect within its expiry.
+ * Leaving = leave() or simply stopping to poll. If a connect is ever
+ * refused, rejoin() — a fresh ticket, decided against the live capacity.
+ * There is no session lifecycle to report: the queue observes session
+ * start/end on Decart's side.
+ */
+
+export type GrantedSession = {
+  apiKey: string;
+  expiresAt: string;
+  model: string;
+  maxSessionSeconds: number;
+};
+
+export type QueueState =
+  | { phase: "idle" }
+  | { phase: "waiting"; position: number; queueSize: number }
+  | { phase: "ready"; session: GrantedSession }
+  | { phase: "error"; message: string };
+
+export type QueueConfig = {
+  url: string;
+  queueId: string;
+  publishableKey: string;
+};
+
+const POLL_INTERVAL_MS = 2000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export class QueueClient {
+  private state: QueueState = { phase: "idle" };
+  private readonly listeners = new Set<() => void>();
+  private ticketId: string | null = null;
+  // Bumped on every transition that abandons in-flight work (join, leave,
+  // rejoin, session end). The poll loop exits as soon as its epoch is stale
+  // — one cancellation mechanism instead of per-callsite guards.
+  private epoch = 0;
+
+  constructor(private readonly config: QueueConfig) {}
+
+  // Stable references on purpose: useSyncExternalStore contract.
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  getState = (): QueueState => this.state;
+
+  join = async (): Promise<void> => {
+    if (this.ticketId) return;
+    const epoch = ++this.epoch;
+    try {
+      const response = await this.request("/tickets", {
+        method: "POST",
+        headers: { "x-queue-key": this.config.publishableKey },
+      });
+      if (epoch !== this.epoch) return;
+      if (!response.ok) {
+        const error = (await response.json().catch(() => ({}))).error;
+        const message =
+          error === "queue_full"
+            ? "The line is full right now — please try again in a few minutes."
+            : `Couldn't join the line (${error ?? response.status}).`;
+        this.setState({ phase: "error", message });
+        return;
+      }
+      const body = await response.json();
+      this.ticketId = body.ticketId;
+      this.setState({ phase: "waiting", position: body.position, queueSize: body.queueSize });
+      void this.pollLoop(epoch);
+    } catch (error) {
+      if (epoch === this.epoch) {
+        this.setState({ phase: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    }
+  };
+
+  /** Leave the line before being granted. */
+  leave = (): void => {
+    this.releaseTicket();
+    this.setState({ phase: "idle" });
+  };
+
+  /** Session over (cleanly, or with a message worth showing). Nothing to
+   *  tell the server: it sees the session end on Decart's side. */
+  sessionEnded = (message?: string): void => {
+    this.epoch++;
+    this.ticketId = null;
+    this.setState(message ? { phase: "error", message } : { phase: "idle" });
+  };
+
+  /** The one recovery rule of the managed queue: if a connect is refused,
+   *  join again — a fresh ticket, decided against the live capacity. */
+  rejoin = (): void => {
+    this.epoch++;
+    this.ticketId = null;
+    this.setState({ phase: "waiting", position: 1, queueSize: 1 });
+    void this.join();
+  };
+
+  /** Component unmounted: give the spot up without touching state. */
+  dispose = (): void => {
+    this.releaseTicket();
+  };
+
+  private releaseTicket(): void {
+    this.epoch++;
+    const ticketId = this.ticketId;
+    this.ticketId = null;
+    if (ticketId) {
+      void this.request(`/tickets/${ticketId}`, { method: "DELETE", keepalive: true }).catch(() => {});
+    }
+  }
+
+  private async pollLoop(epoch: number): Promise<void> {
+    while (epoch === this.epoch && this.ticketId) {
+      try {
+        const response = await this.request(`/tickets/${this.ticketId}/poll`, { method: "POST" });
+        if (epoch !== this.epoch) return;
+        if (response.status === 410) {
+          this.ticketId = null;
+          this.setState({ phase: "error", message: "Your spot in line expired. Please join again." });
+          return;
+        }
+        const body = await response.json();
+        if (epoch !== this.epoch) return;
+        if (body.state === "ready") {
+          this.setState({ phase: "ready", session: body.session });
+          return;
+        }
+        this.setState({ phase: "waiting", position: body.position, queueSize: body.queueSize });
+      } catch {
+        // Transient network error; keep polling.
+      }
+      await sleep(POLL_INTERVAL_MS);
+    }
+  }
+
+  private setState(next: QueueState): void {
+    // Skip no-op updates (e.g. an unchanged position every poll) so React
+    // doesn't re-render on every tick.
+    if (JSON.stringify(next) === JSON.stringify(this.state)) return;
+    this.state = next;
+    for (const listener of this.listeners) listener();
+  }
+
+  private request(path: string, init?: RequestInit): Promise<Response> {
+    return fetch(`${this.config.url}/v1/queues/${this.config.queueId}${path}`, init);
+  }
+}
