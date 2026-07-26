@@ -70,9 +70,11 @@ export class QueueClient {
         method: "POST",
         headers: { "x-queue-key": this.config.publishableKey },
       });
-      if (epoch !== this.epoch) return;
       if (!response.ok) {
         const error = (await response.json().catch(() => ({}))).error;
+        // Re-check AFTER every await: a cancel (leave/dispose/rejoin) that
+        // lands mid-parse must not have its state overwritten.
+        if (epoch !== this.epoch) return;
         const message =
           error === "queue_full"
             ? "The line is full right now — please try again in a few minutes."
@@ -81,6 +83,12 @@ export class QueueClient {
         return;
       }
       const body = await response.json();
+      if (epoch !== this.epoch) {
+        // Cancelled while the ticket was being created/parsed: give the
+        // spot straight back instead of leaving an orphan to decay.
+        void this.request(`/tickets/${body.ticketId}`, { method: "DELETE", keepalive: true }).catch(() => {});
+        return;
+      }
       this.ticketId = body.ticketId;
       if (body.state === "granted") {
         // With free capacity the join itself answers granted — the common case.
