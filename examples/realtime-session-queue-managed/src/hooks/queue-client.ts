@@ -91,7 +91,10 @@ export class QueueClient {
       }
       this.ticketId = body.ticketId;
       if (body.state === "granted") {
-        // With free capacity the join itself answers granted — the common case.
+        // With free capacity the join itself answers granted — the common
+        // case. Show the "you're next" state while the token is fetched: a
+        // slow fetchSession must not look like a dead click.
+        this.setState({ phase: "waiting", position: 1, queueSize: 1 });
         await this.claim(epoch);
         return;
       }
