@@ -107,16 +107,14 @@ export class QueueClient {
   /** Session over (cleanly, or with a message worth showing). Nothing to
    *  tell the server: it sees the session end on Decart's side. */
   sessionEnded = (message?: string): void => {
-    this.epoch++;
-    this.ticketId = null;
+    this.releaseTicket();
     this.setState(message ? { phase: "error", message } : { phase: "idle" });
   };
 
   /** The one recovery rule of the managed queue: if a connect is refused,
    *  join again — a fresh ticket, decided against the live capacity. */
   rejoin = (): void => {
-    this.epoch++;
-    this.ticketId = null;
+    this.releaseTicket();
     this.setState({ phase: "waiting", position: 1, queueSize: 1 });
     void this.join();
   };
@@ -126,6 +124,10 @@ export class QueueClient {
     this.releaseTicket();
   };
 
+  // Single exit path for a held ticket. Note: for a granted ticket the
+  // server deliberately keeps the reservation until the claim window lapses
+  // (a fetched token can't be revoked) — the DELETE only clears any
+  // waiting-line state.
   private releaseTicket(): void {
     this.epoch++;
     const ticketId = this.ticketId;
@@ -143,7 +145,7 @@ export class QueueClient {
       this.setState({ phase: "ready", session });
     } catch (error) {
       if (epoch !== this.epoch) return;
-      this.ticketId = null;
+      this.releaseTicket();
       this.setState({
         phase: "error",
         message: `Couldn't get a session token: ${error instanceof Error ? error.message : String(error)}`,
