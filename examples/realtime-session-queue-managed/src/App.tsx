@@ -1,10 +1,25 @@
 import { useEffect, useState } from "react";
 import garmentExampleUrl from "./assets/garment-example.webp";
 import { TryOnSession } from "./components/TryOnSession";
-import { useQueue } from "./hooks/useQueue";
+import { type GrantedSession, useQueue } from "./hooks/useQueue";
+
+// Your token source, called when the queue grants a turn. The queue never
+// mints or sees credentials — this hits YOUR backend's standard mint
+// endpoint (see the express-proxy example), which should set a short
+// expiresIn (~the claim window) and maxSessionDuration on the token.
+async function fetchSession(): Promise<GrantedSession> {
+  const response = await fetch(import.meta.env.VITE_TOKEN_URL ?? "http://localhost:8322/token", { method: "POST" });
+  if (!response.ok) throw new Error(`token endpoint answered ${response.status}`);
+  const { apiKey } = await response.json();
+  return {
+    apiKey,
+    model: import.meta.env.VITE_MODEL ?? "lucy-vton-latest",
+    maxSessionSeconds: Number(import.meta.env.VITE_MAX_SESSION_SECONDS ?? 120),
+  };
+}
 
 export function App() {
-  const { status, join, leave, sessionEnded, rejoin } = useQueue();
+  const { status, join, leave, sessionEnded, rejoin } = useQueue(fetchSession);
   const [garment, setGarment] = useState<File | null>(null);
   const [garmentUrl, setGarmentUrl] = useState<string | null>(null);
 

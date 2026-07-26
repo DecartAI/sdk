@@ -4,17 +4,17 @@
  * the stateful machinery (poll loop, cancellation, transitions) lives here
  * as ordinary code instead of hook callbacks and refs.
  *
- * The whole contract: join() → "waiting" (polled every POLL_INTERVAL_MS) →
- * "ready" (short-lived Decart token in hand) → connect within its expiry.
- * Leaving = leave() or simply stopping to poll. If a connect is ever
- * refused, rejoin() — a fresh ticket, decided against the live capacity.
- * There is no session lifecycle to report: the queue observes session
- * start/end on Decart's side.
+ * The queue manages the LINE only — it never mints or holds credentials.
+ * The contract: join() → "waiting" (polled every POLL_INTERVAL_MS) →
+ * `granted` (your turn, valid for a claim window) → this client calls your
+ * `fetchSession` (your own token endpoint) and goes "ready" → connect. If a
+ * connect is ever refused, rejoin() — a fresh ticket, decided against the
+ * live capacity. There is no session lifecycle to report: the queue
+ * observes session start/end on Decart's side.
  */
 
 export type GrantedSession = {
   apiKey: string;
-  expiresAt: string;
   model: string;
   maxSessionSeconds: number;
 };
@@ -29,6 +29,10 @@ export type QueueConfig = {
   url: string;
   queueId: string;
   publishableKey: string;
+  /** Your token source, called when the queue grants a turn — typically a
+   *  tiny endpoint on your backend that mints a short-lived Decart client
+   *  token with your API key (see the express-proxy example). */
+  fetchSession: () => Promise<GrantedSession>;
 };
 
 const POLL_INTERVAL_MS = 2000;
@@ -78,9 +82,9 @@ export class QueueClient {
       }
       const body = await response.json();
       this.ticketId = body.ticketId;
-      if (body.state === "ready") {
-        // With free capacity the join itself answers ready — the common case.
-        this.setState({ phase: "ready", session: body.session });
+      if (body.state === "granted") {
+        // With free capacity the join itself answers granted — the common case.
+        await this.claim(epoch);
         return;
       }
       this.setState({ phase: "waiting", position: body.position, queueSize: body.queueSize });
@@ -131,6 +135,22 @@ export class QueueClient {
     }
   }
 
+  /** Our turn: fetch OUR token (the queue never has one) within the claim window. */
+  private async claim(epoch: number): Promise<void> {
+    try {
+      const session = await this.config.fetchSession();
+      if (epoch !== this.epoch) return;
+      this.setState({ phase: "ready", session });
+    } catch (error) {
+      if (epoch !== this.epoch) return;
+      this.ticketId = null;
+      this.setState({
+        phase: "error",
+        message: `Couldn't get a session token: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  }
+
   private async pollLoop(epoch: number): Promise<void> {
     while (epoch === this.epoch && this.ticketId) {
       try {
@@ -143,8 +163,8 @@ export class QueueClient {
         }
         const body = await response.json();
         if (epoch !== this.epoch) return;
-        if (body.state === "ready") {
-          this.setState({ phase: "ready", session: body.session });
+        if (body.state === "granted") {
+          await this.claim(epoch);
           return;
         }
         this.setState({ phase: "waiting", position: body.position, queueSize: body.queueSize });

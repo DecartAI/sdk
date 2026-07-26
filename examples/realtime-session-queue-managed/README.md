@@ -2,10 +2,10 @@
 
 Client reference for **Decart's managed session queue**. When your account's
 realtime concurrency is at its limit, your users wait in a fair line with
-live position feedback — and with the managed queue, the *entire* integration
-is this frontend. There is no backend in this example because there is
-nothing for a backend to do: Decart runs the queue, watches the live session
-count, and mints the short-lived connect token when it's your user's turn.
+live position feedback. The queue manages the *line only* — it never mints,
+holds, or sees credentials. When it's your user's turn, your app fetches a
+token from **your own** token endpoint (the standard realtime integration —
+see [`../express-proxy`](../express-proxy) for the pattern) and connects.
 
 > Sibling example: [`../realtime-session-queue`](../realtime-session-queue)
 > is the **self-hosted** variant of the same pattern — the reference to start
@@ -20,8 +20,10 @@ App                                  Decart managed queue
  ├────────────────────────────────────>│  { ticketId, position }   (or 429 queue_full)
  │  POST .../tickets/:id/poll  (every 2s)
  ├────────────────────────────────────>│  waiting → { position, queueSize }
- │             ...                     │  ready   → { session: { apiKey, model, ... } }
- │  realtime.connect(session.apiKey)   — connect within the token's expiry
+ │             ...                     │  granted → { claimSecondsLeft }
+ │
+ │  POST your-backend/token   →  { apiKey }     (YOUR mint endpoint, YOUR key)
+ │  realtime.connect(apiKey)  — connect within the claim window
  │  (session ends → Decart sees it; nothing to report back)
 ```
 
@@ -29,8 +31,10 @@ Three rules, and that's the integration:
 
 1. **Poll every ~2s while waiting**; stop polling (or `DELETE` the ticket) to
    leave the line. Silent clients fall out on their own.
-2. **Connect within the token's expiry** (~45s) once `ready`, or your spot
-   returns to the line.
+2. **On `granted`, fetch your token and connect within the claim window**
+   (~45s), or your spot returns to the line. Mint with a short `expiresIn`
+   and `constraints.realtime.maxSessionDuration` set — the session cap is
+   what keeps the line moving.
 3. **If a connect is ever refused, join again.** No error taxonomy, no
    backstop protocol — a fresh ticket is decided against the live capacity.
 
@@ -45,7 +49,7 @@ pnpm install
 pnpm --filter @decartai/sdk build
 
 cd examples/realtime-session-queue-managed
-cp .env.example .env    # point at your assigned queue URL / id / publishable key
+cp .env.example .env    # queue URL/id/key + YOUR token endpoint URL
 pnpm dev                # app on :5173
 ```
 

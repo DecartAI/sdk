@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { QueueClient } from "./queue-client";
+import { type GrantedSession, QueueClient } from "./queue-client";
 
 export type { GrantedSession, QueueState } from "./queue-client";
 
@@ -9,13 +9,14 @@ export type { GrantedSession, QueueState } from "./queue-client";
  * QueueClient's methods are stable references, so they can be passed as
  * props and used in effect dependencies directly.
  */
-export function useQueue() {
+export function useQueue(fetchSession: () => Promise<GrantedSession>) {
   const [client] = useState(
     () =>
       new QueueClient({
         url: import.meta.env.VITE_QUEUE_URL ?? "http://localhost:8321",
         queueId: import.meta.env.VITE_QUEUE_ID ?? "test",
         publishableKey: import.meta.env.VITE_QUEUE_KEY ?? "pk_dev",
+        fetchSession,
       }),
   );
   const status = useSyncExternalStore(client.subscribe, client.getState, client.getState);
