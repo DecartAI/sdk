@@ -74,6 +74,11 @@ export class QueueClient {
       }
       const body = await response.json();
       this.ticketId = body.ticketId;
+      if (body.state === "ready") {
+        // With free capacity the join itself answers ready — the common case.
+        this.setState({ phase: "ready", session: body.session });
+        return;
+      }
       this.setState({ phase: "waiting", position: body.position, queueSize: body.queueSize });
       void this.pollLoop(epoch);
     } catch (error) {
