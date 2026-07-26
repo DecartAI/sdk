@@ -57,16 +57,3 @@ its server-enforced duration cap.
 The queue is **fail-open by design**: if it's unreachable, your app can fall
 back to direct `realtime.connect()` calls — Decart's concurrency limit still
 protects capacity; users just see "busy" instead of a line.
-
-### For Decart developers: running the service locally
-
-The service lives in the api repo under `apps/realtime-queue`. Point
-`VITE_QUEUE_URL` at your local instance (`http://localhost:8321` by default
-here) with a line whose id/publishable key match `.env`.
-
-## Porting to React Native
-
-`src/hooks/useQueue.ts` uses only `fetch`, timers, and React state — it runs
-under React Native unchanged. `@decartai/sdk` ships a React Native entry
-point; the camera/rendering component (`TryOnSession.tsx`) is the only part
-you rewrite, same as any RN port.
