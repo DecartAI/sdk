@@ -39,6 +39,7 @@ export class QueueClient {
   private state: QueueState = { phase: "idle" };
   private readonly listeners = new Set<() => void>();
   private ticketId: string | null = null;
+  private joinInFlight = false;
   // Bumped on every transition that abandons in-flight work (join, leave,
   // rejoin, session end). The poll loop exits as soon as its epoch is stale
   // — one cancellation mechanism instead of per-callsite guards.
@@ -55,7 +56,10 @@ export class QueueClient {
   getState = (): QueueState => this.state;
 
   join = async (): Promise<void> => {
-    if (this.ticketId) return;
+    // Also guard the window before the POST returns — a double-tap must not
+    // take two spots (the orphan would hold capacity until it lapses).
+    if (this.ticketId || this.joinInFlight) return;
+    this.joinInFlight = true;
     const epoch = ++this.epoch;
     try {
       const response = await this.request("/tickets", {
@@ -85,6 +89,8 @@ export class QueueClient {
       if (epoch === this.epoch) {
         this.setState({ phase: "error", message: error instanceof Error ? error.message : String(error) });
       }
+    } finally {
+      this.joinInFlight = false;
     }
   };
 
