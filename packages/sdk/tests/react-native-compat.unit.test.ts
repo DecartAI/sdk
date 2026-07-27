@@ -116,7 +116,6 @@ describe("React Native compatibility", () => {
   it.each([
     ["mirror", { mirror: true }],
     ["mirror: auto", { mirror: "auto" as const }],
-    ["debugQuality", { debugQuality: true }],
   ])("rejects unsupported %s sessions", async (_feature, unsupportedOption) => {
     stubReactNative(true);
     const { createDecartClient, models, ERROR_CODES } = await import("../src/index.react-native.js");
@@ -210,5 +209,36 @@ describe("React Native compatibility", () => {
     expect(subscription.isConnected()).toBe(true);
     expect(liveKitMockState.rooms[1]?.connect).toHaveBeenCalledWith("wss://livekit.test", "watch-token");
     subscription.disconnect();
+  });
+
+  it("rejects frame-timed subscribe streams in React Native", async () => {
+    stubReactNative(true);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ livekit_url: "wss://livekit.test", token: "watch-token", room_name: "room-1" }),
+      ),
+    );
+
+    const [{ createRealTimeSubscribeClient }, { createConsoleLogger }] = await Promise.all([
+      import("../src/realtime/subscribe-client.js"),
+      import("../src/utils/logger.js"),
+    ]);
+
+    const subscriber = createRealTimeSubscribeClient({
+      baseUrl: "https://api.test",
+      apiKey: "test",
+      logger: createConsoleLogger("error"),
+    });
+
+    await expect(
+      subscriber.subscribe({
+        token: btoa(JSON.stringify({ room_name: "room-1", frame_timing: true })),
+        onRemoteStream: () => {},
+      }),
+    ).rejects.toMatchObject({
+      code: "UNSUPPORTED_PLATFORM_FEATURE",
+      message: expect.stringContaining("requires LiveKit frame metadata"),
+    });
   });
 });

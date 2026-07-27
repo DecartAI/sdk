@@ -27,8 +27,8 @@ type RetryAttemptError = Error & {
 
 type ConnectionLossCause = Record<string, unknown>;
 
-export function encodeSubscribeToken(roomName: string): string {
-  return btoa(JSON.stringify({ room_name: roomName }));
+export function encodeSubscribeToken(roomName: string, options: { frameTiming?: boolean } = {}): string {
+  return btoa(JSON.stringify({ room_name: roomName, ...(options.frameTiming ? { frame_timing: true } : {}) }));
 }
 
 function getInitialImageSizeKb(image: string | null | undefined): number | null {
@@ -217,7 +217,7 @@ export class StreamSession {
       this.setState("connected");
       this.events.emit("sessionStarted", {
         sessionId: roomInfo.sessionId,
-        subscribeToken: encodeSubscribeToken(roomInfo.roomName),
+        subscribeToken: encodeSubscribeToken(roomInfo.roomName, { frameTiming: this.config.frameTiming }),
       });
     } catch (error) {
       this.config.observability?.finishConnectionBreakdown({

@@ -88,6 +88,9 @@ A connected realtime session exposes an SDK `subscribeToken` once it reaches a
 connected state. Share that SDK token with viewers — `client.realtime.subscribe`
 uses it to request receive-only LiveKit credentials from Decart, then connects to
 the LiveKit room for the styled output stream. No viewer camera is required.
+Browser-produced streams can include LiveKit frame metadata for glass-to-glass
+latency, so viewers also need a browser runtime that can create the SDK's
+frame-metadata worker; unsupported runtimes reject those tokens before joining.
 
 **Producer** — capture the token from the active session:
 
@@ -175,12 +178,12 @@ realtimeClient.getConnectionQuality(); // latest report, or null before the firs
 > setInterval(() => console.log(realtimeClient.getConnectionQuality()?.metrics.g2gMs), 1000);
 > ```
 
-**Glass-to-glass latency (opt-in, diagnostic).** Network RTT hides the dominant cost in
-real-time video — model inference — so a session can read "good" while actually feeling laggy.
-Set `debugQuality: true` to measure the *real* camera→display latency. The SDK attaches a capture
-timestamp using LiveKit frame metadata; the server propagates it through inference and the SDK
-matches it to output playout. This surfaces **startup** (`ttffMs`) and **steady-state**
-(`g2gMs`) latency. When present, glass-to-glass drives the latency verdict instead of RTT.
+**Glass-to-glass latency.** Network RTT hides the dominant cost in real-time video — model
+inference — so a session can read "good" while actually feeling laggy. In browser sessions, the SDK
+automatically attaches a capture timestamp using LiveKit frame metadata when the required worker is
+available; the server propagates it through inference and the SDK matches it to output playout.
+This surfaces **startup** (`ttffMs`) and **steady-state** (`g2gMs`) latency. When present,
+glass-to-glass drives the latency verdict instead of RTT.
 
 > Frame metadata is currently experimental in LiveKit and requires encoded-transform support.
 > It does not alter visible pixels. `g2gDropRatio` remains `null` until frame IDs are propagated
@@ -189,7 +192,6 @@ matches it to output playout. This surfaces **startup** (`ttffMs`) and **steady-
 ```typescript
 const realtimeClient = await client.realtime.connect(stream, {
   model,
-  debugQuality: true,
 });
 
 // g2g updates every stats tick — read it from the `stats` event (the
@@ -338,9 +340,9 @@ Add them to `app.json`:
 Run `npx expo prebuild` and rebuild the native app. LiveKit does not run in Expo
 Go. Bare React Native apps must follow LiveKit's native setup instructions.
 
-Outgoing `mirror`, `debugQuality`, and deep connectivity preflight are browser-only
-and fail with `UNSUPPORTED_PLATFORM_FEATURE` on React Native. Mirror the local
-preview with your native video view instead.
+Outgoing `mirror` and deep connectivity preflight are browser-only and fail with
+`UNSUPPORTED_PLATFORM_FEATURE` on React Native. Mirror the local preview with your
+native video view instead.
 
 ## Development
 

@@ -14,6 +14,14 @@ const baseArgs = {
   observability: { logger },
 };
 
+function stubFrameMetadataRuntimeSupport() {
+  vi.stubGlobal("window", {
+    navigator: { userAgent: "Mozilla/5.0 Firefox/140.0" },
+    RTCRtpSender: { prototype: { createEncodedStreams() {} } },
+    RTCRtpReceiver: { prototype: { createEncodedStreams() {} } },
+  });
+}
+
 describe("prepareBrowserConnection frame-timing gating", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -23,6 +31,7 @@ describe("prepareBrowserConnection frame-timing gating", () => {
     // The server appends a packet trailer to every frame once frame timing is
     // advertised; without a strip worker the decoder chokes. So a worker that
     // can't be constructed (e.g. blocked by CSP) must keep frame timing off.
+    stubFrameMetadataRuntimeSupport();
     vi.stubGlobal(
       "Worker",
       class {
@@ -31,16 +40,51 @@ describe("prepareBrowserConnection frame-timing gating", () => {
         }
       },
     );
-    const warn = vi.fn();
+    const debug = vi.fn();
 
-    const prepared = prepareBrowserConnection({ ...baseArgs, logger: { ...logger, warn }, debugQuality: true });
+    const prepared = prepareBrowserConnection({ ...baseArgs, logger: { ...logger, debug } });
 
     expect(prepared.frameTiming).toBe(false);
-    expect(warn).toHaveBeenCalled();
+    expect(debug).toHaveBeenCalled();
     prepared.dispose();
   });
 
   it("advertises frame timing and owns the worker when it can be created", () => {
+    const terminate = vi.fn();
+    stubFrameMetadataRuntimeSupport();
+    vi.stubGlobal(
+      "Worker",
+      class {
+        terminate = terminate;
+      },
+    );
+
+    const prepared = prepareBrowserConnection(baseArgs);
+
+    expect(prepared.frameTiming).toBe(true);
+    // The pre-created worker is terminated on dispose when connect never took it.
+    prepared.dispose();
+    expect(terminate).toHaveBeenCalledTimes(1);
+  });
+
+  it("enables frame timing without the legacy debugQuality flag", () => {
+    const terminate = vi.fn();
+    stubFrameMetadataRuntimeSupport();
+    vi.stubGlobal(
+      "Worker",
+      class {
+        terminate = terminate;
+      },
+    );
+
+    const prepared = prepareBrowserConnection(baseArgs);
+
+    expect(prepared.frameTiming).toBe(true);
+    prepared.dispose();
+  });
+
+  it("leaves frame timing off when encoded transforms are unavailable", () => {
+    const debug = vi.fn();
     const terminate = vi.fn();
     vi.stubGlobal(
       "Worker",
@@ -49,18 +93,39 @@ describe("prepareBrowserConnection frame-timing gating", () => {
       },
     );
 
-    const prepared = prepareBrowserConnection({ ...baseArgs, debugQuality: true });
-
-    expect(prepared.frameTiming).toBe(true);
-    // The pre-created worker is terminated on dispose when connect never took it.
-    prepared.dispose();
-    expect(terminate).toHaveBeenCalledTimes(1);
-  });
-
-  it("leaves frame timing off when debugQuality is disabled", () => {
-    const prepared = prepareBrowserConnection({ ...baseArgs, debugQuality: false });
+    const prepared = prepareBrowserConnection({ ...baseArgs, logger: { ...logger, debug } });
 
     expect(prepared.frameTiming).toBe(false);
+    expect(terminate).not.toHaveBeenCalled();
+    expect(debug).toHaveBeenCalled();
+    prepared.dispose();
+  });
+
+  it("leaves frame timing off when only sender encoded streams are available", () => {
+    const debug = vi.fn();
+    vi.stubGlobal("window", {
+      navigator: { userAgent: "Mozilla/5.0 Firefox/140.0" },
+      RTCRtpSender: { prototype: { createEncodedStreams() {} } },
+    });
+
+    const prepared = prepareBrowserConnection({ ...baseArgs, logger: { ...logger, debug } });
+
+    expect(prepared.frameTiming).toBe(false);
+    expect(debug).toHaveBeenCalled();
+    prepared.dispose();
+  });
+
+  it("does not rely on Chromium script transforms", () => {
+    const debug = vi.fn();
+    vi.stubGlobal("window", {
+      navigator: { userAgent: "Mozilla/5.0 Chrome/141.0.0.0 Safari/537.36" },
+      RTCRtpScriptTransform: class {},
+    });
+
+    const prepared = prepareBrowserConnection({ ...baseArgs, logger: { ...logger, debug } });
+
+    expect(prepared.frameTiming).toBe(false);
+    expect(debug).toHaveBeenCalled();
     prepared.dispose();
   });
 });

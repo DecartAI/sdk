@@ -75,6 +75,8 @@ vi.mock("livekit-client", () => ({
   ConnectionState: liveKitMock.ConnectionState,
 }));
 
+const logger = { debug() {}, info() {}, warn() {}, error() {} };
+
 class FakeMediaStream {
   private tracks: unknown[];
 
@@ -332,6 +334,14 @@ describe("Subscribe Token", () => {
     expect(decoded).not.toHaveProperty("port");
   });
 
+  it("preserves the frame-timing requirement in subscribe tokens", async () => {
+    const { encodeSubscribeToken } = await import("../src/realtime/stream-session.js");
+    const { decodeSubscribeToken } = await import("../src/realtime/subscribe-client.js");
+    const token = encodeSubscribeToken("session-abc123", { frameTiming: true });
+
+    expect(decodeSubscribeToken(token)).toEqual({ room_name: "session-abc123", frame_timing: true });
+  });
+
   it("throws on invalid base64 token", async () => {
     const { decodeSubscribeToken } = await import("../src/realtime/subscribe-client.js");
     expect(() => decodeSubscribeToken("not-valid-base64!!!")).toThrow("Invalid subscribe token");
@@ -341,6 +351,137 @@ describe("Subscribe Token", () => {
     const { decodeSubscribeToken } = await import("../src/realtime/subscribe-client.js");
     const token = btoa(JSON.stringify({ sid: "s" }));
     expect(() => decodeSubscribeToken(token)).toThrow("Invalid subscribe token");
+  });
+});
+
+describe("realtime.subscribe", () => {
+  beforeEach(() => {
+    liveKitMock.roomInstances.length = 0;
+    liveKitMock.connectMocks.length = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ livekit_url: "wss://livekit.example.test", token: "watch-token", room_name: "room-1" }),
+      ),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("configures a frame-metadata worker for browser subscribe rooms when available", async () => {
+    const { createRealTimeSubscribeClient } = await import("../src/realtime/subscribe-client.js");
+    const worker = { terminate: vi.fn() } as unknown as Worker;
+    const subscriber = createRealTimeSubscribeClient({
+      baseUrl: "https://api.example.test",
+      apiKey: "test-key",
+      logger,
+      createFrameMetadataWorker: () => worker,
+      isFrameMetadataRuntimeSupported: () => true,
+    });
+
+    const client = await subscriber.subscribe({
+      token: btoa(JSON.stringify({ room_name: "room-1", frame_timing: true })),
+      onRemoteStream: () => {},
+    });
+
+    const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
+    expect(room.options).toMatchObject({ frameMetadata: { worker } });
+    expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "watch-token");
+    client.disconnect();
+  });
+
+  it("terminates the frame-metadata worker when subscribe connect fails", async () => {
+    const { createRealTimeSubscribeClient } = await import("../src/realtime/subscribe-client.js");
+    const worker = { terminate: vi.fn() } as unknown as Worker;
+    liveKitMock.connectMocks.push(() => Promise.reject(new Error("connect failed")));
+    const subscriber = createRealTimeSubscribeClient({
+      baseUrl: "https://api.example.test",
+      apiKey: "test-key",
+      logger,
+      createFrameMetadataWorker: () => worker,
+      isFrameMetadataRuntimeSupported: () => true,
+    });
+
+    await expect(
+      subscriber.subscribe({
+        token: btoa(JSON.stringify({ room_name: "room-1", frame_timing: true })),
+        onRemoteStream: () => {},
+      }),
+    ).rejects.toMatchObject({ code: "WEBRTC_SIGNALING_ERROR" });
+
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails fast when a frame-timed subscribe stream cannot create the worker", async () => {
+    const { createRealTimeSubscribeClient } = await import("../src/realtime/subscribe-client.js");
+    const subscriber = createRealTimeSubscribeClient({
+      baseUrl: "https://api.example.test",
+      apiKey: "test-key",
+      logger,
+      isFrameMetadataRuntimeSupported: () => true,
+      createFrameMetadataWorker: () => {
+        throw new Error("worker blocked");
+      },
+    });
+
+    await expect(
+      subscriber.subscribe({
+        token: btoa(JSON.stringify({ room_name: "room-1", frame_timing: true })),
+        onRemoteStream: () => {},
+      }),
+    ).rejects.toMatchObject({
+      code: "UNSUPPORTED_PLATFORM_FEATURE",
+      message: expect.stringMatching(/requires LiveKit frame metadata.*worker blocked/),
+    });
+    expect(liveKitMock.roomInstances).toHaveLength(0);
+  });
+
+  it("keeps legacy non-frame-timed subscribe tokens working without the worker", async () => {
+    const { createRealTimeSubscribeClient } = await import("../src/realtime/subscribe-client.js");
+    const subscriber = createRealTimeSubscribeClient({
+      baseUrl: "https://api.example.test",
+      apiKey: "test-key",
+      logger,
+      isFrameMetadataRuntimeSupported: () => true,
+      createFrameMetadataWorker: () => {
+        throw new Error("worker blocked");
+      },
+    });
+
+    const client = await subscriber.subscribe({
+      token: btoa(JSON.stringify({ room_name: "room-1" })),
+      onRemoteStream: () => {},
+    });
+
+    const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
+    expect(room.options).not.toHaveProperty("frameMetadata");
+    client.disconnect();
+  });
+
+  it("fails frame-timed subscribe tokens when encoded transforms are unavailable", async () => {
+    const { createRealTimeSubscribeClient } = await import("../src/realtime/subscribe-client.js");
+    const subscriber = createRealTimeSubscribeClient({
+      baseUrl: "https://api.example.test",
+      apiKey: "test-key",
+      logger,
+      createFrameMetadataWorker: () => {
+        throw new Error("should not create");
+      },
+      isFrameMetadataRuntimeSupported: () => false,
+    });
+
+    await expect(
+      subscriber.subscribe({
+        token: btoa(JSON.stringify({ room_name: "room-1", frame_timing: true })),
+        onRemoteStream: () => {},
+      }),
+    ).rejects.toMatchObject({
+      code: "UNSUPPORTED_PLATFORM_FEATURE",
+      message: expect.stringContaining("encoded transforms are unavailable"),
+    });
+    expect(liveKitMock.roomInstances).toHaveLength(0);
   });
 });
 
@@ -967,6 +1108,21 @@ describe("StreamSession startup orchestration", () => {
       localStream.getTracks()[0],
       expect.objectContaining({ frameMetadata: { timestamp: true } }),
     );
+  });
+
+  it("fails the media connection if a requested frame-metadata worker cannot be created", async () => {
+    const localStream = createLocalStream();
+    const channel = createLiveKitMediaChannel({
+      localStream,
+      createFrameMetadataWorker: () => {
+        throw new Error("worker blocked");
+      },
+    });
+
+    await expect(channel.connect({ url: "wss://livekit.example.test", token: "token" })).rejects.toThrow(
+      "worker blocked",
+    );
+    expect(liveKitMock.roomInstances).toHaveLength(0);
   });
 
   it("sends only a lean passthrough join for a bare localStream connect (no set_image bootstrap)", async () => {

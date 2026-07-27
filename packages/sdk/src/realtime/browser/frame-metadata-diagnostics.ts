@@ -67,6 +67,15 @@ export class FrameMetadataTracker {
 
 const TIME_SYNC_UPDATE = "timeSyncUpdate" as TrackEvent.TimeSyncUpdate;
 
+type LiveKitFrameMetadata = {
+  userTimestamp: bigint;
+  frameId?: number;
+};
+
+type FrameMetadataTrack = RemoteVideoTrack & {
+  lookupFrameMetadata?: (options: { rtpTimestamp: number }) => LiveKitFrameMetadata | undefined;
+};
+
 function createFrameReader(tracker: FrameMetadataTracker): {
   attach(track: RemoteVideoTrack): void;
   detach(): void;
@@ -75,7 +84,7 @@ function createFrameReader(tracker: FrameMetadataTracker): {
   let attachedTrack: RemoteVideoTrack | null = null;
 
   const onTimeSyncUpdate = ({ timestamp, rtpTimestamp }: { timestamp: number; rtpTimestamp: number }) => {
-    const frameMetadata = attachedTrack?.lookupFrameMetadata({ rtpTimestamp });
+    const frameMetadata = (attachedTrack as FrameMetadataTrack | null)?.lookupFrameMetadata?.({ rtpTimestamp });
     // `timestamp` is the sync-source playout time as a DOMHighResTimeStamp
     // (relative to performance.timeOrigin); convert to epoch ms so it lines up
     // with the publisher's epoch `userTimestamp` and the epoch `startMs`.
@@ -118,4 +127,20 @@ export function createBrowserFrameMetadataDiagnostics(): GlassToGlassDiagnostics
 
 export function createFrameMetadataWorker(): Worker {
   return new Worker(new URL("./frame-metadata-worker.js", import.meta.url));
+}
+
+export function isFrameMetadataRuntimeSupported(): boolean {
+  if (typeof window === "undefined") return false;
+  const maybeWindow = window as typeof window & {
+    RTCRtpScriptTransform?: unknown;
+    RTCRtpSender?: { prototype?: { createEncodedStreams?: unknown } };
+    RTCRtpReceiver?: { prototype?: { createEncodedStreams?: unknown } };
+  };
+  const userAgent = window.navigator?.userAgent?.toLowerCase() ?? "";
+  const isChromiumBased = /(?:chrome|chromium|crmo)\//.test(userAgent) && !/crios\//.test(userAgent);
+  const scriptTransformSupported = typeof maybeWindow.RTCRtpScriptTransform !== "undefined" && !isChromiumBased;
+  const insertableStreamsSupported =
+    typeof maybeWindow.RTCRtpSender?.prototype?.createEncodedStreams !== "undefined" &&
+    typeof maybeWindow.RTCRtpReceiver?.prototype?.createEncodedStreams !== "undefined";
+  return scriptTransformSupported || insertableStreamsSupported;
 }

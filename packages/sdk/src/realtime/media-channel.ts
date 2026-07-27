@@ -101,9 +101,10 @@ export class LiveKitMediaChannel implements MediaChannel {
         try {
           worker = this.config.createFrameMetadataWorker();
         } catch (error) {
-          this.logger.warn("Failed to create LiveKit frame-metadata worker; continuing without latency metrics", {
+          this.logger.warn("Failed to create LiveKit frame-metadata worker", {
             error: error instanceof Error ? error.message : String(error),
           });
+          throw error;
         }
       }
       this.frameMetadataEnabled = worker !== undefined;
@@ -126,8 +127,8 @@ export class LiveKitMediaChannel implements MediaChannel {
 
       const mediaStreamTrack = track.mediaStreamTrack;
       if (mediaStreamTrack) {
-        // Feed the LiveKit track to the frame-metadata render reader (a no-op
-        // unless opt-in glass-to-glass measurement is enabled).
+        // Feed the LiveKit track to the frame-metadata render reader when
+        // browser frame metadata is available.
         if (track.kind === "video") {
           this.config.observability?.attachRemoteVideoTrack(track as RemoteVideoTrack);
         }

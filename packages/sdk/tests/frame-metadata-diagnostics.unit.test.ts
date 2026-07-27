@@ -55,6 +55,22 @@ describe("FrameMetadataTracker", () => {
     expect(tracker.snapshot().medianMs).toBe(175);
   });
 
+  it("keeps measuring throughout the session with a rolling latency window", () => {
+    const tracker = new FrameMetadataTracker();
+    tracker.recordFrame(captureTimestamp(0, 100), performance.timeOrigin);
+
+    for (let latency = 0; latency < 350; latency++) {
+      const playoutRelMs = PAST_WARMUP + latency;
+      tracker.recordFrame(captureTimestamp(playoutRelMs, latency), performance.timeOrigin + playoutRelMs);
+    }
+
+    expect(tracker.snapshot()).toMatchObject({
+      medianMs: 200,
+      p90Ms: 320,
+      sampleCount: 300,
+    });
+  });
+
   it("ignores missing and implausible timestamps", () => {
     const tracker = new FrameMetadataTracker();
     tracker.recordFrame(0n, performance.timeOrigin);
