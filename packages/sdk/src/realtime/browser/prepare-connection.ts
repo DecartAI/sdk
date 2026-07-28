@@ -79,6 +79,7 @@ export const prepareBrowserConnection: PrepareConnection = ({
     createMediaChannel: (config) =>
       createLiveKitMediaChannel({
         ...config,
+        publishFps: fps,
         createFrameMetadataWorker: frameTiming ? takeFrameMetadataWorker : undefined,
       }),
     dispose: () => {

@@ -35,6 +35,22 @@ export const REALTIME_CONFIG = {
     defaultMaxVideoBitrateBps: 3_500_000,
     vp9MaxVideoBitrateBps: 3_000_000,
     defaultPublishFps: 30,
+    /**
+     * Low-fps uplink bitrate scaling (measured 2026-07-28, api repo
+     * experiments/2026-07-28-livekit-size-vs-interval-jb). The encoder spends
+     * its per-SECOND budget regardless of cadence, so a 10 fps publisher packs
+     * ~3x the bytes into every frame; the frames' wire-arrival span then
+     * inflates the server's ingest jitter buffer by ~35-100 ms. Scaling the
+     * cap to ~200 kbit per frame restores 30 fps-parity ingest latency at
+     * equal-or-better QP (measured: 10 fps hold 129.7 -> 28.4 ms, e2e
+     * 660 -> 557 ms from us-east4). At >=15 fps the natural rate is already
+     * optimal and a binding cap measurably hurts (rate-controller churn), so
+     * scaling only engages BELOW the threshold; the floor keeps the encoder
+     * far from the simulcast layer-starvation cliff.
+     */
+    lowFpsBitrateScaleBelowFps: 15,
+    lowFpsBitsPerFrame: 200_000,
+    lowFpsMinBitrateBps: 1_000_000,
   },
   observability: {
     stallFpsThreshold: 0.5,
