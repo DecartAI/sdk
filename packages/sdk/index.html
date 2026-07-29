@@ -364,12 +364,6 @@
             </select>
         </div>
         <div class="control-group">
-            <label>
-                <input type="checkbox" id="measure-g2g" />
-                Measure glass-to-glass latency (frame metadata; opt-in)
-            </label>
-        </div>
-        <div class="control-group">
             <label for="passthrough-select">Passthrough (initial):</label>
             <select id="passthrough-select">
                 <option value="" selected>Default (auto — on when no initial state)</option>
@@ -659,7 +653,6 @@
             connectionQualityBadge: document.getElementById('connection-quality-badge'),
             connectionQualityDetail: document.getElementById('connection-quality-detail'),
             // Connectivity preflight elements
-            measureG2g: document.getElementById('measure-g2g'),
             checkConnectivityBtn: document.getElementById('check-connectivity-btn'),
             activeProbeBtn: document.getElementById('active-probe-btn'),
             connectivityResult: document.getElementById('connectivity-result'),
@@ -1232,11 +1225,6 @@
                     addLog(`Preferred video codec: ${preferredVideoCodec}`, 'info');
                 }
 
-                const debugQuality = elements.measureG2g.checked;
-                if (debugQuality) {
-                    addLog('Debug-quality (glass-to-glass) measurement ON via frame metadata', 'info');
-                }
-
                 const passthroughChoice = elements.passthroughSelect.value;
                 const passthrough = passthroughChoice === '' ? undefined : passthroughChoice === 'true';
                 addLog(`Initial passthrough: ${passthrough === undefined ? 'default (auto)' : passthrough}`, 'info');
@@ -1245,7 +1233,6 @@
                     model,
                     resolution,
                     ...(preferredVideoCodec && { preferredVideoCodec }),
-                    ...(debugQuality && { debugQuality: true }),
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
                         elements.remoteVideo.srcObject = stream;

@@ -42,7 +42,6 @@ export type PreparedConnection = {
 export type PrepareConnection = (options: {
   stream: MediaStream | null;
   mirror: "auto" | boolean;
-  debugQuality: boolean;
   preferredVideoCodec?: VideoCodec;
   fps: number;
   logger: Logger;
@@ -83,11 +82,9 @@ const realTimeClientConnectOptionsSchema = z.object({
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp8", "vp9"]).optional(),
   /**
-   * Opt-in quality measurement using LiveKit frame metadata. The capture
-   * timestamp is propagated through inference and matched to output playout to
-   * surface true glass-to-glass `g2gMs` / `ttffMs` on the `stats` and
-   * `connectionQuality` signals. Browser-only and experimental because it
-   * relies on LiveKit's frame-metadata worker and encoded transforms.
+   * @deprecated Glass-to-glass measurement now runs automatically in browsers
+   * when LiveKit frame metadata is available. This legacy flag is accepted for
+   * compatibility and no longer gates measurement.
    */
   debugQuality: z.boolean().optional(),
 });
@@ -159,7 +156,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       preferredVideoCodec,
     } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
-    const debugQuality = parsedOptions.data.debugQuality ?? false;
 
     let session: StreamSession | undefined;
     let observability: RealtimeObservability | undefined;
@@ -179,7 +175,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       preparedConnection = opts.prepareConnection({
         stream,
         mirror,
-        debugQuality,
         preferredVideoCodec: preferredVideoCodec as VideoCodec | undefined,
         fps: resolveFpsNumber(options.model.fps),
         logger,
