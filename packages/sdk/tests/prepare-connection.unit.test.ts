@@ -14,9 +14,11 @@ const baseArgs = {
   observability: { logger },
 };
 
+// Chromium is the insertable-streams path: it ships createEncodedStreams on
+// both sender and receiver, which is what LiveKit's worker pipeline uses.
 function stubFrameMetadataRuntimeSupport() {
   vi.stubGlobal("window", {
-    navigator: { userAgent: "Mozilla/5.0 Firefox/140.0" },
+    navigator: { userAgent: "Mozilla/5.0 Chrome/141.0.0.0 Safari/537.36" },
     RTCRtpSender: { prototype: { createEncodedStreams() {} } },
     RTCRtpReceiver: { prototype: { createEncodedStreams() {} } },
   });
@@ -112,6 +114,68 @@ describe("prepareBrowserConnection frame-timing gating", () => {
 
     expect(prepared.frameTiming).toBe(false);
     expect(debug).toHaveBeenCalled();
+    prepared.dispose();
+  });
+
+  it("enables frame timing on script-transform browsers without insertable streams", () => {
+    // Safari/Firefox ship RTCRtpScriptTransform and no createEncodedStreams.
+    // Without this branch G2G would silently never run outside Chromium.
+    const terminate = vi.fn();
+    vi.stubGlobal("window", {
+      navigator: {
+        userAgent:
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+      },
+      RTCRtpScriptTransform: class {},
+    });
+    vi.stubGlobal(
+      "Worker",
+      class {
+        terminate = terminate;
+      },
+    );
+
+    const prepared = prepareBrowserConnection(baseArgs);
+
+    expect(prepared.frameTiming).toBe(true);
+    prepared.dispose();
+  });
+
+  it("hands the pre-created worker to the first connect and mints a fresh one per reconnect", () => {
+    // The pre-created worker exists so `frameTiming` is only advertised when a
+    // strip transform is guaranteed. If the handoff broke, the server would
+    // append trailers the room could never strip.
+    const created: object[] = [];
+    stubFrameMetadataRuntimeSupport();
+    vi.stubGlobal(
+      "Worker",
+      class {
+        terminate = vi.fn();
+        constructor() {
+          created.push(this);
+        }
+      },
+    );
+
+    const prepared = prepareBrowserConnection(baseArgs);
+    expect(prepared.frameTiming).toBe(true);
+    expect(created).toHaveLength(1);
+
+    const channelConfig = prepared.createMediaChannel({ logger }) as unknown as {
+      config: { createFrameMetadataWorker?: () => Worker };
+    };
+    const takeWorker = channelConfig.config.createFrameMetadataWorker;
+    expect(takeWorker).toBeTypeOf("function");
+
+    // First connect consumes the pre-created worker; no new one is constructed.
+    expect(takeWorker?.()).toBe(created[0]);
+    expect(created).toHaveLength(1);
+
+    // A reconnect gets a fresh worker — LiveKit terminates the old one with its room.
+    const reconnectWorker = takeWorker?.();
+    expect(created).toHaveLength(2);
+    expect(reconnectWorker).toBe(created[1]);
+
     prepared.dispose();
   });
 

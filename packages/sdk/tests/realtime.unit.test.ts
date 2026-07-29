@@ -930,6 +930,48 @@ describe("StreamSession startup orchestration", () => {
     expect(disconnect).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    { frameTiming: true, expected: { room_name: "room", frame_timing: true } },
+    { frameTiming: false, expected: { room_name: "room" } },
+  ])("propagates frameTiming=$frameTiming into the sessionStarted subscribe token", async ({
+    frameTiming,
+    expected,
+  }) => {
+    // Viewers can only strip packet trailers if the token tells them to build
+    // the worker, so the publisher's frame-timing decision has to survive the
+    // round trip into the token it hands out.
+    const mediaChannel: MediaChannel = {
+      localStream: null,
+      on: vi.fn(),
+      off: vi.fn(),
+      connect: vi.fn().mockResolvedValue(undefined),
+      publishLocalTracks: vi.fn().mockResolvedValue(undefined),
+      replaceVideoTrack: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+    };
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const { decodeSubscribeToken } = await import("../src/realtime/subscribe-client.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+      createMediaChannel: () => mediaChannel,
+      frameTiming,
+    });
+    const tokens: string[] = [];
+    session.on("sessionStarted", ({ subscribeToken }) => tokens.push(subscribeToken));
+
+    const connectPromise = session.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    await flushMicrotasks();
+    sendRoomInfo(ws);
+    await expect(connectPromise).resolves.toBeUndefined();
+
+    expect(tokens).toHaveLength(1);
+    expect(decodeSubscribeToken(tokens[0])).toEqual(expected);
+    session.disconnect();
+  });
+
   it("starts LiveKit after room info, then resolves connect before caller initial-state ack", async () => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const session = new StreamSession({

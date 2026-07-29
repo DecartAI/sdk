@@ -238,7 +238,35 @@ describe("React Native compatibility", () => {
       }),
     ).rejects.toMatchObject({
       code: "UNSUPPORTED_PLATFORM_FEATURE",
-      message: expect.stringContaining("requires LiveKit frame metadata"),
+      // React Native has no worker factory at all, so the reason must say that
+      // rather than blaming absent encoded transforms.
+      message: expect.stringContaining("this platform has no frame-metadata worker"),
+    });
+  });
+
+  it("routes frame-timed subscribe rejection through the React Native entry point", async () => {
+    // The rejection only happens because the RN factory omits the worker
+    // options; asserting on subscribe-client alone would not catch a regression
+    // that wired a browser worker into the RN client.
+    stubReactNative(true);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ livekit_url: "wss://livekit.test", token: "watch-token", room_name: "room-1" }),
+      ),
+    );
+
+    const { createDecartClient } = await import("../src/index.react-native.js");
+    const client = createDecartClient({ apiKey: "test" });
+
+    await expect(
+      client.realtime.subscribe({
+        token: btoa(JSON.stringify({ room_name: "room-1", frame_timing: true })),
+        onRemoteStream: () => {},
+      }),
+    ).rejects.toMatchObject({
+      code: "UNSUPPORTED_PLATFORM_FEATURE",
+      message: expect.stringContaining("this platform has no frame-metadata worker"),
     });
   });
 });

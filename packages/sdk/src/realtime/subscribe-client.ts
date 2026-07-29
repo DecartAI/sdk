@@ -159,24 +159,24 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
 
       const creds = await fetchWatchStreamCredentials({ baseUrl, apiKey, roomName });
 
-      const frameMetadataRuntimeSupported = opts.isFrameMetadataRuntimeSupported?.() ?? false;
-      if (frameTiming && opts.createFrameMetadataWorker && frameMetadataRuntimeSupported) {
+      // The publisher advertised frame timing, so the server appends a packet
+      // trailer to every frame in this room. Without a strip worker the decoder
+      // fails on every frame, so refuse the token rather than join and leave the
+      // consumer staring at a permanently black video element.
+      if (frameTiming) {
+        if (!opts.createFrameMetadataWorker) {
+          throw createFrameMetadataSubscribeUnsupportedError("this platform has no frame-metadata worker");
+        }
+        if (!(opts.isFrameMetadataRuntimeSupported?.() ?? false)) {
+          throw createFrameMetadataSubscribeUnsupportedError("encoded transforms are unavailable");
+        }
         try {
           frameMetadataWorker = opts.createFrameMetadataWorker();
         } catch (error) {
-          if (frameTiming) {
-            throw createFrameMetadataSubscribeUnsupportedError(
-              `failed to create the required worker (${error instanceof Error ? error.message : String(error)})`,
-            );
-          }
-          logger.warn("Failed to create LiveKit frame-metadata worker for subscribe client", {
-            error: error instanceof Error ? error.message : String(error),
-          });
+          throw createFrameMetadataSubscribeUnsupportedError(
+            `failed to create the required worker (${error instanceof Error ? error.message : String(error)})`,
+          );
         }
-      } else if (frameTiming) {
-        throw createFrameMetadataSubscribeUnsupportedError(
-          frameMetadataRuntimeSupported ? undefined : "encoded transforms are unavailable",
-        );
       }
 
       try {
@@ -227,6 +227,9 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
         disconnect: () => {
           observability?.stop();
           stop();
+          // No explicit worker terminate: once the worker is handed to the Room,
+          // LiveKit's FrameMetadataManager owns it and terminates it on
+          // RoomEvent.Disconnected. Terminating here would double-free.
           activeRoom.disconnect().catch(() => {});
         },
         on: emitter.on,

@@ -92,6 +92,15 @@ Browser-produced streams can include LiveKit frame metadata for glass-to-glass
 latency, so viewers also need a browser runtime that can create the SDK's
 frame-metadata worker; unsupported runtimes reject those tokens before joining.
 
+> **Viewers must be on this SDK version or newer.** A browser publisher now
+> advertises frame timing by default, which makes the server append a packet
+> trailer to every frame in the room. Viewers on an older `@decartai/sdk`
+> ignore the token's `frame_timing` flag and join without a strip worker — they
+> connect successfully but decode nothing, so the video element stays black with
+> no error raised. React Native viewers cannot strip trailers at all and are
+> rejected with `UNSUPPORTED_PLATFORM_FEATURE`. Upgrade viewers before upgrading
+> publishers.
+
 **Producer** — capture the token from the active session:
 
 ```typescript
