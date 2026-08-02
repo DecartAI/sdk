@@ -12,6 +12,7 @@ import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import { loadLiveKitClient } from "./livekit";
 import type { RealtimeObservability } from "./observability/realtime-observability";
+import { installStartBitrateMunge } from "./start-bitrate";
 
 export type VideoCodec = "h264" | "vp8" | "vp9" | "av1";
 
@@ -48,6 +49,8 @@ export interface MediaChannelConfig {
   localStream: MediaStream | null;
   logger?: Logger;
   videoCodec?: VideoCodec;
+  /** Seed the publisher's initial bandwidth estimate (kbps). See `startBitrateKbps` on connect options. */
+  startBitrateKbps?: number;
   createFrameMetadataWorker?: () => Worker;
 }
 
@@ -75,6 +78,7 @@ export class LiveKitMediaChannel implements MediaChannel {
   private frameMetadataEnabled = false;
   private events: Emitter<MediaChannelEvents> = mitt();
   private readonly logger: Logger;
+  private uninstallStartBitrateMunge: (() => void) | null = null;
 
   constructor(private readonly config: MediaChannelConfig) {
     this.logger = config.logger ?? createConsoleLogger("warn");
@@ -95,6 +99,12 @@ export class LiveKitMediaChannel implements MediaChannel {
   async connect(opts: MediaConnectOptions): Promise<void> {
     const { Room: LiveKitRoom, RoomEvent, Track } = await loadLiveKitClient();
     this.cameraTrackSource = Track.Source.Camera;
+    if (this.config.startBitrateKbps && !this.uninstallStartBitrateMunge) {
+      // Installed for the channel's whole lifetime (not just this connect):
+      // LiveKit full reconnects create fresh peer connections that must be
+      // seeded too. Uninstalled in disconnect().
+      this.uninstallStartBitrateMunge = installStartBitrateMunge(this.config.startBitrateKbps, this.logger);
+    }
     if (!this.room) {
       let worker: Worker | undefined;
       if (this.config.createFrameMetadataWorker) {
@@ -178,6 +188,8 @@ export class LiveKitMediaChannel implements MediaChannel {
   }
 
   disconnect(): void {
+    this.uninstallStartBitrateMunge?.();
+    this.uninstallStartBitrateMunge = null;
     const room = this.room;
     this.room = null;
     this.cameraTrackSource = null;
