@@ -95,6 +95,30 @@ describe("installStartBitrateMunge", () => {
     uninstall();
   });
 
+  it("seeds only the first offer/answer pair — renegotiations pass through unmunged", async () => {
+    g.RTCPeerConnection = FakePC;
+    const uninstall = installStartBitrateMunge(1100);
+    const pc = new (g.RTCPeerConnection as new () => FakePC)();
+
+    await pc.setLocalDescription({ type: "offer", sdp: SDP });
+    await pc.setRemoteDescription({ type: "answer", sdp: SDP });
+    expect((pc.lastLocal as { sdp: string }).sdp).toContain("x-google-start-bitrate=1100");
+    expect((pc.lastRemote as { sdp: string }).sdp).toContain("x-google-start-bitrate=1100");
+
+    // Renegotiation (track publish): re-munging would reset a converged
+    // estimator back to the seed — these must pass through untouched.
+    await pc.setLocalDescription({ type: "offer", sdp: SDP });
+    await pc.setRemoteDescription({ type: "answer", sdp: SDP });
+    expect((pc.lastLocal as { sdp: string }).sdp).not.toContain("x-google-start-bitrate");
+    expect((pc.lastRemote as { sdp: string }).sdp).not.toContain("x-google-start-bitrate");
+
+    // A NEW peer connection (reconnect) gets its own first-pair seeding.
+    const pc2 = new (g.RTCPeerConnection as new () => FakePC)();
+    await pc2.setLocalDescription({ type: "offer", sdp: SDP });
+    expect((pc2.lastLocal as { sdp: string }).sdp).toContain("x-google-start-bitrate=1100");
+    uninstall();
+  });
+
   it("passes the argless setLocalDescription form through untouched", async () => {
     g.RTCPeerConnection = FakePC;
     const uninstall = installStartBitrateMunge(1100);

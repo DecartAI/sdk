@@ -87,15 +87,30 @@ export function installStartBitrateMunge(startKbps: number, logger?: Logger): ()
   };
 
   class StartBitratePC extends OriginalPC {
+    // Seed ONLY the first offer/answer pair. libwebrtc re-initializes the
+    // send-side estimate to x-google-start-bitrate on EVERY applied
+    // description that carries it — munging renegotiations (e.g. LiveKit's
+    // track-publish round) resets an already-converged estimator back down
+    // to the seed (measured live: est 5301 kbps → 1106 kbps at the second
+    // negotiation, exactly the seed value).
+    #mungedLegs = 0;
+
+    #maybeMunge<T extends { type?: RTCSdpType; sdp?: string }>(description: T, leg: string): T {
+      if (this.#mungedLegs >= 2) return description;
+      const result = munged(description, leg);
+      if (result !== description) this.#mungedLegs++;
+      return result;
+    }
+
     override setLocalDescription(description?: RTCLocalSessionDescriptionInit): Promise<void> {
       // Argless form (implicit offer/answer) has no SDP to munge — the
       // browser builds the description internally; the remote-answer leg
       // still seeds those sessions.
       if (description === undefined) return super.setLocalDescription();
-      return super.setLocalDescription(munged(description, "local offer"));
+      return super.setLocalDescription(this.#maybeMunge(description, "local offer"));
     }
     override setRemoteDescription(description: RTCSessionDescriptionInit): Promise<void> {
-      return super.setRemoteDescription(munged(description, "remote answer"));
+      return super.setRemoteDescription(this.#maybeMunge(description, "remote answer"));
     }
   }
 
