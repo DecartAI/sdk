@@ -1,6 +1,6 @@
 import type { RemoteParticipant, RemoteTrack, Room } from "livekit-client";
 
-import { classifyWebrtcError, createSDKError, type DecartSDKError, ERROR_CODES } from "../utils/errors";
+import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import { createEventBuffer } from "./event-buffer";
@@ -11,7 +11,6 @@ import type { ConnectionState } from "./types";
 
 type TokenPayload = {
   room_name: string;
-  frame_timing?: boolean;
 };
 
 type WatchStreamResponse = {
@@ -26,31 +25,13 @@ type WatchStreamCredentialsRequest = {
   roomName: string;
 };
 
-function isDecartSDKError(error: unknown): error is DecartSDKError {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    typeof (error as Partial<DecartSDKError>).code === "string" &&
-    typeof (error as Partial<DecartSDKError>).message === "string"
-  );
-}
-
-function createFrameMetadataSubscribeUnsupportedError(detail?: string): DecartSDKError {
-  const suffix = detail ? `: ${detail}` : "";
-  return createSDKError(
-    ERROR_CODES.UNSUPPORTED_PLATFORM_FEATURE,
-    `This realtime stream requires LiveKit frame metadata, which this SDK environment does not support${suffix}.`,
-    { feature: "LiveKit frame metadata subscribe", platform: "this SDK environment" },
-  );
-}
-
 export function decodeSubscribeToken(token: string): TokenPayload {
   try {
     const payload = JSON.parse(atob(token)) as Partial<TokenPayload>;
     if (!payload.room_name || typeof payload.room_name !== "string") {
       throw new Error("Invalid subscribe token format");
     }
-    return { room_name: payload.room_name, ...(payload.frame_timing === true ? { frame_timing: true } : {}) };
+    return { room_name: payload.room_name };
   } catch {
     throw new Error("Invalid subscribe token");
   }
@@ -81,8 +62,6 @@ export type RealTimeSubscribeClientOptions = {
   apiKey: string;
   integration?: string;
   logger: Logger;
-  createFrameMetadataWorker?: () => Worker;
-  isFrameMetadataRuntimeSupported?: () => boolean;
 };
 
 function mapLiveKitState(state: string): ConnectionState {
@@ -129,12 +108,11 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
   const logger = opts.logger ?? createConsoleLogger("info");
 
   const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
-    const { room_name: roomName, frame_timing: frameTiming } = decodeSubscribeToken(options.token);
+    const { room_name: roomName } = decodeSubscribeToken(options.token);
     const { emitter, emitOrBuffer, flush, stop } = createEventBuffer<SubscribeEvents>();
 
     let observability: RealtimeObservability | undefined;
     let room: Room | undefined;
-    let frameMetadataWorker: Worker | undefined;
     let currentState: ConnectionState = "connecting";
     let remoteStream: MediaStream | null = null;
 
@@ -159,36 +137,7 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
 
       const creds = await fetchWatchStreamCredentials({ baseUrl, apiKey, roomName });
 
-      // The publisher advertised frame timing, so the server appends a packet
-      // trailer to every frame in this room. Without a strip worker the decoder
-      // fails on every frame, so refuse the token rather than join and leave the
-      // consumer staring at a permanently black video element.
-      if (frameTiming) {
-        if (!opts.createFrameMetadataWorker) {
-          throw createFrameMetadataSubscribeUnsupportedError("this platform has no frame-metadata worker");
-        }
-        if (!(opts.isFrameMetadataRuntimeSupported?.() ?? false)) {
-          throw createFrameMetadataSubscribeUnsupportedError("encoded transforms are unavailable");
-        }
-        try {
-          frameMetadataWorker = opts.createFrameMetadataWorker();
-        } catch (error) {
-          throw createFrameMetadataSubscribeUnsupportedError(
-            `failed to create the required worker (${error instanceof Error ? error.message : String(error)})`,
-          );
-        }
-      }
-
-      try {
-        room = new LiveKitRoom({
-          ...REALTIME_CONFIG.livekit.roomOptions,
-          ...(frameMetadataWorker ? { frameMetadata: { worker: frameMetadataWorker } } : {}),
-        });
-      } catch (error) {
-        frameMetadataWorker?.terminate();
-        frameMetadataWorker = undefined;
-        throw error;
-      }
+      room = new LiveKitRoom(REALTIME_CONFIG.livekit.roomOptions);
       const activeRoom = room;
 
       activeRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
@@ -227,9 +176,6 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
         disconnect: () => {
           observability?.stop();
           stop();
-          // No explicit worker terminate: once the worker is handed to the Room,
-          // LiveKit's FrameMetadataManager owns it and terminates it on
-          // RoomEvent.Disconnected. Terminating here would double-free.
           activeRoom.disconnect().catch(() => {});
         },
         on: emitter.on,
@@ -242,11 +188,6 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
       observability?.stop();
       if (room) {
         room.disconnect().catch(() => {});
-      }
-      frameMetadataWorker?.terminate();
-      if (isDecartSDKError(error)) {
-        logger.error("Realtime subscribe error", { error: error.message });
-        throw error;
       }
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error("Realtime subscribe error", { error: err.message });

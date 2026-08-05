@@ -19,7 +19,6 @@ export const REALTIME_CONFIG = {
       "401",
       "invalid api key",
       "unauthorized",
-      "failed to create livekit frame-metadata worker",
     ],
   },
   methods: {

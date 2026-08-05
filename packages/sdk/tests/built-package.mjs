@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { access } from "node:fs/promises";
 import pkg from "../package.json" with { type: "json" };
 
 for (const name of ["File", "Blob", "ReadableStream", "WritableStream", "TransformStream", "DOMException"]) {
@@ -25,11 +24,6 @@ assert.ok(
   buildUserAgent().includes(`decart-js-sdk/${pkg.version}`),
   `User-Agent must carry the real version, got "${buildUserAgent()}"`,
 );
-
-// The browser bundle creates this worker automatically for LiveKit frame
-// metadata. Missing it would make the SDK advertise frame timing without a
-// usable strip transform in package consumers.
-await access(new URL("../dist/realtime/browser/frame-metadata-worker.js", import.meta.url));
 
 const reactNativeCheck = spawnSync(
   process.execPath,

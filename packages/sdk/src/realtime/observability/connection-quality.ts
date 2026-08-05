@@ -20,10 +20,10 @@ export type ConnectionQualityMetrics = {
   rttMs: number | null;
   /**
    * Mid-stream (steady-state) glass-to-glass latency (ms) — the real per-frame
-   * camera→display latency through the model, excluding startup. Populated in
-   * browser sessions when LiveKit frame metadata is available and past warm-up;
-   * null otherwise. When present it drives the latency verdict instead of
-   * `rttMs`.
+   * camera→display latency through the model, excluding startup. Only populated
+   * when the opt-in frame-metadata measurement is on (`connect({ debugQuality: true })`)
+   * and past warm-up; null otherwise. When present it drives the latency verdict
+   * instead of `rttMs`.
    */
   g2gMs: number | null;
   /**
@@ -144,7 +144,7 @@ export function scoreMetrics(
   options: ScoreOptions = {},
 ): { quality: ConnectionQuality; limitingFactor: ConnectionQualityLimitingFactor } {
   // Prefer measured glass-to-glass — the real experienced latency — when the
-  // frame-metadata measurement is active. It already includes both network
+  // opt-in frame-metadata measurement is active. It already includes both network
   // legs, so relay headroom doesn't apply. Fall back to RTT otherwise.
   const relayExtra = signals.isRelayed ? thresholds.rtt.relayExtraMs : 0;
   const latency =

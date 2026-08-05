@@ -16,11 +16,13 @@ export function unsupportedReactNativeFeature(feature: string): never {
 export const prepareReactNativeConnection: PrepareConnection = ({
   stream,
   mirror,
+  debugQuality,
   preferredVideoCodec,
   observability: observabilityOptions,
 }) => {
   assertReactNativeReady();
   if (mirror !== false) unsupportedReactNativeFeature("Outgoing video mirroring");
+  if (debugQuality) unsupportedReactNativeFeature("debugQuality");
 
   return {
     stream: stream ?? new MediaStream(),
