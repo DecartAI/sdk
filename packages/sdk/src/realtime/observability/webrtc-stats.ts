@@ -133,8 +133,9 @@ export type WebRTCStats = {
   };
   /**
    * True glass-to-glass latency + end-to-end drop signal, merged in by
-   * `RealtimeObservability` when frame-metadata measurement is active. Null
-   * otherwise — the stats collector does not populate it.
+   * `RealtimeObservability` when the opt-in frame-metadata measurement is active.
+   * Null otherwise — the stats collector does not
+   * populate it.
    */
   glassToGlass: G2GMetrics | null;
 };

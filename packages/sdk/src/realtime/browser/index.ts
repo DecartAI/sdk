@@ -1,7 +1,6 @@
 import { createRealTimeClient, type RealTimeClientConnectOptions } from "../client";
 import type { CreateRealtime } from "../factory";
 import { createRealTimeSubscribeClient } from "../subscribe-client";
-import { createFrameMetadataWorker, isFrameMetadataRuntimeSupported } from "./frame-metadata-diagnostics";
 import { createPreflight } from "./preflight";
 import { prepareBrowserConnection } from "./prepare-connection";
 
@@ -19,8 +18,6 @@ export const createBrowserRealtime: CreateRealtime = (options) => {
     apiKey: options.apiKey,
     integration: options.integration,
     logger: options.logger,
-    createFrameMetadataWorker,
-    isFrameMetadataRuntimeSupported,
   });
   const preflight = createPreflight({ logger: options.logger, connect: publish.connect });
 

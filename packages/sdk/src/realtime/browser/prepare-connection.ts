@@ -2,16 +2,13 @@ import { isDesktopSafari } from "../../utils/platform";
 import type { PrepareConnection } from "../client";
 import { createLiveKitMediaChannel } from "../media-channel";
 import { RealtimeObservability } from "../observability/realtime-observability";
-import {
-  createBrowserFrameMetadataDiagnostics,
-  createFrameMetadataWorker,
-  isFrameMetadataRuntimeSupported,
-} from "./frame-metadata-diagnostics";
+import { createBrowserFrameMetadataDiagnostics, createFrameMetadataWorker } from "./frame-metadata-diagnostics";
 import { createMirroredStream, shouldMirrorTrack } from "./mirror-stream";
 
 export const prepareBrowserConnection: PrepareConnection = ({
   stream,
   mirror,
+  debugQuality,
   preferredVideoCodec,
   fps,
   logger,
@@ -44,16 +41,14 @@ export const prepareBrowserConnection: PrepareConnection = ({
   // strip it and the VP8/VP9 decoder then fails on every frame. Worker
   // availability is environment-deterministic, so this also predicts reconnects.
   let pendingWorker: Worker | undefined;
-  if (isFrameMetadataRuntimeSupported()) {
+  if (debugQuality) {
     try {
       pendingWorker = createFrameMetadataWorker();
     } catch (error) {
-      logger.debug("Frame-metadata worker unavailable; glass-to-glass latency measurement disabled", {
+      logger.warn("Frame-metadata worker unavailable; glass-to-glass latency measurement disabled", {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  } else {
-    logger.debug("Frame-metadata runtime unavailable; glass-to-glass latency measurement disabled");
   }
   const frameTiming = pendingWorker !== undefined;
   // Hand the pre-created worker to the first connect, then create a fresh one

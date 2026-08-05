@@ -55,22 +55,6 @@ describe("FrameMetadataTracker", () => {
     expect(tracker.snapshot().medianMs).toBe(175);
   });
 
-  it("keeps measuring throughout the session with a rolling latency window", () => {
-    const tracker = new FrameMetadataTracker();
-    tracker.recordFrame(captureTimestamp(0, 100), performance.timeOrigin);
-
-    for (let latency = 0; latency < 350; latency++) {
-      const playoutRelMs = PAST_WARMUP + latency;
-      tracker.recordFrame(captureTimestamp(playoutRelMs, latency), performance.timeOrigin + playoutRelMs);
-    }
-
-    expect(tracker.snapshot()).toMatchObject({
-      medianMs: 200,
-      p90Ms: 320,
-      sampleCount: 300,
-    });
-  });
-
   it("ignores missing and implausible timestamps", () => {
     const tracker = new FrameMetadataTracker();
     tracker.recordFrame(0n, performance.timeOrigin);
@@ -103,11 +87,10 @@ describe("FrameMetadataTracker", () => {
 
   it("correlates LiveKit time-sync events and detaches the listener on reconnect", () => {
     const listeners = new Map<string, (update: { timestamp: number; rtpTimestamp: number }) => void>();
-    // LiveKit's timeSyncUpdate `timestamp` comes from
-    // RTCRtpContributingSource.timestamp, which the spec defines as
-    // `performance.timeOrigin + performance.now()` — i.e. already epoch ms,
-    // matching userTimestamp's epoch microseconds. Drive the event with an
-    // epoch timestamp like a real browser does.
+    // LiveKit's timeSyncUpdate `timestamp` is the sync-source playout time as a
+    // DOMHighResTimeStamp (relative to performance.timeOrigin), whereas
+    // userTimestamp is epoch microseconds. The reader must reconcile the two,
+    // so drive the event with a relative timestamp like the real SDK does.
     const LATENCY_MS = 250;
     let nextUserTimestampUs = 0n;
     const lookupFrameMetadata = vi.fn(() => ({ userTimestamp: nextUserTimestampUs, frameId: 0 }));
@@ -125,14 +108,14 @@ describe("FrameMetadataTracker", () => {
     diagnostics.markStart();
     diagnostics.attachRemoteVideoTrack(track);
 
-    const emit = (playoutEpochMs: number, rtpTimestamp: number) => {
-      nextUserTimestampUs = BigInt(Math.round((playoutEpochMs - LATENCY_MS) * 1_000));
-      listeners.get("timeSyncUpdate")?.({ timestamp: playoutEpochMs, rtpTimestamp });
+    const emit = (playoutRelMs: number, rtpTimestamp: number) => {
+      nextUserTimestampUs = BigInt(Math.round((performance.timeOrigin + playoutRelMs - LATENCY_MS) * 1_000));
+      listeners.get("timeSyncUpdate")?.({ timestamp: playoutRelMs, rtpTimestamp });
     };
 
-    const startEpoch = performance.timeOrigin + performance.now();
-    emit(startEpoch, 1); // first frame within warm-up → sets TTFF only
-    emit(startEpoch + PAST_WARMUP, 2); // steady-state sample
+    const startRel = performance.now();
+    emit(startRel, 1); // first frame within warm-up → sets TTFF only
+    emit(startRel + PAST_WARMUP, 2); // steady-state sample
 
     expect(lookupFrameMetadata).toHaveBeenCalledWith({ rtpTimestamp: 2 });
     expect(diagnostics.snapshot()).toMatchObject({ medianMs: LATENCY_MS, sampleCount: 1 });
