@@ -1,5 +1,5 @@
 import type { ModelDefinition } from "../shared/model";
-import { buildAuthHeaders, buildFormData } from "../shared/request";
+import { buildAuthHeaders, buildFormData, readErrorBody } from "../shared/request";
 import { createSDKError } from "../utils/errors";
 
 export async function sendRequest({
@@ -30,7 +30,7 @@ export async function sendRequest({
   });
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "Unknown error");
+    const errorText = await readErrorBody(response);
     throw createSDKError("PROCESSING_ERROR", `Processing failed: ${response.status} - ${errorText}`);
   }
 

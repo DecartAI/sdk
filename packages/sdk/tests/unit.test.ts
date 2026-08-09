@@ -323,6 +323,26 @@ describe("Decart SDK", () => {
           }),
         ).rejects.toThrow("Processing failed");
       });
+
+      it("surfaces the detail field of JSON error bodies", async () => {
+        const detail =
+          "Prompt is too long: 362 tokens (maximum 226, including the end-of-sequence token). Please shorten the prompt.";
+        server.use(
+          http.post(`${BASE_URL}/v1/generate/lucy-pro-i2i`, () => {
+            return HttpResponse.json({ detail }, { status: 400 });
+          }),
+        );
+
+        const testBlob = new Blob(["test-image"], { type: "image/png" });
+
+        await expect(
+          decart.process({
+            model: models.image("lucy-pro-i2i"),
+            prompt: "test",
+            data: testBlob,
+          }),
+        ).rejects.toThrow(`Processing failed: 400 - ${detail}`);
+      });
     });
   });
 });
@@ -662,6 +682,26 @@ describe("Queue API", () => {
           data: testBlob,
         }),
       ).rejects.toThrow("Failed to submit job");
+    });
+
+    it("surfaces the detail field of JSON error bodies", async () => {
+      const detail =
+        "Prompt is too long: 362 tokens (maximum 226, including the end-of-sequence token). Please shorten the prompt.";
+      server.use(
+        http.post("http://localhost/v1/jobs/lucy-pro-v2v", () => {
+          return HttpResponse.json({ detail }, { status: 400 });
+        }),
+      );
+
+      const testBlob = new Blob(["test-video"], { type: "video/mp4" });
+
+      await expect(
+        decart.queue.submit({
+          model: models.video("lucy-pro-v2v"),
+          prompt: "test",
+          data: testBlob,
+        }),
+      ).rejects.toThrow(`Failed to submit job: 400 - ${detail}`);
     });
   });
 

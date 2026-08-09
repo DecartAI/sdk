@@ -1,5 +1,5 @@
 import type { ModelDefinition } from "../shared/model";
-import { buildAuthHeaders, buildFormData } from "../shared/request";
+import { buildAuthHeaders, buildFormData, readErrorBody } from "../shared/request";
 import { createQueueResultError, createQueueStatusError, createQueueSubmitError } from "../utils/errors";
 import type { JobStatusResponse, JobSubmitResponse } from "./types";
 
@@ -42,7 +42,7 @@ export async function submitJob({
   });
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "Unknown error");
+    const errorText = await readErrorBody(response);
     throw createQueueSubmitError(`Failed to submit job: ${response.status} - ${errorText}`, response.status);
   }
 
@@ -73,7 +73,7 @@ export async function getJobStatus({
   });
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "Unknown error");
+    const errorText = await readErrorBody(response);
     throw createQueueStatusError(`Failed to get job status: ${response.status} - ${errorText}`, response.status);
   }
 
@@ -104,7 +104,7 @@ export async function getJobContent({
   });
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "Unknown error");
+    const errorText = await readErrorBody(response);
     throw createQueueResultError(`Failed to get job content: ${response.status} - ${errorText}`, response.status);
   }
 
