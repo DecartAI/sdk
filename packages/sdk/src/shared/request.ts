@@ -53,6 +53,23 @@ export async function fileInputToBlob(input: FileInput): Promise<Blob | ReactNat
 }
 
 /**
+ * Read an error response body for an SDK error message. The API returns JSON
+ * like {"detail": "Prompt is too long: ..."} — surface the human-readable
+ * detail instead of the raw JSON when present.
+ */
+export async function readErrorBody(response: Response): Promise<string> {
+  const text = await response.text().catch(() => "");
+  if (!text) return "Unknown error";
+  try {
+    const detail = (JSON.parse(text) as { detail?: unknown }).detail;
+    if (typeof detail === "string" && detail) return detail;
+  } catch {
+    // not JSON — fall through to the raw text
+  }
+  return text;
+}
+
+/**
  * Build common headers for API requests.
  */
 export function buildAuthHeaders(options: { apiKey?: string; integration?: string } = {}): HeadersInit {
