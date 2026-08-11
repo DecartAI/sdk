@@ -8,6 +8,7 @@ const CANONICAL_MODEL_NAMES = [
   "lucy-vton-2",
   "lucy-vton-3",
   "lucy-vton-3.5",
+  "lucy-vton-3.5.2",
   "lucy-restyle-2",
   "lucy-clip",
   "lucy-image-2",
@@ -19,6 +20,7 @@ const CANONICAL_REALTIME_MODEL_NAMES = [
   "lucy-vton-2",
   "lucy-vton-3",
   "lucy-vton-3.5",
+  "lucy-vton-3.5.2",
   "lucy-restyle-2",
 ] as const;
 const CANONICAL_VIDEO_MODEL_NAMES = [
@@ -28,6 +30,7 @@ const CANONICAL_VIDEO_MODEL_NAMES = [
   "lucy-vton-2",
   "lucy-vton-3",
   "lucy-vton-3.5",
+  "lucy-vton-3.5.2",
   "lucy-restyle-2",
 ] as const;
 const CANONICAL_IMAGE_MODEL_NAMES = ["lucy-image-2"] as const;
@@ -73,6 +76,7 @@ export const realtimeModels = z.union([
   z.literal("lucy-vton-2"),
   z.literal("lucy-vton-3"),
   z.literal("lucy-vton-3.5"),
+  z.literal("lucy-vton-3.5.2"),
   z.literal("lucy-restyle-2"),
   // Latest aliases (server-side resolution)
   z.literal("lucy-latest"),
@@ -89,6 +93,7 @@ export const videoModels = z.union([
   z.literal("lucy-vton-2"),
   z.literal("lucy-vton-3"),
   z.literal("lucy-vton-3.5"),
+  z.literal("lucy-vton-3.5.2"),
   z.literal("lucy-restyle-2"),
   // Latest aliases (server-side resolution)
   z.literal("lucy-latest"),
@@ -267,6 +272,7 @@ export const modelInputSchemas = {
   "lucy-vton-2": videoEdit2Schema,
   "lucy-vton-3": videoEdit2Schema,
   "lucy-vton-3.5": videoEdit2Schema,
+  "lucy-vton-3.5.2": videoEdit2Schema,
   // Latest aliases (server-side resolution)
   "lucy-latest": videoEdit2Schema,
   "lucy-vton-latest": videoEdit2Schema,
@@ -378,6 +384,14 @@ const _models = {
     "lucy-vton-3.5": {
       urlPath: "/v1/stream",
       name: "lucy-vton-3.5" as const,
+      fps: { ideal: 30, max: 30 },
+      width: 1280,
+      height: 720,
+      inputSchema: z.object({}),
+    },
+    "lucy-vton-3.5.2": {
+      urlPath: "/v1/stream",
+      name: "lucy-vton-3.5.2" as const,
       fps: { ideal: 30, max: 30 },
       width: 1280,
       height: 720,
@@ -514,6 +528,15 @@ const _models = {
       width: 1280,
       height: 720,
       inputSchema: modelInputSchemas["lucy-vton-3.5"],
+    },
+    "lucy-vton-3.5.2": {
+      urlPath: "/v1/generate/lucy-vton-3.5.2",
+      queueUrlPath: "/v1/jobs/lucy-vton-3.5.2",
+      name: "lucy-vton-3.5.2" as const,
+      fps: 20,
+      width: 1280,
+      height: 720,
+      inputSchema: modelInputSchemas["lucy-vton-3.5.2"],
     },
     "lucy-restyle-2": {
       urlPath: "/v1/generate/lucy-restyle-2",

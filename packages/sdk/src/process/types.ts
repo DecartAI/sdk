@@ -169,6 +169,7 @@ export type ModelSpecificInputs<T extends ModelDefinition> = T["name"] extends "
           | "lucy-vton-2"
           | "lucy-vton-3"
           | "lucy-vton-3.5"
+          | "lucy-vton-3.5.2"
           | "lucy-2.1-vton-2"
           | "lucy-vton-latest"
       ? VideoEdit2Inputs
