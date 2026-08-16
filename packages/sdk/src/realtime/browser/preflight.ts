@@ -261,7 +261,6 @@ async function runActiveProbe(args: {
 
     const connectTask = connect(source.stream, {
       model,
-      debugQuality: true,
       onRemoteStream: () => {},
     });
     signal?.addEventListener("abort", () => connectTask.then((c) => c.disconnect()).catch(() => {}), {
