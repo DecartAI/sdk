@@ -101,9 +101,13 @@ export class LiveKitMediaChannel implements MediaChannel {
         try {
           worker = this.config.createFrameMetadataWorker();
         } catch (error) {
-          this.logger.warn("Failed to create LiveKit frame-metadata worker; continuing without latency metrics", {
-            error: error instanceof Error ? error.message : String(error),
-          });
+          const detail = error instanceof Error ? error.message : String(error);
+          this.logger.warn("Failed to create LiveKit frame-metadata worker", { error: detail });
+          // The server is already appending packet trailers for this session, so
+          // continuing without a strip transform would decode to garbage. Worker
+          // availability is environment-deterministic, so a retry can't recover
+          // either — surface it as permanent (see `permanentErrorSubstrings`).
+          throw new Error(`Failed to create LiveKit frame-metadata worker: ${detail}`, { cause: error });
         }
       }
       this.frameMetadataEnabled = worker !== undefined;
@@ -126,8 +130,8 @@ export class LiveKitMediaChannel implements MediaChannel {
 
       const mediaStreamTrack = track.mediaStreamTrack;
       if (mediaStreamTrack) {
-        // Feed the LiveKit track to the frame-metadata render reader (a no-op
-        // unless opt-in glass-to-glass measurement is enabled).
+        // Feed the LiveKit track to the frame-metadata render reader when
+        // browser frame metadata is available.
         if (track.kind === "video") {
           this.config.observability?.attachRemoteVideoTrack(track as RemoteVideoTrack);
         }
