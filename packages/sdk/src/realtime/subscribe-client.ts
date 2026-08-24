@@ -168,7 +168,9 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
           throw createFrameMetadataSubscribeUnsupportedError("this platform has no frame-metadata worker");
         }
         if (!(opts.isFrameMetadataRuntimeSupported?.() ?? false)) {
-          throw createFrameMetadataSubscribeUnsupportedError("encoded transforms are unavailable");
+          throw createFrameMetadataSubscribeUnsupportedError(
+            "encoded transforms are unavailable or the SDK is served cross-origin",
+          );
         }
         try {
           frameMetadataWorker = opts.createFrameMetadataWorker();

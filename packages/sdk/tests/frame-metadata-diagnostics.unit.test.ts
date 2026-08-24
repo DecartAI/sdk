@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createBrowserFrameMetadataDiagnostics,
   FrameMetadataTracker,
+  isFrameMetadataWorkerSameOrigin,
 } from "../src/realtime/browser/frame-metadata-diagnostics.js";
 
 const PAST_WARMUP = 5_000;
@@ -140,5 +141,19 @@ describe("FrameMetadataTracker", () => {
     diagnostics.markStart();
     expect(track.off).toHaveBeenCalledWith("timeSyncUpdate", expect.any(Function));
     expect(listeners.has("timeSyncUpdate")).toBe(false);
+  });
+});
+
+describe("isFrameMetadataWorkerSameOrigin", () => {
+  const page = "https://shop.example.com";
+
+  it("rejects a cross-origin worker (SDK served from a CDN)", () => {
+    expect(isFrameMetadataWorkerSameOrigin(new URL("https://cdn.example.com/worker.js"), page)).toBe(false);
+    expect(isFrameMetadataWorkerSameOrigin(new URL("https://cdn.example.com/worker.js"), undefined)).toBe(false);
+  });
+
+  it("accepts a same-origin or non-http(s) worker", () => {
+    expect(isFrameMetadataWorkerSameOrigin(new URL(`${page}/worker.js`), page)).toBe(true);
+    expect(isFrameMetadataWorkerSameOrigin(new URL("blob:https://cdn.example.com/1"), page)).toBe(true);
   });
 });
