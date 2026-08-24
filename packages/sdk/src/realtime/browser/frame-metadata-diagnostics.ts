@@ -125,12 +125,27 @@ export function createBrowserFrameMetadataDiagnostics(): GlassToGlassDiagnostics
   };
 }
 
+const WORKER_URL = () => new URL("./frame-metadata-worker.js", import.meta.url);
+
 export function createFrameMetadataWorker(): Worker {
-  return new Worker(new URL("./frame-metadata-worker.js", import.meta.url));
+  return new Worker(WORKER_URL());
+}
+
+// A cross-origin worker script (SDK served from a CDN) can't load: Chrome throws,
+// Firefox/Safari hand back a worker that dies async and breaks the room. Exported
+// for tests; non-http(s) URLs (bundler-inlined, tests) aren't restricted.
+export function isFrameMetadataWorkerSameOrigin(workerUrl: URL, pageOrigin: string | undefined): boolean {
+  if (workerUrl.protocol !== "http:" && workerUrl.protocol !== "https:") return true;
+  return workerUrl.origin === pageOrigin;
 }
 
 export function isFrameMetadataRuntimeSupported(): boolean {
   if (typeof window === "undefined") return false;
+  try {
+    if (!isFrameMetadataWorkerSameOrigin(WORKER_URL(), window.location?.origin)) return false;
+  } catch {
+    return false;
+  }
   const maybeWindow = window as typeof window & {
     RTCRtpScriptTransform?: unknown;
     RTCRtpSender?: { prototype?: { createEncodedStreams?: unknown } };
