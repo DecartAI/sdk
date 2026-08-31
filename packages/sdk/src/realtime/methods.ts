@@ -10,7 +10,10 @@ const setInputSchema = z
     prompt: z.string().min(1).optional(),
     enhance: z.boolean().optional().default(true),
     /**
-     * - `Blob`/`File`/data:/http(s):/base64 string: bytes traverse the wire as base64.
+     * - `Blob`/`File`/data:/base64 string: bytes traverse the wire as base64.
+     * - `http(s):` URL: fetched, then sent as base64. Browser-oriented — the fetch
+     *   relies on the same-origin policy. Server-side, pass bytes rather than a
+     *   caller-supplied URL (fetching an arbitrary URL from a server is an SSRF risk).
      * - `"file_..."` id (from `client.files.upload(...).id`): sent as a server-side reference.
      */
     image: z
