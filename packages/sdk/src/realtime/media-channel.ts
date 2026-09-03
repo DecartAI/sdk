@@ -19,12 +19,26 @@ export function getDefaultVideoPublishOptions(
   source: TrackPublishOptions["source"],
   videoCodec?: VideoCodec,
   frameMetadata = false,
+  publishFps?: number,
 ): TrackPublishOptions {
   const resolvedCodec = videoCodec ?? REALTIME_CONFIG.livekit.defaultVideoCodec;
-  const maxBitrate =
+  const naturalBitrate =
     resolvedCodec === "vp9"
       ? REALTIME_CONFIG.livekit.vp9MaxVideoBitrateBps
       : REALTIME_CONFIG.livekit.defaultMaxVideoBitrateBps;
+  // The encoder spends its per-second budget regardless of cadence, so at low
+  // publish rates a fixed cap packs into oversized frames whose wire-arrival
+  // span inflates the server's ingest jitter buffer. Scale the cap to
+  // ~constant bits-per-frame below the threshold; at >=15 fps the natural
+  // rate is optimal and a binding cap hurts, so leave it untouched.
+  const fps = publishFps ?? REALTIME_CONFIG.livekit.defaultPublishFps;
+  const maxBitrate =
+    fps < REALTIME_CONFIG.livekit.lowFpsBitrateScaleBelowFps
+      ? Math.max(
+          REALTIME_CONFIG.livekit.lowFpsMinBitrateBps,
+          Math.min(naturalBitrate, Math.round(fps * REALTIME_CONFIG.livekit.lowFpsBitsPerFrame)),
+        )
+      : naturalBitrate;
 
   return {
     source,
@@ -48,6 +62,8 @@ export interface MediaChannelConfig {
   localStream: MediaStream | null;
   logger?: Logger;
   videoCodec?: VideoCodec;
+  /** Intended publish cadence (fps) — scales the uplink maxBitrate below 15 fps. */
+  publishFps?: number;
   createFrameMetadataWorker?: () => Worker;
 }
 
@@ -196,7 +212,7 @@ export class LiveKitMediaChannel implements MediaChannel {
         if (!this.cameraTrackSource) throw new Error("Cannot publish video track: media channel is not connected");
         await this.room.localParticipant.publishTrack(
           track,
-          getDefaultVideoPublishOptions(this.cameraTrackSource, this.config.videoCodec, this.frameMetadataEnabled),
+          getDefaultVideoPublishOptions(this.cameraTrackSource, this.config.videoCodec, this.frameMetadataEnabled, this.config.publishFps),
         );
       } else {
         await this.room.localParticipant.publishTrack(track);
