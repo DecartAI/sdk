@@ -62,6 +62,7 @@ interface StreamSessionConfig {
   initialPassthrough?: boolean;
   logger?: Logger;
   videoCodec?: VideoCodec;
+  startBitrateKbps?: number;
   createMediaChannel: MediaChannelFactory;
 }
 
@@ -338,6 +339,7 @@ export class StreamSession {
       localStream: this.config.localStream,
       logger: this.logger,
       videoCodec: this.config.videoCodec,
+      startBitrateKbps: this.config.startBitrateKbps,
     });
     this.wireSignalingEvents();
     this.wireMediaEvents();

@@ -82,6 +82,18 @@ const realTimeClientConnectOptionsSchema = z.object({
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp8", "vp9"]).optional(),
   /**
+   * Seed the publisher's initial bandwidth estimate, in kbps
+   * (`x-google-start-bitrate` applied to the camera track's SDP). By default
+   * browsers start the estimate at ~300 kbps and ramp over several seconds,
+   * so sessions begin at reduced input resolution on links that could carry
+   * more. Seeding raises the starting point: the estimator's startup probes
+   * scale from this value (3x/6x), so full-resolution bandwidth is validated
+   * within the first probe round on capable links. Values above ~1100 kbps
+   * measurably degrade session startup on very weak (<1 Mbps) uplinks —
+   * prefer canary-guarded rollouts. 0/undefined = browser default.
+   */
+  startBitrateKbps: z.number().int().min(0).max(10_000).optional(),
+  /**
    * @deprecated Glass-to-glass measurement now runs automatically in browsers
    * when LiveKit frame metadata is available. This legacy flag is accepted for
    * compatibility and no longer gates measurement.
@@ -154,6 +166,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       initialState,
       resolution,
       preferredVideoCodec,
+      startBitrateKbps,
     } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
 
@@ -214,6 +227,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialPassthrough: initialState?.passthrough,
         logger,
         videoCodec: preparedConnection.videoCodec,
+        startBitrateKbps,
         createMediaChannel: preparedConnection.createMediaChannel,
       });
 
