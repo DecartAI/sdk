@@ -10,12 +10,16 @@ const __dirname = dirname(__filename);
 const OUTPUT_DIR = join(__dirname, "e2e-output");
 const VIDEO_FIXTURE = join(__dirname, "fixtures", "video.mp4");
 const IMAGE_FIXTURE = join(__dirname, "fixtures", "image.png");
+// Try-on models take the GARMENT as reference_image; a non-garment reference (the dogs above) makes
+// lucy-vton-3 undress the subject and the output fails moderation (PLA-808, PLA-817).
+const GARMENT_FIXTURE = join(__dirname, "fixtures", "garment.png");
 
 const TIMEOUT = 5 * 60 * 1000; // 5 minutes
 describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
   let client: ReturnType<typeof createDecartClient>;
   let videoBlob: Blob;
   let imageBlob: Blob;
+  let garmentBlob: Blob;
 
   beforeAll(() => {
     const apiKey = process.env.DECART_API_KEY;
@@ -35,8 +39,10 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
 
     const videoBuffer = readFileSync(VIDEO_FIXTURE);
     const imageBuffer = readFileSync(IMAGE_FIXTURE);
+    const garmentBuffer = readFileSync(GARMENT_FIXTURE);
     videoBlob = new Blob([videoBuffer], { type: "video/mp4" });
     imageBlob = new Blob([imageBuffer], { type: "image/png" });
+    garmentBlob = new Blob([garmentBuffer], { type: "image/png" });
   });
 
   async function saveOutput(result: Blob, modelName: string, ext: string): Promise<string> {
@@ -203,7 +209,7 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-vton-3"),
         prompt: "",
-        reference_image: imageBlob,
+        reference_image: garmentBlob,
         data: videoBlob,
         seed: 42,
       });
@@ -226,7 +232,7 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-vton-3.5"),
         prompt: "",
-        reference_image: imageBlob,
+        reference_image: garmentBlob,
         data: videoBlob,
         seed: 42,
       });
