@@ -991,8 +991,14 @@
         // so overwriting it would burn the only key we can mint from. Ephemeral
         // and jwt modes mint on radio change and cache here; connect reads it.
         let mintedCredential = null;
+        let mintInFlight = null;
 
-        async function mintCredential(authMode) {
+        function mintCredential(authMode) {
+            mintInFlight = mintCredentialNow(authMode).finally(() => { mintInFlight = null; });
+            return mintInFlight;
+        }
+
+        async function mintCredentialNow(authMode) {
             mintedCredential = null;
             const parentKey = elements.apiKey.value.trim();
             if (!parentKey) { addLog('Please enter an API key first', 'error'); return; }
@@ -1017,7 +1023,10 @@
             });
         });
 
-        function resolveCredential() {
+        async function resolveCredential() {
+            // A blur on the custom-name field (or an auth-mode switch) may have just started a
+            // mint; the click that follows must see its result, not the cleared slot.
+            if (mintInFlight) await mintInFlight;
             const authMode = document.querySelector('input[name="auth-mode"]:checked').value;
             if (authMode === 'parent') {
                 const parentKey = elements.apiKey.value.trim();
@@ -1240,7 +1249,7 @@
 
         // Connect to Decart
         elements.connectBtn.addEventListener('click', async () => {
-            const apiKey = resolveCredential();
+            const apiKey = await resolveCredential();
             if (!apiKey) return;
 
             if (isCustomModelSelected() && !model.name) {
@@ -1399,7 +1408,7 @@
         });
 
         elements.subscribeBtn.addEventListener('click', async () => {
-            const apiKey = resolveCredential();
+            const apiKey = await resolveCredential();
             if (!apiKey) return;
 
             const token = elements.subscribeTokenInput.value.trim();
@@ -1678,7 +1687,7 @@
         
         // Process video file
         elements.processVideo.addEventListener('click', async () => {
-            const apiKey = resolveCredential();
+            const apiKey = await resolveCredential();
             if (!apiKey) return;
 
             const file = elements.videoFile.files[0];
