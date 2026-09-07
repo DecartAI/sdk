@@ -329,6 +329,10 @@
             <input type="text" id="realtime-base-url" placeholder="wss://api3.decart.ai">
         </div>
         <div class="control-group">
+            <label for="query-params">Extra query params (optional, appended to the stream URL):</label>
+            <input type="text" id="query-params" placeholder="pool=moderation-eval&amp;foo=bar">
+        </div>
+        <div class="control-group">
             <label for="model-select">Model:</label>
             <select id="model-select">
                 <optgroup label="Latest (server-resolved)">
@@ -347,7 +351,18 @@
                 <optgroup label="Deprecated aliases">
                     <option value="lucy-2.1-vton-2">Lucy 2.1 VTON 2 (alias for Lucy VTON 2)</option>
                 </optgroup>
+                <optgroup label="Override">
+                    <option value="__custom__">Custom model (any name the API accepts)</option>
+                </optgroup>
             </select>
+        </div>
+        <div class="control-group" id="custom-model-group" style="display: none;">
+            <label for="custom-model-name">Custom model name:</label>
+            <input type="text" id="custom-model-name" placeholder="e.g. lucy-vton-3.6">
+            <div class="inline-controls">
+                <label style="margin: 0; font-weight: normal;">Width <input type="number" id="custom-model-width" min="1" step="1" value="1280" style="width: 90px;"></label>
+                <label style="margin: 0; font-weight: normal;">Height <input type="number" id="custom-model-height" min="1" step="1" value="720" style="width: 90px;"></label>
+            </div>
         </div>
         <div class="control-group">
             <label for="resolution-select">Resolution:</label>
@@ -616,6 +631,11 @@
             apiKey: document.getElementById('api-key'),
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
+            queryParams: document.getElementById('query-params'),
+            customModelGroup: document.getElementById('custom-model-group'),
+            customModelName: document.getElementById('custom-model-name'),
+            customModelWidth: document.getElementById('custom-model-width'),
+            customModelHeight: document.getElementById('custom-model-height'),
             resolutionSelect: document.getElementById('resolution-select'),
             codecSelect: document.getElementById('codec-select'),
             passthroughSelect: document.getElementById('passthrough-select'),
@@ -717,6 +737,54 @@
 
             return fallback;
         }
+
+        // "Custom model" bypasses models.realtime(), which throws for names this SDK build
+        // doesn't list. The object matches the SDK's model definition schema (name, urlPath,
+        // fps, width, height), so connect() accepts it and the API decides whether the name exists.
+        const CUSTOM_MODEL_OPTION = '__custom__';
+
+        function isCustomModelSelected() {
+            return elements.modelSelect.value === CUSTOM_MODEL_OPTION;
+        }
+
+        function buildCustomModel() {
+            const width = Number.parseInt(elements.customModelWidth.value, 10);
+            const height = Number.parseInt(elements.customModelHeight.value, 10);
+            return {
+                name: elements.customModelName.value.trim(),
+                urlPath: '/v1/stream',
+                fps: { ideal: 30, max: 30 },
+                width: Number.isFinite(width) && width > 0 ? width : 1280,
+                height: Number.isFinite(height) && height > 0 ? height : 720,
+            };
+        }
+
+        function resolveSelectedModel() {
+            return isCustomModelSelected() ? buildCustomModel() : models.realtime(elements.modelSelect.value);
+        }
+
+        // "pool=moderation-eval&foo=bar" -> { pool: "moderation-eval", foo: "bar" }; passed to
+        // connect() as queryParams, which the SDK merges into the stream URL (api_key and model win).
+        function parseExtraQueryParams() {
+            const raw = elements.queryParams.value.trim().replace(/^\?/, '');
+            if (!raw) return undefined;
+            const params = Object.fromEntries(new URLSearchParams(raw));
+            return Object.keys(params).length > 0 ? params : undefined;
+        }
+
+        for (const input of [elements.customModelName, elements.customModelWidth, elements.customModelHeight]) {
+            input.addEventListener('input', () => {
+                if (isCustomModelSelected()) model = buildCustomModel();
+            });
+        }
+
+        // Ephemeral/JWT credentials are minted for model.name (allowedModels), so a custom name
+        // committed after the mint would leave the credential scoped to the wrong model.
+        elements.customModelName.addEventListener('change', () => {
+            if (!isCustomModelSelected() || !model.name) return;
+            const authMode = document.querySelector('input[name="auth-mode"]:checked').value;
+            if (authMode !== 'parent') mintCredential(authMode);
+        });
 
         elements.cameraFps.value = String(resolveCameraFps(model.fps));
 
@@ -923,8 +991,14 @@
         // so overwriting it would burn the only key we can mint from. Ephemeral
         // and jwt modes mint on radio change and cache here; connect reads it.
         let mintedCredential = null;
+        let mintInFlight = null;
 
-        async function mintCredential(authMode) {
+        function mintCredential(authMode) {
+            mintInFlight = mintCredentialNow(authMode).finally(() => { mintInFlight = null; });
+            return mintInFlight;
+        }
+
+        async function mintCredentialNow(authMode) {
             mintedCredential = null;
             const parentKey = elements.apiKey.value.trim();
             if (!parentKey) { addLog('Please enter an API key first', 'error'); return; }
@@ -949,7 +1023,10 @@
             });
         });
 
-        function resolveCredential() {
+        async function resolveCredential() {
+            // A blur on the custom-name field (or an auth-mode switch) may have just started a
+            // mint; the click that follows must see its result, not the cleared slot.
+            if (mintInFlight) await mintInFlight;
             const authMode = document.querySelector('input[name="auth-mode"]:checked').value;
             if (authMode === 'parent') {
                 const parentKey = elements.apiKey.value.trim();
@@ -996,12 +1073,13 @@
         // Model selection handler
         elements.modelSelect.addEventListener('change', (e) => {
             const selectedModel = e.target.value;
-            model = models.realtime(selectedModel);
+            elements.customModelGroup.style.display = selectedModel === CUSTOM_MODEL_OPTION ? '' : 'none';
+            model = resolveSelectedModel();
             elements.cameraFps.value = String(resolveCameraFps(model.fps));
-            addLog(`Selected model: ${selectedModel}`, 'info');
+            addLog(`Selected model: ${model.name || '(custom, no name yet)'}`, 'info');
 
             const authMode = document.querySelector('input[name="auth-mode"]:checked').value;
-            if (authMode !== 'parent') mintCredential(authMode);
+            if (authMode !== 'parent' && model.name) mintCredential(authMode);
             
             // If camera is already started, stop it so user can restart with new model settings.
             if (localStream) {
@@ -1171,8 +1249,13 @@
 
         // Connect to Decart
         elements.connectBtn.addEventListener('click', async () => {
-            const apiKey = resolveCredential();
+            const apiKey = await resolveCredential();
             if (!apiKey) return;
+
+            if (isCustomModelSelected() && !model.name) {
+                addLog('Custom model selected: enter a model name first', 'error');
+                return;
+            }
 
             if (!localStream) {
                 addLog('Please start camera first', 'error');
@@ -1230,9 +1313,15 @@
                 const passthrough = passthroughChoice === '' ? undefined : passthroughChoice === 'true';
                 addLog(`Initial passthrough: ${passthrough === undefined ? 'default (auto)' : passthrough}`, 'info');
 
+                const extraQueryParams = parseExtraQueryParams();
+                if (extraQueryParams) {
+                    addLog(`Extra query params: ${new URLSearchParams(extraQueryParams).toString()}`, 'info');
+                }
+
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     resolution,
+                    ...(extraQueryParams && { queryParams: extraQueryParams }),
                     ...(preferredVideoCodec && { preferredVideoCodec }),
                     onRemoteStream: (stream) => {
                         addLog('Received remote stream from Decart', 'success');
@@ -1319,7 +1408,7 @@
         });
 
         elements.subscribeBtn.addEventListener('click', async () => {
-            const apiKey = resolveCredential();
+            const apiKey = await resolveCredential();
             if (!apiKey) return;
 
             const token = elements.subscribeTokenInput.value.trim();
@@ -1598,7 +1687,7 @@
         
         // Process video file
         elements.processVideo.addEventListener('click', async () => {
-            const apiKey = resolveCredential();
+            const apiKey = await resolveCredential();
             if (!apiKey) return;
 
             const file = elements.videoFile.files[0];
