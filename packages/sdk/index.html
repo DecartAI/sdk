@@ -778,6 +778,14 @@
             });
         }
 
+        // Ephemeral/JWT credentials are minted for model.name (allowedModels), so a custom name
+        // committed after the mint would leave the credential scoped to the wrong model.
+        elements.customModelName.addEventListener('change', () => {
+            if (!isCustomModelSelected() || !model.name) return;
+            const authMode = document.querySelector('input[name="auth-mode"]:checked').value;
+            if (authMode !== 'parent') mintCredential(authMode);
+        });
+
         elements.cameraFps.value = String(resolveCameraFps(model.fps));
 
         // Logging system
@@ -1062,7 +1070,7 @@
             addLog(`Selected model: ${model.name || '(custom, no name yet)'}`, 'info');
 
             const authMode = document.querySelector('input[name="auth-mode"]:checked').value;
-            if (authMode !== 'parent') mintCredential(authMode);
+            if (authMode !== 'parent' && model.name) mintCredential(authMode);
             
             // If camera is already started, stop it so user can restart with new model settings.
             if (localStream) {
