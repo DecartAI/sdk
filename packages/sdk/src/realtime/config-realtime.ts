@@ -1,3 +1,17 @@
+/** Publish bitrate floor for the primary video layer (bps). */
+const MIN_VIDEO_BITRATE_BPS = 1_100_000;
+/** Publish bitrate cap for the primary video layer (bps). */
+const MAX_VIDEO_BITRATE_BPS = 3_500_000;
+/** Combined max bitrate of livekit-client's default lower simulcast layers (bps); pinned by a unit test. */
+const SIMULCAST_LOWER_LAYERS_BPS = 610_000;
+/** Fraction of the bandwidth estimate available to the video encoders. */
+const BWE_VIDEO_SHARE = 0.8;
+
+/** Bandwidth estimate (kbps) needed for the primary layer to reach `primaryBps`. */
+function estimateKbpsFor(primaryBps: number): number {
+  return Math.round((primaryBps + SIMULCAST_LOWER_LAYERS_BPS) / BWE_VIDEO_SHARE / 1000);
+}
+
 export const REALTIME_CONFIG = {
   signaling: {
     connectTimeoutMs: 60_000,
@@ -33,8 +47,12 @@ export const REALTIME_CONFIG = {
       dynacast: false,
     },
     defaultVideoCodec: "h264",
-    defaultMaxVideoBitrateBps: 3_500_000,
+    defaultMaxVideoBitrateBps: MAX_VIDEO_BITRATE_BPS,
     vp9MaxVideoBitrateBps: 3_000_000,
+    /** Seeds the publisher's bandwidth estimate (a start bitrate, not a minimum). */
+    minVideoBitrateBps: MIN_VIDEO_BITRATE_BPS,
+    simulcastLowerLayersBitrateBps: SIMULCAST_LOWER_LAYERS_BPS,
+    bweVideoShare: BWE_VIDEO_SHARE,
     defaultPublishFps: 30,
   },
   observability: {
@@ -87,8 +105,12 @@ export const REALTIME_CONFIG = {
       loss: { good: 0.001, fair: 0.01, poor: 0.05 },
       /** End-to-end frame drop ratio (0..1), when a frame identity is available. */
       g2gDrop: { good: 0.001, fair: 0.01, poor: 0.05 },
-      /** Upstream headroom = available BWE ÷ the intended publish bitrate (requiredUpstreamKbps). */
-      upstream: { goodRatio: 1.0, fairRatio: 0.8, poorRatio: 0.5, requiredUpstreamKbps: 3500 },
+      /** Available upstream bandwidth bands (kbps). Chromium-only. */
+      upstream: {
+        goodKbps: estimateKbpsFor(MAX_VIDEO_BITRATE_BPS),
+        fairKbps: estimateKbpsFor(MIN_VIDEO_BITRATE_BPS),
+        poorKbps: estimateKbpsFor(MIN_VIDEO_BITRATE_BPS / 2),
+      },
       /** Rendered (inbound) frames-per-second. */
       stall: { goodFps: 20, fairFps: 12, poorFps: 5 },
     },

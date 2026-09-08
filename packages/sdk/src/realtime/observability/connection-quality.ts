@@ -66,7 +66,7 @@ export type ConnectionQualityThresholds = {
   ttff: { goodMs: number; fairMs: number; poorMs: number };
   loss: { good: number; fair: number; poor: number };
   g2gDrop: { good: number; fair: number; poor: number };
-  upstream: { goodRatio: number; fairRatio: number; poorRatio: number; requiredUpstreamKbps: number };
+  upstream: { goodKbps: number; fairKbps: number; poorKbps: number };
   stall: { goodFps: number; fairFps: number; poorFps: number };
 };
 
@@ -164,22 +164,14 @@ export function scoreMetrics(
 
   const loss = scoreLowerBetter(signals.fractionLost, thresholds.loss.good, thresholds.loss.fair, thresholds.loss.poor);
 
-  // Upstream only: available BWE ÷ the INTENDED publish bitrate. Dividing by the
-  // encoder's adaptive target would mask throttling (it drops with the uplink).
-  // Downstream bitrate is intentionally not scored — it's server-chosen.
+  // Upstream only: available BWE against the configured bands. Scoring the estimate rather
+  // than the encoder's adaptive target keeps a throttled uplink from reading "good".
+  // Downstream bitrate is server-chosen and intentionally not scored.
   let bandwidth: ConnectionQuality = "good";
   if (!options.skipBitrate) {
-    const ratio =
-      signals.availableOutgoingKbps != null
-        ? signals.availableOutgoingKbps / thresholds.upstream.requiredUpstreamKbps
-        : null;
-    bandwidth = scoreHigherBetter(
-      ratio,
-      thresholds.upstream.goodRatio,
-      thresholds.upstream.fairRatio,
-      thresholds.upstream.poorRatio,
-    );
-    // Encoder self-reporting a bandwidth limit is a stronger signal than the ratio.
+    const { goodKbps, fairKbps, poorKbps } = thresholds.upstream;
+    bandwidth = scoreHigherBetter(signals.availableOutgoingKbps, goodKbps, fairKbps, poorKbps);
+    // Encoder self-reporting a bandwidth limit is a stronger signal than the estimate.
     if (signals.qualityLimitationReason === "bandwidth") bandwidth = worst(bandwidth, "fair");
   }
 
