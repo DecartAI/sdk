@@ -36,6 +36,9 @@ const liveKitMock = vi.hoisted(() => {
     };
     connect = vi.fn().mockImplementation(() => connectMocks.shift()?.() ?? Promise.resolve());
     disconnect = vi.fn().mockResolvedValue(undefined);
+    /** Inner publisher `setRemoteDescription` (livekit-client internal) — kept so tests can see what reached it. */
+    publisherAnswers = vi.fn().mockResolvedValue(true);
+    engine = { pcManager: { publisher: { setRemoteDescription: this.publisherAnswers } } };
     readonly options: unknown;
 
     constructor(options?: unknown) {
@@ -1149,6 +1152,33 @@ describe("StreamSession startup orchestration", () => {
       1,
       localStream.getTracks()[0],
       expect.objectContaining({ frameMetadata: { timestamp: true } }),
+    );
+  });
+
+  it("seeds the publisher's start bitrate on every SFU answer once the room is joined", async () => {
+    const localStream = createLocalStream();
+    const channel = createLiveKitMediaChannel({ localStream, logger });
+
+    await channel.connect({ url: "wss://livekit.example.test", token: "token" });
+
+    const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
+    const answer =
+      "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 H264/90000\r\na=fmtp:96 packetization-mode=1\r\n";
+    await room.engine.pcManager.publisher.setRemoteDescription({ type: "answer", sdp: answer }, 1);
+    expect(room.publisherAnswers).toHaveBeenCalledWith(
+      { type: "answer", sdp: expect.stringContaining("a=fmtp:96 packetization-mode=1;x-google-start-bitrate=2138") },
+      1,
+    );
+
+    // VP9 publishes a single layer, so no lower-layer budget is added.
+    liveKitMock.roomInstances.length = 0;
+    const vp9 = createLiveKitMediaChannel({ localStream: createLocalStream(), logger, videoCodec: "vp9" });
+    await vp9.connect({ url: "wss://livekit.example.test", token: "token" });
+    const vp9Room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
+    await vp9Room.engine.pcManager.publisher.setRemoteDescription({ type: "answer", sdp: answer }, 1);
+    expect(vp9Room.publisherAnswers).toHaveBeenCalledWith(
+      { type: "answer", sdp: expect.stringContaining("x-google-start-bitrate=1375") },
+      1,
     );
   });
 

@@ -59,7 +59,7 @@ function makeStats(o: StatsOverrides = {}): WebRTCStats {
         },
     connection: {
       currentRoundTripTime: rttSec,
-      availableOutgoingBitrate: o.availableOutgoingBitrate === undefined ? 4_000_000 : o.availableOutgoingBitrate,
+      availableOutgoingBitrate: o.availableOutgoingBitrate === undefined ? 6_000_000 : o.availableOutgoingBitrate,
       selectedCandidatePairs: o.relayed
         ? [{ local: relayCandidate, remote: relayCandidate }]
         : [{ local: hostCandidate, remote: hostCandidate }],
@@ -111,21 +111,34 @@ describe("scoreSnapshot", () => {
   });
 
   it("flags insufficient upstream headroom as a bandwidth problem", () => {
-    // available 1 Mbps vs 3.5 Mbps intended → ratio 0.29 < 0.5 critical
     const { quality, limitingFactor } = scoreSnapshot(makeStats({ availableOutgoingBitrate: 1_000_000 }));
     expect(quality).toBe("critical");
     expect(limitingFactor).toBe("bandwidth");
   });
 
-  it("flags throttled upstream even when the encoder target dropped to match it", () => {
-    // Congestion control cut the encoder target to ~1.2 Mbps to fit a weak uplink.
-    // Scoring against the intended 3.5 Mbps still flags it — the lowered target
-    // must not mask the throttle as "good".
+  it("flags a weak uplink even when the encoder target dropped to match it", () => {
+    // The lowered encoder target must not mask the throttle.
     const { quality, limitingFactor } = scoreSnapshot(
-      makeStats({ availableOutgoingBitrate: 1_200_000, targetBitrateKbps: 1200 }),
+      makeStats({ availableOutgoingBitrate: 900_000, targetBitrateKbps: 900 }),
     );
     expect(quality).toBe("critical");
     expect(limitingFactor).toBe("bandwidth");
+  });
+
+  it("rates an uplink between the fair and good bands as fair, not poor", () => {
+    const { quality, limitingFactor } = scoreSnapshot(
+      makeStats({ availableOutgoingBitrate: 2_500_000, targetBitrateKbps: 1390, qualityLimitationReason: "bandwidth" }),
+    );
+    expect(quality).toBe("fair");
+    expect(limitingFactor).toBe("bandwidth");
+  });
+
+  it("uses the configured bands rather than hard-coded numbers", () => {
+    const { goodKbps, fairKbps, poorKbps } = THRESHOLDS.upstream;
+    expect(scoreSnapshot(makeStats({ availableOutgoingBitrate: goodKbps * 1000 })).quality).toBe("good");
+    expect(scoreSnapshot(makeStats({ availableOutgoingBitrate: fairKbps * 1000 })).quality).toBe("fair");
+    expect(scoreSnapshot(makeStats({ availableOutgoingBitrate: poorKbps * 1000 })).quality).toBe("poor");
+    expect(scoreSnapshot(makeStats({ availableOutgoingBitrate: poorKbps * 1000 - 1000 })).quality).toBe("critical");
   });
 
   it("caps upstream at fair when the encoder reports a bandwidth limitation, even with good BWE", () => {
@@ -241,7 +254,7 @@ describe("ConnectionQualityEvaluator", () => {
 
   it("snaps to the real verdict when warm-up ends (no lingering optimistic good)", () => {
     const evaluator = new ConnectionQualityEvaluator(fastThresholds({ warmupSamples: 3 }));
-    const weakUplink = () => makeStats({ availableOutgoingBitrate: 800_000 }); // ~0.23 ratio → critical
+    const weakUplink = () => makeStats({ availableOutgoingBitrate: 800_000 });
     // Bandwidth is skipped during warm-up, so the provisional verdict is good.
     expect(evaluator.update(weakUplink())).toMatchObject({ quality: "good", warmingUp: true });
     expect(evaluator.update(weakUplink())).toBeNull();

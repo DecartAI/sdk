@@ -15,6 +15,48 @@ import type { RealtimeObservability } from "./observability/realtime-observabili
 
 export type VideoCodec = "h264" | "vp8" | "vp9" | "av1";
 
+const START_BITRATE_PARAM = "x-google-start-bitrate";
+
+/** livekit-client internals (`@internal`) that receive the SFU answer for the publisher connection. */
+type PublisherHost = {
+  engine?: {
+    pcManager?: {
+      publisher?: { setRemoteDescription?: (sd: RTCSessionDescriptionInit, offerId: number) => Promise<boolean> };
+    };
+  };
+};
+
+/** Add `x-google-start-bitrate=<kbps>` to every video codec's fmtp line; libwebrtc reads it from the remote description. */
+export function withVideoStartBitrate(sdp: string, kbps: number): string {
+  const param = `${START_BITRATE_PARAM}=${kbps}`;
+  return sdp
+    .split(/(?=^m=)/m)
+    .map((section) => {
+      if (!section.startsWith("m=video")) return section;
+      const withFmtp = new Set(Array.from(section.matchAll(/^a=fmtp:(\d+) /gm), (m) => m[1]));
+      return (
+        section
+          .replace(/^a=fmtp:\d+ [^\r\n]*/gm, (line) => (line.includes(START_BITRATE_PARAM) ? line : `${line};${param}`))
+          // Codecs with no fmtp line of their own (VP8): add one after the rtpmap.
+          .replace(/^a=rtpmap:(\d+) (?!rtx|red|ulpfec|flexfec)[^\r\n]*(\r?\n)/gim, (line, pt: string, eol: string) =>
+            withFmtp.has(pt) ? line : `${line}a=fmtp:${pt} ${param}${eol}`,
+          )
+      );
+    })
+    .join("");
+}
+
+function usesSimulcast(videoCodec?: VideoCodec): boolean {
+  return (videoCodec ?? REALTIME_CONFIG.livekit.defaultVideoCodec) !== "vp9";
+}
+
+/** Bandwidth-estimator seed (kbps) for the publisher. */
+export function getVideoStartBitrateKbps(videoCodec?: VideoCodec): number {
+  const { minVideoBitrateBps, simulcastLowerLayersBitrateBps, bweVideoShare } = REALTIME_CONFIG.livekit;
+  const lowerLayers = usesSimulcast(videoCodec) ? simulcastLowerLayersBitrateBps : 0;
+  return Math.round((minVideoBitrateBps + lowerLayers) / bweVideoShare / 1000);
+}
+
 export function getDefaultVideoPublishOptions(
   source: TrackPublishOptions["source"],
   videoCodec?: VideoCodec,
@@ -29,7 +71,7 @@ export function getDefaultVideoPublishOptions(
   return {
     source,
     videoCodec: resolvedCodec,
-    simulcast: resolvedCodec !== "vp9",
+    simulcast: usesSimulcast(resolvedCodec),
     videoEncoding: {
       maxBitrate,
       maxFramerate: REALTIME_CONFIG.livekit.defaultPublishFps,
@@ -158,6 +200,7 @@ export class LiveKitMediaChannel implements MediaChannel {
     this.config.observability?.startPhase("webrtc-handshake");
     await room.connect(opts.url, opts.token);
     this.config.observability?.endPhase("webrtc-handshake", { success: true });
+    this.seedStartBitrate(room);
     this.config.observability?.setLiveKitRoom(room);
   }
 
@@ -187,6 +230,24 @@ export class LiveKitMediaChannel implements MediaChannel {
     if (room) {
       room.disconnect().catch(() => {});
     }
+  }
+
+  /**
+   * livekit-client has no start-bitrate option for H264/VP8, so seed the estimator through the
+   * SFU answer. Installed once per room: if livekit-client itself performs a full reconnect it
+   * creates a new publisher transport, and the rest of that session ramps from the default.
+   */
+  private seedStartBitrate(room: Room): void {
+    const publisher = (room as unknown as PublisherHost).engine?.pcManager?.publisher;
+    const original = publisher?.setRemoteDescription;
+    if (!publisher || typeof original !== "function") return;
+    const kbps = getVideoStartBitrateKbps(this.config.videoCodec);
+    publisher.setRemoteDescription = (sd, offerId) =>
+      original.call(
+        publisher,
+        sd.type === "answer" && sd.sdp ? { type: sd.type, sdp: withVideoStartBitrate(sd.sdp, kbps) } : sd,
+        offerId,
+      );
   }
 
   private async publishTracks(stream: MediaStream): Promise<void> {
