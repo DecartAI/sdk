@@ -11,7 +11,7 @@ const OUTPUT_DIR = join(__dirname, "e2e-output");
 const VIDEO_FIXTURE = join(__dirname, "fixtures", "video.mp4");
 const IMAGE_FIXTURE = join(__dirname, "fixtures", "image.png");
 // Try-on models take the GARMENT as reference_image; a non-garment reference (the dogs above) makes
-// lucy-vton-3 undress the subject and the output fails moderation (PLA-808, PLA-817).
+// the try-on models undress the subject and the output fails moderation (PLA-808, PLA-817).
 const GARMENT_FIXTURE = join(__dirname, "fixtures", "garment.png");
 
 const TIMEOUT = 5 * 60 * 1000; // 5 minutes
@@ -192,29 +192,6 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       });
 
       await expectResult(result, "lucy-2.5-reference_image", ".mp4");
-    });
-
-    it("lucy-vton-3: virtual try-on (prompt)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-vton-3"),
-        prompt: "Wearing a red leather jacket",
-        data: videoBlob,
-        seed: 42,
-      });
-
-      await expectResult(result, "lucy-vton-3-prompt", ".mp4");
-    });
-
-    it("lucy-vton-3: virtual try-on (reference_image)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-vton-3"),
-        prompt: "",
-        reference_image: garmentBlob,
-        data: videoBlob,
-        seed: 42,
-      });
-
-      await expectResult(result, "lucy-vton-3-reference_image", ".mp4");
     });
 
     it("lucy-vton-3.5: virtual try-on (prompt)", async () => {
