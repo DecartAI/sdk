@@ -1328,6 +1328,45 @@ describe("Files API", () => {
     });
   });
 
+  describe("getByMd5", () => {
+    const MD5 = "9e107d9d372bb6826bd81d3542a419d6";
+
+    it("fetches the newest upload with that hash, lowercasing the path", async () => {
+      server.use(
+        http.get(`http://localhost/v1/files/by-md5/${MD5}`, () => {
+          return HttpResponse.json({
+            id: "file_abc123",
+            filename: "portrait.png",
+            mime_type: "image/png",
+            size_bytes: 1234,
+            md5: MD5,
+            created_at: "2026-01-01T00:00:00Z",
+            expires_at: "2026-01-02T00:00:00Z",
+          });
+        }),
+      );
+
+      const ref = await decart.files.getByMd5(MD5.toUpperCase());
+      expect(ref.id).toBe("file_abc123");
+      expect(ref.md5).toBe(MD5);
+    });
+
+    it("throws on 404", async () => {
+      server.use(
+        http.get(`http://localhost/v1/files/by-md5/${MD5}`, () => {
+          return HttpResponse.json({ detail: "File not found" }, { status: 404 });
+        }),
+      );
+
+      await expect(decart.files.getByMd5(MD5)).rejects.toThrow("Failed to get file");
+    });
+
+    it("rejects a malformed hash before making a request", async () => {
+      // No handler registered: an outgoing request would fail the unhandled-request guard.
+      await expect(decart.files.getByMd5("not-a-hash")).rejects.toThrow("md5 must be 32 hex characters");
+    });
+  });
+
   describe("delete", () => {
     it("resolves on 204", async () => {
       server.use(
