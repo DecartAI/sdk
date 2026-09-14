@@ -19,6 +19,12 @@ export interface FileReference {
   filename: string | null;
   mime_type: string;
   size_bytes: number;
+  /**
+   * Lowercase hex MD5 of the uploaded bytes; pass it to `client.files.getByMd5(...)`
+   * to find this file again without its id. `null` on files uploaded before
+   * hashes were recorded.
+   */
+  md5: string | null;
   created_at: string;
   expires_at: string | null;
 }

@@ -6,6 +6,7 @@ import type { FileReference, FileUploadInput } from "./types";
 const MAX_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 const ttlSecondsSchema = z.union([z.number().int().min(60).max(MAX_TTL_SECONDS), z.literal("persistent")]);
+const MD5_HEX = /^[0-9a-f]{32}$/i;
 
 export type FilesClientOptions = {
   baseUrl: string;
@@ -39,6 +40,12 @@ export type FilesClient = {
    */
   upload: (file: FileUploadInput, options?: UploadFileOptions) => Promise<FileReference>;
   get: (fileId: string) => Promise<FileReference>;
+  /**
+   * Look up an upload by the MD5 of its bytes when you no longer have the id.
+   * Resolves the newest non-expired match; rejects with `FILES_GET_ERROR` on
+   * 404, exactly like `get` does for an unknown id.
+   */
+  getByMd5: (md5: string) => Promise<FileReference>;
   delete: (fileId: string) => Promise<void>;
 };
 
@@ -75,8 +82,8 @@ export const createFilesClient = (opts: FilesClientOptions): FilesClient => {
     return response.json();
   };
 
-  const get = async (fileId: string): Promise<FileReference> => {
-    const response = await fetch(`${baseUrl}/v1/files/${encodeURIComponent(fileId)}`, {
+  const fetchReference = async (path: string): Promise<FileReference> => {
+    const response = await fetch(`${baseUrl}${path}`, {
       method: "GET",
       headers: buildAuthHeaders({ apiKey, integration }),
     });
@@ -88,6 +95,15 @@ export const createFilesClient = (opts: FilesClientOptions): FilesClient => {
       });
     }
     return response.json();
+  };
+
+  const get = (fileId: string): Promise<FileReference> => fetchReference(`/v1/files/${encodeURIComponent(fileId)}`);
+
+  const getByMd5 = async (md5: string): Promise<FileReference> => {
+    if (!MD5_HEX.test(md5)) {
+      throw createInvalidInputError("md5 must be 32 hex characters");
+    }
+    return fetchReference(`/v1/files/by-md5/${md5.toLowerCase()}`);
   };
 
   const deleteFile = async (fileId: string): Promise<void> => {
@@ -104,5 +120,5 @@ export const createFilesClient = (opts: FilesClientOptions): FilesClient => {
     }
   };
 
-  return { upload, get, delete: deleteFile };
+  return { upload, get, getByMd5, delete: deleteFile };
 };
