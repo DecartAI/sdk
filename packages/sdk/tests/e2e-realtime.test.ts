@@ -60,8 +60,6 @@ const REALTIME_MODELS: RealTimeModels[] = [
   "lucy-restyle-2",
   "lucy-2.1",
   "lucy-2.5",
-  "lucy-vton-2",
-  "lucy-vton-3",
   "lucy-vton-3.5",
 ];
 
