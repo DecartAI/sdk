@@ -16,6 +16,7 @@ import type {
   InitialState,
   PromptSendOptions,
   QueuePosition,
+  SessionEnded,
   SessionStarted,
   SetImagePayload,
 } from "./types";
@@ -26,6 +27,25 @@ type RetryAttemptError = Error & {
 };
 
 type ConnectionLossCause = Record<string, unknown>;
+
+function isTerminalEndReason(reason: string | undefined): boolean {
+  return reason !== undefined && (REALTIME_CONFIG.session.terminalEndReasons as readonly string[]).includes(reason);
+}
+
+/** The reason is only sent once generation has started; earlier kills carry just the code. */
+function terminalReasonFromClose(cause: ConnectionLossCause): string | null {
+  return cause.code === REALTIME_CONFIG.session.terminalCloseCode ? "policy_violation" : null;
+}
+
+/**
+ * SignalingChannel only emits `closed` after the handshake, so a close during the
+ * join reaches us as connect-failure text rather than an event.
+ */
+function terminalReasonFromError(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+  const marker = `websocket closed: ${REALTIME_CONFIG.session.terminalCloseCode}`;
+  return error.message.toLowerCase().includes(marker) ? "policy_violation" : null;
+}
 
 export function encodeSubscribeToken(roomName: string, options: { frameTiming?: boolean } = {}): string {
   return btoa(JSON.stringify({ room_name: roomName, ...(options.frameTiming ? { frame_timing: true } : {}) }));
@@ -46,6 +66,7 @@ type StreamSessionEvents = {
   sessionStarted: SessionStarted;
   generationTick: GenerationTick;
   generationEnded: GenerationEnded;
+  sessionEnded: SessionEnded;
   remoteStream: MediaStream;
   error: Error;
 };
@@ -77,6 +98,15 @@ export class StreamSession {
   private currentAttempt = 0;
   private teardownGeneration = 0;
 
+  private terminalEndReason: string | null = null;
+
+  /**
+   * Replayed as a reconnect's initial state. Callers usually connect first and
+   * send the image after, so without this the new session joins with nothing
+   * applied and never starts generating.
+   */
+  private appliedState: InitialState | null = null;
+
   private readonly logger: Logger;
 
   constructor(private readonly config: StreamSessionConfig) {
@@ -106,6 +136,7 @@ export class StreamSession {
 
   async connect(): Promise<void> {
     this.disposed = false;
+    this.terminalEndReason = null;
     const attempt = ++this.currentAttempt;
     this.setState("connecting");
     this.logger.info("realtime connect: starting", { attemptCycle: attempt });
@@ -114,6 +145,11 @@ export class StreamSession {
       await pRetry(() => this.runOneConnect(attempt), this.retryOptionsFor(attempt));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const terminal = this.terminalEndReason ?? terminalReasonFromError(error);
+      if (terminal && !this.disposed) {
+        this.finishTerminally(terminal, { source: "connect", error: message });
+        throw error;
+      }
       this.logger.error("realtime connect: exhausted all retries", { error: message });
       if (this.currentAttempt === attempt && !this.disposed) {
         this.setState("disconnected");
@@ -124,12 +160,20 @@ export class StreamSession {
 
   async sendPrompt(text: string, opts?: PromptSendOptions): Promise<void> {
     this.assertConnected();
-    return this.signaling.sendPrompt(text, opts);
+    await this.signaling.sendPrompt(text, opts);
+    // Merged onto the effective state, not appliedState: until the caller applies
+    // something the image in effect is the connect-time one, which must survive.
+    this.appliedState = { ...this.getInitialState(), prompt: text, enhance: opts?.enhance };
   }
 
   async setImage(payload: SetImagePayload, opts?: ImageSetOptions): Promise<void> {
     this.assertConnected();
-    return this.signaling.setImage(payload, opts);
+    await this.signaling.setImage(payload, opts);
+    // The server treats this as a whole-state replace, so record it that way.
+    this.appliedState =
+      payload.kind === "ref"
+        ? { imageRef: payload.ref, prompt: opts?.prompt ?? null, enhance: opts?.enhance }
+        : { image: payload.data, prompt: opts?.prompt ?? null, enhance: opts?.enhance };
   }
 
   async replaceVideoTrack(track: MediaStreamTrack): Promise<void> {
@@ -159,6 +203,12 @@ export class StreamSession {
       },
       shouldRetry: (error: Error) => {
         if (this.disposed || this.currentAttempt !== attempt) return false;
+        const terminal = this.terminalEndReason ?? terminalReasonFromError(error);
+        if (terminal) {
+          this.terminalEndReason = terminal;
+          this.logger.error("realtime connect: session refused, not retrying", { reason: terminal });
+          return false;
+        }
         const msg = error.message.toLowerCase();
         const permanent = REALTIME_CONFIG.session.permanentErrorSubstrings.some((err) => msg.includes(err));
         if (permanent) {
@@ -237,6 +287,10 @@ export class StreamSession {
   }
 
   private getInitialState(): InitialState | undefined {
+    return this.appliedState ?? this.configInitialState();
+  }
+
+  private configInitialState(): InitialState | undefined {
     if (this.config.initialImageRef !== undefined) {
       return {
         imageRef: this.config.initialImageRef,
@@ -276,9 +330,16 @@ export class StreamSession {
       this.markGenerating();
       this.events.emit("generationTick", e);
     });
-    this.signaling.on("generationEnded", (e) => this.events.emit("generationEnded", e));
+    this.signaling.on("generationEnded", (e) => {
+      // Recorded, not acted on: the following close is what would reconnect.
+      if (isTerminalEndReason(e.reason)) this.terminalEndReason = e.reason;
+      this.events.emit("generationEnded", e);
+    });
     this.signaling.on("serverError", (err) => this.events.emit("error", err));
-    this.signaling.on("closed", (info) => this.handleConnectionLoss({ source: "signaling", ...info }));
+    this.signaling.on("closed", (info) => {
+      this.terminalEndReason ??= terminalReasonFromClose({ ...info });
+      this.handleConnectionLoss({ source: "signaling", ...info });
+    });
   }
 
   private markGenerating(): void {
@@ -292,12 +353,37 @@ export class StreamSession {
 
   private handleConnectionLoss(cause: ConnectionLossCause): void {
     if (this.disposed) return;
+
+    // Before the state guard: a terminal stop still counts while connecting.
+    const terminalReason = this.terminalEndReason ?? terminalReasonFromClose(cause);
+    if (terminalReason) {
+      this.finishTerminally(terminalReason, cause);
+      return;
+    }
+
     if (this.state !== "connected" && this.state !== "generating") {
       this.logger.debug("connection loss ignored (not connected)", { state: this.state, ...cause });
       return;
     }
     this.logger.warn("realtime connection lost; scheduling reconnect", { state: this.state, ...cause });
     this.scheduleReconnect();
+  }
+
+  /**
+   * The server ended this session on purpose: retrying would get the same answer
+   * and bill another session, and "reconnecting" would hide the reason.
+   */
+  private finishTerminally(reason: string, cause: ConnectionLossCause): void {
+    this.logger.warn("realtime session ended by the server; not reconnecting", {
+      reason,
+      state: this.state,
+      ...cause,
+    });
+    this.terminalEndReason = reason;
+    this.disposed = true;
+    this.tearDown();
+    this.setState("disconnected");
+    this.events.emit("sessionEnded", { reason });
   }
 
   private scheduleReconnect(): void {
@@ -319,6 +405,12 @@ export class StreamSession {
       .catch((error) => {
         if (this.disposed || this.currentAttempt !== attempt) return;
         const message = error instanceof Error ? error.message : String(error);
+        // A cut of the replayed image lands here; it is a session end, not a failure.
+        const terminal = this.terminalEndReason ?? terminalReasonFromError(error);
+        if (terminal) {
+          this.finishTerminally(terminal, { source: "reconnect", error: message });
+          return;
+        }
         this.logger.error("realtime reconnect: failed permanently", { error: message });
         this.tearDown();
         this.setState("disconnected");

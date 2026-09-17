@@ -26,6 +26,14 @@ export const REALTIME_CONFIG = {
       minTimeout: 1_000,
       maxTimeout: 10_000,
     },
+    /**
+     * `generation_ended` reasons the server will not change its mind about.
+     * The rest of its vocabulary (`error`, `disconnect`, `timeout`) is generic
+     * or overloaded, so those still retry.
+     */
+    terminalEndReasons: ["moderation_violation", "insufficient_credits"],
+    /** Close code for a policy termination. */
+    terminalCloseCode: 1008,
     permanentErrorSubstrings: [
       "permission denied",
       "not allowed",

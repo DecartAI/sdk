@@ -88,6 +88,11 @@ export type GenerationEnded = {
   reason: string;
 };
 
+/** The server ended the session on purpose; the SDK will not reconnect. */
+export type SessionEnded = {
+  reason: string;
+};
+
 export type ConnectionClosed = {
   code: number;
   reason: string;

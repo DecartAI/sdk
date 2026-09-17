@@ -1374,6 +1374,188 @@ describe("StreamSession startup orchestration", () => {
 
     expect(firstRoom.disconnect).toHaveBeenCalled();
   });
+
+  const connectSession = async (opts: { initialImage?: string } = {}) => {
+    const mediaChannel: MediaChannel = {
+      localStream: null,
+      on: vi.fn(),
+      off: vi.fn(),
+      connect: vi.fn().mockResolvedValue(undefined),
+      publishLocalTracks: vi.fn().mockResolvedValue(undefined),
+      replaceVideoTrack: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+    };
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+      createMediaChannel: () => mediaChannel,
+      ...opts,
+    });
+    const connectPromise = session.connect();
+    const ws = FakeWebSocket.instances.at(-1) as FakeWebSocket;
+    ws.onopen?.();
+    await flushMicrotasks();
+    sendRoomInfo(ws);
+    await connectPromise;
+    // "generating" is the state a mid-session close is judged against.
+    ws.receive({ type: "generation_started" });
+    await flushMicrotasks();
+    return { session, ws };
+  };
+
+  it("does not reconnect after a terminal generation_ended reason", async () => {
+    const { session, ws } = await connectSession();
+    const states: string[] = [];
+    const ended: string[] = [];
+    session.on("connectionChange", (s) => states.push(s));
+    session.on("sessionEnded", (e) => ended.push(e.reason));
+
+    ws.receive({ type: "generation_ended", seconds: 12, reason: "moderation_violation" });
+    await flushMicrotasks();
+    const socketsBefore = FakeWebSocket.instances.length;
+    ws.onclose?.({ code: 1000, reason: "" });
+    await flushMicrotasks();
+
+    expect(ended).toEqual(["moderation_violation"]);
+    expect(states).not.toContain("reconnecting");
+    expect(states.at(-1)).toBe("disconnected");
+    expect(FakeWebSocket.instances.length).toBe(socketsBefore);
+  });
+
+  it("treats a 1008 close as terminal even without a generation_ended reason", async () => {
+    const { session, ws } = await connectSession();
+    const states: string[] = [];
+    const ended: string[] = [];
+    session.on("connectionChange", (s) => states.push(s));
+    session.on("sessionEnded", (e) => ended.push(e.reason));
+
+    const socketsBefore = FakeWebSocket.instances.length;
+    ws.onclose?.({ code: 1008, reason: "" });
+    await flushMicrotasks();
+
+    expect(ended).toEqual(["policy_violation"]);
+    expect(states).not.toContain("reconnecting");
+    expect(FakeWebSocket.instances.length).toBe(socketsBefore);
+  });
+
+  it("still reconnects a non-terminal close", async () => {
+    const { session, ws } = await connectSession();
+    const states: string[] = [];
+    session.on("connectionChange", (s) => states.push(s));
+
+    ws.receive({ type: "generation_ended", seconds: 3, reason: "disconnect" });
+    await flushMicrotasks();
+    ws.onclose?.({ code: 1000, reason: "" });
+    await flushMicrotasks();
+
+    expect(states).toContain("reconnecting");
+    session.disconnect();
+  });
+
+  it("replays the state applied since connect when it reconnects", async () => {
+    const { session, ws } = await connectSession();
+
+    const applied = session.setImage({ kind: "data", data: "garment-base64" }, { prompt: "wear this", enhance: false });
+    await flushMicrotasks();
+    ws.receive({ type: "set_image_ack", success: true, error: null });
+    await applied;
+
+    ws.onclose?.({ code: 1000, reason: "" });
+    await flushMicrotasks();
+    const reconnected = FakeWebSocket.instances.at(-1) as FakeWebSocket;
+    expect(reconnected).not.toBe(ws);
+    reconnected.onopen?.();
+    await flushMicrotasks();
+
+    // The initial state rides its own set_image frame after the join.
+    const resent = reconnected.sentMessages.find(
+      (m): m is { type: string; image_data?: string | null; prompt?: string | null } =>
+        typeof m === "object" && m !== null && (m as { type?: string }).type === "set_image",
+    );
+    expect(resent).toMatchObject({ image_data: "garment-base64", prompt: "wear this" });
+
+    session.disconnect();
+  });
+
+  it("keeps the connect-time image when only the prompt is changed", async () => {
+    // Regression: a prompt-only update used to drop the connect-time image.
+    const { session, ws } = await connectSession({ initialImage: "opening-garment" });
+
+    const applied = session.sendPrompt("now cinematic", { enhance: false });
+    await flushMicrotasks();
+    ws.receive({ type: "prompt_ack", prompt: "now cinematic", success: true, error: null });
+    await applied;
+
+    ws.onclose?.({ code: 1000, reason: "" });
+    await flushMicrotasks();
+    const reconnected = FakeWebSocket.instances.at(-1) as FakeWebSocket;
+    reconnected.onopen?.();
+    await flushMicrotasks();
+
+    const resent = reconnected.sentMessages.find(
+      (m): m is { type: string; image_data?: string | null; prompt?: string | null } =>
+        typeof m === "object" && m !== null && (m as { type?: string }).type === "set_image",
+    );
+    expect(resent).toMatchObject({ image_data: "opening-garment", prompt: "now cinematic" });
+
+    session.disconnect();
+  });
+
+  it("does not retry a 1008 close that lands during the handshake", async () => {
+    // Regression: a pre-first-frame kill fell through to pRetry.
+    const mediaChannel: MediaChannel = {
+      localStream: null,
+      on: vi.fn(),
+      off: vi.fn(),
+      connect: vi.fn().mockResolvedValue(undefined),
+      publishLocalTracks: vi.fn().mockResolvedValue(undefined),
+      replaceVideoTrack: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+    };
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+      initialImage: "refused-garment",
+      createMediaChannel: () => mediaChannel,
+    });
+    const ended: string[] = [];
+    session.on("sessionEnded", (e) => ended.push(e.reason));
+
+    const connectPromise = session.connect();
+    const ws = FakeWebSocket.instances.at(-1) as FakeWebSocket;
+    ws.onopen?.();
+    await flushMicrotasks();
+    // Before the state ever reaches "connected".
+    ws.onclose?.({ code: 1008, reason: "" });
+    await expect(connectPromise).rejects.toThrow();
+
+    expect(ended).toEqual(["policy_violation"]);
+    // One socket only: no retry re-sent the refused garment.
+    expect(FakeWebSocket.instances.length).toBe(1);
+  });
+
+  it("reports a policy close during the reconnect handshake as a session end", async () => {
+    // Regression: this path emitted a generic error instead of sessionEnded.
+    const { session, ws } = await connectSession({ initialImage: "restored-garment" });
+    const ended: string[] = [];
+    const errors: string[] = [];
+    session.on("sessionEnded", (e) => ended.push(e.reason));
+    session.on("error", (e) => errors.push(e.message));
+
+    ws.onclose?.({ code: 1000, reason: "" });
+    await flushMicrotasks();
+    const reconnecting = FakeWebSocket.instances.at(-1) as FakeWebSocket;
+    expect(reconnecting).not.toBe(ws);
+    // Before room_info, so SignalingChannel rejects rather than emitting "closed".
+    reconnecting.onclose?.({ code: 1008, reason: "" });
+    // pRetry's rejection needs more than a microtask flush.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(ended).toEqual(["policy_violation"]);
+    expect(errors).toEqual([]);
+  });
 });
 
 describe("WebRTC Error Classification", () => {

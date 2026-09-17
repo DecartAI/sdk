@@ -47,7 +47,13 @@ export type {
   SubscribeEvents,
   SubscribeOptions,
 } from "./realtime/subscribe-client";
-export type { ConnectionState, GenerationEndedMessage, QueuePosition, QueuePositionMessage } from "./realtime/types";
+export type {
+  ConnectionState,
+  GenerationEndedMessage,
+  QueuePosition,
+  QueuePositionMessage,
+  SessionEnded,
+} from "./realtime/types";
 export {
   type CanonicalModel,
   type CustomModelDefinition,
