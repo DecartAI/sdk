@@ -436,6 +436,15 @@ export class StreamSession {
       .catch((error) => {
         if (this.disposed || this.currentAttempt !== attempt) return;
         const message = error instanceof Error ? error.message : String(error);
+        // Same refused-vs-unreachable split as connect(). This window matters
+        // because the reconnect replays the applied image on join, so a cut of
+        // the restored garment lands here and must not be reported as a
+        // connection failure.
+        const terminal = this.terminalEndReason ?? terminalReasonFromError(error);
+        if (terminal) {
+          this.finishTerminally(terminal, { source: "reconnect", error: message });
+          return;
+        }
         this.logger.error("realtime reconnect: failed permanently", { error: message });
         this.tearDown();
         this.setState("disconnected");

@@ -1543,6 +1543,31 @@ describe("StreamSession startup orchestration", () => {
     // One socket only: no retry re-sent the refused garment.
     expect(FakeWebSocket.instances.length).toBe(1);
   });
+
+  it("reports a policy close during the reconnect handshake as a session end", async () => {
+    // Regression: shouldRetry stopped the retry but scheduleReconnect's catch
+    // still emitted a generic error, so a cut of the *restored* garment looked
+    // like a connection failure instead of a terminal stop.
+    const { session, ws } = await connectSession({ initialImage: "restored-garment" });
+    const ended: string[] = [];
+    const errors: string[] = [];
+    session.on("sessionEnded", (e) => ended.push(e.reason));
+    session.on("error", (e) => errors.push(e.message));
+
+    ws.onclose?.({ code: 1000, reason: "" });
+    await flushMicrotasks();
+    const reconnecting = FakeWebSocket.instances.at(-1) as FakeWebSocket;
+    expect(reconnecting).not.toBe(ws);
+    // Cut before room_info on the reconnect, so SignalingChannel rejects the
+    // pending open rather than emitting "closed".
+    reconnecting.onclose?.({ code: 1008, reason: "" });
+    // pRetry's rejection settles through several promise hops, so a microtask
+    // flush is not enough here.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(ended).toEqual(["policy_violation"]);
+    expect(errors).toEqual([]);
+  });
 });
 
 describe("WebRTC Error Classification", () => {
