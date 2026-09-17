@@ -1481,6 +1481,68 @@ describe("StreamSession startup orchestration", () => {
 
     session.disconnect();
   });
+
+  it("keeps the connect-time image when only the prompt is changed", async () => {
+    // Regression: sendPrompt used to merge onto a null appliedState, which made
+    // getInitialState return a prompt-only object and silently drop the image
+    // the session was opened with.
+    const { session, ws } = await connectSession({ initialImage: "opening-garment" });
+
+    const applied = session.sendPrompt("now cinematic", { enhance: false });
+    await flushMicrotasks();
+    ws.receive({ type: "prompt_ack", prompt: "now cinematic", success: true, error: null });
+    await applied;
+
+    ws.onclose?.({ code: 1000, reason: "" });
+    await flushMicrotasks();
+    const reconnected = FakeWebSocket.instances.at(-1) as FakeWebSocket;
+    reconnected.onopen?.();
+    await flushMicrotasks();
+
+    const resent = reconnected.sentMessages.find(
+      (m): m is { type: string; image_data?: string | null; prompt?: string | null } =>
+        typeof m === "object" && m !== null && (m as { type?: string }).type === "set_image",
+    );
+    expect(resent).toMatchObject({ image_data: "opening-garment", prompt: "now cinematic" });
+
+    session.disconnect();
+  });
+
+  it("does not retry a 1008 close that lands during the handshake", async () => {
+    // Regression: handleConnectionLoss returned early for any state other than
+    // connected/generating, so a pre-first-frame policy kill fell through to
+    // pRetry and opened another billed session.
+    const mediaChannel: MediaChannel = {
+      localStream: null,
+      on: vi.fn(),
+      off: vi.fn(),
+      connect: vi.fn().mockResolvedValue(undefined),
+      publishLocalTracks: vi.fn().mockResolvedValue(undefined),
+      replaceVideoTrack: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+    };
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+      initialImage: "refused-garment",
+      createMediaChannel: () => mediaChannel,
+    });
+    const ended: string[] = [];
+    session.on("sessionEnded", (e) => ended.push(e.reason));
+
+    const connectPromise = session.connect();
+    const ws = FakeWebSocket.instances.at(-1) as FakeWebSocket;
+    ws.onopen?.();
+    await flushMicrotasks();
+    // Cut before room_info, i.e. before the state ever reaches "connected".
+    ws.onclose?.({ code: 1008, reason: "" });
+    await expect(connectPromise).rejects.toThrow();
+
+    expect(ended).toEqual(["policy_violation"]);
+    // One socket only: no retry re-sent the refused garment.
+    expect(FakeWebSocket.instances.length).toBe(1);
+  });
 });
 
 describe("WebRTC Error Classification", () => {
