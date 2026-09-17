@@ -32,20 +32,14 @@ function isTerminalEndReason(reason: string | undefined): boolean {
   return reason !== undefined && (REALTIME_CONFIG.session.terminalEndReasons as readonly string[]).includes(reason);
 }
 
-/**
- * A policy close carries no `generation_ended` when the session is killed
- * before generation starts, so the close code is the only signal left.
- */
+/** The reason is only sent once generation has started; earlier kills carry just the code. */
 function terminalReasonFromClose(cause: ConnectionLossCause): string | null {
   return cause.code === REALTIME_CONFIG.session.terminalCloseCode ? "policy_violation" : null;
 }
 
 /**
- * The same close seen from the other side. SignalingChannel only emits `closed`
- * once the handshake has completed; a close before that rejects the pending
- * open instead, so during the initial join the code only ever reaches us as the
- * text of a connect failure. That window matters: the initial set_image is sent
- * on join, so a pre-first-frame policy kill lands right here.
+ * SignalingChannel only emits `closed` after the handshake, so a close during the
+ * join reaches us as connect-failure text rather than an event.
  */
 function terminalReasonFromError(error: unknown): string | null {
   if (!(error instanceof Error)) return null;
@@ -104,16 +98,12 @@ export class StreamSession {
   private currentAttempt = 0;
   private teardownGeneration = 0;
 
-  /** Set once the server reports a reason that must not be retried. */
   private terminalEndReason: string | null = null;
 
   /**
-   * The state the caller has applied since connecting, replayed as the initial
-   * state of a reconnect. Without it a reconnect restores whatever was passed
-   * to `connect()`, which is usually nothing — callers normally send the image
-   * after connecting. The replacement session then joins with no prompt and no
-   * image, never starts generating, and leaves the caller on a "connected"
-   * session that produces no frames.
+   * Replayed as a reconnect's initial state. Callers usually connect first and
+   * send the image after, so without this the new session joins with nothing
+   * applied and never starts generating.
    */
   private appliedState: InitialState | null = null;
 
@@ -157,8 +147,6 @@ export class StreamSession {
       const message = error instanceof Error ? error.message : String(error);
       const terminal = this.terminalEndReason ?? terminalReasonFromError(error);
       if (terminal && !this.disposed) {
-        // Refused rather than unreachable, so report it as a session that ended
-        // instead of a connection that failed. connect() still rejects.
         this.finishTerminally(terminal, { source: "connect", error: message });
         throw error;
       }
@@ -173,18 +161,15 @@ export class StreamSession {
   async sendPrompt(text: string, opts?: PromptSendOptions): Promise<void> {
     this.assertConnected();
     await this.signaling.sendPrompt(text, opts);
-    // A prompt-only update, so whatever image is in effect stays in effect.
-    // Merging onto getInitialState() rather than appliedState matters: until
-    // the caller applies something, the image in effect is the connect-time
-    // one, and merging onto a null appliedState would silently drop it.
+    // Merged onto the effective state, not appliedState: until the caller applies
+    // something the image in effect is the connect-time one, which must survive.
     this.appliedState = { ...this.getInitialState(), prompt: text, enhance: opts?.enhance };
   }
 
   async setImage(payload: SetImagePayload, opts?: ImageSetOptions): Promise<void> {
     this.assertConnected();
     await this.signaling.setImage(payload, opts);
-    // `set()` routes every update through here and the server treats it as a
-    // whole-state replace, so record it the same way rather than merging.
+    // The server treats this as a whole-state replace, so record it that way.
     this.appliedState =
       payload.kind === "ref"
         ? { imageRef: payload.ref, prompt: opts?.prompt ?? null, enhance: opts?.enhance }
@@ -218,8 +203,6 @@ export class StreamSession {
       },
       shouldRetry: (error: Error) => {
         if (this.disposed || this.currentAttempt !== attempt) return false;
-        // A terminal stop seen mid-handshake surfaces here as a plain connect
-        // failure; retrying it just re-opens billed sessions.
         const terminal = this.terminalEndReason ?? terminalReasonFromError(error);
         if (terminal) {
           this.terminalEndReason = terminal;
@@ -303,7 +286,6 @@ export class StreamSession {
     });
   }
 
-  /** The state a reconnect restores: what the caller applied, else what they opened with. */
   private getInitialState(): InitialState | undefined {
     return this.appliedState ?? this.configInitialState();
   }
@@ -349,19 +331,13 @@ export class StreamSession {
       this.events.emit("generationTick", e);
     });
     this.signaling.on("generationEnded", (e) => {
-      // Remembered rather than acted on here: the reason arrives just before
-      // the close, and it is the close that would otherwise start a reconnect.
+      // Recorded, not acted on: the following close is what would reconnect.
       if (isTerminalEndReason(e.reason)) this.terminalEndReason = e.reason;
       this.events.emit("generationEnded", e);
     });
     this.signaling.on("serverError", (err) => this.events.emit("error", err));
     this.signaling.on("closed", (info) => {
-      // A policy close can land mid-handshake, before any generation_ended and
-      // before the state reaches "connected" — the initial set_image is sent on
-      // join and overlaps the media connect, which is exactly when a
-      // pre-first-frame cut happens. Record the code here so both
-      // handleConnectionLoss and the retry predicate can see it.
-      if (this.isTerminalClose(info)) this.terminalEndReason ??= "policy_violation";
+      this.terminalEndReason ??= terminalReasonFromClose({ ...info });
       this.handleConnectionLoss({ source: "signaling", ...info });
     });
   }
@@ -378,9 +354,7 @@ export class StreamSession {
   private handleConnectionLoss(cause: ConnectionLossCause): void {
     if (this.disposed) return;
 
-    // Checked BEFORE the state guard below: a terminal stop is worth acting on
-    // even while still connecting, and the guard would otherwise drop it and
-    // leave pRetry opening another billed session against the same policy.
+    // Before the state guard: a terminal stop still counts while connecting.
     const terminalReason = this.terminalEndReason ?? terminalReasonFromClose(cause);
     if (terminalReason) {
       this.finishTerminally(terminalReason, cause);
@@ -395,14 +369,9 @@ export class StreamSession {
     this.scheduleReconnect();
   }
 
-  private isTerminalClose(cause: ConnectionLossCause): boolean {
-    return terminalReasonFromClose(cause) !== null;
-  }
-
   /**
-   * The server ended this session on purpose. Retrying asks the same question
-   * and gets the same answer, each retry costs a fresh billed session, and the
-   * "reconnecting" state would overwrite the reason the caller needs to show.
+   * The server ended this session on purpose: retrying would get the same answer
+   * and bill another session, and "reconnecting" would hide the reason.
    */
   private finishTerminally(reason: string, cause: ConnectionLossCause): void {
     this.logger.warn("realtime session ended by the server; not reconnecting", {
@@ -436,10 +405,7 @@ export class StreamSession {
       .catch((error) => {
         if (this.disposed || this.currentAttempt !== attempt) return;
         const message = error instanceof Error ? error.message : String(error);
-        // Same refused-vs-unreachable split as connect(). This window matters
-        // because the reconnect replays the applied image on join, so a cut of
-        // the restored garment lands here and must not be reported as a
-        // connection failure.
+        // A cut of the replayed image lands here; it is a session end, not a failure.
         const terminal = this.terminalEndReason ?? terminalReasonFromError(error);
         if (terminal) {
           this.finishTerminally(terminal, { source: "reconnect", error: message });

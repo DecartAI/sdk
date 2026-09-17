@@ -1398,8 +1398,7 @@ describe("StreamSession startup orchestration", () => {
     await flushMicrotasks();
     sendRoomInfo(ws);
     await connectPromise;
-    // generation_started moves the session to "generating", which is the state
-    // a mid-session close is judged against.
+    // "generating" is the state a mid-session close is judged against.
     ws.receive({ type: "generation_started" });
     await flushMicrotasks();
     return { session, ws };
@@ -1419,7 +1418,6 @@ describe("StreamSession startup orchestration", () => {
     await flushMicrotasks();
 
     expect(ended).toEqual(["moderation_violation"]);
-    // The whole point: no "reconnecting", and no replacement socket.
     expect(states).not.toContain("reconnecting");
     expect(states.at(-1)).toBe("disconnected");
     expect(FakeWebSocket.instances.length).toBe(socketsBefore);
@@ -1470,9 +1468,7 @@ describe("StreamSession startup orchestration", () => {
     reconnected.onopen?.();
     await flushMicrotasks();
 
-    // The initial state rides its own set_image frame right after the join.
-    // Without replaying it the replacement session has no image, never starts
-    // generating, and leaves the caller "connected" with no frames.
+    // The initial state rides its own set_image frame after the join.
     const resent = reconnected.sentMessages.find(
       (m): m is { type: string; image_data?: string | null; prompt?: string | null } =>
         typeof m === "object" && m !== null && (m as { type?: string }).type === "set_image",
@@ -1483,9 +1479,7 @@ describe("StreamSession startup orchestration", () => {
   });
 
   it("keeps the connect-time image when only the prompt is changed", async () => {
-    // Regression: sendPrompt used to merge onto a null appliedState, which made
-    // getInitialState return a prompt-only object and silently drop the image
-    // the session was opened with.
+    // Regression: a prompt-only update used to drop the connect-time image.
     const { session, ws } = await connectSession({ initialImage: "opening-garment" });
 
     const applied = session.sendPrompt("now cinematic", { enhance: false });
@@ -1509,9 +1503,7 @@ describe("StreamSession startup orchestration", () => {
   });
 
   it("does not retry a 1008 close that lands during the handshake", async () => {
-    // Regression: handleConnectionLoss returned early for any state other than
-    // connected/generating, so a pre-first-frame policy kill fell through to
-    // pRetry and opened another billed session.
+    // Regression: a pre-first-frame kill fell through to pRetry.
     const mediaChannel: MediaChannel = {
       localStream: null,
       on: vi.fn(),
@@ -1535,7 +1527,7 @@ describe("StreamSession startup orchestration", () => {
     const ws = FakeWebSocket.instances.at(-1) as FakeWebSocket;
     ws.onopen?.();
     await flushMicrotasks();
-    // Cut before room_info, i.e. before the state ever reaches "connected".
+    // Before the state ever reaches "connected".
     ws.onclose?.({ code: 1008, reason: "" });
     await expect(connectPromise).rejects.toThrow();
 
@@ -1545,9 +1537,7 @@ describe("StreamSession startup orchestration", () => {
   });
 
   it("reports a policy close during the reconnect handshake as a session end", async () => {
-    // Regression: shouldRetry stopped the retry but scheduleReconnect's catch
-    // still emitted a generic error, so a cut of the *restored* garment looked
-    // like a connection failure instead of a terminal stop.
+    // Regression: this path emitted a generic error instead of sessionEnded.
     const { session, ws } = await connectSession({ initialImage: "restored-garment" });
     const ended: string[] = [];
     const errors: string[] = [];
@@ -1558,11 +1548,9 @@ describe("StreamSession startup orchestration", () => {
     await flushMicrotasks();
     const reconnecting = FakeWebSocket.instances.at(-1) as FakeWebSocket;
     expect(reconnecting).not.toBe(ws);
-    // Cut before room_info on the reconnect, so SignalingChannel rejects the
-    // pending open rather than emitting "closed".
+    // Before room_info, so SignalingChannel rejects rather than emitting "closed".
     reconnecting.onclose?.({ code: 1008, reason: "" });
-    // pRetry's rejection settles through several promise hops, so a microtask
-    // flush is not enough here.
+    // pRetry's rejection needs more than a microtask flush.
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(ended).toEqual(["policy_violation"]);

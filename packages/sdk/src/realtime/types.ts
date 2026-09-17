@@ -88,11 +88,7 @@ export type GenerationEnded = {
   reason: string;
 };
 
-/**
- * The server ended the session on purpose and it will not be retried. `reason`
- * is the `generation_ended` reason when one arrived, otherwise a reason derived
- * from the close code.
- */
+/** The server ended the session on purpose; the SDK will not reconnect. */
 export type SessionEnded = {
   reason: string;
 };

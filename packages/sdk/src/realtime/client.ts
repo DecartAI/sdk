@@ -116,11 +116,7 @@ export type Events = {
   error: DecartSDKError;
   generationTick: GenerationTick;
   generationEnded: GenerationEnded;
-  /**
-   * The server ended the session deliberately (content policy, credits) and the
-   * SDK will not reconnect. Terminal: show the user a reason rather than waiting
-   * for a reconnect that is not coming.
-   */
+  /** Terminal: the server ended the session and no reconnect is coming. */
   sessionEnded: SessionEnded;
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
