@@ -18,7 +18,14 @@ import type { DiagnosticEvent } from "./observability/diagnostics";
 import type { RealtimeObservability, RealtimeObservabilityOptions } from "./observability/realtime-observability";
 import type { WebRTCStats } from "./observability/webrtc-stats";
 import { StreamSession } from "./stream-session";
-import type { ConnectionState, GenerationEnded, GenerationTick, ImageSetOptions, QueuePosition } from "./types";
+import type {
+  ConnectionState,
+  GenerationEnded,
+  GenerationTick,
+  ImageSetOptions,
+  QueuePosition,
+  SessionEnded,
+} from "./types";
 
 export type RealTimeClientOptions = {
   baseUrl: string;
@@ -109,6 +116,12 @@ export type Events = {
   error: DecartSDKError;
   generationTick: GenerationTick;
   generationEnded: GenerationEnded;
+  /**
+   * The server ended the session deliberately (content policy, credits) and the
+   * SDK will not reconnect. Terminal: show the user a reason rather than waiting
+   * for a reconnect that is not coming.
+   */
+  sessionEnded: SessionEnded;
   diagnostic: DiagnosticEvent;
   stats: WebRTCStats;
 };
@@ -240,6 +253,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
       session.on("generationTick", (e) => emitOrBuffer("generationTick", e));
       session.on("generationEnded", (e) => emitOrBuffer("generationEnded", e));
+      session.on("sessionEnded", (e) => emitOrBuffer("sessionEnded", e));
 
       session.on("error", (error) => {
         logger.error("Realtime error", { error: error.message });

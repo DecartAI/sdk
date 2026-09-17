@@ -26,6 +26,25 @@ export const REALTIME_CONFIG = {
       minTimeout: 1_000,
       maxTimeout: 10_000,
     },
+    /**
+     * `generation_ended` reasons that mean the server has already decided to
+     * end the session. Reconnecting asks the same question and gets the same
+     * answer, and every retry opens a fresh BILLED session.
+     *
+     * The gateway's vocabulary is `moderation_violation`, `insufficient_credits`,
+     * `timeout`, `error` and `disconnect`. Only the unambiguous two are listed:
+     * `error` and `disconnect` are generic or transient, and `timeout` is
+     * overloaded (a session-duration limit and a transport timeout share the
+     * word), so retrying those is still the right default.
+     */
+    terminalEndReasons: ["moderation_violation", "insufficient_credits"],
+    /**
+     * WebSocket close code the gateway uses for a policy termination. Checked
+     * as well as the reasons above, because the reason is only sent once
+     * generation has started — a session killed before its first frame closes
+     * with just this code and no `generation_ended`.
+     */
+    terminalCloseCode: 1008,
     permanentErrorSubstrings: [
       "permission denied",
       "not allowed",

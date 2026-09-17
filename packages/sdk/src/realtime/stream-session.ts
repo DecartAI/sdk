@@ -16,6 +16,7 @@ import type {
   InitialState,
   PromptSendOptions,
   QueuePosition,
+  SessionEnded,
   SessionStarted,
   SetImagePayload,
 } from "./types";
@@ -26,6 +27,18 @@ type RetryAttemptError = Error & {
 };
 
 type ConnectionLossCause = Record<string, unknown>;
+
+function isTerminalEndReason(reason: string | undefined): boolean {
+  return reason !== undefined && (REALTIME_CONFIG.session.terminalEndReasons as readonly string[]).includes(reason);
+}
+
+/**
+ * A policy close carries no `generation_ended` when the session is killed
+ * before generation starts, so the close code is the only signal left.
+ */
+function terminalReasonFromClose(cause: ConnectionLossCause): string | null {
+  return cause.code === REALTIME_CONFIG.session.terminalCloseCode ? "policy_violation" : null;
+}
 
 export function encodeSubscribeToken(roomName: string, options: { frameTiming?: boolean } = {}): string {
   return btoa(JSON.stringify({ room_name: roomName, ...(options.frameTiming ? { frame_timing: true } : {}) }));
@@ -46,6 +59,7 @@ type StreamSessionEvents = {
   sessionStarted: SessionStarted;
   generationTick: GenerationTick;
   generationEnded: GenerationEnded;
+  sessionEnded: SessionEnded;
   remoteStream: MediaStream;
   error: Error;
 };
@@ -77,6 +91,19 @@ export class StreamSession {
   private currentAttempt = 0;
   private teardownGeneration = 0;
 
+  /** Set once the server reports a reason that must not be retried. */
+  private terminalEndReason: string | null = null;
+
+  /**
+   * The state the caller has applied since connecting, replayed as the initial
+   * state of a reconnect. Without it a reconnect restores whatever was passed
+   * to `connect()`, which is usually nothing — callers normally send the image
+   * after connecting. The replacement session then joins with no prompt and no
+   * image, never starts generating, and leaves the caller on a "connected"
+   * session that produces no frames.
+   */
+  private appliedState: InitialState | null = null;
+
   private readonly logger: Logger;
 
   constructor(private readonly config: StreamSessionConfig) {
@@ -106,6 +133,7 @@ export class StreamSession {
 
   async connect(): Promise<void> {
     this.disposed = false;
+    this.terminalEndReason = null;
     const attempt = ++this.currentAttempt;
     this.setState("connecting");
     this.logger.info("realtime connect: starting", { attemptCycle: attempt });
@@ -124,12 +152,20 @@ export class StreamSession {
 
   async sendPrompt(text: string, opts?: PromptSendOptions): Promise<void> {
     this.assertConnected();
-    return this.signaling.sendPrompt(text, opts);
+    await this.signaling.sendPrompt(text, opts);
+    // A prompt-only update, so any image already applied stays applied.
+    this.appliedState = { ...this.appliedState, prompt: text, enhance: opts?.enhance };
   }
 
   async setImage(payload: SetImagePayload, opts?: ImageSetOptions): Promise<void> {
     this.assertConnected();
-    return this.signaling.setImage(payload, opts);
+    await this.signaling.setImage(payload, opts);
+    // `set()` routes every update through here and the server treats it as a
+    // whole-state replace, so record it the same way rather than merging.
+    this.appliedState =
+      payload.kind === "ref"
+        ? { imageRef: payload.ref, prompt: opts?.prompt ?? null, enhance: opts?.enhance }
+        : { image: payload.data, prompt: opts?.prompt ?? null, enhance: opts?.enhance };
   }
 
   async replaceVideoTrack(track: MediaStreamTrack): Promise<void> {
@@ -237,6 +273,10 @@ export class StreamSession {
   }
 
   private getInitialState(): InitialState | undefined {
+    // A reconnect has to restore what the caller has applied since, not what
+    // they opened the session with.
+    if (this.appliedState) return this.appliedState;
+
     if (this.config.initialImageRef !== undefined) {
       return {
         imageRef: this.config.initialImageRef,
@@ -276,7 +316,12 @@ export class StreamSession {
       this.markGenerating();
       this.events.emit("generationTick", e);
     });
-    this.signaling.on("generationEnded", (e) => this.events.emit("generationEnded", e));
+    this.signaling.on("generationEnded", (e) => {
+      // Remembered rather than acted on here: the reason arrives just before
+      // the close, and it is the close that would otherwise start a reconnect.
+      if (isTerminalEndReason(e.reason)) this.terminalEndReason = e.reason;
+      this.events.emit("generationEnded", e);
+    });
     this.signaling.on("serverError", (err) => this.events.emit("error", err));
     this.signaling.on("closed", (info) => this.handleConnectionLoss({ source: "signaling", ...info }));
   }
@@ -296,6 +341,24 @@ export class StreamSession {
       this.logger.debug("connection loss ignored (not connected)", { state: this.state, ...cause });
       return;
     }
+
+    // The server ended this session on purpose. Retrying asks the same question
+    // and gets the same answer, each retry costs a fresh billed session, and the
+    // "reconnecting" state would overwrite the reason the caller needs to show.
+    const terminalReason = this.terminalEndReason ?? terminalReasonFromClose(cause);
+    if (terminalReason) {
+      this.logger.warn("realtime session ended by the server; not reconnecting", {
+        reason: terminalReason,
+        state: this.state,
+        ...cause,
+      });
+      this.disposed = true;
+      this.tearDown();
+      this.setState("disconnected");
+      this.events.emit("sessionEnded", { reason: terminalReason });
+      return;
+    }
+
     this.logger.warn("realtime connection lost; scheduling reconnect", { state: this.state, ...cause });
     this.scheduleReconnect();
   }
