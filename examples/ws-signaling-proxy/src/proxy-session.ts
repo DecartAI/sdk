@@ -13,6 +13,10 @@ export class ProxySession {
     private config: {
       decartApiKey: string;
       model: string;
+      /** Optional realtime `resolution` query param, forwarded upstream when the client sent one. */
+      resolution?: string;
+      /** Optional realtime `speed` query param (fast mode), forwarded upstream when the client sent one. */
+      speed?: string;
       decartBaseUrl: string;
     },
   ) {}
@@ -22,7 +26,10 @@ export class ProxySession {
   }
 
   start() {
-    const url = `${this.config.decartBaseUrl}/v1/stream?api_key=${this.config.decartApiKey}&model=${this.config.model}`;
+    const params = new URLSearchParams({ api_key: this.config.decartApiKey, model: this.config.model });
+    if (this.config.resolution) params.set("resolution", this.config.resolution);
+    if (this.config.speed) params.set("speed", this.config.speed);
+    const url = `${this.config.decartBaseUrl}/v1/stream?${params.toString()}`;
     this.upstream = new WebSocket(url);
 
     this.upstream.on("open", () => {

@@ -73,6 +73,7 @@ export {
   modelAliases,
   models,
   type RealTimeModels,
+  type RealtimeSpeed,
   resolveCanonicalModelAlias,
   resolveFpsNumber,
   resolveModelAlias,

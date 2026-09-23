@@ -555,6 +555,146 @@ describe("realtime.connect options", () => {
     realtimeClient.disconnect();
   });
 
+  const createClientWithLogger = async (logger: {
+    debug(): void;
+    info(): void;
+    warn(message: string, data?: Record<string, unknown>): void;
+    error(): void;
+  }) => {
+    const { createRealTimeClient } = await import("../src/realtime/client.js");
+    return createRealTimeClient({
+      baseUrl: "wss://api3.decart.ai",
+      apiKey: "test-key",
+      logger,
+      telemetryEnabled: false,
+      prepareConnection: prepareBrowserConnection,
+    });
+  };
+
+  it("omits speed from the realtime URL when the option is not set", async () => {
+    const client = await createClientWithLogger(logger);
+
+    const realtimeClient = await client.connect(null, {
+      model: models.realtime("lucy-2.5"),
+      onRemoteStream: vi.fn(),
+    });
+
+    const url = new URL(FakeWebSocket.instances[0].url);
+    expect(url.searchParams.has("speed")).toBe(false);
+    expect(url.search).not.toContain("speed");
+    realtimeClient.disconnect();
+  });
+
+  it("adds speed=fast to the realtime URL exactly once when provided", async () => {
+    const client = await createClientWithLogger(logger);
+
+    const realtimeClient = await client.connect(null, {
+      model: models.realtime("lucy-2.5"),
+      speed: "fast",
+      onRemoteStream: vi.fn(),
+    });
+
+    const rawUrl = FakeWebSocket.instances[0].url;
+    const url = new URL(rawUrl);
+    expect(url.searchParams.getAll("speed")).toEqual(["fast"]);
+    expect(rawUrl.match(/[?&]speed=/g)).toHaveLength(1);
+    expect(rawUrl).toContain("&speed=fast");
+    // Unrelated params are untouched.
+    expect(url.searchParams.get("model")).toBe("lucy-2.5");
+    expect(url.searchParams.get("api_key")).toBe("test-key");
+    realtimeClient.disconnect();
+  });
+
+  it("lets the typed speed option win over queryParams.speed", async () => {
+    const client = await createClientWithLogger(logger);
+
+    const realtimeClient = await client.connect(null, {
+      model: models.realtime("lucy-2.5"),
+      speed: "fast",
+      queryParams: { speed: "slow", pool: "custom" },
+      onRemoteStream: vi.fn(),
+    });
+
+    const url = new URL(FakeWebSocket.instances[0].url);
+    expect(url.searchParams.getAll("speed")).toEqual(["fast"]);
+    expect(url.searchParams.get("pool")).toBe("custom");
+    realtimeClient.disconnect();
+  });
+
+  it("rejects unsupported realtime speeds", async () => {
+    const client = await createClientWithLogger(logger);
+
+    await expect(
+      client.connect(null, {
+        model: models.realtime("lucy-2.5"),
+        speed: "turbo" as never,
+        onRemoteStream: vi.fn(),
+      }),
+    ).rejects.toThrow();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  it("does not warn when the model advertises the requested speed", async () => {
+    const warn = vi.fn();
+    const client = await createClientWithLogger({ ...logger, warn });
+
+    for (const name of ["lucy-2.5", "lucy-latest", "lucy-vton-3.5", "lucy-vton-latest"] as const) {
+      const realtimeClient = await client.connect(null, {
+        model: models.realtime(name),
+        speed: "fast",
+        onRemoteStream: vi.fn(),
+      });
+      realtimeClient.disconnect();
+    }
+
+    // Teardown emits unrelated "websocket closed" warnings; only the speed warning matters here.
+    const speedWarnings = warn.mock.calls.filter(([message]) => String(message).includes("speed"));
+    expect(speedWarnings).toEqual([]);
+  });
+
+  it("warns but still sends speed=fast for a model without the capability", async () => {
+    const warn = vi.fn();
+    const client = await createClientWithLogger({ ...logger, warn });
+
+    const realtimeClient = await client.connect(null, {
+      model: models.realtime("lucy-2.1"),
+      speed: "fast",
+      onRemoteStream: vi.fn(),
+    });
+
+    const speedWarnings = warn.mock.calls.filter(([message]) => String(message).includes("speed"));
+    expect(speedWarnings).toHaveLength(1);
+    expect(speedWarnings[0]).toEqual([
+      expect.stringContaining("speed"),
+      expect.objectContaining({ model: "lucy-2.1", speed: "fast", supportedSpeeds: [] }),
+    ]);
+    const url = new URL(FakeWebSocket.instances[0].url);
+    expect(url.searchParams.getAll("speed")).toEqual(["fast"]);
+    realtimeClient.disconnect();
+  });
+
+  it("keeps speed=fast on the signaling URL when the session reconnects", async () => {
+    const client = await createClientWithLogger(logger);
+
+    const realtimeClient = await client.connect(null, {
+      model: models.realtime("lucy-2.5"),
+      speed: "fast",
+      onRemoteStream: vi.fn(),
+    });
+    const first = FakeWebSocket.instances[0];
+    expect(new URL(first.url).searchParams.getAll("speed")).toEqual(["fast"]);
+
+    // A non-terminal close of a connected session triggers a reconnect on a fresh socket.
+    first.onclose?.({ code: 1006, reason: "" });
+    await flushMicrotasks();
+
+    const reconnected = FakeWebSocket.instances.at(-1) as FakeWebSocket;
+    expect(reconnected).not.toBe(first);
+    expect(reconnected.url).toBe(first.url);
+    expect(new URL(reconnected.url).searchParams.getAll("speed")).toEqual(["fast"]);
+    realtimeClient.disconnect();
+  });
+
   it("rejects unsupported realtime resolutions", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const client = createRealTimeClient({
@@ -1375,7 +1515,7 @@ describe("StreamSession startup orchestration", () => {
     expect(firstRoom.disconnect).toHaveBeenCalled();
   });
 
-  const connectSession = async (opts: { initialImage?: string } = {}) => {
+  const connectSession = async (opts: { initialImage?: string; url?: string } = {}) => {
     const mediaChannel: MediaChannel = {
       localStream: null,
       on: vi.fn(),
@@ -1474,6 +1614,22 @@ describe("StreamSession startup orchestration", () => {
         typeof m === "object" && m !== null && (m as { type?: string }).type === "set_image",
     );
     expect(resent).toMatchObject({ image_data: "garment-base64", prompt: "wear this" });
+
+    session.disconnect();
+  });
+
+  it("reuses the connect-time URL, including speed=fast, for the reconnected socket", async () => {
+    const url = "wss://example.test/realtime?api_key=key&model=lucy-2.5&speed=fast";
+    const { session, ws } = await connectSession({ url });
+    expect(new URL(ws.url).searchParams.getAll("speed")).toEqual(["fast"]);
+
+    ws.onclose?.({ code: 1000, reason: "" });
+    await flushMicrotasks();
+    const reconnected = FakeWebSocket.instances.at(-1) as FakeWebSocket;
+    expect(reconnected).not.toBe(ws);
+    expect(reconnected.url).toBe(ws.url);
+    expect(new URL(reconnected.url).searchParams.getAll("speed")).toEqual(["fast"]);
+    expect(new URL(reconnected.url).searchParams.get("model")).toBe("lucy-2.5");
 
     session.disconnect();
   });
