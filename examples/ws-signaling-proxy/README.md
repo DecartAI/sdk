@@ -43,6 +43,7 @@ Optional realtime query params sent by the SDK (`resolution=1080p`, `speed=fast`
 | `pnpm dev` | Start with hot reload |
 | `pnpm build` | Compile TypeScript to `dist/` |
 | `pnpm start` | Run compiled output |
+| `pnpm test` | Run unit tests (upstream URL construction) |
 | `pnpm test:e2e` | Run e2e test (requires `DECART_API_KEY`) |
 
 ## How it works
