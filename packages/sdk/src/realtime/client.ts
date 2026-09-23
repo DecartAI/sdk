@@ -4,6 +4,7 @@ import {
   type CustomModelDefinition,
   type ModelDefinition,
   modelDefinitionSchema,
+  realtimeSpeedSchema,
   resolveFpsNumber,
 } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
@@ -86,6 +87,14 @@ const realTimeClientConnectOptionsSchema = z.object({
   queryParams: z.record(z.string(), z.string()).optional(),
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
   resolution: z.enum(["720p", "1080p"]).optional(),
+  /**
+   * Realtime speed tier. Fast mode (`"fast"`) serves the session from a higher-compute tier for lower
+   * latency and higher throughput; output quality is unchanged. It is currently available for `lucy-2.5` /
+   * `lucy-latest` and `lucy-vton-3.5` / `lucy-vton-latest`, in the US region only, and is billed at 2x the
+   * standard realtime rate for those models. Other models ignore the option (the SDK logs a warning when the
+   * model does not list it in `supportedSpeeds`). Omit it (the default) for standard mode.
+   */
+  speed: realtimeSpeedSchema.optional(),
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp8", "vp9"]).optional(),
   /**
@@ -162,6 +171,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       onQueuePosition,
       initialState,
       resolution,
+      speed,
       preferredVideoCodec,
     } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
@@ -203,12 +213,24 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       });
       observability = preparedConnection.observability;
 
+      if (speed && !options.model.supportedSpeeds?.includes(speed)) {
+        logger.warn(
+          "realtime: model does not support the requested speed tier; the server serves it at standard speed",
+          {
+            model: options.model.name,
+            speed,
+            supportedSpeeds: options.model.supportedSpeeds ?? [],
+          },
+        );
+      }
+
       const queryParams = new URLSearchParams({
         ...(preparedConnection.queryParams ?? {}),
         ...(options.queryParams ?? {}),
         api_key: apiKey,
         model: options.model.name,
         ...(resolution ? { resolution } : {}),
+        ...(speed ? { speed } : {}),
       });
 
       session = new StreamSession({

@@ -256,6 +256,13 @@ export type ModelInputSchemas = typeof modelInputSchemas;
 
 export type ModelFps = number | { max?: number; min?: number; ideal?: number; exact?: number };
 
+/**
+ * Realtime speed tiers selectable with the `speed` connect option.
+ * `"fast"` is the only tier today; the standard tier has no value (omit the option).
+ */
+export const realtimeSpeedSchema = z.enum(["fast"]);
+export type RealtimeSpeed = z.infer<typeof realtimeSpeedSchema>;
+
 export type ModelDefinition<T extends Model = Model> = {
   name: T;
   urlPath: string;
@@ -264,6 +271,11 @@ export type ModelDefinition<T extends Model = Model> = {
   width: number;
   height: number;
   inputSchema: T extends keyof ModelInputSchemas ? ModelInputSchemas[T] : z.ZodTypeAny;
+  /**
+   * Realtime speed tiers this model can be served from via the `speed` connect option.
+   * Absent when the model only offers the standard tier (the server ignores `speed` for it).
+   */
+  supportedSpeeds?: readonly RealtimeSpeed[];
 };
 
 export function resolveFpsNumber(fps: ModelFps, fallback = 30): number {
@@ -310,6 +322,7 @@ export const modelDefinitionSchema = z.object({
   width: z.number().min(1),
   height: z.number().min(1),
   inputSchema: z.any().optional(),
+  supportedSpeeds: z.array(realtimeSpeedSchema).readonly().optional(),
 });
 
 const _models = {
@@ -330,6 +343,7 @@ const _models = {
       width: 1280,
       height: 720,
       inputSchema: z.object({}),
+      supportedSpeeds: ["fast"],
     },
     "lucy-vton-3.5": {
       urlPath: "/v1/stream",
@@ -338,6 +352,7 @@ const _models = {
       width: 1280,
       height: 720,
       inputSchema: z.object({}),
+      supportedSpeeds: ["fast"],
     },
     "lucy-restyle-2": {
       urlPath: "/v1/stream",
@@ -355,6 +370,7 @@ const _models = {
       width: 1088,
       height: 624,
       inputSchema: z.object({}),
+      supportedSpeeds: ["fast"],
     },
     // Server-side alias currently resolves to lucy-vton-3.5.
     "lucy-vton-latest": {
@@ -364,6 +380,7 @@ const _models = {
       width: 1280,
       height: 720,
       inputSchema: z.object({}),
+      supportedSpeeds: ["fast"],
     },
     "lucy-restyle-latest": {
       urlPath: "/v1/stream",

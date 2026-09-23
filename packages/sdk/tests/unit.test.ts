@@ -2491,6 +2491,71 @@ describe("CustomModelDefinition", () => {
     const result = modelDefinitionSchema.safeParse(invalidModel);
     expect(result.success).toBe(false);
   });
+
+  it("keeps supportedSpeeds when parsing a model definition", async () => {
+    const { modelDefinitionSchema } = await import("../src/shared/model.js");
+
+    const base = { name: "lucy_2_rt_preview", urlPath: "/v1/stream", fps: 20, width: 1280, height: 720 };
+
+    const withSpeeds = modelDefinitionSchema.safeParse({ ...base, supportedSpeeds: ["fast"] });
+    expect(withSpeeds.success).toBe(true);
+    expect(withSpeeds.data?.supportedSpeeds).toEqual(["fast"]);
+
+    const withoutSpeeds = modelDefinitionSchema.safeParse(base);
+    expect(withoutSpeeds.success).toBe(true);
+    expect(withoutSpeeds.data?.supportedSpeeds).toBeUndefined();
+
+    const registryModel = modelDefinitionSchema.safeParse(models.realtime("lucy-2.5"));
+    expect(registryModel.success).toBe(true);
+    expect(registryModel.data?.supportedSpeeds).toEqual(["fast"]);
+  });
+
+  it("rejects unknown speed tiers in supportedSpeeds", async () => {
+    const { modelDefinitionSchema } = await import("../src/shared/model.js");
+
+    const result = modelDefinitionSchema.safeParse({
+      name: "lucy_2_rt_preview",
+      urlPath: "/v1/stream",
+      fps: 20,
+      width: 1280,
+      height: 720,
+      supportedSpeeds: ["turbo"],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("Realtime speed capability", () => {
+  const fastRealtimeModels = ["lucy-2.5", "lucy-latest", "lucy-vton-3.5", "lucy-vton-latest"] as const;
+
+  it("advertises fast mode on exactly the supported realtime models", () => {
+    const advertised = listModels({ kind: "realtime" })
+      .filter((model) => model.supportedSpeeds?.includes("fast"))
+      .map((model) => model.name)
+      .sort();
+
+    expect(advertised).toEqual([...fastRealtimeModels].sort());
+  });
+
+  it("exposes supportedSpeeds through models.realtime()", () => {
+    for (const name of fastRealtimeModels) {
+      expect(models.realtime(name).supportedSpeeds).toEqual(["fast"]);
+    }
+    expect(models.realtime("lucy-2.1").supportedSpeeds).toBeUndefined();
+    expect(models.realtime("lucy-restyle-2").supportedSpeeds).toBeUndefined();
+    expect(models.realtime("lucy-restyle-latest").supportedSpeeds).toBeUndefined();
+  });
+
+  it("does not set supportedSpeeds on any other model or surface", () => {
+    const others = listModels().filter(
+      (model) => !(model.kind === "realtime" && (fastRealtimeModels as readonly string[]).includes(model.name)),
+    );
+
+    expect(others.length).toBe(listModels().length - fastRealtimeModels.length);
+    for (const model of others) {
+      expect(model.supportedSpeeds, `${model.kind}/${model.name}`).toBeUndefined();
+    }
+  });
 });
 
 describe("Canonical Model Names", () => {

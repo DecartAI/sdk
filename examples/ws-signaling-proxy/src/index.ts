@@ -19,16 +19,21 @@ const server = createServer((_req, res) => {
 const wss = new WebSocketServer({ server });
 
 wss.on("connection", (clientWs: WebSocket, req) => {
-  // Accept Decart-style URLs: /v1/stream?api_key=...&model=lucy-2.1
-  // The proxy ignores api_key from the client and uses its own.
+  // Accept Decart-style URLs: /v1/stream?api_key=...&model=lucy-2.1[&resolution=1080p][&speed=fast]
+  // The proxy ignores api_key from the client and uses its own. Optional `resolution` and `speed`
+  // are forwarded upstream unchanged so the SDK's connect options keep working through the proxy.
   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
   const model = url.searchParams.get("model") ?? "lucy-2.1";
+  const resolution = url.searchParams.get("resolution") ?? undefined;
+  const speed = url.searchParams.get("speed") ?? undefined;
 
   console.log(`[proxy] client connected from ${req.url} (model=${model})`);
 
   const session = new ProxySession(clientWs, {
     decartApiKey: DECART_API_KEY,
     model,
+    resolution,
+    speed,
     decartBaseUrl: DECART_BASE_URL,
   });
 

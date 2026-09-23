@@ -26,6 +26,8 @@ Clients connect to:
 ws://localhost:8080/v1/stream?model=lucy-2.1
 ```
 
+Optional realtime query params sent by the SDK (`resolution=1080p`, `speed=fast`) are forwarded to Decart unchanged.
+
 ## Environment variables
 
 | Variable | Required | Default | Description |

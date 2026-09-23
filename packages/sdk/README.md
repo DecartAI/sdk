@@ -82,6 +82,27 @@ Options:
 - `"auto"` — mirror when the input track reports `facingMode: "user"` (mobile front cameras).
 - `true` — always mirror (e.g. desktop webcams).
 
+#### Fast mode
+
+Fast mode (`speed: "fast"`) serves the session from a higher-compute tier for lower latency and higher throughput; output quality is unchanged. It is currently available for `lucy-2.5` / `lucy-latest` and `lucy-vton-3.5` / `lucy-vton-latest`, in the US region only, and is billed at 2x the standard realtime rate for those models. Other models ignore the option. Omit it (the default) for standard mode.
+
+```ts
+const realtimeClient = await client.realtime.connect(stream, {
+  model: models.realtime("lucy-2.5"),
+  speed: "fast",
+  // ...
+});
+```
+
+Models that offer fast mode list it in their definition's `supportedSpeeds`:
+
+```ts
+models.realtime("lucy-2.5").supportedSpeeds; // ["fast"]
+models.realtime("lucy-2.1").supportedSpeeds; // undefined
+```
+
+Passing `speed` for a model without the capability logs a warning through the client's logger and the session runs at standard speed.
+
 ### Watch a Stream
 
 A connected realtime session exposes an SDK `subscribeToken` once it reaches a

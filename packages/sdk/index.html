@@ -367,6 +367,13 @@
             </select>
         </div>
         <div class="control-group">
+            <label for="speed-select">Speed:</label>
+            <select id="speed-select">
+                <option value="" selected>Standard (default)</option>
+                <option value="fast">Fast (lucy-2.5 / lucy-vton-3.5 and their -latest aliases, US only, 2x rate)</option>
+            </select>
+        </div>
+        <div class="control-group">
             <label for="codec-select">Preferred Video Codec:</label>
             <select id="codec-select">
                 <option value="" selected>Default (h264)</option>
@@ -632,6 +639,7 @@
             customModelWidth: document.getElementById('custom-model-width'),
             customModelHeight: document.getElementById('custom-model-height'),
             resolutionSelect: document.getElementById('resolution-select'),
+            speedSelect: document.getElementById('speed-select'),
             codecSelect: document.getElementById('codec-select'),
             passthroughSelect: document.getElementById('passthrough-select'),
             initialPrompt: document.getElementById('initial-prompt'),
@@ -1299,6 +1307,11 @@
                 const resolution = elements.resolutionSelect.value;
                 addLog(`Resolution: ${resolution}`, 'info');
 
+                const speed = elements.speedSelect.value || undefined;
+                if (speed) {
+                    addLog(`Speed: ${speed}`, 'info');
+                }
+
                 const preferredVideoCodec = elements.codecSelect.value || undefined;
                 if (preferredVideoCodec) {
                     addLog(`Preferred video codec: ${preferredVideoCodec}`, 'info');
@@ -1316,6 +1329,7 @@
                 decartRealtime = await decartClient.realtime.connect(localStream, {
                     model,
                     resolution,
+                    ...(speed && { speed }),
                     ...(extraQueryParams && { queryParams: extraQueryParams }),
                     ...(preferredVideoCodec && { preferredVideoCodec }),
                     onRemoteStream: (stream) => {
