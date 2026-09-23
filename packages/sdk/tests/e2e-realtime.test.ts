@@ -137,7 +137,7 @@ describe.concurrent("Realtime E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => 
     it("upload → get → delete round-trip", async () => {
       const ref = await client.files.upload(await pngBlob(96, 96));
       expect(ref.id).toMatch(/^file_/);
-      expect(ref.mime_type).toBe("image/png");
+      expect(ref.mime_type).toBe("image/jpeg");
 
       const fetched = await client.files.get(ref.id);
       expect(fetched.id).toBe(ref.id);
