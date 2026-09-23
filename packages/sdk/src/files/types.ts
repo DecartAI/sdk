@@ -17,6 +17,7 @@ export const isFileRefId = (value: unknown): value is string =>
 export interface FileReference {
   id: string;
   filename: string | null;
+  /** Type of the stored file. The API re-encodes non-JPEG images to JPEG, so a PNG upload reports `image/jpeg`. */
   mime_type: string;
   size_bytes: number;
   /**
