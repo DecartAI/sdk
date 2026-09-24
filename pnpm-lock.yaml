@@ -391,6 +391,9 @@ importers:
 
   packages/sdk:
     dependencies:
+      jose:
+        specifier: ^6.2.2
+        version: 6.2.2
       livekit-client:
         specifier: ~2.20.1
         version: 2.20.1(@types/dom-mediacapture-record@1.0.22)

@@ -81,6 +81,8 @@ export {
   type VideoModels,
 } from "./shared/model";
 export type { ModelState } from "./shared/types";
+export { type ClientTokenClaims, decodeClientToken } from "./tokens/claims";
 export type { CreateTokenOptions, CreateTokenResponse, TokensClient } from "./tokens/client";
+export { type VerifyClientTokenOptions, verifyClientToken } from "./tokens/verify";
 export { type DecartSDKError, ERROR_CODES } from "./utils/errors";
 export { createConsoleLogger, type Logger, type LogLevel, noopLogger } from "./utils/logger";

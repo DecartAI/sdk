@@ -290,6 +290,36 @@ if (status.status === "completed") {
 }
 ```
 
+### Client Tokens
+
+Mint short-lived client tokens on your server instead of shipping your API key.
+The response also carries a signed JWT (`token`) that any server or edge runtime
+can verify **offline** against the platform's public JWKS — no API key, no
+round-trip to Decart:
+
+```ts
+import { createDecartClient, verifyClientToken, decodeClientToken } from "@decartai/sdk";
+
+const client = createDecartClient({ apiKey: process.env.DECART_API_KEY });
+const { apiKey, token } = await client.tokens.create({ expiresIn: 300, metadata: { service_tier: 0 } });
+
+// Verify offline (EdDSA signature, exp, iss, aud) and read the claims
+const claims = await verifyClientToken(token); // or client.tokens.verify(token)
+claims.serviceTier; // 0
+claims.pool; // "free" for tier 0, otherwise "paid"
+// also: userId, organizationId, apiKeyName, apiKeyId, allowedModels, allowedOrigins,
+// expiresAt, realtimeConcurrentSessionLimit, zeroDataRetention, attribution, raw
+
+// Read claims WITHOUT verifying — no network, no crypto. Untrusted: display/logging only.
+const untrusted = decodeClientToken(token);
+```
+
+The JWKS comes from `https://platform.decart.ai/api/auth/jwks` (the platform
+host, not `baseUrl`) and is cached; the JWT library is loaded lazily so bundles
+that never verify do not ship it. Errors: `TOKEN_INVALID`, `TOKEN_EXPIRED`,
+`TOKEN_VERIFY_ERROR` (JWKS unreachable). Options: `{ jwksUrl, issuer, audience,
+clockTolerance }`. This is an offline check, not an API call.
+
 ### React Native / Expo
 
 React Native realtime requires [LiveKit's React Native packages](https://github.com/livekit/client-sdk-react-native)
