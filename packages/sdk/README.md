@@ -318,7 +318,9 @@ The JWKS comes from `https://platform.decart.ai/api/auth/jwks` (the platform
 host, not `baseUrl`) and is cached; the JWT library is loaded lazily so bundles
 that never verify do not ship it. Errors: `TOKEN_INVALID`, `TOKEN_EXPIRED`,
 `TOKEN_VERIFY_ERROR` (JWKS unreachable). Options: `{ jwksUrl, issuer, audience,
-clockTolerance }`. This is an offline check, not an API call.
+clockTolerance }`. This is an offline check, not an API call. It needs WebCrypto: on
+runtimes without it (React Native) `verify` rejects with `UNSUPPORTED_PLATFORM_FEATURE`;
+`decodeClientToken` works everywhere.
 
 ### React Native / Expo
 

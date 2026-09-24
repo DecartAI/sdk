@@ -30,6 +30,7 @@ const jwkSets = new Map<string, ReturnType<Jose["createRemoteJWKSet"]>>();
  * @throws `TOKEN_INVALID` bad signature, wrong `iss`/`aud`, malformed token or unknown `kid`
  * @throws `TOKEN_EXPIRED` `exp` is in the past
  * @throws `TOKEN_VERIFY_ERROR` the JWKS could not be fetched — the token itself was not judged
+ * @throws `UNSUPPORTED_PLATFORM_FEATURE` the runtime has no WebCrypto (e.g. React Native)
  */
 export async function verifyClientToken(
   token: string,
@@ -37,6 +38,13 @@ export async function verifyClientToken(
 ): Promise<ClientTokenClaims> {
   if (!isClientTokenJwt(token)) {
     throw createSDKError(ERROR_CODES.TOKEN_INVALID, "Invalid client token: not a JWT", { reason: "malformed" });
+  }
+  if (!(globalThis as { crypto?: { subtle?: unknown } }).crypto?.subtle) {
+    throw createSDKError(
+      ERROR_CODES.UNSUPPORTED_PLATFORM_FEATURE,
+      "verifyClientToken needs WebCrypto (crypto.subtle), which this runtime does not provide. Verify client tokens on your server; decodeClientToken works everywhere.",
+      { feature: "verifyClientToken" },
+    );
   }
   const jwksUrl = options.jwksUrl ?? `${PLATFORM_URL}/api/auth/jwks`;
   if (!jose) jose = import("jose");
