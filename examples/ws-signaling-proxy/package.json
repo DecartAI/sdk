@@ -11,6 +11,7 @@
     "lint": "biome check --error-on-warnings",
     "format": "biome check --write --unsafe",
     "format:check": "biome check",
+    "test": "node --test --import tsx test/upstream-url.test.ts",
     "test:e2e": "node --test --import tsx test/e2e.ts"
   },
   "dependencies": {

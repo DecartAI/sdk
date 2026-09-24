@@ -1,6 +1,24 @@
 import WebSocket from "ws";
 import type { IncomingMessage, OutgoingMessage } from "./types.js";
 
+/**
+ * Builds the upstream Decart signaling URL. `api_key` and `model` are interpolated exactly as before;
+ * the optional realtime `resolution` and `speed` params are appended (URL-encoded) only when present,
+ * so a client that sends neither produces the same upstream URL as older versions of this proxy.
+ */
+export function buildUpstreamUrl(config: {
+  decartApiKey: string;
+  model: string;
+  resolution?: string;
+  speed?: string;
+  decartBaseUrl: string;
+}): string {
+  let url = `${config.decartBaseUrl}/v1/stream?api_key=${config.decartApiKey}&model=${config.model}`;
+  if (config.resolution) url += `&resolution=${encodeURIComponent(config.resolution)}`;
+  if (config.speed) url += `&speed=${encodeURIComponent(config.speed)}`;
+  return url;
+}
+
 export class ProxySession {
   private upstream: WebSocket | null = null;
   private _sessionId: string | null = null;
@@ -26,10 +44,7 @@ export class ProxySession {
   }
 
   start() {
-    const params = new URLSearchParams({ api_key: this.config.decartApiKey, model: this.config.model });
-    if (this.config.resolution) params.set("resolution", this.config.resolution);
-    if (this.config.speed) params.set("speed", this.config.speed);
-    const url = `${this.config.decartBaseUrl}/v1/stream?${params.toString()}`;
+    const url = buildUpstreamUrl(this.config);
     this.upstream = new WebSocket(url);
 
     this.upstream.on("open", () => {
