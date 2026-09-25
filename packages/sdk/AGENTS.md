@@ -29,6 +29,10 @@
   - `livekit-connection.ts` - LiveKit room connection and control WebSocket handling
   - `methods.ts` - Realtime method implementations
   - `types.ts` - TypeScript types for realtime control messages and events
+- **src/tokens/** - Client tokens (short-lived keys for browser/mobile clients)
+  - `client.ts` - `client.tokens.create` (POST /v1/client/tokens), plus `verify`/`decode` delegating to the modules below
+  - `claims.ts` - Claim types and mapping, `decodeClientToken` (no network, no crypto)
+  - `verify.ts` - `verifyClientToken`: offline EdDSA/JWKS verification via a lazily `import()`ed jose (JWKS on platform.decart.ai, not api.decart.ai)
 - **src/shared/** - Shared model definitions and types
   - `model.ts` - Model registry with definitions for realtime, video, and image models
   - `request.ts` - Shared HTTP request utilities and file input processing
@@ -53,7 +57,7 @@
 - **Events**: Use mitt for typed event emitters (connection state, errors)
 - **Formatting**: Use Biome formatter (`pnpm format`), enforced formatting standards
 - **Dependencies**: 
-  - Runtime: mitt (events), p-retry (resilience), uuid (unique IDs), zod (validation)
+  - Runtime: mitt (events), p-retry (resilience), uuid (unique IDs), zod (validation), jose (client-token JWKS verification; dynamic `import()` only, never a static import)
   - Dev: tsdown (build), vitest (test), typescript, vite (examples), bumpp (releases)
 
 ## API Design Patterns

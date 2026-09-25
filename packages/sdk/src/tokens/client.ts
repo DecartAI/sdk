@@ -1,6 +1,8 @@
 import type { Model } from "../shared/model";
 import { buildAuthHeaders } from "../shared/request";
 import { createSDKError } from "../utils/errors";
+import { type ClientTokenClaims, decodeClientToken } from "./claims";
+import { type VerifyClientTokenOptions, verifyClientToken } from "./verify";
 
 export type TokensClientOptions = {
   baseUrl: string;
@@ -28,7 +30,7 @@ export type CreateTokenOptions = {
 
 export type CreateTokenResponse = {
   apiKey: string;
-  /** Signed JWT mirroring `apiKey`, verifiable offline via the public JWKS. */
+  /** Signed JWT mirroring `apiKey`, verifiable offline via `client.tokens.verify` / `verifyClientToken`. */
   token?: string;
   expiresAt: string;
   /** Present when `allowedModels` and/or `allowedOrigins` were set on the request. */
@@ -65,6 +67,17 @@ export type TokensClient = {
    * ```
    */
   create: (options?: CreateTokenOptions) => Promise<CreateTokenResponse>;
+  /**
+   * Verify a client token's JWT OFFLINE against the platform's public JWKS (cached) and return its
+   * claims — signature (EdDSA), `exp`, `iss`, `aud`. Same as the standalone `verifyClientToken`;
+   * does not use the client's API key or `baseUrl`.
+   */
+  verify: (token: string, options?: VerifyClientTokenOptions) => Promise<ClientTokenClaims>;
+  /**
+   * Read a client token's claims WITHOUT verifying — no network, no crypto. UNTRUSTED: display or
+   * logging only. Same as the standalone `decodeClientToken`.
+   */
+  decode: (token: string) => ClientTokenClaims;
 };
 
 export const createTokensClient = (opts: TokensClientOptions): TokensClient => {
@@ -92,5 +105,5 @@ export const createTokensClient = (opts: TokensClientOptions): TokensClient => {
     return response.json();
   };
 
-  return { create };
+  return { create, verify: verifyClientToken, decode: decodeClientToken };
 };

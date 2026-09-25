@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import pkg from "../package.json" with { type: "json" };
 
 for (const name of ["File", "Blob", "ReadableStream", "WritableStream", "TransformStream", "DOMException"]) {
@@ -30,6 +30,12 @@ assert.ok(
 // metadata. Missing it would make the SDK advertise frame timing without a
 // usable strip transform in package consumers.
 await access(new URL("../dist/realtime/browser/frame-metadata-worker.js", import.meta.url));
+
+// jose (client-token verification) must stay a dynamic import so bundlers code-split it away from
+// realtime-only consumers.
+const verifySource = await readFile(new URL("../dist/tokens/verify.js", import.meta.url), "utf8");
+assert.match(verifySource, /import\(["']jose["']\)/, "verifyClientToken must load jose via a dynamic import");
+assert.doesNotMatch(verifySource, /\bfrom\s+["']jose/, "verifyClientToken must not statically import jose");
 
 const reactNativeCheck = spawnSync(
   process.execPath,

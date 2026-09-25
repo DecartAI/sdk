@@ -63,6 +63,7 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
+    "jose": "^6.2.2",
     "livekit-client": "~2.20.1",
     "mitt": "^3.0.1",
     "p-retry": "^6.2.1",

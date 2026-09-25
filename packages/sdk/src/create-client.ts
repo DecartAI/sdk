@@ -251,7 +251,7 @@ export const createDecartClientForPlatform = (createRealtime: CreateRealtime, op
      */
     queue,
     /**
-     * Client for creating client tokens.
+     * Client for creating, verifying and decoding client tokens.
      * Client tokens are short-lived API keys safe for client-side use.
      *
      * @example
@@ -259,7 +259,11 @@ export const createDecartClientForPlatform = (createRealtime: CreateRealtime, op
      * // Server-side: Create a client token
      * const serverClient = createDecartClient({ apiKey: process.env.DECART_API_KEY });
      * const token = await serverClient.tokens.create();
-     * // Returns: { apiKey: "ek_...", expiresAt: "2024-12-15T12:10:00Z" }
+     * // Returns: { apiKey: "ek_...", token: "eyJ...", expiresAt: "2024-12-15T12:10:00Z" }
+     *
+     * // Server-side: Verify a client token offline (JWKS) and read its claims
+     * const claims = await serverClient.tokens.verify(token.token);
+     * console.log(claims.serviceTier, claims.pool, claims.organizationId);
      *
      * // Client-side: Use the client token
      * const client = createDecartClient({ apiKey: token.apiKey });

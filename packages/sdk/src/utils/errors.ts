@@ -17,6 +17,12 @@ export const ERROR_CODES = {
   QUEUE_RESULT_ERROR: "QUEUE_RESULT_ERROR",
   JOB_NOT_COMPLETED: "JOB_NOT_COMPLETED",
   TOKEN_CREATE_ERROR: "TOKEN_CREATE_ERROR",
+  /** Client-token verification: the token is not a valid, correctly signed Decart client token. */
+  TOKEN_INVALID: "TOKEN_INVALID",
+  /** Client-token verification: signature is fine but `exp` is in the past (beyond clock tolerance). */
+  TOKEN_EXPIRED: "TOKEN_EXPIRED",
+  /** Client-token verification could not run, e.g. the JWKS could not be fetched. Says nothing about the token. */
+  TOKEN_VERIFY_ERROR: "TOKEN_VERIFY_ERROR",
   FILES_UPLOAD_ERROR: "FILES_UPLOAD_ERROR",
   FILES_GET_ERROR: "FILES_GET_ERROR",
   FILES_DELETE_ERROR: "FILES_DELETE_ERROR",

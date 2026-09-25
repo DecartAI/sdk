@@ -42,6 +42,13 @@ Video models use the asynchronous Queue API - jobs are submitted and polled for 
 - `video/long-form-video-restyle.ts` - Transform existing video with `lucy-restyle-2`
 - `video/manual-polling.ts` - Manual job status polling
 
+### Client Tokens
+
+Short-lived tokens your server mints for browser or mobile clients.
+
+- `tokens/create-client-token.ts` - Mint a client token scoped to an origin
+- `tokens/verify-client-token.ts` - Verify a client token offline via the platform JWKS and read its claims (service tier, org, expiry)
+
 ### Realtime (Browser-only)
 
 These examples require browser APIs (WebRTC) and are for reference.
