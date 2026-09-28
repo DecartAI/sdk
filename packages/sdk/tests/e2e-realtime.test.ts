@@ -61,6 +61,7 @@ const REALTIME_MODELS: RealTimeModels[] = [
   "lucy-2.1",
   "lucy-2.5",
   "lucy-vton-3.5",
+  "lucy-latest",
 ];
 
 const TIMEOUT = 1 * 60 * 1000; // 1 minute
