@@ -71,11 +71,12 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
   }
 
   describe("Process API - Image Models", () => {
-    it("lucy-image-2: image-to-image", async () => {
+    it("lucy-image-2: image-to-image (prompt + reference_image)", async () => {
       const result = await client.process({
         model: models.image("lucy-image-2"),
-        prompt: "Oil painting in the style of Van Gogh",
+        prompt: "Oil painting in the style of Van Gogh, add the object from the reference image",
         data: imageBlob,
+        reference_image: imageBlob,
         seed: 333,
         enhance_prompt: false,
       });
@@ -83,21 +84,6 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       await expectResult(result, "lucy-image-2", ".png");
     });
 
-    it("lucy-image-2: image-to-image with reference_image", async () => {
-      const result = await client.process({
-        model: models.image("lucy-image-2"),
-        prompt: "Add the object from the reference image",
-        data: imageBlob,
-        reference_image: imageBlob,
-        seed: 334,
-        enhance_prompt: false,
-      });
-
-      await expectResult(result, "lucy-image-2-reference_image", ".png");
-    });
-  });
-
-  describe("Process API - Image Models (latest aliases)", () => {
     it("lucy-image-latest: image-to-image", async () => {
       const result = await client.process({
         model: models.image("lucy-image-latest"),
@@ -108,20 +94,6 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       });
 
       await expectResult(result, "lucy-image-latest", ".png");
-    });
-  });
-
-  describe("Process API - Image Models (deprecated names)", () => {
-    it("lucy-pro-i2i (deprecated): image-to-image", async () => {
-      const result = await client.process({
-        model: models.image("lucy-pro-i2i"),
-        prompt: "Oil painting in the style of Van Gogh",
-        data: imageBlob,
-        seed: 333,
-        enhance_prompt: false,
-      });
-
-      await expectResult(result, "lucy-pro-i2i", ".png");
     });
   });
 
@@ -148,88 +120,42 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       await expectResult(result, "lucy-restyle-2-reference_image", ".mp4");
     });
 
-    it("lucy-2.1: video editing (prompt)", async () => {
+    it("lucy-2.1: video editing (prompt + reference_image)", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-2.1"),
         prompt: "Watercolor painting style with soft brushstrokes",
-        data: videoBlob,
-        seed: 42,
-      });
-
-      await expectResult(result, "lucy-2.1-prompt", ".mp4");
-    });
-
-    it("lucy-2.1: video editing (reference_image)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-2.1"),
-        prompt: "",
         reference_image: imageBlob,
         data: videoBlob,
         seed: 42,
       });
 
-      await expectResult(result, "lucy-2.1-reference_image", ".mp4");
+      await expectResult(result, "lucy-2.1", ".mp4");
     });
 
-    it("lucy-2.5: video editing (prompt)", async () => {
+    it("lucy-2.5: video editing (prompt + reference_image)", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-2.5"),
         prompt: "Watercolor painting style with soft brushstrokes",
-        data: videoBlob,
-        seed: 42,
-      });
-
-      await expectResult(result, "lucy-2.5-prompt", ".mp4");
-    });
-
-    it("lucy-2.5: video editing (reference_image)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-2.5"),
-        prompt: "",
         reference_image: imageBlob,
         data: videoBlob,
         seed: 42,
       });
 
-      await expectResult(result, "lucy-2.5-reference_image", ".mp4");
+      await expectResult(result, "lucy-2.5", ".mp4");
     });
 
-    it("lucy-vton-3.5: virtual try-on (prompt)", async () => {
+    it("lucy-vton-3.5: virtual try-on (prompt + reference_image)", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-vton-3.5"),
-        prompt: "Wearing a red leather jacket",
-        data: videoBlob,
-        seed: 42,
-      });
-
-      await expectResult(result, "lucy-vton-3.5-prompt", ".mp4");
-    });
-
-    it("lucy-vton-3.5: virtual try-on (reference_image)", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-vton-3.5"),
-        prompt: "",
+        prompt: "Wearing the garment from the reference image",
         reference_image: garmentBlob,
         data: videoBlob,
         seed: 42,
       });
 
-      await expectResult(result, "lucy-vton-3.5-reference_image", ".mp4");
+      await expectResult(result, "lucy-vton-3.5", ".mp4");
     });
 
-    // Deprecated video model names (aliases)
-    it("lucy-restyle-v2v (deprecated): video restyling", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-restyle-v2v"),
-        prompt: "Cyberpunk neon city style",
-        data: videoBlob,
-        seed: 777,
-      });
-
-      await expectResult(result, "lucy-restyle-v2v", ".mp4");
-    });
-
-    // Latest aliases (server-side resolution)
     it("lucy-latest: video editing", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-latest"),
@@ -239,17 +165,6 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       });
 
       await expectResult(result, "lucy-latest", ".mp4");
-    });
-
-    it("lucy-restyle-latest: video restyling", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-restyle-latest"),
-        prompt: "Cyberpunk neon city style",
-        data: videoBlob,
-        seed: 777,
-      });
-
-      await expectResult(result, "lucy-restyle-latest", ".mp4");
     });
 
     it("lucy-clip-latest: video-to-video", async () => {
