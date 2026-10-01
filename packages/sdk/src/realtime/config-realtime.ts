@@ -34,6 +34,18 @@ export const REALTIME_CONFIG = {
     terminalEndReasons: ["moderation_violation", "insufficient_credits"],
     /** Close code for a policy termination. */
     terminalCloseCode: 1008,
+    /**
+     * The bouncer's concurrent-session refusal: an `error` message carrying
+     * `errorText`, then close `closeCode` with `closeReason`. Retrying it only
+     * takes a slot from whoever is next in line. 1013 with any other reason
+     * ("Try Again Later": upstream at capacity) is transient and still retries.
+     * Matched case-insensitively.
+     */
+    sessionLimit: {
+      closeCode: 1013,
+      closeReason: "session limit reached",
+      errorText: "concurrent session limit reached",
+    },
     permanentErrorSubstrings: [
       "permission denied",
       "not allowed",

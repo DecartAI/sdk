@@ -95,6 +95,15 @@ const realTimeClientConnectOptionsSchema = z.object({
    * model does not list it in `supportedSpeeds`). Omit it (the default) for standard mode.
    */
   speed: realtimeSpeedSchema.optional(),
+  /**
+   * How many times a failed connect is re-dialled before `connect()` rejects (default 5, exponential
+   * backoff from 1 s to 10 s). `0` dials exactly once. Apps that hand out connects from their own session
+   * queue should pass `0`: every retry is a fresh dial that competes with the people waiting in line.
+   * Refusals the server will not change its mind about (policy close 1008, concurrent-session limit
+   * 1013 "Session Limit Reached") are never retried regardless. Does not affect the automatic
+   * reconnect after an established session drops.
+   */
+  retries: z.number().int().min(0).optional(),
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp8", "vp9"]).optional(),
   /**
@@ -172,6 +181,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       initialState,
       resolution,
       speed,
+      retries,
       preferredVideoCodec,
     } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
@@ -243,6 +253,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialImageRef,
         initialPrompt,
         initialPassthrough: initialState?.passthrough,
+        connectRetries: retries,
         logger,
         videoCodec: preparedConnection.videoCodec,
         createMediaChannel: preparedConnection.createMediaChannel,

@@ -88,9 +88,24 @@ export type GenerationEnded = {
   reason: string;
 };
 
+/**
+ * Why the server ended a session on purpose. Terminal `generation_ended` reasons
+ * (`moderation_violation`, `insufficient_credits`) pass through as sent; the SDK
+ * derives the rest from the close:
+ * - `policy_violation`: close 1008 before a reason was sent.
+ * - `session_limit`: the API key's concurrent-session limit was reached (close 1013
+ *   "Session Limit Reached"). Rejoin your own queue instead of dialling again.
+ */
+export type SessionEndReason =
+  | "moderation_violation"
+  | "insufficient_credits"
+  | "policy_violation"
+  | "session_limit"
+  | (string & {});
+
 /** The server ended the session on purpose; the SDK will not reconnect. */
 export type SessionEnded = {
-  reason: string;
+  reason: SessionEndReason;
 };
 
 export type ConnectionClosed = {
