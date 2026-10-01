@@ -103,6 +103,31 @@ models.realtime("lucy-2.1").supportedSpeeds; // undefined
 
 Passing `speed` for a model without the capability logs a warning through the client's logger and the session runs at standard speed.
 
+#### Connect retries and refused sessions
+
+A failed connect is re-dialled up to 5 times with exponential backoff (1 s to 10 s) before
+`connect()` rejects. Two refusals are never retried, because the server would give the same answer:
+a policy close (code 1008) and the API key's concurrent-session limit (close 1013 "Session Limit
+Reached"). The session limit rejects `connect()` on the first attempt with the server's message
+(`Concurrent session limit reached.`); if it lands after the session is established, the session ends
+with a `sessionEnded` event whose `reason` is `"session_limit"`. A capacity refusal (1013 "Try Again
+Later") is transient and still retries.
+
+Apps that hand out connects from their own session queue should turn retries off: every retry is a
+fresh dial that takes a freed slot ahead of the people waiting in line.
+
+```ts
+const realtimeClient = await client.realtime.connect(stream, {
+  model,
+  retries: 0, // dial once; on failure, rejoin your own queue
+  // ...
+});
+
+realtimeClient.on("sessionEnded", ({ reason }) => {
+  // "session_limit" | "policy_violation" | "moderation_violation" | "insufficient_credits" | ...
+});
+```
+
 ### Watch a Stream
 
 A connected realtime session exposes an SDK `subscribeToken` once it reaches a

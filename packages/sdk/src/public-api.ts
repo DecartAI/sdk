@@ -53,6 +53,7 @@ export type {
   QueuePosition,
   QueuePositionMessage,
   SessionEnded,
+  SessionEndReason,
 } from "./realtime/types";
 export {
   type CanonicalModel,

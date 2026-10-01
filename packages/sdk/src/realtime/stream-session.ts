@@ -17,6 +17,7 @@ import type {
   PromptSendOptions,
   QueuePosition,
   SessionEnded,
+  SessionEndReason,
   SessionStarted,
   SetImagePayload,
 } from "./types";
@@ -32,19 +33,39 @@ function isTerminalEndReason(reason: string | undefined): boolean {
   return reason !== undefined && (REALTIME_CONFIG.session.terminalEndReasons as readonly string[]).includes(reason);
 }
 
-/** The reason is only sent once generation has started; earlier kills carry just the code. */
-function terminalReasonFromClose(cause: ConnectionLossCause): string | null {
-  return cause.code === REALTIME_CONFIG.session.terminalCloseCode ? "policy_violation" : null;
+const POLICY_VIOLATION: SessionEndReason = "policy_violation";
+const SESSION_LIMIT: SessionEndReason = "session_limit";
+
+function isSessionLimitClose(code: unknown, reason: unknown): boolean {
+  const { closeCode, closeReason } = REALTIME_CONFIG.session.sessionLimit;
+  return code === closeCode && typeof reason === "string" && reason.toLowerCase().includes(closeReason);
+}
+
+/**
+ * The 1008 reason is only sent once generation has started; earlier kills carry just
+ * the code. 1013 is terminal only with the session-limit reason: its other reason,
+ * "Try Again Later", is a transient capacity refusal.
+ */
+function terminalReasonFromClose(cause: ConnectionLossCause): SessionEndReason | null {
+  if (cause.code === REALTIME_CONFIG.session.terminalCloseCode) return POLICY_VIOLATION;
+  if (isSessionLimitClose(cause.code, cause.reason)) return SESSION_LIMIT;
+  return null;
 }
 
 /**
  * SignalingChannel only emits `closed` after the handshake, so a close during the
- * join reaches us as connect-failure text rather than an event.
+ * join reaches us as connect-failure text rather than an event. The session-limit
+ * refusal is preceded by an `error` message, which is usually what rejects the join;
+ * the 1013 close lands a tick later, so both texts are recognised.
  */
-function terminalReasonFromError(error: unknown): string | null {
+function terminalReasonFromError(error: unknown): SessionEndReason | null {
   if (!(error instanceof Error)) return null;
-  const marker = `websocket closed: ${REALTIME_CONFIG.session.terminalCloseCode}`;
-  return error.message.toLowerCase().includes(marker) ? "policy_violation" : null;
+  const message = error.message.toLowerCase();
+  const { terminalCloseCode, sessionLimit } = REALTIME_CONFIG.session;
+  if (message.includes(`websocket closed: ${terminalCloseCode}`)) return POLICY_VIOLATION;
+  if (message.includes(`websocket closed: ${sessionLimit.closeCode} ${sessionLimit.closeReason}`)) return SESSION_LIMIT;
+  if (message.includes(sessionLimit.errorText)) return SESSION_LIMIT;
+  return null;
 }
 
 export function encodeSubscribeToken(roomName: string, options: { frameTiming?: boolean } = {}): string {
@@ -81,6 +102,8 @@ interface StreamSessionConfig {
   initialImageRef?: string;
   initialPrompt?: InitialPrompt;
   initialPassthrough?: boolean;
+  /** Re-dials of a failed `connect()` before it rejects; `0` dials once. Defaults to the config budget. */
+  connectRetries?: number;
   logger?: Logger;
   videoCodec?: VideoCodec;
   createMediaChannel: MediaChannelFactory;
@@ -142,12 +165,13 @@ export class StreamSession {
     this.logger.info("realtime connect: starting", { attemptCycle: attempt });
 
     try {
-      await pRetry(() => this.runOneConnect(attempt), this.retryOptionsFor(attempt));
+      await pRetry(() => this.runOneConnect(attempt), this.retryOptionsFor(attempt, this.config.connectRetries));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const terminal = this.terminalEndReason ?? terminalReasonFromError(error);
-      if (terminal && !this.disposed) {
-        this.finishTerminally(terminal, { source: "connect", error: message });
+      if (terminal) {
+        // Already disposed when the refusing socket's close event got here first.
+        if (!this.disposed) this.finishTerminally(terminal, { source: "connect", error: message });
         throw error;
       }
       this.logger.error("realtime connect: exhausted all retries", { error: message });
@@ -195,9 +219,10 @@ export class StreamSession {
     }
   }
 
-  private retryOptionsFor(attempt: number) {
+  private retryOptionsFor(attempt: number, retries: number = REALTIME_CONFIG.session.retry.retries) {
     return {
       ...REALTIME_CONFIG.session.retry,
+      retries,
       onFailedAttempt: (_error: RetryAttemptError) => {
         this.tearDown();
       },
@@ -374,10 +399,11 @@ export class StreamSession {
    * and bill another session, and "reconnecting" would hide the reason.
    */
   private finishTerminally(reason: string, cause: ConnectionLossCause): void {
+    // The cause's own `reason` is the raw close text; the SDK reason must win.
     this.logger.warn("realtime session ended by the server; not reconnecting", {
+      ...cause,
       reason,
       state: this.state,
-      ...cause,
     });
     this.terminalEndReason = reason;
     this.disposed = true;

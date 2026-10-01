@@ -695,6 +695,42 @@ describe("realtime.connect options", () => {
     realtimeClient.disconnect();
   });
 
+  it("retries: 0 dials once and rejects on the first transient refusal", async () => {
+    class RefusingWebSocket extends FakeWebSocket {
+      send(data: string): void {
+        if (JSON.parse(data).type === "livekit_join") {
+          setTimeout(() => this.onclose?.({ code: 1013, reason: "Try Again Later" }), 0);
+        }
+      }
+    }
+    vi.stubGlobal("WebSocket", RefusingWebSocket);
+    const client = await createClientWithLogger(logger);
+
+    await expect(
+      client.connect(null, {
+        model: models.realtime("lucy-2.5"),
+        retries: 0,
+        onRemoteStream: vi.fn(),
+      }),
+    ).rejects.toThrow("WebSocket closed: 1013 Try Again Later");
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it("rejects a negative or fractional retries option", async () => {
+    const client = await createClientWithLogger(logger);
+
+    for (const retries of [-1, 1.5]) {
+      await expect(
+        client.connect(null, {
+          model: models.realtime("lucy-2.5"),
+          retries,
+          onRemoteStream: vi.fn(),
+        }),
+      ).rejects.toThrow();
+    }
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
   it("rejects unsupported realtime resolutions", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const client = createRealTimeClient({
@@ -1515,21 +1551,44 @@ describe("StreamSession startup orchestration", () => {
     expect(firstRoom.disconnect).toHaveBeenCalled();
   });
 
-  const connectSession = async (opts: { initialImage?: string; url?: string } = {}) => {
-    const mediaChannel: MediaChannel = {
-      localStream: null,
-      on: vi.fn(),
-      off: vi.fn(),
-      connect: vi.fn().mockResolvedValue(undefined),
-      publishLocalTracks: vi.fn().mockResolvedValue(undefined),
-      replaceVideoTrack: vi.fn().mockResolvedValue(undefined),
-      disconnect: vi.fn(),
-    };
+  const stubMediaChannel = (): MediaChannel => ({
+    localStream: null,
+    on: vi.fn(),
+    off: vi.fn(),
+    connect: vi.fn().mockResolvedValue(undefined),
+    publishLocalTracks: vi.fn().mockResolvedValue(undefined),
+    replaceVideoTrack: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn(),
+  });
+
+  /** lucy14b-rt-demo's `isCapacityRefusal`; the SDK's refusal errors must keep matching it. */
+  const CAPACITY_REFUSAL = /\b1013\b|at capacity|session limit|concurrent session|try again later/i;
+
+  /** Starts a connect and opens the socket, leaving the join unanswered. */
+  const openHandshake = async (opts: { initialImage?: string; connectRetries?: number } = {}) => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const session = new StreamSession({
       url: "wss://example.test/realtime",
       localStream: null,
-      createMediaChannel: () => mediaChannel,
+      createMediaChannel: stubMediaChannel,
+      ...opts,
+    });
+    const ended: string[] = [];
+    session.on("sessionEnded", (e) => ended.push(e.reason));
+    const connectPromise = session.connect();
+    connectPromise.catch(() => {});
+    const ws = FakeWebSocket.instances.at(-1) as FakeWebSocket;
+    ws.onopen?.();
+    await flushMicrotasks();
+    return { session, ws, ended, connectPromise };
+  };
+
+  const connectSession = async (opts: { initialImage?: string; url?: string } = {}) => {
+    const { StreamSession } = await import("../src/realtime/stream-session.js");
+    const session = new StreamSession({
+      url: "wss://example.test/realtime",
+      localStream: null,
+      createMediaChannel: stubMediaChannel,
       ...opts,
     });
     const connectPromise = session.connect();
@@ -1711,6 +1770,103 @@ describe("StreamSession startup orchestration", () => {
 
     expect(ended).toEqual(["policy_violation"]);
     expect(errors).toEqual([]);
+  });
+
+  it("does not retry the bouncer's session-limit refusal during the handshake", async () => {
+    // The bouncer sends an `error` message, then closes 1013 "Session Limit Reached". Each
+    // retry would be a fresh dial that takes a freed slot ahead of the app's own queue.
+    const { session, ws, ended, connectPromise } = await openHandshake({ initialImage: "queued-garment" });
+
+    ws.receive({ type: "error", error: "Concurrent session limit reached." });
+    const error = await connectPromise.catch((e: Error) => e);
+    // The close lands a tick later, as it does in a browser.
+    ws.onclose?.({ code: 1013, reason: "Session Limit Reached" });
+    await flushMicrotasks();
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe("Concurrent session limit reached.");
+    expect((error as Error).message).toMatch(CAPACITY_REFUSAL);
+    expect(ended).toEqual(["session_limit"]);
+    expect(session.getConnectionState()).toBe("disconnected");
+    // One socket only: no retry re-sent the garment or took someone else's slot.
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it("treats a bare 1013 Session Limit Reached close during the handshake as terminal", async () => {
+    const { ws, ended, connectPromise } = await openHandshake();
+
+    ws.onclose?.({ code: 1013, reason: "Session Limit Reached" });
+    const error = await connectPromise.catch((e: Error) => e);
+
+    expect((error as Error).message).toBe("WebSocket closed: 1013 Session Limit Reached");
+    expect((error as Error).message).toMatch(CAPACITY_REFUSAL);
+    expect(ended).toEqual(["session_limit"]);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it("still retries a 1013 Try Again Later close during the handshake", async () => {
+    // Upstream capacity is transient; the next dial may well succeed.
+    vi.useFakeTimers();
+    const { session, ws, ended, connectPromise } = await openHandshake();
+
+    ws.onclose?.({ code: 1013, reason: "Try Again Later" });
+    await flushMicrotasks();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.session.retry.minTimeout);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    const retried = FakeWebSocket.instances[1];
+    retried.onopen?.();
+    await flushMicrotasks();
+    sendRoomInfo(retried);
+    await expect(connectPromise).resolves.toBeUndefined();
+
+    expect(ended).toEqual([]);
+    session.disconnect();
+  });
+
+  it("connectRetries: 0 rejects a transient handshake failure after a single dial", async () => {
+    vi.useFakeTimers();
+    const { session, ws, ended, connectPromise } = await openHandshake({ connectRetries: 0 });
+
+    ws.onclose?.({ code: 1013, reason: "Try Again Later" });
+    await expect(connectPromise).rejects.toThrow("WebSocket closed: 1013 Try Again Later");
+    await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.session.retry.maxTimeout);
+
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(ended).toEqual([]);
+    expect(session.getConnectionState()).toBe("disconnected");
+  });
+
+  it("ends an established session on a 1013 Session Limit Reached close without reconnecting", async () => {
+    const { session, ws } = await connectSession();
+    const states: string[] = [];
+    const ended: string[] = [];
+    session.on("connectionChange", (s) => states.push(s));
+    session.on("sessionEnded", (e) => ended.push(e.reason));
+
+    const socketsBefore = FakeWebSocket.instances.length;
+    ws.onclose?.({ code: 1013, reason: "Session Limit Reached" });
+    await flushMicrotasks();
+
+    expect(ended).toEqual(["session_limit"]);
+    expect(states).not.toContain("reconnecting");
+    expect(states.at(-1)).toBe("disconnected");
+    expect(FakeWebSocket.instances.length).toBe(socketsBefore);
+  });
+
+  it("still reconnects an established session after a 1013 Try Again Later close", async () => {
+    const { session, ws } = await connectSession();
+    const states: string[] = [];
+    session.on("connectionChange", (s) => states.push(s));
+
+    const socketsBefore = FakeWebSocket.instances.length;
+    ws.onclose?.({ code: 1013, reason: "Try Again Later" });
+    await flushMicrotasks();
+
+    expect(states).toContain("reconnecting");
+    expect(FakeWebSocket.instances.length).toBe(socketsBefore + 1);
+    session.disconnect();
   });
 });
 
