@@ -2700,8 +2700,8 @@ describe("Canonical Model Names", () => {
       expect(model.name).toBe("lucy-2.1");
       expect(model.urlPath).toBe("/v1/stream");
       expect(model.fps).toEqual({ ideal: 30, max: 30 });
-      expect(model.width).toBe(1088);
-      expect(model.height).toBe(624);
+      expect(model.width).toBe(1280);
+      expect(model.height).toBe(720);
     });
 
     it("lucy-2.5 canonical name works", () => {
@@ -2788,8 +2788,8 @@ describe("Canonical Model Names", () => {
       expect(model.name).toBe("lucy-latest");
       expect(model.urlPath).toBe("/v1/stream");
       expect(model.fps).toEqual({ ideal: 30, max: 30 });
-      expect(model.width).toBe(1088);
-      expect(model.height).toBe(624);
+      expect(model.width).toBe(1280);
+      expect(model.height).toBe(720);
     });
 
     it("lucy-vton-latest works as realtime model and resolves server-side to lucy-vton-3.5", () => {
@@ -2816,8 +2816,8 @@ describe("Canonical Model Names", () => {
       expect(model.urlPath).toBe("/v1/generate/lucy-latest");
       expect(model.queueUrlPath).toBe("/v1/jobs/lucy-latest");
       expect(model.fps).toBe(20);
-      expect(model.width).toBe(1088);
-      expect(model.height).toBe(624);
+      expect(model.width).toBe(1280);
+      expect(model.height).toBe(720);
     });
 
     it("lucy-vton-latest works as video model and resolves server-side to lucy-vton-3.5", () => {

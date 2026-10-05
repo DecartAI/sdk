@@ -131,9 +131,17 @@ describe("Lucy 2.1 realtime", () => {
     });
 
     it("has expected dimensions", () => {
+      // The 720/640 release set: the pod snaps the generation shape from the
+      // first input frame's aspect ratio, so the capture should be native 720p.
       const lucyModel = models.realtime("lucy-2.1");
-      expect(lucyModel.width).toBe(1088);
-      expect(lucyModel.height).toBe(624);
+      expect(lucyModel.width).toBe(1280);
+      expect(lucyModel.height).toBe(720);
+    });
+
+    it("lucy-latest captures at the same 720p shape as the model it resolves to", () => {
+      const latest = models.realtime("lucy-latest");
+      expect(latest.width).toBe(1280);
+      expect(latest.height).toBe(720);
     });
 
     it("has correct fps", () => {
