@@ -371,7 +371,6 @@ const _models = {
       inputSchema: z.object({}),
       supportedSpeeds: ["fast"],
     },
-    // No supportedSpeeds: lucy-vton-3.6 is not offered on the fast tier.
     "lucy-vton-3.6": {
       urlPath: "/v1/stream",
       name: "lucy-vton-3.6" as const,
@@ -600,8 +599,8 @@ export const models = {
    * Available options:
    *   - `"lucy-2.1"` - Lucy 2.1 realtime video editing
    *   - `"lucy-2.5"` - Lucy 2.5 realtime video editing
-   *   - `"lucy-vton-3.5"` - Lucy virtual try-on 3.5 (what `"lucy-vton-latest"` resolves to)
-   *   - `"lucy-vton-3.6"` - Lucy virtual try-on 3.6 (opt-in by name)
+   *   - `"lucy-vton-3.5"` - Lucy virtual try-on 3.5
+   *   - `"lucy-vton-3.6"` - Lucy virtual try-on 3.6
    *   - `"lucy-restyle-2"` - Realtime video restyling
    */
   realtime: <T extends RealTimeModels>(model: T): ModelDefinition<T> => {
@@ -619,8 +618,8 @@ export const models = {
    *   - `"lucy-clip"` - Video-to-video editing
    *   - `"lucy-2.1"` - Long-form video editing (Lucy 2.1)
    *   - `"lucy-2.5"` - Long-form video editing (Lucy 2.5)
-   *   - `"lucy-vton-3.5"` - Virtual try-on 3.5 video editing (what `"lucy-vton-latest"` resolves to)
-   *   - `"lucy-vton-3.6"` - Virtual try-on 3.6 video editing (opt-in by name)
+   *   - `"lucy-vton-3.5"` - Virtual try-on 3.5 video editing
+   *   - `"lucy-vton-3.6"` - Virtual try-on 3.6 video editing
    *   - `"lucy-restyle-2"` - Video restyling
    */
   video: <T extends VideoModels>(model: T): ModelDefinition<T> & { fps: number; queueUrlPath: string } => {
