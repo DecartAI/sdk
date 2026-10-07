@@ -6,13 +6,27 @@ const CANONICAL_MODEL_NAMES = [
   "lucy-2.1",
   "lucy-2.5",
   "lucy-vton-3.5",
+  "lucy-vton-3.6",
   "lucy-restyle-2",
   "lucy-clip",
   "lucy-image-2",
 ] as const;
 
-const CANONICAL_REALTIME_MODEL_NAMES = ["lucy-2.1", "lucy-2.5", "lucy-vton-3.5", "lucy-restyle-2"] as const;
-const CANONICAL_VIDEO_MODEL_NAMES = ["lucy-clip", "lucy-2.1", "lucy-2.5", "lucy-vton-3.5", "lucy-restyle-2"] as const;
+const CANONICAL_REALTIME_MODEL_NAMES = [
+  "lucy-2.1",
+  "lucy-2.5",
+  "lucy-vton-3.5",
+  "lucy-vton-3.6",
+  "lucy-restyle-2",
+] as const;
+const CANONICAL_VIDEO_MODEL_NAMES = [
+  "lucy-clip",
+  "lucy-2.1",
+  "lucy-2.5",
+  "lucy-vton-3.5",
+  "lucy-vton-3.6",
+  "lucy-restyle-2",
+] as const;
 const CANONICAL_IMAGE_MODEL_NAMES = ["lucy-image-2"] as const;
 
 export const canonicalRealtimeModels = z.enum(CANONICAL_REALTIME_MODEL_NAMES);
@@ -53,6 +67,7 @@ export const realtimeModels = z.union([
   z.literal("lucy-2.1"),
   z.literal("lucy-2.5"),
   z.literal("lucy-vton-3.5"),
+  z.literal("lucy-vton-3.6"),
   z.literal("lucy-restyle-2"),
   // Latest aliases (server-side resolution)
   z.literal("lucy-latest"),
@@ -65,6 +80,7 @@ export const videoModels = z.union([
   z.literal("lucy-2.1"),
   z.literal("lucy-2.5"),
   z.literal("lucy-vton-3.5"),
+  z.literal("lucy-vton-3.6"),
   z.literal("lucy-restyle-2"),
   // Latest aliases (server-side resolution)
   z.literal("lucy-latest"),
@@ -240,6 +256,7 @@ export const modelInputSchemas = {
   "lucy-2.1": videoEdit2Schema,
   "lucy-2.5": videoEdit2Schema,
   "lucy-vton-3.5": videoEdit2Schema,
+  "lucy-vton-3.6": videoEdit2Schema,
   // Latest aliases (server-side resolution)
   "lucy-latest": videoEdit2Schema,
   "lucy-vton-latest": videoEdit2Schema,
@@ -354,6 +371,15 @@ const _models = {
       inputSchema: z.object({}),
       supportedSpeeds: ["fast"],
     },
+    // No supportedSpeeds: lucy-vton-3.6 is not offered on the fast tier.
+    "lucy-vton-3.6": {
+      urlPath: "/v1/stream",
+      name: "lucy-vton-3.6" as const,
+      fps: { ideal: 30, max: 30 },
+      width: 1280,
+      height: 720,
+      inputSchema: z.object({}),
+    },
     "lucy-restyle-2": {
       urlPath: "/v1/stream",
       name: "lucy-restyle-2" as const,
@@ -461,6 +487,15 @@ const _models = {
       height: 720,
       inputSchema: modelInputSchemas["lucy-vton-3.5"],
     },
+    "lucy-vton-3.6": {
+      urlPath: "/v1/generate/lucy-vton-3.6",
+      queueUrlPath: "/v1/jobs/lucy-vton-3.6",
+      name: "lucy-vton-3.6" as const,
+      fps: 20,
+      width: 1280,
+      height: 720,
+      inputSchema: modelInputSchemas["lucy-vton-3.6"],
+    },
     "lucy-restyle-2": {
       urlPath: "/v1/generate/lucy-restyle-2",
       queueUrlPath: "/v1/jobs/lucy-restyle-2",
@@ -565,7 +600,8 @@ export const models = {
    * Available options:
    *   - `"lucy-2.1"` - Lucy 2.1 realtime video editing
    *   - `"lucy-2.5"` - Lucy 2.5 realtime video editing
-   *   - `"lucy-vton-3.5"` - Lucy virtual try-on 3.5 (latest)
+   *   - `"lucy-vton-3.5"` - Lucy virtual try-on 3.5 (what `"lucy-vton-latest"` resolves to)
+   *   - `"lucy-vton-3.6"` - Lucy virtual try-on 3.6 (opt-in by name)
    *   - `"lucy-restyle-2"` - Realtime video restyling
    */
   realtime: <T extends RealTimeModels>(model: T): ModelDefinition<T> => {
@@ -583,7 +619,8 @@ export const models = {
    *   - `"lucy-clip"` - Video-to-video editing
    *   - `"lucy-2.1"` - Long-form video editing (Lucy 2.1)
    *   - `"lucy-2.5"` - Long-form video editing (Lucy 2.5)
-   *   - `"lucy-vton-3.5"` - Virtual try-on 3.5 video editing (latest)
+   *   - `"lucy-vton-3.5"` - Virtual try-on 3.5 video editing (what `"lucy-vton-latest"` resolves to)
+   *   - `"lucy-vton-3.6"` - Virtual try-on 3.6 video editing (opt-in by name)
    *   - `"lucy-restyle-2"` - Video restyling
    */
   video: <T extends VideoModels>(model: T): ModelDefinition<T> & { fps: number; queueUrlPath: string } => {

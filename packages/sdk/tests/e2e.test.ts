@@ -156,6 +156,18 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       await expectResult(result, "lucy-vton-3.5", ".mp4");
     });
 
+    it("lucy-vton-3.6: virtual try-on (prompt + reference_image)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-vton-3.6"),
+        prompt: "Wearing the garment from the reference image",
+        reference_image: garmentBlob,
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-vton-3.6", ".mp4");
+    });
+
     it("lucy-latest: video editing", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-latest"),
