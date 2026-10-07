@@ -1,5 +1,6 @@
 import type { Logger } from "../utils/logger";
 import type { RealTimeClient, RealTimeClientConnectOptions, RealtimeMediaStream } from "./client";
+import type { ApiKeyProvider } from "./credential";
 import type { CheckConnectivityOptions, ConnectivityReport } from "./preflight-types";
 import type { RealTimeSubscribeClient, SubscribeOptions } from "./subscribe-client";
 
@@ -7,6 +8,7 @@ export type RealtimeFactoryOptions = {
   publishBaseUrl: string;
   subscribeBaseUrl: string;
   apiKey: string;
+  apiKeyProvider?: ApiKeyProvider;
   integration?: string;
   logger: Logger;
   telemetryEnabled: boolean;

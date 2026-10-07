@@ -1,6 +1,7 @@
 import mitt, { type Emitter } from "mitt";
 import pRetry, { AbortError } from "p-retry";
 
+import { DecartSDKException } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import type { MediaChannel, MediaChannelFactory, VideoCodec } from "./media-channel";
@@ -93,7 +94,15 @@ type StreamSessionEvents = {
 };
 
 interface StreamSessionConfig {
+  /** Signaling URL of the first dial. */
   url: string;
+  /**
+   * Signaling URL for every later dial (connect retries and reconnects), resolved right before the
+   * socket opens so it can carry a freshly minted client token. Defaults to `url`. A
+   * `DecartSDKException` thrown here (expired token, unusable provider result) is final: the dial
+   * is not retried.
+   */
+  redialUrl?: () => string | Promise<string>;
   integration?: string;
   observability?: RealtimeObservability;
   frameTiming?: boolean;
@@ -118,6 +127,7 @@ export class StreamSession {
   private queue: QueuePosition | null = null;
 
   private disposed = false;
+  private dialed = false;
   private currentAttempt = 0;
   private teardownGeneration = 0;
 
@@ -232,6 +242,15 @@ export class StreamSession {
         if (terminal) {
           this.terminalEndReason = terminal;
           this.logger.error("realtime connect: session refused, not retrying", { reason: terminal });
+          return false;
+        }
+        // The SDK judged this dial itself (expired client token, unusable provider result); another
+        // dial would get the same answer from the server.
+        if (error instanceof DecartSDKException) {
+          this.logger.error("realtime connect: credential rejected, not retrying", {
+            code: error.sdkError.code,
+            error: error.message,
+          });
           return false;
         }
         const msg = error.message.toLowerCase();
@@ -444,9 +463,26 @@ export class StreamSession {
       });
   }
 
+  /**
+   * The first dial uses the connect-time URL; every later one asks `redialUrl`, so a reconnect
+   * never reuses a token that expired while the session ran.
+   */
+  private resolveDialUrl(): string | Promise<string> {
+    const redial = this.dialed ? this.config.redialUrl : undefined;
+    this.dialed = true;
+    if (!redial) return this.config.url;
+    const url = redial();
+    if (typeof url === "string") return url;
+    return url.then((resolved) => {
+      // Disconnected while the credential was being fetched: do not dial at all.
+      if (this.disposed) throw new AbortError("Stale connect attempt");
+      return resolved;
+    });
+  }
+
   private createTransport(): void {
     this.signaling = new SignalingChannel({
-      url: this.config.url,
+      url: () => this.resolveDialUrl(),
       integration: this.config.integration,
       logger: this.logger,
       observability: this.config.observability,

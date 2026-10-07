@@ -9,6 +9,7 @@ export const createBrowserRealtime: CreateRealtime = (options) => {
   const publish = createRealTimeClient({
     baseUrl: options.publishBaseUrl,
     apiKey: options.apiKey,
+    apiKeyProvider: options.apiKeyProvider,
     integration: options.integration,
     logger: options.logger,
     telemetryEnabled: options.telemetryEnabled,
@@ -17,6 +18,7 @@ export const createBrowserRealtime: CreateRealtime = (options) => {
   const subscribe = createRealTimeSubscribeClient({
     baseUrl: options.subscribeBaseUrl,
     apiKey: options.apiKey,
+    apiKeyProvider: options.apiKeyProvider,
     integration: options.integration,
     logger: options.logger,
     createFrameMetadataWorker,

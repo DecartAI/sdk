@@ -1,8 +1,9 @@
 import type { RemoteParticipant, RemoteTrack, Room } from "livekit-client";
 
-import { classifyWebrtcError, createSDKError, type DecartSDKError, ERROR_CODES } from "../utils/errors";
+import { classifyWebrtcError, createSDKError, type DecartSDKError, ERROR_CODES, unwrapSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
+import { type ApiKeyProvider, createCredentialSource } from "./credential";
 import { createEventBuffer } from "./event-buffer";
 import { loadLiveKitClient } from "./livekit";
 import type { DiagnosticEvent } from "./observability/diagnostics";
@@ -25,15 +26,6 @@ type WatchStreamCredentialsRequest = {
   apiKey: string;
   roomName: string;
 };
-
-function isDecartSDKError(error: unknown): error is DecartSDKError {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    typeof (error as Partial<DecartSDKError>).code === "string" &&
-    typeof (error as Partial<DecartSDKError>).message === "string"
-  );
-}
 
 function createFrameMetadataSubscribeUnsupportedError(detail?: string): DecartSDKError {
   const suffix = detail ? `: ${detail}` : "";
@@ -79,6 +71,8 @@ export type SubscribeOptions = {
 export type RealTimeSubscribeClientOptions = {
   baseUrl: string;
   apiKey: string;
+  /** Called before each subscribe for a fresh credential; wins over `apiKey`. */
+  apiKeyProvider?: ApiKeyProvider;
   integration?: string;
   logger: Logger;
   createFrameMetadataWorker?: () => Worker;
@@ -125,8 +119,9 @@ async function fetchWatchStreamCredentials(opts: WatchStreamCredentialsRequest):
 }
 
 export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptions) => {
-  const { baseUrl, apiKey, integration } = opts;
+  const { baseUrl, integration } = opts;
   const logger = opts.logger ?? createConsoleLogger("info");
+  const nextCredential = createCredentialSource({ apiKey: opts.apiKey, apiKeyProvider: opts.apiKeyProvider });
 
   const subscribe = async (options: SubscribeOptions): Promise<RealTimeSubscribeClient> => {
     const { room_name: roomName, frame_timing: frameTiming } = decodeSubscribeToken(options.token);
@@ -146,6 +141,8 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
     };
 
     try {
+      // An expired client token is refused before anything is loaded or fetched.
+      const apiKey = await nextCredential();
       const { Room: LiveKitRoom, RoomEvent } = await loadLiveKitClient();
       observability = new RealtimeObservability({
         telemetryEnabled: false,
@@ -246,9 +243,10 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
         room.disconnect().catch(() => {});
       }
       frameMetadataWorker?.terminate();
-      if (isDecartSDKError(error)) {
-        logger.error("Realtime subscribe error", { error: error.message });
-        throw error;
+      const sdkError = unwrapSDKError(error);
+      if (sdkError) {
+        logger.error("Realtime subscribe error", { error: sdkError.message });
+        throw sdkError;
       }
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error("Realtime subscribe error", { error: err.message });

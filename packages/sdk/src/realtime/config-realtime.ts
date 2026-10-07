@@ -46,6 +46,13 @@ export const REALTIME_CONFIG = {
       closeReason: "session limit reached",
       errorText: "concurrent session limit reached",
     },
+    /**
+     * Client-token expiry preflight: a JWT credential whose `exp` is more than this many seconds
+     * in the past by the local clock is refused before the dial with TOKEN_EXPIRED, instead of by
+     * the server after a round trip. The allowance covers clock skew only: the server grants none,
+     * so a token this late would be refused anyway.
+     */
+    clientTokenExpiryToleranceSeconds: 5,
     permanentErrorSubstrings: [
       "permission denied",
       "not allowed",

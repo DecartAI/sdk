@@ -46,10 +46,69 @@ export function createSDKError(
   return { code, message, data, cause };
 }
 
+export function isDecartSDKError(error: unknown): error is DecartSDKError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    typeof (error as Partial<DecartSDKError>).code === "string" &&
+    typeof (error as Partial<DecartSDKError>).message === "string"
+  );
+}
+
+/**
+ * An `Error` carrying a {@link DecartSDKError}, for code paths that must throw real errors: p-retry
+ * rejects anything else, and the session's `error` channel is typed `Error`. `classifyWebrtcError`
+ * and the public entry points unwrap it, so callers still receive the plain SDK error.
+ */
+export class DecartSDKException extends Error {
+  readonly sdkError: DecartSDKError;
+
+  constructor(sdkError: DecartSDKError) {
+    super(sdkError.message);
+    this.name = "DecartSDKException";
+    this.sdkError = sdkError;
+    if (sdkError.cause) this.cause = sdkError.cause;
+  }
+}
+
+/** The plain SDK error when `error` is one or wraps one, else `undefined`. */
+export function unwrapSDKError(error: unknown): DecartSDKError | undefined {
+  if (error instanceof DecartSDKException) return error.sdkError;
+  return isDecartSDKError(error) ? error : undefined;
+}
+
 export function createInvalidApiKeyError(): DecartSDKError {
   return createSDKError(
     ERROR_CODES.INVALID_API_KEY,
-    "Missing API key. Pass `apiKey` to createDecartClient() or set the DECART_API_KEY environment variable.",
+    "Missing API key. Pass `apiKey` or `apiKeyProvider` to createDecartClient(), or set the DECART_API_KEY environment variable.",
+  );
+}
+
+/** The platform's default client-token TTL (`tokens.create({ expiresIn })`), quoted in the expiry message. */
+const CLIENT_TOKEN_DEFAULT_TTL_SECONDS = 60;
+
+/** An expired client token caught by the realtime preflight, before any dial. */
+export function createClientTokenExpiredError(expiredSecondsAgo: number, expiresAt: string): DecartSDKError {
+  return createSDKError(
+    ERROR_CODES.TOKEN_EXPIRED,
+    `Client token expired ${expiredSecondsAgo} s ago (exp ${expiresAt}). Mint a new one right before connecting, or pass apiKeyProvider to createDecartClient so the SDK fetches a fresh token before every connect and reconnect. Client tokens expire ${CLIENT_TOKEN_DEFAULT_TTL_SECONDS} s after minting by default (tokens.create({ expiresIn })).`,
+    { claim: "exp", expiresAt, expiredSecondsAgo },
+  );
+}
+
+export function createApiKeyProviderResultError(received: unknown): DecartSDKError {
+  const got =
+    received === ""
+      ? "an empty string"
+      : received === null
+        ? "null"
+        : Array.isArray(received)
+          ? "an array"
+          : typeof received;
+  return createSDKError(
+    ERROR_CODES.INVALID_API_KEY,
+    `apiKeyProvider must resolve to a non-empty API key string (a client token's apiKey); got ${got}.`,
+    { received: got },
   );
 }
 
@@ -106,6 +165,9 @@ export function createWebrtcSignalingError(error: Error): DecartSDKError {
  * Classify a raw WebRTC error into a specific SDK error based on its message.
  */
 export function classifyWebrtcError(error: Error): DecartSDKError {
+  // Already judged by the SDK (e.g. an expired client token on reconnect): surface it unchanged.
+  if (error instanceof DecartSDKException) return error.sdkError;
+
   const msg = error.message.toLowerCase();
   const source = (error as Error & { source?: string }).source;
 

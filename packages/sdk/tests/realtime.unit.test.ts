@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { models } from "../src/index.js";
+import { createDecartClient, ERROR_CODES, models } from "../src/index.js";
 import { prepareBrowserConnection } from "../src/realtime/browser/prepare-connection.js";
 import { REALTIME_CONFIG } from "../src/realtime/config-realtime.js";
 import { createLiveKitMediaChannel, type MediaChannel } from "../src/realtime/media-channel.js";
 import type { ServerError } from "../src/realtime/types.js";
+import type { DecartSDKError } from "../src/utils/errors.js";
 
 const liveKitMock = vi.hoisted(() => {
   const roomInstances: MockRoom[] = [];
@@ -108,6 +109,11 @@ const flushMicrotasks = async () => {
   await Promise.resolve();
   await Promise.resolve();
 };
+
+const base64url = (text: string) => btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+/** An unsigned JWT in the platform's client-token shape (`apiKey` and `token` both carry it). */
+const clientTokenJwt = (claims: Record<string, unknown>) =>
+  `eyJhbGciOiJFZERTQSJ9.${base64url(JSON.stringify({ sub: "user_1", ...claims }))}.sig`;
 
 type FakeWebSocketMessageEvent = {
   data: string;
@@ -403,6 +409,42 @@ describe("realtime.subscribe", () => {
     client.disconnect();
   });
 
+  it("asks apiKeyProvider for the watch-stream credential instead of the static key", async () => {
+    const { createRealTimeSubscribeClient } = await import("../src/realtime/subscribe-client.js");
+    const apiKeyProvider = vi.fn(async () => "fresh-viewer-token");
+    const subscriber = createRealTimeSubscribeClient({
+      baseUrl: "https://api.example.test",
+      apiKey: "stale-key",
+      apiKeyProvider,
+      logger,
+    });
+
+    const client = await subscriber.subscribe({
+      token: btoa(JSON.stringify({ room_name: "room-1" })),
+      onRemoteStream: () => {},
+    });
+
+    expect(apiKeyProvider).toHaveBeenCalledTimes(1);
+    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["x-api-key"]).toBe("fresh-viewer-token");
+    client.disconnect();
+  });
+
+  it("refuses an expired client token before fetching watch-stream credentials", async () => {
+    const { createRealTimeSubscribeClient } = await import("../src/realtime/subscribe-client.js");
+    const subscriber = createRealTimeSubscribeClient({
+      baseUrl: "https://api.example.test",
+      apiKey: clientTokenJwt({ exp: Math.floor(Date.now() / 1000) - 600 }),
+      logger,
+    });
+
+    await expect(
+      subscriber.subscribe({ token: btoa(JSON.stringify({ room_name: "room-1" })), onRemoteStream: () => {} }),
+    ).rejects.toMatchObject({ code: ERROR_CODES.TOKEN_EXPIRED, data: { expiredSecondsAgo: 600 } });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(liveKitMock.roomInstances).toHaveLength(0);
+  });
+
   it("terminates the frame-metadata worker when subscribe connect fails", async () => {
     const { createRealTimeSubscribeClient } = await import("../src/realtime/subscribe-client.js");
     const worker = { terminate: vi.fn() } as unknown as Worker;
@@ -540,6 +582,8 @@ describe("realtime.connect options", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it("adds resolution to the realtime URL when provided", async () => {
@@ -757,6 +801,197 @@ describe("realtime.connect options", () => {
       }),
     ).rejects.toThrow();
     expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  describe("client token expiry preflight and apiKeyProvider", () => {
+    const NOW = Date.UTC(2026, 9, 7, 12, 0, 0);
+    const expIn = (seconds: number) => Math.floor(NOW / 1000) + seconds;
+    const apiKeyOf = (ws: FakeWebSocket) => new URL(ws.url).searchParams.get("api_key");
+
+    const createClient = async (
+      credentials: { apiKey: string; apiKeyProvider?: () => string | Promise<string> },
+      logger: { debug(): void; info(): void; warn(): void; error(): void } = {
+        debug() {},
+        info() {},
+        warn() {},
+        error() {},
+      },
+    ) => {
+      const { createRealTimeClient } = await import("../src/realtime/client.js");
+      return createRealTimeClient({
+        baseUrl: "wss://api3.decart.ai",
+        ...credentials,
+        logger,
+        telemetryEnabled: false,
+        prepareConnection: prepareBrowserConnection,
+      });
+    };
+
+    it("rejects an expired client token with TOKEN_EXPIRED before opening a socket", async () => {
+      vi.spyOn(Date, "now").mockReturnValue(NOW);
+      const exp = expIn(-83);
+      const client = await createClient({ apiKey: clientTokenJwt({ exp }) });
+      const onConnectionChange = vi.fn();
+
+      await expect(
+        client.connect(null, { model: models.realtime("lucy-2.5"), onRemoteStream: vi.fn(), onConnectionChange }),
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.TOKEN_EXPIRED,
+        message: expect.stringMatching(/^Client token expired 83 s ago \(exp 2026-10-07T11:58:37\.000Z\)\./),
+        data: { claim: "exp", expiresAt: new Date(exp * 1000).toISOString(), expiredSecondsAgo: 83 },
+      });
+      // Nothing was dialled and no state was reported: the token never left the client.
+      expect(FakeWebSocket.instances).toHaveLength(0);
+      expect(onConnectionChange).not.toHaveBeenCalled();
+    });
+
+    it("connects with a token inside the clock-skew tolerance, a live token and an opaque key", async () => {
+      vi.spyOn(Date, "now").mockReturnValue(NOW);
+      const skewed = clientTokenJwt({ exp: expIn(-REALTIME_CONFIG.session.clientTokenExpiryToleranceSeconds) });
+      const live = clientTokenJwt({ exp: expIn(60) });
+
+      for (const apiKey of [skewed, live, "ek_opaque_key"]) {
+        FakeWebSocket.instances = [];
+        const client = await createClient({ apiKey });
+        const realtimeClient = await client.connect(null, {
+          model: models.realtime("lucy-2.5"),
+          onRemoteStream: vi.fn(),
+        });
+        expect(FakeWebSocket.instances).toHaveLength(1);
+        expect(apiKeyOf(FakeWebSocket.instances[0])).toBe(apiKey);
+        realtimeClient.disconnect();
+      }
+    });
+
+    it("asks apiKeyProvider before the first dial and again before each reconnect", async () => {
+      let minted = 0;
+      const apiKeyProvider = vi.fn(async () => `fresh-${++minted}`);
+      const client = await createClient({ apiKey: "", apiKeyProvider });
+
+      const realtimeClient = await client.connect(null, {
+        model: models.realtime("lucy-2.5"),
+        onRemoteStream: vi.fn(),
+      });
+      expect(apiKeyProvider).toHaveBeenCalledTimes(1);
+      const first = FakeWebSocket.instances[0];
+      expect(apiKeyOf(first)).toBe("fresh-1");
+
+      // A non-terminal close of a connected session reconnects on a fresh socket with a fresh token.
+      first.onclose?.({ code: 1006, reason: "" });
+      await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+      expect(apiKeyProvider).toHaveBeenCalledTimes(2);
+      expect(apiKeyOf(FakeWebSocket.instances[1])).toBe("fresh-2");
+      await vi.waitFor(() => expect(realtimeClient.getConnectionState()).toBe("connected"));
+
+      FakeWebSocket.instances[1].onclose?.({ code: 1006, reason: "" });
+      await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(3));
+      expect(apiKeyOf(FakeWebSocket.instances[2])).toBe("fresh-3");
+      realtimeClient.disconnect();
+    });
+
+    it("asks apiKeyProvider again for a connect retry after a transient refusal", async () => {
+      class RefuseOnceWebSocket extends FakeWebSocket {
+        static refused = false;
+        send(data: string): void {
+          if (JSON.parse(data).type === "livekit_join" && !RefuseOnceWebSocket.refused) {
+            RefuseOnceWebSocket.refused = true;
+            setTimeout(() => this.onclose?.({ code: 1013, reason: "Try Again Later" }), 0);
+            return;
+          }
+          super.send(data);
+        }
+      }
+      vi.stubGlobal("WebSocket", RefuseOnceWebSocket);
+      let minted = 0;
+      const apiKeyProvider = vi.fn(async () => `fresh-${++minted}`);
+      const client = await createClient({ apiKey: "", apiKeyProvider });
+
+      // The retry re-dials after the 1 s backoff floor, with a token minted for that dial.
+      const realtimeClient = await client.connect(null, {
+        model: models.realtime("lucy-2.5"),
+        onRemoteStream: vi.fn(),
+      });
+
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      expect(apiKeyProvider).toHaveBeenCalledTimes(2);
+      expect(apiKeyOf(FakeWebSocket.instances[0])).toBe("fresh-1");
+      expect(apiKeyOf(FakeWebSocket.instances[1])).toBe("fresh-2");
+      realtimeClient.disconnect();
+    });
+
+    it("stops a reconnect with TOKEN_EXPIRED instead of dialling when the static token expired mid-session", async () => {
+      const now = vi.spyOn(Date, "now").mockReturnValue(NOW);
+      const client = await createClient({ apiKey: clientTokenJwt({ exp: expIn(30) }) });
+      const realtimeClient = await client.connect(null, {
+        model: models.realtime("lucy-2.5"),
+        onRemoteStream: vi.fn(),
+      });
+      const errors: DecartSDKError[] = [];
+      const states: string[] = [];
+      realtimeClient.on("error", (error) => errors.push(error));
+      realtimeClient.on("connectionChange", (state) => states.push(state));
+
+      now.mockReturnValue(NOW + 40_000);
+      FakeWebSocket.instances[0].onclose?.({ code: 1006, reason: "" });
+
+      await vi.waitFor(() => expect(errors).toHaveLength(1));
+      expect(errors[0]).toMatchObject({
+        code: ERROR_CODES.TOKEN_EXPIRED,
+        data: { expiredSecondsAgo: 10 },
+      });
+      // One socket only: the expired token was never dialled, and no retry followed.
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      // The buffer replays the connect-time states to the late listener; then the failed reconnect.
+      expect(states).toEqual(["connecting", "connected", "reconnecting", "disconnected"]);
+      expect(realtimeClient.getConnectionState()).toBe("disconnected");
+    });
+
+    it("rejects connect when apiKeyProvider returns an expired token", async () => {
+      vi.spyOn(Date, "now").mockReturnValue(NOW);
+      const client = await createClient({ apiKey: "", apiKeyProvider: () => clientTokenJwt({ exp: expIn(-100) }) });
+
+      await expect(
+        client.connect(null, { model: models.realtime("lucy-2.5"), onRemoteStream: vi.fn() }),
+      ).rejects.toMatchObject({ code: ERROR_CODES.TOKEN_EXPIRED, data: { expiredSecondsAgo: 100 } });
+      expect(FakeWebSocket.instances).toHaveLength(0);
+    });
+
+    it("rejects connect with the provider's own error when apiKeyProvider fails", async () => {
+      const client = await createClient({
+        apiKey: "",
+        apiKeyProvider: async () => {
+          throw new Error("token endpoint answered 503");
+        },
+      });
+
+      await expect(
+        client.connect(null, { model: models.realtime("lucy-2.5"), onRemoteStream: vi.fn() }),
+      ).rejects.toThrow("token endpoint answered 503");
+      expect(FakeWebSocket.instances).toHaveLength(0);
+    });
+
+    it("rejects connect when apiKeyProvider resolves to something other than a token string", async () => {
+      const client = await createClient({ apiKey: "", apiKeyProvider: async () => ({ apiKey: "eyJ" }) as never });
+
+      await expect(
+        client.connect(null, { model: models.realtime("lucy-2.5"), onRemoteStream: vi.fn() }),
+      ).rejects.toMatchObject({ code: ERROR_CODES.INVALID_API_KEY });
+      expect(FakeWebSocket.instances).toHaveLength(0);
+    });
+
+    it("flows apiKeyProvider from createDecartClient to the realtime dial", async () => {
+      const apiKeyProvider = vi.fn(async () => "fresh-from-app-server");
+      const client = createDecartClient({ apiKeyProvider, telemetry: false });
+
+      const realtimeClient = await client.realtime.connect(null, {
+        model: models.realtime("lucy-2.5"),
+        onRemoteStream: vi.fn(),
+      });
+
+      expect(apiKeyProvider).toHaveBeenCalledTimes(1);
+      expect(apiKeyOf(FakeWebSocket.instances[0])).toBe("fresh-from-app-server");
+      realtimeClient.disconnect();
+    });
   });
 });
 
