@@ -121,7 +121,7 @@ describe.concurrent("Realtime E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => 
   }
 
   // POST /v1/files + image_ref via realtime. Uses lucy-2.1 to actually exercise
-  // upstream forwarding through the bouncer's image_ref prologue.
+  // upstream forwarding through the server's image_ref prologue.
   describe("Files API + image_ref", () => {
     async function pngBlob(width: number, height: number, color = "#3070C0"): Promise<Blob> {
       const canvas = document.createElement("canvas");

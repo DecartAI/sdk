@@ -11,7 +11,7 @@ const OUTPUT_DIR = join(__dirname, "e2e-output");
 const VIDEO_FIXTURE = join(__dirname, "fixtures", "video.mp4");
 const IMAGE_FIXTURE = join(__dirname, "fixtures", "image.png");
 // Try-on models take the GARMENT as reference_image; a non-garment reference (the dogs above) makes
-// the try-on models undress the subject and the output fails moderation (PLA-808, PLA-817).
+// the try-on models undress the subject and the output fails moderation.
 const GARMENT_FIXTURE = join(__dirname, "fixtures", "garment.png");
 
 const TIMEOUT = 5 * 60 * 1000; // 5 minutes
