@@ -82,6 +82,25 @@ Options:
 - `"auto"` — mirror when the input track reports `facingMode: "user"` (mobile front cameras).
 - `true` — always mirror (e.g. desktop webcams).
 
+#### Remote audio
+
+The server's audio track is a passthrough of the audio you publish. The SDK subscribes to it only
+when your input stream carries an audio track, so a video-only session never receives (or plays)
+audio. Override with `remoteAudio`:
+
+```ts
+const realtimeClient = await client.realtime.connect(stream, {
+  model,
+  remoteAudio: false, // never subscribe to the server's audio track
+  // ...
+});
+```
+
+- unset (default) — subscribe when the input stream has an audio track.
+- `true` — always subscribe to the server's audio track.
+- `false` — never subscribe. On iOS this is what keeps a video-only app from showing the microphone
+  permission prompt, which the WebRTC audio engine triggers as soon as any remote audio plays out.
+
 #### Fast mode
 
 Fast mode (`speed: "fast"`) serves the session from a higher-compute tier for lower latency and higher throughput; output quality is unchanged. It is currently available for `lucy-2.5` / `lucy-latest` and `lucy-vton-3.5` / `lucy-vton-latest`, in the US region only, and is billed at 2x the standard realtime rate for those models. Other models ignore the option. Omit it (the default) for standard mode.

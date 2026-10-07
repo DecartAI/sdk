@@ -26,6 +26,7 @@ vi.mock("livekit-client", () => {
       publishTrack: this.publishTrack,
       videoTrackPublications: new Map(),
     };
+    readonly remoteParticipants = new Map();
 
     constructor() {
       liveKitMockState.rooms.push(this);
@@ -186,12 +187,14 @@ describe("React Native compatibility", () => {
       import("../src/utils/logger.js"),
     ]);
     const videoTrack = { kind: "video" } as MediaStreamTrack;
-    const localStream = { getTracks: () => [videoTrack] } as MediaStream;
+    const localStream = { getTracks: () => [videoTrack], getAudioTracks: () => [] } as unknown as MediaStream;
     const mediaChannel = new LiveKitMediaChannel({ localStream, videoCodec: "vp8" });
 
     await mediaChannel.connect({ url: "wss://livekit.test", token: "publish-token" });
     await mediaChannel.publishLocalTracks();
-    expect(liveKitMockState.rooms[0]?.connect).toHaveBeenCalledWith("wss://livekit.test", "publish-token");
+    expect(liveKitMockState.rooms[0]?.connect).toHaveBeenCalledWith("wss://livekit.test", "publish-token", {
+      autoSubscribe: false,
+    });
     expect(liveKitMockState.rooms[0]?.publishTrack).toHaveBeenCalledWith(
       videoTrack,
       expect.objectContaining({ videoCodec: "vp8" }),
