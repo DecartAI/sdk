@@ -76,6 +76,7 @@
 - `lucy-2.1` - Real-time video editing (supports reference image)
 - `lucy-2.5` - Real-time video editing (supports reference image)
 - `lucy-vton-3.5` - Real-time virtual try-on 3.5
+- `lucy-vton-3.6` - Real-time virtual try-on 3.6 (opt-in by name; no `speed: "fast"` tier)
 - `lucy-restyle-2` - Real-time video restyling
 - `lucy-latest`, `lucy-vton-latest`, `lucy-restyle-latest` - Server-resolved aliases for the latest stable version (`lucy-vton-latest` → `lucy-vton-3.5`)
 
@@ -84,9 +85,71 @@
 - `lucy-2.1` - long-form video editing (720p)
 - `lucy-2.5` - long-form video editing (720p)
 - `lucy-vton-3.5` - virtual try-on 3.5 video editing
+- `lucy-vton-3.6` - virtual try-on 3.6 video editing (opt-in by name)
 - `lucy-restyle-2` - video restyling
 - `lucy-latest`, `lucy-vton-latest`, `lucy-restyle-latest`, `lucy-clip-latest` - Server-resolved aliases (`lucy-vton-latest` → `lucy-vton-3.5`)
 
 ### Image Models (Process API)
 - `lucy-image-2` - image-to-image editing
 - `lucy-image-latest` - Server-resolved alias
+
+## Adding a Model
+
+`src/shared/model.ts` is the shared source of truth for the Decart client SDKs — the Python, Swift, Kotlin and
+C++ SDKs each carry a test asserting their registry matches this one. Land a new model here first, release, then
+mirror it.
+
+### Before writing any code: confirm what the API actually serves
+
+Every registry value must be read off the deployed model, not copied from a sibling:
+
+| Registry field | Must match |
+| --- | --- |
+| `width` / `height` | the resolution the API serves for that model |
+| realtime vs video entry | which surfaces the model is enabled on |
+| `queueUrlPath` | the live `/v1/jobs/<name>` route |
+| `supportedSpeeds` | the speed tiers the API actually offers — **omit the field when there are none** |
+| `inputSchema` | the input types the model accepts |
+
+`lucy-vton-3.5` was landed twice because the first attempt advertised a resolution that did not match how the
+model was served; it was reverted across all five SDK repos the next day. Confirm geometry before pinning it.
+
+### The nine sites in `src/shared/model.ts`
+
+1. `CANONICAL_MODEL_NAMES`
+2. `CANONICAL_REALTIME_MODEL_NAMES` (realtime models only)
+3. `CANONICAL_VIDEO_MODEL_NAMES` (video models only)
+4. the `realtimeModels` zod union
+5. the `videoModels` zod union
+6. `modelInputSchemas`
+7. the `_models.realtime` registry entry
+8. the `_models.video` registry entry
+9. the JSDoc option lists on `models.realtime()` / `models.video()`
+
+Then `src/process/types.ts` — add the name to the right branch of `ModelSpecificInputs`, and `AGENTS.md`
+(Supported Models) + `index.html` (playground `<select>`).
+
+Do **not** add to `modelAliases` — that map is only for deprecated names that log a warning. `-latest` names are
+deliberately absent from it, and a unit test asserts they never warn.
+
+### `supportedSpeeds` must match the service
+
+`supportedSpeeds: ["fast"]` is a claim that the API will serve that model on the `fast` tier and price it
+accordingly. Setting it for a model that does not offer the tier is not a harmless hint — the connection is
+rejected at billing time. Only list a tier once the model is confirmed to be served on it.
+
+### `-latest` aliases
+
+`lucy-latest` / `lucy-vton-latest` / `lucy-restyle-latest` / `lucy-clip-latest` resolve **server-side**. A new
+model is opt-in by explicit name until the service repoints the alias. When that happens, update the alias
+entry's geometry here in the same release, or the SDK advertises a capture size the alias is not serving.
+
+### Checklist
+
+- [ ] `pnpm typecheck && pnpm test && pnpm build && pnpm test:package && pnpm format:check`
+- [ ] `listModels()` length assertion in `tests/unit.test.ts` bumped (+1 per surface)
+- [ ] canonical option arrays in `tests/unit.test.ts` updated
+- [ ] `tests/e2e.test.ts` / `tests/e2e-realtime.test.ts` coverage added
+- [ ] `chore: release vX.Y.Z` commit (version in `packages/sdk/package.json` only) + `vX.Y.Z` tag — there are no
+      changesets in this repo; `release.yml` publishes and runs `changelogithub` off conventional-commit titles
+- [ ] sibling PRs in `decart-python`, `decart-ios`, `decart-android`, `decart-cpp` (same title)
