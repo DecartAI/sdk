@@ -1,3 +1,5 @@
+import { ERROR_CODES } from "../utils/errors";
+
 /** Publish bitrate floor for the primary video layer (bps). */
 const MIN_VIDEO_BITRATE_BPS = 1_100_000;
 /** Publish bitrate cap for the primary video layer (bps). */
@@ -46,6 +48,19 @@ export const REALTIME_CONFIG = {
       closeReason: "session limit reached",
       errorText: "concurrent session limit reached",
     },
+    /**
+     * Client-token expiry preflight: a JWT credential whose `exp` is more than this many seconds
+     * in the past by the local clock is refused before the dial with TOKEN_EXPIRED, instead of by
+     * the server after a round trip. The allowance covers clock skew only: the server grants none,
+     * so a token this late would be refused anyway.
+     */
+    clientTokenExpiryToleranceSeconds: 5,
+    /**
+     * SDK errors a dial can fail with before the socket opens that no re-dial would change: the
+     * credential itself was refused (see credential.ts). Any other SDK error an `apiKeyProvider`
+     * rejects with, such as a failed mint, is transient and retried.
+     */
+    permanentErrorCodes: [ERROR_CODES.TOKEN_EXPIRED, ERROR_CODES.INVALID_API_KEY],
     permanentErrorSubstrings: [
       "permission denied",
       "not allowed",

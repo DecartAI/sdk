@@ -25,6 +25,7 @@
   - `types.ts` - TypeScript types for queue operations
 - **src/realtime/** - LiveKit-backed real-time video streaming logic
   - `client.ts` - Real-time client implementation and public event surface
+  - `credential.ts` - Per-dial credential: `apiKeyProvider` and the client-token expiry preflight (TOKEN_EXPIRED before any dial)
   - `livekit-manager.ts` - LiveKit connection lifecycle and retry management
   - `livekit-connection.ts` - LiveKit room connection and control WebSocket handling
   - `methods.ts` - Realtime method implementations

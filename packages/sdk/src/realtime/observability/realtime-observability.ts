@@ -151,7 +151,8 @@ export class RealtimeObservability {
     );
   }
 
-  sessionStarted(sessionId: string): void {
+  /** `apiKey` is the credential the session dialled with; a reconnect may carry a fresher one than connect did. */
+  sessionStarted(sessionId: string, apiKey = this.options.apiKey): void {
     if (!this.options.telemetryEnabled) {
       return;
     }
@@ -161,7 +162,7 @@ export class RealtimeObservability {
     }
 
     const reporter = new TelemetryReporter({
-      apiKey: this.options.apiKey,
+      apiKey,
       sessionId,
       model: this.options.model,
       integration: this.options.integration,

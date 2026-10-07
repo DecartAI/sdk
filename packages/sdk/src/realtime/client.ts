@@ -8,9 +8,10 @@ import {
   resolveFpsNumber,
 } from "../shared/model";
 import { modelStateSchema } from "../shared/types";
-import { classifyWebrtcError, type DecartSDKError } from "../utils/errors";
+import { classifyWebrtcError, type DecartSDKError, DecartSDKException } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { imageToBase64 } from "../utils/media";
+import { type ApiKeyProvider, createCredentialSource } from "./credential";
 import { createEventBuffer } from "./event-buffer";
 import type { MediaChannelFactory, VideoCodec } from "./media-channel";
 import { realtimeMethods, type SetInput } from "./methods";
@@ -31,6 +32,8 @@ import type {
 export type RealTimeClientOptions = {
   baseUrl: string;
   apiKey: string;
+  /** Called before every dial (connect, connect retry, reconnect) for a fresh credential; wins over `apiKey`. */
+  apiKeyProvider?: ApiKeyProvider;
   integration?: string;
   logger: Logger;
   telemetryEnabled: boolean;
@@ -164,8 +167,9 @@ export type RealTimeClient = {
 };
 
 export const createRealTimeClient = (opts: RealTimeClientOptions) => {
-  const { baseUrl, apiKey, integration } = opts;
+  const { baseUrl, integration } = opts;
   const logger = opts.logger ?? createConsoleLogger("info");
+  const nextCredential = createCredentialSource({ apiKey: opts.apiKey, apiKeyProvider: opts.apiKeyProvider });
 
   const connect = async (
     stream: MediaStream | null,
@@ -179,6 +183,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       onConnectionQuality,
       onQueuePosition,
       initialState,
+      queryParams: extraQueryParams,
       resolution,
       speed,
       retries,
@@ -192,8 +197,12 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
 
     try {
       const initialImageRef = isFileRefId(initialState?.image) ? initialState.image : undefined;
-      const initialImage =
-        initialImageRef === undefined && initialState?.image ? await imageToBase64(initialState.image) : undefined;
+      // Before any setup: an expired client token is refused here, not by the server after a round
+      // trip. The provider round trip and the image encoding do not depend on each other.
+      const [credential, initialImage] = await Promise.all([
+        nextCredential(),
+        initialImageRef === undefined && initialState?.image ? imageToBase64(initialState.image) : undefined,
+      ]);
       const initialPrompt = initialState?.prompt
         ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
         : undefined;
@@ -209,7 +218,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         logger,
         observability: {
           telemetryEnabled: opts.telemetryEnabled,
-          apiKey,
+          apiKey: credential,
           model: options.model.name,
           integration,
           logger,
@@ -234,17 +243,29 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         );
       }
 
-      const queryParams = new URLSearchParams({
-        ...(preparedConnection.queryParams ?? {}),
-        ...(options.queryParams ?? {}),
-        api_key: apiKey,
-        model: options.model.name,
-        ...(resolution ? { resolution } : {}),
-        ...(speed ? { speed } : {}),
-      });
+      // Captures only what a dial needs, not `options` (it lives as long as the session).
+      const preparedQueryParams = preparedConnection.queryParams;
+      const modelName = options.model.name;
+      let dialCredential = credential;
+      const dialUrl = (apiKey: string) => {
+        dialCredential = apiKey;
+        const queryParams = new URLSearchParams({
+          ...preparedQueryParams,
+          ...extraQueryParams,
+          api_key: apiKey,
+          model: modelName,
+          ...(resolution ? { resolution } : {}),
+          ...(speed ? { speed } : {}),
+        });
+        return `${url}?${queryParams.toString()}`;
+      };
 
       session = new StreamSession({
-        url: `${url}?${queryParams.toString()}`,
+        url: dialUrl(credential),
+        redialUrl: () => {
+          const next = nextCredential();
+          return typeof next === "string" ? dialUrl(next) : next.then(dialUrl);
+        },
         integration,
         observability,
         frameTiming: preparedConnection.frameTiming,
@@ -277,7 +298,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       session.on("sessionStarted", ({ sessionId: id, subscribeToken: token }) => {
         sessionId = id;
         subscribeToken = token;
-        observability?.sessionStarted(id);
+        observability?.sessionStarted(id, dialCredential);
       });
 
       session.on("generationTick", (e) => emitOrBuffer("generationTick", e));
@@ -330,7 +351,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       observability?.stop();
       session?.disconnect();
       preparedConnection?.dispose();
-      throw error;
+      throw error instanceof DecartSDKException ? error.sdkError : error;
     }
   };
 

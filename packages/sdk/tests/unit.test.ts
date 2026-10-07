@@ -83,6 +83,18 @@ describe("Decart SDK", () => {
       expect(() => createDecartClient({ apiKey: "test", realtimeBaseUrl: "not-a-url" })).toThrow("Invalid base URL");
     });
 
+    it("creates a client with apiKeyProvider and no apiKey", () => {
+      expect(() => createDecartClient({ apiKeyProvider: async () => "fresh" })).not.toThrow();
+      expect(() => createDecartClient({ apiKey: "parent", apiKeyProvider: () => "fresh" })).not.toThrow();
+      expect(() => createDecartClient({ proxy: "/api/decart", apiKeyProvider: () => "fresh" })).not.toThrow();
+    });
+
+    it("rejects an apiKeyProvider that is not a function", () => {
+      expect(() => createDecartClient({ apiKeyProvider: "ek_token" as never })).toThrow(
+        expect.objectContaining({ code: "INVALID_OPTIONS", message: expect.stringContaining("apiKeyProvider") }),
+      );
+    });
+
     it("creates a client with custom realtimeBaseUrl", () => {
       const decart = createDecartClient({
         apiKey: "test",
