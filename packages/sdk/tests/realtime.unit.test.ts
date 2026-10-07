@@ -2027,8 +2027,8 @@ describe("StreamSession startup orchestration", () => {
     expect(errors).toEqual([]);
   });
 
-  it("does not retry the bouncer's session-limit refusal during the handshake", async () => {
-    // The bouncer sends an `error` message, then closes 1013 "Session Limit Reached". Each
+  it("does not retry the server's session-limit refusal during the handshake", async () => {
+    // The server sends an `error` message, then closes 1013 "Session Limit Reached". Each
     // retry would be a fresh dial that takes a freed slot ahead of the app's own queue.
     const { session, ws, ended, connectPromise } = await openHandshake({ initialImage: "queued-garment" });
 
