@@ -1,6 +1,12 @@
 import type { RemoteParticipant, RemoteTrack, Room } from "livekit-client";
 
-import { classifyWebrtcError, createSDKError, type DecartSDKError, ERROR_CODES, unwrapSDKError } from "../utils/errors";
+import {
+  classifyWebrtcError,
+  createSDKError,
+  type DecartSDKError,
+  ERROR_CODES,
+  isDecartSDKError,
+} from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import { type ApiKeyProvider, createCredentialSource } from "./credential";
@@ -140,9 +146,11 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
       emitOrBuffer("connectionChange", state);
     };
 
+    // Outside the try: an expired client token is refused before anything is loaded or fetched, and
+    // a provider rejection reaches the caller unchanged, as it does from `connect()`.
+    const apiKey = await nextCredential();
+
     try {
-      // An expired client token is refused before anything is loaded or fetched.
-      const apiKey = await nextCredential();
       const { Room: LiveKitRoom, RoomEvent } = await loadLiveKitClient();
       observability = new RealtimeObservability({
         telemetryEnabled: false,
@@ -243,10 +251,9 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
         room.disconnect().catch(() => {});
       }
       frameMetadataWorker?.terminate();
-      const sdkError = unwrapSDKError(error);
-      if (sdkError) {
-        logger.error("Realtime subscribe error", { error: sdkError.message });
-        throw sdkError;
+      if (isDecartSDKError(error)) {
+        logger.error("Realtime subscribe error", { error: error.message });
+        throw error;
       }
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error("Realtime subscribe error", { error: err.message });

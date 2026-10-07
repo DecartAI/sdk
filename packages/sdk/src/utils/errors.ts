@@ -56,9 +56,9 @@ export function isDecartSDKError(error: unknown): error is DecartSDKError {
 }
 
 /**
- * An `Error` carrying a {@link DecartSDKError}, for code paths that must throw real errors: p-retry
- * rejects anything else, and the session's `error` channel is typed `Error`. `classifyWebrtcError`
- * and the public entry points unwrap it, so callers still receive the plain SDK error.
+ * An `Error` carrying a {@link DecartSDKError} across the realtime session's retry loop, which
+ * (like p-retry) only accepts real errors. `connect()` and `classifyWebrtcError` unwrap it, so
+ * callers still receive the plain SDK error.
  */
 export class DecartSDKException extends Error {
   readonly sdkError: DecartSDKError;
@@ -69,12 +69,6 @@ export class DecartSDKException extends Error {
     this.sdkError = sdkError;
     if (sdkError.cause) this.cause = sdkError.cause;
   }
-}
-
-/** The plain SDK error when `error` is one or wraps one, else `undefined`. */
-export function unwrapSDKError(error: unknown): DecartSDKError | undefined {
-  if (error instanceof DecartSDKException) return error.sdkError;
-  return isDecartSDKError(error) ? error : undefined;
 }
 
 export function createInvalidApiKeyError(): DecartSDKError {
@@ -97,18 +91,10 @@ export function createClientTokenExpiredError(expiredSecondsAgo: number, expires
 }
 
 export function createApiKeyProviderResultError(received: unknown): DecartSDKError {
-  const got =
-    received === ""
-      ? "an empty string"
-      : received === null
-        ? "null"
-        : Array.isArray(received)
-          ? "an array"
-          : typeof received;
+  const got = received === "" ? "an empty string" : typeof received;
   return createSDKError(
     ERROR_CODES.INVALID_API_KEY,
     `apiKeyProvider must resolve to a non-empty API key string (a client token's apiKey); got ${got}.`,
-    { received: got },
   );
 }
 

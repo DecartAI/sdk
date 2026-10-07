@@ -183,6 +183,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       onConnectionQuality,
       onQueuePosition,
       initialState,
+      queryParams: extraQueryParams,
       resolution,
       speed,
       retries,
@@ -195,13 +196,13 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
     let preparedConnection: PreparedConnection | undefined;
 
     try {
-      // Before any setup: an expired client token is refused here, not by the server after a round
-      // trip, and the provider (when set) is asked for a token minted for this dial.
-      const credential = await nextCredential();
-
       const initialImageRef = isFileRefId(initialState?.image) ? initialState.image : undefined;
-      const initialImage =
-        initialImageRef === undefined && initialState?.image ? await imageToBase64(initialState.image) : undefined;
+      // Before any setup: an expired client token is refused here, not by the server after a round
+      // trip. The provider round trip and the image encoding do not depend on each other.
+      const [credential, initialImage] = await Promise.all([
+        nextCredential(),
+        initialImageRef === undefined && initialState?.image ? imageToBase64(initialState.image) : undefined,
+      ]);
       const initialPrompt = initialState?.prompt
         ? { text: initialState.prompt.text, enhance: initialState.prompt.enhance }
         : undefined;
@@ -242,13 +243,17 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         );
       }
 
-      const preparedQueryParams = preparedConnection.queryParams ?? {};
-      const signalingUrl = (apiKey: string) => {
+      // Captures only what a dial needs, not `options` (it lives as long as the session).
+      const preparedQueryParams = preparedConnection.queryParams;
+      const modelName = options.model.name;
+      let dialCredential = credential;
+      const dialUrl = (apiKey: string) => {
+        dialCredential = apiKey;
         const queryParams = new URLSearchParams({
           ...preparedQueryParams,
-          ...(options.queryParams ?? {}),
+          ...extraQueryParams,
           api_key: apiKey,
-          model: options.model.name,
+          model: modelName,
           ...(resolution ? { resolution } : {}),
           ...(speed ? { speed } : {}),
         });
@@ -256,11 +261,10 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       };
 
       session = new StreamSession({
-        url: signalingUrl(credential),
-        // Each retry and reconnect dials with a credential checked (or minted) for that dial.
+        url: dialUrl(credential),
         redialUrl: () => {
           const next = nextCredential();
-          return typeof next === "string" ? signalingUrl(next) : next.then(signalingUrl);
+          return typeof next === "string" ? dialUrl(next) : next.then(dialUrl);
         },
         integration,
         observability,
@@ -294,7 +298,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       session.on("sessionStarted", ({ sessionId: id, subscribeToken: token }) => {
         sessionId = id;
         subscribeToken = token;
-        observability?.sessionStarted(id);
+        observability?.sessionStarted(id, dialCredential);
       });
 
       session.on("generationTick", (e) => emitOrBuffer("generationTick", e));
@@ -347,7 +351,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       observability?.stop();
       session?.disconnect();
       preparedConnection?.dispose();
-      // SDK-judged failures (expired client token, unusable provider result) reject as plain SDK errors.
       throw error instanceof DecartSDKException ? error.sdkError : error;
     }
   };

@@ -5,6 +5,7 @@ import { REALTIME_CONFIG } from "../src/realtime/config-realtime.js";
 import { createLiveKitMediaChannel, type MediaChannel } from "../src/realtime/media-channel.js";
 import type { ServerError } from "../src/realtime/types.js";
 import type { DecartSDKError } from "../src/utils/errors.js";
+import { clientTokenJwt, expAt } from "./helpers/client-token.js";
 
 const liveKitMock = vi.hoisted(() => {
   const roomInstances: MockRoom[] = [];
@@ -109,11 +110,6 @@ const flushMicrotasks = async () => {
   await Promise.resolve();
   await Promise.resolve();
 };
-
-const base64url = (text: string) => btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-/** An unsigned JWT in the platform's client-token shape (`apiKey` and `token` both carry it). */
-const clientTokenJwt = (claims: Record<string, unknown>) =>
-  `eyJhbGciOiJFZERTQSJ9.${base64url(JSON.stringify({ sub: "user_1", ...claims }))}.sig`;
 
 type FakeWebSocketMessageEvent = {
   data: string;
@@ -432,17 +428,39 @@ describe("realtime.subscribe", () => {
 
   it("refuses an expired client token before fetching watch-stream credentials", async () => {
     const { createRealTimeSubscribeClient } = await import("../src/realtime/subscribe-client.js");
+    const now = Date.UTC(2026, 9, 7, 12, 0, 0);
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
     const subscriber = createRealTimeSubscribeClient({
       baseUrl: "https://api.example.test",
-      apiKey: clientTokenJwt({ exp: Math.floor(Date.now() / 1000) - 600 }),
+      apiKey: clientTokenJwt({ exp: expAt(now, -600) }),
+      logger,
+    });
+
+    try {
+      await expect(
+        subscriber.subscribe({ token: btoa(JSON.stringify({ room_name: "room-1" })), onRemoteStream: () => {} }),
+      ).rejects.toMatchObject({ code: ERROR_CODES.TOKEN_EXPIRED, data: { expiredSecondsAgo: 600 } });
+    } finally {
+      nowSpy.mockRestore();
+    }
+    expect(fetch).not.toHaveBeenCalled();
+    expect(liveKitMock.roomInstances).toHaveLength(0);
+  });
+
+  it("lets an apiKeyProvider rejection reach the subscriber unchanged", async () => {
+    const { createRealTimeSubscribeClient } = await import("../src/realtime/subscribe-client.js");
+    const failure = new Error("token endpoint answered 503");
+    const subscriber = createRealTimeSubscribeClient({
+      baseUrl: "https://api.example.test",
+      apiKey: "",
+      apiKeyProvider: () => Promise.reject(failure),
       logger,
     });
 
     await expect(
       subscriber.subscribe({ token: btoa(JSON.stringify({ room_name: "room-1" })), onRemoteStream: () => {} }),
-    ).rejects.toMatchObject({ code: ERROR_CODES.TOKEN_EXPIRED, data: { expiredSecondsAgo: 600 } });
+    ).rejects.toBe(failure);
     expect(fetch).not.toHaveBeenCalled();
-    expect(liveKitMock.roomInstances).toHaveLength(0);
   });
 
   it("terminates the frame-metadata worker when subscribe connect fails", async () => {
@@ -805,18 +823,10 @@ describe("realtime.connect options", () => {
 
   describe("client token expiry preflight and apiKeyProvider", () => {
     const NOW = Date.UTC(2026, 9, 7, 12, 0, 0);
-    const expIn = (seconds: number) => Math.floor(NOW / 1000) + seconds;
+    const expIn = (seconds: number) => expAt(NOW, seconds);
     const apiKeyOf = (ws: FakeWebSocket) => new URL(ws.url).searchParams.get("api_key");
 
-    const createClient = async (
-      credentials: { apiKey: string; apiKeyProvider?: () => string | Promise<string> },
-      logger: { debug(): void; info(): void; warn(): void; error(): void } = {
-        debug() {},
-        info() {},
-        warn() {},
-        error() {},
-      },
-    ) => {
+    const createClient = async (credentials: { apiKey: string; apiKeyProvider?: () => string | Promise<string> }) => {
       const { createRealTimeClient } = await import("../src/realtime/client.js");
       return createRealTimeClient({
         baseUrl: "wss://api3.decart.ai",
@@ -1808,7 +1818,9 @@ describe("StreamSession startup orchestration", () => {
   const CAPACITY_REFUSAL = /\b1013\b|at capacity|session limit|concurrent session|try again later/i;
 
   /** Starts a connect and opens the socket, leaving the join unanswered. */
-  const openHandshake = async (opts: { initialImage?: string; connectRetries?: number } = {}) => {
+  const openHandshake = async (
+    opts: { initialImage?: string; connectRetries?: number; redialUrl?: () => string | Promise<string> } = {},
+  ) => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const session = new StreamSession({
       url: "wss://example.test/realtime",
@@ -2066,6 +2078,56 @@ describe("StreamSession startup orchestration", () => {
 
     expect(ended).toEqual([]);
     session.disconnect();
+  });
+
+  it("retries a redial whose credential source failed transiently, whatever it rejected with", async () => {
+    vi.useFakeTimers();
+    const { retry } = REALTIME_CONFIG.session;
+    const redialUrl = vi
+      .fn<() => Promise<string>>()
+      // A plain SDK error (e.g. a failed mint behind the provider), then a bare string.
+      .mockRejectedValueOnce({ code: "TOKEN_CREATE_ERROR", message: "Failed to create token: 503" })
+      .mockRejectedValueOnce("token endpoint down")
+      .mockResolvedValue("wss://example.test/realtime?api_key=fresh");
+    const { session, ws, ended, connectPromise } = await openHandshake({ redialUrl });
+
+    ws.onclose?.({ code: 1013, reason: "Try Again Later" });
+    await vi.advanceTimersByTimeAsync(retry.minTimeout);
+    expect(redialUrl).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(retry.minTimeout * retry.factor);
+    expect(redialUrl).toHaveBeenCalledTimes(2);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(retry.minTimeout * retry.factor ** 2);
+    expect(redialUrl).toHaveBeenCalledTimes(3);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    const retried = FakeWebSocket.instances[1];
+    expect(retried.url).toContain("api_key=fresh");
+    retried.onopen?.();
+    await flushMicrotasks();
+    sendRoomInfo(retried);
+    await expect(connectPromise).resolves.toBeUndefined();
+    expect(ended).toEqual([]);
+    session.disconnect();
+  });
+
+  it("does not retry a redial the SDK refused outright, such as an expired client token", async () => {
+    vi.useFakeTimers();
+    const redialUrl = vi.fn<() => Promise<string>>().mockRejectedValue({
+      code: "TOKEN_EXPIRED",
+      message: "Client token expired 10 s ago",
+    });
+    const { session, ws, ended, connectPromise } = await openHandshake({ redialUrl });
+
+    ws.onclose?.({ code: 1013, reason: "Try Again Later" });
+    await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.session.retry.minTimeout);
+    await expect(connectPromise).rejects.toMatchObject({ sdkError: { code: "TOKEN_EXPIRED" } });
+    await vi.advanceTimersByTimeAsync(REALTIME_CONFIG.session.retry.maxTimeout);
+
+    expect(redialUrl).toHaveBeenCalledTimes(1);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(ended).toEqual([]);
+    expect(session.getConnectionState()).toBe("disconnected");
   });
 
   it("connectRetries: 0 rejects a transient handshake failure after a single dial", async () => {

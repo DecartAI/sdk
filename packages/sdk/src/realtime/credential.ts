@@ -1,10 +1,5 @@
-import { decodeClientToken, isClientTokenJwt } from "../tokens/claims";
-import {
-  createApiKeyProviderResultError,
-  createClientTokenExpiredError,
-  DecartSDKException,
-  isDecartSDKError,
-} from "../utils/errors";
+import { decodeClientToken } from "../tokens/claims";
+import { createApiKeyProviderResultError, createClientTokenExpiredError } from "../utils/errors";
 import { REALTIME_CONFIG } from "./config-realtime";
 
 /**
@@ -17,40 +12,32 @@ import { REALTIME_CONFIG } from "./config-realtime";
  */
 export type ApiKeyProvider = () => string | Promise<string>;
 
-/** Resolves and validates the credential for one dial. Synchronous for a static key, so the first socket still opens in the same tick. */
-export type CredentialSource = () => string | Promise<string>;
-
 /**
  * Refuse a client token the server is certain to refuse: a JWT whose `exp` is already in the past,
  * beyond the clock-skew tolerance. Opaque keys and JWTs that do not decode pass through for the
  * server to judge.
  *
- * @throws `DecartSDKException` wrapping a TOKEN_EXPIRED error
+ * @throws `TOKEN_EXPIRED`
  */
 export function assertClientTokenNotExpired(credential: string, now = Date.now()): void {
-  if (!isClientTokenJwt(credential)) return;
   let expiresAt: string;
   try {
-    expiresAt = decodeClientToken(credential).expiresAt;
+    ({ expiresAt } = decodeClientToken(credential));
   } catch {
     return;
   }
   const expiredSecondsAgo = (now - Date.parse(expiresAt)) / 1000;
-  if (!(expiredSecondsAgo > REALTIME_CONFIG.session.clientTokenExpiryToleranceSeconds)) return;
-  throw new DecartSDKException(createClientTokenExpiredError(Math.round(expiredSecondsAgo), expiresAt));
-}
-
-function describeThrown(value: unknown): string {
-  if (typeof value === "object" && value !== null && "message" in value) return String(value.message);
-  return String(value);
+  if (expiredSecondsAgo > REALTIME_CONFIG.session.clientTokenExpiryToleranceSeconds) {
+    throw createClientTokenExpiredError(Math.round(expiredSecondsAgo), expiresAt);
+  }
 }
 
 /**
- * Build the per-dial credential source: the provider's fresh token when one is set, else the static
- * key, checked for expiry either way. Every thrown value is an `Error`, which the session's retry
- * loop requires; SDK errors travel as {@link DecartSDKException} and are never retried.
+ * The per-dial credential: the provider's fresh token when one is set, else the static key, checked
+ * for expiry either way. Synchronous for a static key, so the first socket still opens in the same
+ * tick as `connect()`. Provider rejections propagate as they are.
  */
-export function createCredentialSource(options: { apiKey: string; apiKeyProvider?: ApiKeyProvider }): CredentialSource {
+export function createCredentialSource(options: { apiKey: string; apiKeyProvider?: ApiKeyProvider }): ApiKeyProvider {
   const { apiKey, apiKeyProvider } = options;
   if (!apiKeyProvider) {
     return () => {
@@ -59,17 +46,8 @@ export function createCredentialSource(options: { apiKey: string; apiKeyProvider
     };
   }
   return async () => {
-    let credential: unknown;
-    try {
-      credential = await apiKeyProvider();
-    } catch (error) {
-      if (isDecartSDKError(error)) throw new DecartSDKException(error);
-      if (error instanceof Error) throw error;
-      throw new Error(`apiKeyProvider rejected: ${describeThrown(error)}`);
-    }
-    if (typeof credential !== "string" || credential.length === 0) {
-      throw new DecartSDKException(createApiKeyProviderResultError(credential));
-    }
+    const credential: unknown = await apiKeyProvider();
+    if (typeof credential !== "string" || credential.length === 0) throw createApiKeyProviderResultError(credential);
     assertClientTokenNotExpired(credential);
     return credential;
   };

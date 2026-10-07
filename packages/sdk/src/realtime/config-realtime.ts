@@ -1,3 +1,5 @@
+import { ERROR_CODES } from "../utils/errors";
+
 /** Publish bitrate floor for the primary video layer (bps). */
 const MIN_VIDEO_BITRATE_BPS = 1_100_000;
 /** Publish bitrate cap for the primary video layer (bps). */
@@ -53,6 +55,12 @@ export const REALTIME_CONFIG = {
      * so a token this late would be refused anyway.
      */
     clientTokenExpiryToleranceSeconds: 5,
+    /**
+     * SDK errors a dial can fail with before the socket opens that no re-dial would change: the
+     * credential itself was refused (see credential.ts). Any other SDK error an `apiKeyProvider`
+     * rejects with, such as a failed mint, is transient and retried.
+     */
+    permanentErrorCodes: [ERROR_CODES.TOKEN_EXPIRED, ERROR_CODES.INVALID_API_KEY],
     permanentErrorSubstrings: [
       "permission denied",
       "not allowed",

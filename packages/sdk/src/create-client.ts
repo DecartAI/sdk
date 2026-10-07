@@ -16,9 +16,7 @@ const proxySchema = z.union([z.string().url(), z.string().startsWith("/")]);
 const decartClientOptionsSchema = z
   .object({
     apiKey: z.string().min(1).optional(),
-    apiKeyProvider: z
-      .custom<ApiKeyProvider>((val) => typeof val === "function", { message: "apiKeyProvider must be a function" })
-      .optional(),
+    apiKeyProvider: z.custom<ApiKeyProvider>((val) => typeof val === "function").optional(),
     baseUrl: z.url().optional(),
     proxy: proxySchema.optional(),
     integration: z.string().optional(),

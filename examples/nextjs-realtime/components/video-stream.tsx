@@ -35,26 +35,39 @@ export function VideoStream({ prompt }: VideoStreamProps) {
   const outputRef = useRef<HTMLVideoElement>(null);
   const realtimeClientRef = useRef<RealTimeClient | null>(null);
   const cameraRef = useRef<MediaStream | null>(null);
+  // Bumped by release(), so a start() still waiting on the camera prompt or on connect() notices
+  // that Stop (or unmount) happened and lets go of what it was about to keep.
+  const attemptRef = useRef(0);
   const [status, setStatus] = useState<string>("idle");
   const [running, setRunning] = useState(false);
 
-  function stop() {
+  function release() {
+    attemptRef.current++;
     realtimeClientRef.current?.disconnect();
     realtimeClientRef.current = null;
     for (const track of cameraRef.current?.getTracks() ?? []) track.stop();
     cameraRef.current = null;
+  }
+
+  function stop() {
+    release();
     setRunning(false);
     setStatus("idle");
   }
 
   async function start() {
+    const attempt = ++attemptRef.current;
+    const cancelled = () => attemptRef.current !== attempt;
     setRunning(true);
     try {
-      // However long the page has been open, the token is minted only now, inside connect().
       setStatus("requesting camera...");
       const camera = await navigator.mediaDevices.getUserMedia({
         video: { frameRate: model.fps, width: model.width, height: model.height },
       });
+      if (cancelled()) {
+        for (const track of camera.getTracks()) track.stop();
+        return;
+      }
       cameraRef.current = camera;
       if (inputRef.current) inputRef.current.srcObject = camera;
 
@@ -64,31 +77,26 @@ export function VideoStream({ prompt }: VideoStreamProps) {
         onRemoteStream: (transformedStream) => {
           if (outputRef.current) outputRef.current.srcObject = transformedStream;
         },
-        // "connected" | "generating" | "reconnecting" | "disconnected". A reconnect asks
-        // fetchClientToken again, so it never dials with the token the session started with.
         onConnectionChange: setStatus,
         initialState: { prompt: { text: prompt, enhance: true } },
       });
+      if (cancelled()) {
+        realtimeClient.disconnect();
+        return;
+      }
       realtimeClientRef.current = realtimeClient;
 
       realtimeClient.on("error", (error) => setStatus(`error: ${describeError(error)}`));
     } catch (error) {
-      setStatus(`error: ${describeError(error)}`);
-      realtimeClientRef.current?.disconnect();
-      realtimeClientRef.current = null;
-      for (const track of cameraRef.current?.getTracks() ?? []) track.stop();
-      cameraRef.current = null;
+      if (cancelled()) return;
+      release();
       setRunning(false);
+      setStatus(`error: ${describeError(error)}`);
     }
   }
 
   // Release the camera and the session when the component unmounts.
-  useEffect(() => {
-    return () => {
-      realtimeClientRef.current?.disconnect();
-      for (const track of cameraRef.current?.getTracks() ?? []) track.stop();
-    };
-  }, []);
+  useEffect(() => release, []);
 
   // Update the prompt on the running session when it changes.
   useEffect(() => {
