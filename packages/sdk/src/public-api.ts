@@ -18,6 +18,7 @@ export type {
   RealTimeClientInitialState,
   RealtimeMediaStream,
 } from "./realtime/client";
+export type { ApiKeyProvider } from "./realtime/credential";
 export type { SetInput } from "./realtime/methods";
 export type {
   ConnectionQuality,

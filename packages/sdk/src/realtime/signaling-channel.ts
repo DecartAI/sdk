@@ -40,7 +40,8 @@ export type SignalingChannelEvents = {
 };
 
 export interface SignalingChannelConfig {
-  url: string;
+  /** The signaling URL, or a function resolving it right before each socket open (a fresh credential per dial). */
+  url: string | (() => string | Promise<string>);
   integration?: string;
   logger?: Logger;
   observability?: RealtimeObservability;
@@ -142,8 +143,10 @@ export class SignalingChannel {
     const connectTimeout = opts.connectTimeout ?? REALTIME_CONFIG.signaling.connectTimeoutMs;
     const handshakeTimeout = opts.handshakeTimeout ?? REALTIME_CONFIG.signaling.handshakeTimeoutMs;
 
+    const dial = typeof this.config.url === "function" ? this.config.url() : this.config.url;
+    const url = typeof dial === "string" ? dial : await dial;
     this.config.observability?.startPhase("websocket-open");
-    await this.openSocket(connectTimeout);
+    await this.openSocket(url, connectTimeout);
     this.config.observability?.endPhase("websocket-open", { success: true });
 
     this.config.observability?.startPhase("room-join");
@@ -249,10 +252,10 @@ export class SignalingChannel {
     if (!ack.success) throw new Error(ack.error ?? "Failed to send image");
   }
 
-  private async openSocket(timeout: number): Promise<void> {
+  private async openSocket(url: string, timeout: number): Promise<void> {
     const userAgent = encodeURIComponent(buildUserAgent(this.config.integration));
-    const separator = this.config.url.includes("?") ? "&" : "?";
-    const wsUrl = `${this.config.url}${separator}user_agent=${userAgent}`;
+    const separator = url.includes("?") ? "&" : "?";
+    const wsUrl = `${url}${separator}user_agent=${userAgent}`;
     this.closing = false;
 
     await new Promise<void>((resolve, reject) => {

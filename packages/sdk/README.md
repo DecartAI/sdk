@@ -347,6 +347,40 @@ clockTolerance }`. This is an offline check, not an API call. It needs WebCrypto
 runtimes without it (React Native) `verify` rejects with `UNSUPPORTED_PLATFORM_FEATURE`;
 `decodeClientToken` works everywhere.
 
+#### Token lifetime: mint right before connecting
+
+Client tokens expire **60 seconds** after minting by default (`expiresIn`, 1-3600 s). A token
+minted on page load or component mount is usually dead by the time the user has granted camera
+access and pressed start, and a reconnect later with the same token is refused too. The SDK reads
+the token's `exp` before every realtime dial (connect, connect retry and reconnect) and rejects an
+expired one with `TOKEN_EXPIRED` instead of dialling: no socket is opened, and the message says how
+long ago it expired. A few seconds of clock skew are tolerated.
+
+Two ways to keep the token fresh:
+
+- Mint it right before `connect()`, after `getUserMedia` and the user's click, and size
+  `expiresIn` to your connect window, e.g. `client.tokens.create({ expiresIn: 300 })`.
+- Pass `apiKeyProvider` instead of (or alongside) `apiKey`. The SDK calls it before every connect
+  and reconnect and dials with what it returns, so each dial carries a token minted for it:
+
+```ts
+const client = createDecartClient({
+  apiKeyProvider: async () => {
+    // Your server: `client.tokens.create(...)` with your permanent API key.
+    const res = await fetch("/api/realtime-token", { method: "POST" });
+    const { apiKey } = await res.json();
+    return apiKey;
+  },
+});
+
+const realtimeClient = await client.realtime.connect(stream, { model, onRemoteStream });
+```
+
+If the provider rejects during `connect()`, `connect()` rejects with that error; during a
+reconnect a provider failure is retried like any other dial failure. The provider serves the
+realtime APIs (`connect` and `subscribe`); `process`, `queue`, `files` and `tokens` still use
+`apiKey` or `proxy`.
+
 ### React Native / Expo
 
 React Native realtime requires [LiveKit's React Native packages](https://github.com/livekit/client-sdk-react-native)

@@ -2,10 +2,11 @@ import { z } from "zod";
 import { createFilesClient } from "./files/client";
 import { createProcessClient } from "./process/client";
 import { createQueueClient } from "./queue/client";
+import type { ApiKeyProvider } from "./realtime/credential";
 import type { CreateRealtime } from "./realtime/factory";
 import { createTokensClient } from "./tokens/client";
 import { readEnv } from "./utils/env";
-import { createInvalidApiKeyError, createInvalidBaseUrlError } from "./utils/errors";
+import { createInvalidApiKeyError, createInvalidBaseUrlError, createSDKError, ERROR_CODES } from "./utils/errors";
 import { createConsoleLogger, type Logger } from "./utils/logger";
 
 // Schema with validation to ensure proxy and apiKey are mutually exclusive
@@ -15,6 +16,7 @@ const proxySchema = z.union([z.string().url(), z.string().startsWith("/")]);
 const decartClientOptionsSchema = z
   .object({
     apiKey: z.string().min(1).optional(),
+    apiKeyProvider: z.custom<ApiKeyProvider>((val) => typeof val === "function").optional(),
     baseUrl: z.url().optional(),
     proxy: proxySchema.optional(),
     integration: z.string().optional(),
@@ -39,6 +41,7 @@ export type DecartClientOptions =
   | {
       proxy: string;
       apiKey?: never;
+      apiKeyProvider?: ApiKeyProvider;
       baseUrl?: string;
       realtimeBaseUrl?: string;
       integration?: string;
@@ -48,6 +51,7 @@ export type DecartClientOptions =
   | {
       proxy?: never;
       apiKey?: string;
+      apiKeyProvider?: ApiKeyProvider;
       baseUrl?: string;
       realtimeBaseUrl?: string;
       integration?: string;
@@ -61,6 +65,9 @@ export type DecartClientOptions =
  * @param options - Configuration options
  * @param options.proxy - URL of the proxy server. When set, the client will use the proxy instead of direct API access and apiKey is not required.
  * @param options.apiKey - API key for authentication.
+ * @param options.apiKeyProvider - Called before every realtime connect and reconnect for a fresh credential (a client
+ *   token's `apiKey`), so a token minted on page load is never dialled after it expired. Wins over `apiKey` for
+ *   realtime; the HTTP APIs (`process`, `queue`, `files`, `tokens`) still use `apiKey` or `proxy`.
  * @param options.baseUrl - Override the default API base URL.
  * @param options.realtimeBaseUrl - Override the default WebSocket base URL for realtime connections.
  * @param options.integration - Optional integration identifier.
@@ -77,6 +84,11 @@ export type DecartClientOptions =
  *
  * // Option 3: Using proxy (client-side, no API key needed)
  * const client = createDecartClient({ proxy: "https://your-server.com/api/decart" });
+ *
+ * // Option 4: A fresh client token for every realtime connect and reconnect
+ * const client = createDecartClient({
+ *   apiKeyProvider: async () => (await (await fetch("/api/realtime-token", { method: "POST" })).json()).apiKey,
+ * });
  * ```
  */
 export const createDecartClientForPlatform = (createRealtime: CreateRealtime, options: DecartClientOptions = {}) => {
@@ -88,6 +100,13 @@ export const createDecartClientForPlatform = (createRealtime: CreateRealtime, op
 
     if (issue.path.includes("apiKey")) {
       throw createInvalidApiKeyError();
+    }
+
+    if (issue.path.includes("apiKeyProvider")) {
+      throw createSDKError(
+        ERROR_CODES.INVALID_OPTIONS,
+        "apiKeyProvider must be a function returning a client token's apiKey (a string or a Promise of one).",
+      );
     }
 
     if (issue.path.includes("baseUrl") || issue.path.includes("realtimeBaseUrl")) {
@@ -110,8 +129,9 @@ export const createDecartClientForPlatform = (createRealtime: CreateRealtime, op
   const apiKey = isProxyMode
     ? undefined
     : (("apiKey" in parsedOptions.data ? parsedOptions.data.apiKey : undefined) ?? readEnv("DECART_API_KEY"));
+  const { apiKeyProvider } = parsedOptions.data;
 
-  if (!isProxyMode && !apiKey) {
+  if (!isProxyMode && !apiKey && !apiKeyProvider) {
     throw createInvalidApiKeyError();
   }
 
@@ -136,6 +156,7 @@ export const createDecartClientForPlatform = (createRealtime: CreateRealtime, op
     publishBaseUrl: wsBaseUrl,
     subscribeBaseUrl,
     apiKey: apiKey || "",
+    apiKeyProvider,
     integration,
     logger,
     telemetryEnabled,
@@ -265,9 +286,12 @@ export const createDecartClientForPlatform = (createRealtime: CreateRealtime, op
      * const claims = await serverClient.tokens.verify(token.token);
      * console.log(claims.serviceTier, claims.pool, claims.organizationId);
      *
-     * // Client-side: Use the client token
+     * // Client-side: Use the client token (mint it right before connecting: the default TTL is 60 s)
      * const client = createDecartClient({ apiKey: token.apiKey });
      * const realtimeClient = await client.realtime.connect(stream, options);
+     *
+     * // Or let the SDK fetch a fresh token before every connect and reconnect
+     * const client = createDecartClient({ apiKeyProvider: () => fetchClientTokenFromYourServer() });
      * ```
      */
     tokens,

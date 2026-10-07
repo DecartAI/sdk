@@ -1,6 +1,7 @@
 import mitt, { type Emitter } from "mitt";
 import pRetry, { AbortError } from "p-retry";
 
+import { DecartSDKException, isDecartSDKError } from "../utils/errors";
 import { createConsoleLogger, type Logger } from "../utils/logger";
 import { REALTIME_CONFIG } from "./config-realtime";
 import type { MediaChannel, MediaChannelFactory, VideoCodec } from "./media-channel";
@@ -68,6 +69,16 @@ function terminalReasonFromError(error: unknown): SessionEndReason | null {
   return null;
 }
 
+/**
+ * p-retry only accepts `Error` instances: a plain SDK error thrown inside a dial (an expired client
+ * token, an `apiKeyProvider` rejection) is carried across the retry loop as a `DecartSDKException`.
+ */
+function toDialError(thrown: unknown): Error {
+  if (thrown instanceof Error) return thrown;
+  if (isDecartSDKError(thrown)) return new DecartSDKException(thrown);
+  return new Error(String(thrown));
+}
+
 export function encodeSubscribeToken(roomName: string, options: { frameTiming?: boolean } = {}): string {
   return btoa(JSON.stringify({ room_name: roomName, ...(options.frameTiming ? { frame_timing: true } : {}) }));
 }
@@ -93,7 +104,14 @@ type StreamSessionEvents = {
 };
 
 interface StreamSessionConfig {
+  /** Signaling URL of the first dial. */
   url: string;
+  /**
+   * Signaling URL for every later dial (connect retries and reconnects), resolved right before the
+   * socket opens so it can carry a freshly minted client token. Defaults to `url`. An SDK error
+   * thrown here whose code is in `permanentErrorCodes` ends the dial attempts.
+   */
+  redialUrl?: () => string | Promise<string>;
   integration?: string;
   observability?: RealtimeObservability;
   frameTiming?: boolean;
@@ -118,6 +136,7 @@ export class StreamSession {
   private queue: QueuePosition | null = null;
 
   private disposed = false;
+  private dialed = false;
   private currentAttempt = 0;
   private teardownGeneration = 0;
 
@@ -234,6 +253,14 @@ export class StreamSession {
           this.logger.error("realtime connect: session refused, not retrying", { reason: terminal });
           return false;
         }
+        const sdkCode = error instanceof DecartSDKException ? error.sdkError.code : undefined;
+        if (sdkCode && (REALTIME_CONFIG.session.permanentErrorCodes as readonly string[]).includes(sdkCode)) {
+          this.logger.error("realtime connect: credential refused, not retrying", {
+            code: sdkCode,
+            error: error.message,
+          });
+          return false;
+        }
         const msg = error.message.toLowerCase();
         const permanent = REALTIME_CONFIG.session.permanentErrorSubstrings.some((err) => msg.includes(err));
         if (permanent) {
@@ -294,11 +321,9 @@ export class StreamSession {
         sessionId: roomInfo.sessionId,
         subscribeToken: encodeSubscribeToken(roomInfo.roomName, { frameTiming: this.config.frameTiming }),
       });
-    } catch (error) {
-      this.config.observability?.finishConnectionBreakdown({
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    } catch (thrown) {
+      const error = toDialError(thrown);
+      this.config.observability?.finishConnectionBreakdown({ success: false, error: error.message });
       throw error;
     }
   }
@@ -444,9 +469,24 @@ export class StreamSession {
       });
   }
 
+  /** The first dial uses the connect-time URL; every later one asks `redialUrl`. */
+  private resolveDialUrl(): string | Promise<string> {
+    const redial = this.dialed ? this.config.redialUrl : undefined;
+    this.dialed = true;
+    if (!redial) return this.config.url;
+    const url = redial();
+    if (typeof url === "string") return url;
+    const attempt = this.currentAttempt;
+    return url.then((resolved) => {
+      // Disconnected or superseded while the credential was being fetched: do not dial at all.
+      if (this.disposed || this.currentAttempt !== attempt) throw new AbortError("Stale connect attempt");
+      return resolved;
+    });
+  }
+
   private createTransport(): void {
     this.signaling = new SignalingChannel({
-      url: this.config.url,
+      url: () => this.resolveDialUrl(),
       integration: this.config.integration,
       logger: this.logger,
       observability: this.config.observability,
