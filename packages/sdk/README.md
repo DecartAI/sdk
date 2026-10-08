@@ -122,6 +122,21 @@ Reached"). The session limit rejects `connect()` on the first attempt with the s
 with a `sessionEnded` event whose `reason` is `"session_limit"`. A capacity refusal (1013 "Try Again
 Later") is transient and still retries.
 
+When the server refuses a dial for lack of capacity it also sends `error_type: "capacity"` and a
+`retry_after` in seconds. `connect()` then waits that long (±20 % jitter, at least 1 s) and dials
+again, for as long as `capacityRetryBudgetMs` allows (default 60 000 ms since the first dial), before
+rejecting with the server's error. `retries: 0` turns these re-dials off too. `onCapacityWait` reports
+each wait so the app can show it:
+
+```ts
+const realtimeClient = await client.realtime.connect(stream, {
+  model,
+  capacityRetryBudgetMs: 30_000,
+  onCapacityWait: ({ retryAfterMs }) => showStatus(`Server busy, retrying in ${Math.round(retryAfterMs / 1000)} s`),
+  // ...
+});
+```
+
 Apps that hand out connects from their own session queue should turn retries off: every retry is a
 fresh dial that takes a freed slot ahead of the people waiting in line.
 
