@@ -21,6 +21,7 @@ import type { RealtimeObservability, RealtimeObservabilityOptions } from "./obse
 import type { WebRTCStats } from "./observability/webrtc-stats";
 import { StreamSession } from "./stream-session";
 import type {
+  CapacityWait,
   ConnectionState,
   GenerationEnded,
   GenerationTick,
@@ -64,6 +65,7 @@ type OnRemoteStreamFn = (stream: MediaStream) => void;
 type OnConnectionChangeFn = (state: ConnectionState) => void;
 type OnConnectionQualityFn = (report: ConnectionQualityReport) => void;
 type OnQueuePositionFn = (queuePosition: QueuePosition) => void;
+type OnCapacityWaitFn = (wait: CapacityWait) => void;
 export type RealTimeClientInitialState = z.infer<typeof realTimeClientInitialStateSchema>;
 
 const realTimeClientConnectOptionsSchema = z.object({
@@ -86,6 +88,15 @@ const realTimeClientConnectOptionsSchema = z.object({
       message: "onQueuePosition must be a function",
     })
     .optional(),
+  /**
+   * Called each time the server refuses a dial for lack of capacity and `connect()` is about to wait
+   * for the server's `retry_after` before dialling again. Only fires while `connect()` is pending.
+   */
+  onCapacityWait: z
+    .custom<OnCapacityWaitFn>((val) => typeof val === "function", {
+      message: "onCapacityWait must be a function",
+    })
+    .optional(),
   initialState: realTimeClientInitialStateSchema.optional(),
   queryParams: z.record(z.string(), z.string()).optional(),
   mirror: z.union([z.literal("auto"), z.boolean()]).optional(),
@@ -104,9 +115,16 @@ const realTimeClientConnectOptionsSchema = z.object({
    * queue should pass `0`: every retry is a fresh dial that competes with the people waiting in line.
    * Refusals the server will not change its mind about (policy close 1008, concurrent-session limit
    * 1013 "Session Limit Reached") are never retried regardless. Does not affect the automatic
-   * reconnect after an established session drops.
+   * reconnect after an established session drops. A capacity refusal (`error_type: "capacity"`) is
+   * re-dialled after the server's `retry_after` instead, bounded by `capacityRetryBudgetMs` rather
+   * than by this count; `0` turns those re-dials off too.
    */
   retries: z.number().int().min(0).optional(),
+  /**
+   * How long after its first dial a `connect()` keeps re-dialling capacity refusals, in ms (default
+   * 60 000). Once spent, `connect()` rejects with the server's capacity error.
+   */
+  capacityRetryBudgetMs: z.number().min(0).optional(),
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp8", "vp9"]).optional(),
   /**
@@ -182,11 +200,13 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       onConnectionChange,
       onConnectionQuality,
       onQueuePosition,
+      onCapacityWait,
       initialState,
       queryParams: extraQueryParams,
       resolution,
       speed,
       retries,
+      capacityRetryBudgetMs,
       preferredVideoCodec,
     } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
@@ -275,6 +295,7 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         initialPrompt,
         initialPassthrough: initialState?.passthrough,
         connectRetries: retries,
+        capacityRetryBudgetMs,
         logger,
         videoCodec: preparedConnection.videoCodec,
         createMediaChannel: preparedConnection.createMediaChannel,
@@ -294,6 +315,8 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         emitOrBuffer("queuePosition", qp);
         onQueuePosition?.(qp);
       });
+
+      session.on("capacityWait", (wait) => onCapacityWait?.(wait));
 
       session.on("sessionStarted", ({ sessionId: id, subscribeToken: token }) => {
         sessionId = id;

@@ -14,6 +14,10 @@ export type PromptAckMessage = {
 export type ErrorMessage = {
   type: "error";
   error: string;
+  /** Machine-readable class of the refusal; today only `"capacity"` is sent. Older servers send none. */
+  error_type?: string;
+  /** Seconds (may be fractional) to wait before dialling again; sent with `error_type: "capacity"`. */
+  retry_after?: number;
 };
 
 /** Wire shape: one of `image_data` or `image_ref` is set, not both. */
@@ -134,6 +138,19 @@ export type InitialPrompt = {
 
 export type ServerError = Error & {
   source?: string;
+  /** The server's `error_type`, when it sent one. */
+  errorType?: string;
+  /** The server's `retry_after` in seconds (may be fractional), when it sent one. */
+  retryAfter?: number;
+};
+
+/**
+ * The server refused a dial for lack of capacity and `connect()` is waiting `retryAfterMs` before
+ * dialling again. `attempt` counts these waits within one `connect()`, from 1.
+ */
+export type CapacityWait = {
+  retryAfterMs: number;
+  attempt: number;
 };
 
 export type PromptSendOptions = {

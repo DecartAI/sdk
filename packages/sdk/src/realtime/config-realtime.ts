@@ -49,6 +49,19 @@ export const REALTIME_CONFIG = {
       errorText: "concurrent session limit reached",
     },
     /**
+     * The server's capacity refusal: an `error` message with `error_type: errorType` and
+     * `retry_after` (seconds, may be fractional), then close 1013 "Try Again Later". `connect()`
+     * waits `retry_after` ± `jitter`, at least `minWaitMs`, and dials again for as long as `budgetMs`
+     * since its first dial allows (`capacityRetryBudgetMs` per connect). Servers that predate
+     * `error_type` send the close alone, which keeps the `retry` backoff above.
+     */
+    capacity: {
+      errorType: "capacity",
+      jitter: 0.2,
+      minWaitMs: 1_000,
+      budgetMs: 60_000,
+    },
+    /**
      * Client-token expiry preflight: a JWT credential whose `exp` is more than this many seconds
      * in the past by the local clock is refused before the dial with TOKEN_EXPIRED, instead of by
      * the server after a round trip. The allowance covers clock skew only: the server grants none,
