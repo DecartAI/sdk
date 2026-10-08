@@ -1717,16 +1717,11 @@ describe("StreamSession startup orchestration", () => {
       expect(audio.setSubscribed).toHaveBeenCalledWith(true);
     });
 
-    it("lets remoteAudio override the local-stream default in both directions", async () => {
-      const muted = createLiveKitMediaChannel({ localStream: createLocalStream(), logger, remoteAudio: false });
-      const mutedTracks = await connectWithServer(muted);
-      expect(mutedTracks.video.setSubscribed).toHaveBeenCalledWith(true);
-      expect(mutedTracks.audio.setSubscribed).not.toHaveBeenCalled();
-
-      liveKitMock.roomInstances.length = 0;
-      const forced = createLiveKitMediaChannel({ localStream: videoOnlyStream(), logger, remoteAudio: true });
-      const forcedTracks = await connectWithServer(forced);
-      expect(forcedTracks.audio.setSubscribed).toHaveBeenCalledWith(true);
+    it("subscribes to the server's video only when there is no local stream at all", async () => {
+      const channel = createLiveKitMediaChannel({ localStream: null, logger });
+      const { audio, video } = await connectWithServer(channel);
+      expect(video.setSubscribed).toHaveBeenCalledWith(true);
+      expect(audio.setSubscribed).not.toHaveBeenCalled();
     });
 
     it("re-subscribes after a livekit-internal full reconnect", async () => {
@@ -1752,29 +1747,6 @@ describe("StreamSession startup orchestration", () => {
       const pub = new liveKitMock.MockPublication("video");
       room.emit(liveKitMock.RoomEvent.TrackPublished, pub, other);
       expect(pub.setSubscribed).not.toHaveBeenCalled();
-    });
-
-    it("threads remoteAudio from StreamSession into the media channel", async () => {
-      const { StreamSession } = await import("../src/realtime/stream-session.js");
-      const configs: Array<{ remoteAudio?: boolean }> = [];
-      const session = new StreamSession({
-        url: "wss://example.test/realtime",
-        localStream: createLocalStream(),
-        remoteAudio: false,
-        createMediaChannel: (config) => {
-          configs.push(config);
-          return createLiveKitMediaChannel(config);
-        },
-      });
-      const connectPromise = session.connect();
-      const ws = FakeWebSocket.instances[0];
-      ws.onopen?.();
-      await flushMicrotasks();
-      sendRoomInfo(ws);
-      await flushMicrotasks();
-      await expect(connectPromise).resolves.toBeUndefined();
-      expect(configs).toEqual([expect.objectContaining({ remoteAudio: false })]);
-      session.disconnect();
     });
   });
 

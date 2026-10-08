@@ -124,7 +124,6 @@ interface StreamSessionConfig {
   connectRetries?: number;
   logger?: Logger;
   videoCodec?: VideoCodec;
-  remoteAudio?: boolean;
   createMediaChannel: MediaChannelFactory;
 }
 
@@ -497,7 +496,6 @@ export class StreamSession {
       localStream: this.config.localStream,
       logger: this.logger,
       videoCodec: this.config.videoCodec,
-      remoteAudio: this.config.remoteAudio,
     });
     this.wireSignalingEvents();
     this.wireMediaEvents();

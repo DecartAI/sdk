@@ -84,22 +84,12 @@ Options:
 
 #### Remote audio
 
-The server's audio track is a passthrough of the audio you publish. The SDK subscribes to it only
-when your input stream carries an audio track, so a video-only session never receives (or plays)
-audio. Override with `remoteAudio`:
-
-```ts
-const realtimeClient = await client.realtime.connect(stream, {
-  model,
-  remoteAudio: false, // never subscribe to the server's audio track
-  // ...
-});
-```
-
-- unset (default) — subscribe when the input stream has an audio track.
-- `true` — always subscribe to the server's audio track.
-- `false` — never subscribe. On iOS this is what keeps a video-only app from showing the microphone
-  permission prompt, which the WebRTC audio engine triggers as soon as any remote audio plays out.
+The server's audio track is the audio you publish, played back in sync with the transformed video
+(the model adds latency, so the server delays your audio to match). The SDK subscribes to it only
+when your input stream carries an audio track; the remote stream then has both a video and an audio
+track, and you should play the remote audio rather than your local microphone so voice and picture
+stay in sync. A video-only input stream never subscribes, so the remote stream has no audio track and
+iOS does not show the microphone permission prompt that playing out any remote audio would trigger.
 
 #### Fast mode
 

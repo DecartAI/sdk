@@ -92,14 +92,6 @@ export interface MediaChannelConfig {
   logger?: Logger;
   videoCodec?: VideoCodec;
   createFrameMetadataWorker?: () => Worker;
-  /**
-   * Subscribe to the inference server's audio track. Defaults to whether the
-   * local stream carries an audio track: the server's audio is a passthrough of
-   * the client's, so a video-only client gets nothing but a silent track, and
-   * on iOS merely playing out a remote audio track starts the WebRTC audio
-   * engine and triggers the microphone permission prompt.
-   */
-  remoteAudio?: boolean;
 }
 
 export type MediaConnectOptions = {
@@ -269,9 +261,14 @@ export class LiveKitMediaChannel implements MediaChannel {
     }
   }
 
-  /** Explicit `remoteAudio` wins; otherwise mirror the local stream (the server's audio is a passthrough of ours). */
+  /**
+   * The server's audio track is our own audio played back, delayed to stay in
+   * sync with the transformed video, so subscribe to it exactly when we publish
+   * audio. A video-only client has nothing to hear, and merely playing out a
+   * remote audio track starts the device's audio engine (on iOS that alone shows
+   * the microphone permission prompt).
+   */
   private wantsRemoteAudio(): boolean {
-    if (this.config.remoteAudio !== undefined) return this.config.remoteAudio;
     return (this.config.localStream?.getAudioTracks().length ?? 0) > 0;
   }
 

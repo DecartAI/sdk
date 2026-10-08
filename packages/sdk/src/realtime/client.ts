@@ -110,15 +110,6 @@ const realTimeClientConnectOptionsSchema = z.object({
   /** Local track publish codec. Desktop Safari is always pinned to vp8 and ignores this value. */
   preferredVideoCodec: z.enum(["h264", "vp8", "vp9"]).optional(),
   /**
-   * Subscribe to the server's audio track. Defaults to `true` only when the input
-   * stream carries an audio track: the server's audio is a passthrough of the
-   * client's, so a video-only session has nothing to hear, and subscribing would
-   * start the device's audio engine (on iOS that alone shows the microphone
-   * permission prompt). Set `true` to always receive the remote audio track,
-   * `false` to never receive it.
-   */
-  remoteAudio: z.boolean().optional(),
-  /**
    * @deprecated Glass-to-glass measurement now runs automatically in browsers
    * when LiveKit frame metadata is available. This legacy flag is accepted for
    * compatibility and no longer gates measurement.
@@ -197,7 +188,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
       speed,
       retries,
       preferredVideoCodec,
-      remoteAudio,
     } = parsedOptions.data;
     const mirror = parsedOptions.data.mirror ?? false;
 
@@ -287,7 +277,6 @@ export const createRealTimeClient = (opts: RealTimeClientOptions) => {
         connectRetries: retries,
         logger,
         videoCodec: preparedConnection.videoCodec,
-        remoteAudio,
         createMediaChannel: preparedConnection.createMediaChannel,
       });
 
