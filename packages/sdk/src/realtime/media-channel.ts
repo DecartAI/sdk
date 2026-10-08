@@ -2,6 +2,7 @@ import type {
   DisconnectReason,
   RemoteParticipant,
   RemoteTrack,
+  RemoteTrackPublication,
   RemoteVideoTrack,
   Room,
   TrackPublishOptions,
@@ -165,10 +166,37 @@ export class LiveKitMediaChannel implements MediaChannel {
       }
     }
     const room = this.room;
+    const remoteAudio = this.wantsRemoteAudio();
+    const isInferenceServer = (participant: RemoteParticipant) =>
+      participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix);
+    const subscribeIfWanted = (publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+      if (!isInferenceServer(participant)) return;
+      if (publication.kind === "video" || (publication.kind === "audio" && remoteAudio)) {
+        publication.setSubscribed(true);
+      }
+    };
+
+    const subscribeExisting = () => {
+      for (const participant of room.remoteParticipants.values()) {
+        for (const publication of participant.trackPublications.values()) {
+          subscribeIfWanted(publication as RemoteTrackPublication, participant);
+        }
+      }
+    };
+
+    // The room joins with `autoSubscribe: false` so the client decides per track.
+    // Publications that arrive after the join surface here; the ones already in
+    // the room when we join (the server publishes its audio track before handing
+    // out the client token) never emit TrackPublished and are swept after
+    // connect. A livekit-internal full reconnect lands on a fresh SFU session
+    // with no subscriptions either, so sweep again; `setSubscribed(true)` is
+    // idempotent.
+    room.on(RoomEvent.TrackPublished, subscribeIfWanted);
+    room.on(RoomEvent.Reconnected, subscribeExisting);
 
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
-      if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) return;
-      if (track.kind !== "video" && track.kind !== "audio") return;
+      if (!isInferenceServer(participant)) return;
+      if (track.kind !== "video" && !(track.kind === "audio" && remoteAudio)) return;
 
       const mediaStreamTrack = track.mediaStreamTrack;
       if (mediaStreamTrack) {
@@ -198,8 +226,9 @@ export class LiveKitMediaChannel implements MediaChannel {
     });
 
     this.config.observability?.startPhase("webrtc-handshake");
-    await room.connect(opts.url, opts.token);
+    await room.connect(opts.url, opts.token, { autoSubscribe: false });
     this.config.observability?.endPhase("webrtc-handshake", { success: true });
+    subscribeExisting();
     this.seedStartBitrate(room);
     this.config.observability?.setLiveKitRoom(room);
   }
@@ -230,6 +259,17 @@ export class LiveKitMediaChannel implements MediaChannel {
     if (room) {
       room.disconnect().catch(() => {});
     }
+  }
+
+  /**
+   * The server's audio track is our own audio played back, delayed to stay in
+   * sync with the transformed video, so subscribe to it exactly when we publish
+   * audio. A video-only client has nothing to hear, and merely playing out a
+   * remote audio track starts the device's audio engine (on iOS that alone shows
+   * the microphone permission prompt).
+   */
+  private wantsRemoteAudio(): boolean {
+    return (this.config.localStream?.getAudioTracks().length ?? 0) > 0;
   }
 
   /**

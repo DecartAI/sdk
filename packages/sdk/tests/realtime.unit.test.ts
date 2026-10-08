@@ -12,7 +12,9 @@ const liveKitMock = vi.hoisted(() => {
   const connectMocks: Array<() => Promise<void>> = [];
 
   const RoomEvent = {
+    TrackPublished: "trackPublished",
     TrackSubscribed: "trackSubscribed",
+    Reconnected: "reconnected",
     Disconnected: "disconnected",
     ConnectionStateChanged: "connectionStateChanged",
   } as const;
@@ -29,6 +31,15 @@ const liveKitMock = vi.hoisted(() => {
     Disconnected: "disconnected",
   } as const;
 
+  class MockPublication {
+    setSubscribed = vi.fn();
+    constructor(public readonly kind: "video" | "audio") {}
+  }
+  class MockRemoteParticipant {
+    trackPublications = new Map<string, MockPublication>();
+    constructor(public readonly identity: string) {}
+  }
+
   class MockRoom {
     handlers = new Map<string, Array<(...args: unknown[]) => void>>();
     state = ConnectionState.Connected;
@@ -36,6 +47,7 @@ const liveKitMock = vi.hoisted(() => {
       publishTrack: vi.fn(),
       videoTrackPublications: new Map<string, { videoTrack: { replaceTrack: ReturnType<typeof vi.fn> } }>(),
     };
+    remoteParticipants = new Map<string, MockRemoteParticipant>();
     connect = vi.fn().mockImplementation(() => connectMocks.shift()?.() ?? Promise.resolve());
     disconnect = vi.fn().mockResolvedValue(undefined);
     /** Inner publisher `setRemoteDescription` (livekit-client internal) — kept so tests can see what reached it. */
@@ -69,7 +81,17 @@ const liveKitMock = vi.hoisted(() => {
     }
   }
 
-  return { roomInstances, connectMocks, RoomEvent, Track, TrackEvent, ConnectionState, MockRoom };
+  return {
+    roomInstances,
+    connectMocks,
+    RoomEvent,
+    Track,
+    TrackEvent,
+    ConnectionState,
+    MockRoom,
+    MockPublication,
+    MockRemoteParticipant,
+  };
 });
 
 vi.mock("livekit-client", () => ({
@@ -1431,7 +1453,7 @@ describe("StreamSession startup orchestration", () => {
     expect(ws.sentMessages).toEqual([leanJoin, initialPrompt]);
 
     const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
-    expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "token");
+    expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "token", { autoSubscribe: false });
     expect(states).toEqual(["connecting"]);
 
     await expect(connectPromise).resolves.toBeUndefined();
@@ -1550,7 +1572,7 @@ describe("StreamSession startup orchestration", () => {
     await flushMicrotasks();
 
     const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
-    expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "token");
+    expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "token", { autoSubscribe: false });
     await expect(connectPromise).resolves.toBeUndefined();
     expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(
@@ -1624,6 +1646,108 @@ describe("StreamSession startup orchestration", () => {
       "worker blocked",
     );
     expect(liveKitMock.roomInstances).toHaveLength(0);
+  });
+
+  describe("remote track subscription", () => {
+    type MockRoom = InstanceType<typeof liveKitMock.MockRoom>;
+    const videoOnlyStream = () => new MediaStream([{ id: "local-video", kind: "video" }] as unknown[]) as MediaStream;
+
+    /** Server already in the room with both tracks when we join, plus a late video publication. */
+    const seedServer = (room: MockRoom) => {
+      const server = new liveKitMock.MockRemoteParticipant("inference-server-1");
+      const audio = new liveKitMock.MockPublication("audio");
+      const video = new liveKitMock.MockPublication("video");
+      server.trackPublications.set("audio", audio);
+      server.trackPublications.set("video", video);
+      room.remoteParticipants.set(server.identity, server);
+      return { server, audio, video };
+    };
+
+    const connectWithServer = async (channel: MediaChannel) => {
+      liveKitMock.connectMocks.push(() => {
+        seedServer(liveKitMock.roomInstances[0] as MockRoom);
+        return Promise.resolve();
+      });
+      await channel.connect({ url: "wss://livekit.example.test", token: "token" });
+      const room = liveKitMock.roomInstances[0] as MockRoom;
+      const server = room.remoteParticipants.get("inference-server-1") as InstanceType<
+        typeof liveKitMock.MockRemoteParticipant
+      >;
+      return {
+        room,
+        server,
+        audio: server.trackPublications.get("audio") as InstanceType<typeof liveKitMock.MockPublication>,
+        video: server.trackPublications.get("video") as InstanceType<typeof liveKitMock.MockPublication>,
+      };
+    };
+
+    it("joins without auto-subscribe and subscribes only to the server's video for a video-only client", async () => {
+      const channel = createLiveKitMediaChannel({ localStream: videoOnlyStream(), logger });
+      const remoteStreams: MediaStream[] = [];
+      channel.on("remoteStream", (stream) => remoteStreams.push(stream));
+
+      const { room, server, audio, video } = await connectWithServer(channel);
+
+      expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "token", { autoSubscribe: false });
+      expect(video.setSubscribed).toHaveBeenCalledWith(true);
+      expect(audio.setSubscribed).not.toHaveBeenCalled();
+
+      // A publication that shows up after the join goes through the same gate.
+      const lateAudio = new liveKitMock.MockPublication("audio");
+      const lateVideo = new liveKitMock.MockPublication("video");
+      room.emit(liveKitMock.RoomEvent.TrackPublished, lateAudio, server);
+      room.emit(liveKitMock.RoomEvent.TrackPublished, lateVideo, server);
+      expect(lateAudio.setSubscribed).not.toHaveBeenCalled();
+      expect(lateVideo.setSubscribed).toHaveBeenCalledWith(true);
+
+      // Even if the SFU hands us an audio track anyway, it never reaches the consumer.
+      room.emit(
+        liveKitMock.RoomEvent.TrackSubscribed,
+        { kind: "audio", mediaStreamTrack: { id: "remote-audio", kind: "audio" } },
+        {},
+        server,
+      );
+      expect(remoteStreams).toHaveLength(0);
+    });
+
+    it("subscribes to the server's audio when the client publishes audio", async () => {
+      const channel = createLiveKitMediaChannel({ localStream: createLocalStream(), logger });
+      const { audio, video } = await connectWithServer(channel);
+      expect(video.setSubscribed).toHaveBeenCalledWith(true);
+      expect(audio.setSubscribed).toHaveBeenCalledWith(true);
+    });
+
+    it("subscribes to the server's video only when there is no local stream at all", async () => {
+      const channel = createLiveKitMediaChannel({ localStream: null, logger });
+      const { audio, video } = await connectWithServer(channel);
+      expect(video.setSubscribed).toHaveBeenCalledWith(true);
+      expect(audio.setSubscribed).not.toHaveBeenCalled();
+    });
+
+    it("re-subscribes after a livekit-internal full reconnect", async () => {
+      const channel = createLiveKitMediaChannel({ localStream: videoOnlyStream(), logger });
+      const { room, server, audio, video } = await connectWithServer(channel);
+      video.setSubscribed.mockClear();
+
+      // A full reconnect lands on a fresh SFU session; publications already known to the
+      // Room never re-emit TrackPublished, so the sweep must run again on Reconnected.
+      const republished = new liveKitMock.MockPublication("video");
+      server.trackPublications.set("video-2", republished);
+      room.emit(liveKitMock.RoomEvent.Reconnected);
+
+      expect(video.setSubscribed).toHaveBeenCalledWith(true);
+      expect(republished.setSubscribed).toHaveBeenCalledWith(true);
+      expect(audio.setSubscribed).not.toHaveBeenCalled();
+    });
+
+    it("ignores publications from participants other than the inference server", async () => {
+      const channel = createLiveKitMediaChannel({ localStream: createLocalStream(), logger });
+      const { room } = await connectWithServer(channel);
+      const other = new liveKitMock.MockRemoteParticipant("viewer-1");
+      const pub = new liveKitMock.MockPublication("video");
+      room.emit(liveKitMock.RoomEvent.TrackPublished, pub, other);
+      expect(pub.setSubscribed).not.toHaveBeenCalled();
+    });
   });
 
   it("sends only a lean passthrough join for a bare localStream connect (no set_image bootstrap)", async () => {

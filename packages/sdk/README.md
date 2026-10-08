@@ -82,6 +82,15 @@ Options:
 - `"auto"` — mirror when the input track reports `facingMode: "user"` (mobile front cameras).
 - `true` — always mirror (e.g. desktop webcams).
 
+#### Remote audio
+
+The server's audio track is the audio you publish, played back in sync with the transformed video
+(the model adds latency, so the server delays your audio to match). The SDK subscribes to it only
+when your input stream carries an audio track; the remote stream then has both a video and an audio
+track, and you should play the remote audio rather than your local microphone so voice and picture
+stay in sync. A video-only input stream never subscribes, so the remote stream has no audio track and
+iOS does not show the microphone permission prompt that playing out any remote audio would trigger.
+
 #### Fast mode
 
 Fast mode (`speed: "fast"`) serves the session from a higher-compute tier for lower latency and higher throughput; output quality is unchanged. It is currently available for `lucy-2.5` / `lucy-latest` and `lucy-vton-3.5` / `lucy-vton-latest`, in the US region only, and is billed at 2x the standard realtime rate for those models. Other models ignore the option. Omit it (the default) for standard mode.
