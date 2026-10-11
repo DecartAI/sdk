@@ -162,6 +162,59 @@ describe("SignalingChannel", () => {
     }
   });
 
+  it("carries error_type and retry_after on the server error that rejects the join", async () => {
+    const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
+
+    let socket: MockWebSocket | null = null;
+
+    class MockWebSocket {
+      static OPEN = 1;
+      readyState = MockWebSocket.OPEN;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: { data: string }) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: ((event: { code: number; reason: string }) => void) | null = null;
+      sent: string[] = [];
+
+      constructor(_url: string) {
+        socket = this;
+        setTimeout(() => this.onopen?.(), 0);
+      }
+
+      send(data: string): void {
+        this.sent.push(data);
+      }
+      close(): void {}
+      deliver(message: object): void {
+        this.onmessage?.({ data: JSON.stringify(message) });
+      }
+    }
+
+    vi.stubGlobal("WebSocket", MockWebSocket as unknown as typeof WebSocket);
+
+    try {
+      const channel = new SignalingChannel({ url: "wss://example.com/realtime", logger });
+      const joinPromise = channel.openAndJoin({ connectTimeout: 50, handshakeTimeout: 200 });
+      joinPromise.catch(() => {});
+
+      // The join must be out, and its room-info wait armed, before the server answers it.
+      await vi.waitFor(() => expect(socket?.sent.length ?? 0).toBeGreaterThan(0));
+      (socket as unknown as MockWebSocket).deliver({
+        type: "error",
+        error: "Server at capacity. Please try again later.",
+        error_type: "capacity",
+        retry_after: 2.5,
+      });
+
+      const error = await joinPromise.catch((e: Error) => e);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("Server at capacity. Please try again later.");
+      expect(error).toMatchObject({ source: "server", errorType: "capacity", retryAfter: 2.5 });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("explicit initialState.passthrough overrides the derived default", async () => {
     const { SignalingChannel } = await import("../src/realtime/signaling-channel.js");
 

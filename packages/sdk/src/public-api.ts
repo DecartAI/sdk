@@ -49,6 +49,7 @@ export type {
   SubscribeOptions,
 } from "./realtime/subscribe-client";
 export type {
+  CapacityWait,
   ConnectionState,
   GenerationEndedMessage,
   QueuePosition,

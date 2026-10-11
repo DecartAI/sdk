@@ -3,7 +3,7 @@ import { createDecartClient, ERROR_CODES, models } from "../src/index.js";
 import { prepareBrowserConnection } from "../src/realtime/browser/prepare-connection.js";
 import { REALTIME_CONFIG } from "../src/realtime/config-realtime.js";
 import { createLiveKitMediaChannel, type MediaChannel } from "../src/realtime/media-channel.js";
-import type { ServerError } from "../src/realtime/types.js";
+import type { CapacityWait, ServerError } from "../src/realtime/types.js";
 import type { DecartSDKError } from "../src/utils/errors.js";
 import { clientTokenJwt, expAt } from "./helpers/client-token.js";
 
@@ -806,6 +806,57 @@ describe("realtime.connect options", () => {
       }),
     ).rejects.toThrow("WebSocket closed: 1013 Try Again Later");
     expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it("waits a capacity refusal's retry_after, reports it through onCapacityWait, and connects on the re-dial", async () => {
+    class CapacityRefusingWebSocket extends FakeWebSocket {
+      static refused = false;
+      send(data: string): void {
+        if (JSON.parse(data).type === "livekit_join" && !CapacityRefusingWebSocket.refused) {
+          CapacityRefusingWebSocket.refused = true;
+          setTimeout(() => {
+            this.onmessage?.({
+              data: JSON.stringify({
+                type: "error",
+                error: "Server at capacity. Please try again later.",
+                error_type: "capacity",
+                retry_after: 5,
+              }),
+            });
+            this.onclose?.({ code: 1013, reason: "Try Again Later" });
+          }, 0);
+          return;
+        }
+        super.send(data);
+      }
+    }
+    vi.useFakeTimers();
+    vi.stubGlobal("WebSocket", CapacityRefusingWebSocket);
+    const client = await createClientWithLogger(logger);
+    const onCapacityWait = vi.fn();
+
+    const pending = client.connect(null, {
+      model: models.realtime("lucy-2.5"),
+      onRemoteStream: vi.fn(),
+      onCapacityWait,
+    });
+    pending.catch(() => {});
+    // A 0 ms timer created inside a fake tick is due 1 ms later, so settle in 1 ms steps.
+    for (let i = 0; i < 4; i++) await vi.advanceTimersByTimeAsync(1);
+    expect(onCapacityWait).toHaveBeenCalledTimes(1);
+    const { retryAfterMs, attempt } = onCapacityWait.mock.calls[0][0] as CapacityWait;
+    expect(attempt).toBe(1);
+    expect(retryAfterMs).toBeGreaterThanOrEqual(4000);
+    expect(retryAfterMs).toBeLessThanOrEqual(6000);
+    // Well past the 1 s backoff floor, still waiting for the server's delay.
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(retryAfterMs);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    const realtimeClient = await pending;
+    expect(FakeWebSocket.instances[1].url).toBe(FakeWebSocket.instances[0].url);
+    realtimeClient.disconnect();
   });
 
   it("rejects a negative or fractional retries option", async () => {
@@ -1943,7 +1994,12 @@ describe("StreamSession startup orchestration", () => {
 
   /** Starts a connect and opens the socket, leaving the join unanswered. */
   const openHandshake = async (
-    opts: { initialImage?: string; connectRetries?: number; redialUrl?: () => string | Promise<string> } = {},
+    opts: {
+      initialImage?: string;
+      connectRetries?: number;
+      capacityRetryBudgetMs?: number;
+      redialUrl?: () => string | Promise<string>;
+    } = {},
   ) => {
     const { StreamSession } = await import("../src/realtime/stream-session.js");
     const session = new StreamSession({
@@ -2296,6 +2352,78 @@ describe("StreamSession startup orchestration", () => {
     expect(states).toContain("reconnecting");
     expect(FakeWebSocket.instances.length).toBe(socketsBefore + 1);
     session.disconnect();
+  });
+
+  describe("capacity refusals (error_type: capacity, retry_after)", () => {
+    const CAPACITY_ERROR = "Server at capacity. Please try again later.";
+
+    /** The server's capacity refusal: a typed `error` message, then the 1013 close a tick later. */
+    const refuseForCapacity = async (ws: FakeWebSocket, retryAfter = 5) => {
+      ws.receive({ type: "error", error: CAPACITY_ERROR, error_type: "capacity", retry_after: retryAfter });
+      await vi.advanceTimersByTimeAsync(0);
+      ws.onclose?.({ code: 1013, reason: "Try Again Later" });
+      await vi.advanceTimersByTimeAsync(0);
+    };
+
+    beforeEach(() => vi.useFakeTimers());
+
+    it("re-dials after retry_after (±20 % jitter) instead of the backoff, and emits capacityWait", async () => {
+      const { session, ws, ended, connectPromise } = await openHandshake();
+      const waits: CapacityWait[] = [];
+      session.on("capacityWait", (wait) => waits.push(wait));
+
+      await refuseForCapacity(ws, 5);
+      expect(waits).toHaveLength(1);
+      expect(waits[0].attempt).toBe(1);
+      expect(waits[0].retryAfterMs).toBeGreaterThanOrEqual(4000);
+      expect(waits[0].retryAfterMs).toBeLessThanOrEqual(6000);
+      // Well past the 1 s backoff floor, still waiting for the server's delay.
+      await vi.advanceTimersByTimeAsync(3999);
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(waits[0].retryAfterMs - 3999);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+
+      const retried = FakeWebSocket.instances[1];
+      retried.onopen?.();
+      await flushMicrotasks();
+      sendRoomInfo(retried);
+      await expect(connectPromise).resolves.toBeUndefined();
+      expect(waits).toHaveLength(1);
+      expect(ended).toEqual([]);
+      session.disconnect();
+    });
+
+    it("stops once the next wait would end past capacityRetryBudgetMs and rejects with the server's error", async () => {
+      const { session, ws, ended, connectPromise } = await openHandshake({ capacityRetryBudgetMs: 7_000 });
+
+      await refuseForCapacity(ws, 5); // the first wait (4 to 6 s) fits the budget
+      await vi.advanceTimersByTimeAsync(6000);
+      const retried = FakeWebSocket.instances[1];
+      retried.onopen?.();
+      await flushMicrotasks();
+      await refuseForCapacity(retried, 5); // a second wait would end past 7 s
+
+      const error = await connectPromise.catch((e: Error) => e);
+      expect(error).toMatchObject({ message: CAPACITY_ERROR, errorType: "capacity", retryAfter: 5 });
+      expect((error as Error).message).toMatch(CAPACITY_REFUSAL);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      expect(ended).toEqual([]);
+      expect(session.getConnectionState()).toBe("disconnected");
+    });
+
+    it("connectRetries: 0 dials once, whatever retry_after says", async () => {
+      const { session, ws, connectPromise } = await openHandshake({ connectRetries: 0 });
+      const waits: CapacityWait[] = [];
+      session.on("capacityWait", (wait) => waits.push(wait));
+
+      await refuseForCapacity(ws, 5);
+      await expect(connectPromise).rejects.toThrow(CAPACITY_ERROR);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      expect(waits).toEqual([]);
+      expect(session.getConnectionState()).toBe("disconnected");
+    });
   });
 });
 

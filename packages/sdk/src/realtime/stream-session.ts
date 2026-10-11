@@ -8,6 +8,7 @@ import type { MediaChannel, MediaChannelFactory, VideoCodec } from "./media-chan
 import type { RealtimeObservability } from "./observability/realtime-observability";
 import { SignalingChannel } from "./signaling-channel";
 import type {
+  CapacityWait,
   ConnectionState,
   ConnectionStatus,
   GenerationEnded,
@@ -17,6 +18,7 @@ import type {
   InitialState,
   PromptSendOptions,
   QueuePosition,
+  ServerError,
   SessionEnded,
   SessionEndReason,
   SessionStarted,
@@ -79,6 +81,22 @@ function toDialError(thrown: unknown): Error {
   return new Error(String(thrown));
 }
 
+/**
+ * The server's capacity refusal as the delay it asked for, in ms; `undefined` for any other
+ * failure, including a capacity error without a usable `retry_after` (which backs off as usual).
+ */
+function capacityRetryAfterMs(error: unknown): number | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const { errorType, retryAfter } = error as ServerError;
+  if (errorType !== REALTIME_CONFIG.session.capacity.errorType) return undefined;
+  if (typeof retryAfter !== "number" || !Number.isFinite(retryAfter) || retryAfter < 0) return undefined;
+  return retryAfter * 1000;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function encodeSubscribeToken(roomName: string, options: { frameTiming?: boolean } = {}): string {
   return btoa(JSON.stringify({ room_name: roomName, ...(options.frameTiming ? { frame_timing: true } : {}) }));
 }
@@ -95,6 +113,7 @@ function getInitialImageSizeKb(image: string | null | undefined): number | null 
 type StreamSessionEvents = {
   connectionChange: ConnectionState;
   queuePosition: QueuePosition;
+  capacityWait: CapacityWait;
   sessionStarted: SessionStarted;
   generationTick: GenerationTick;
   generationEnded: GenerationEnded;
@@ -122,6 +141,8 @@ interface StreamSessionConfig {
   initialPassthrough?: boolean;
   /** Re-dials of a failed `connect()` before it rejects; `0` dials once. Defaults to the config budget. */
   connectRetries?: number;
+  /** How long after its first dial a `connect()` keeps re-dialling capacity refusals, in ms. */
+  capacityRetryBudgetMs?: number;
   logger?: Logger;
   videoCodec?: VideoCodec;
   createMediaChannel: MediaChannelFactory;
@@ -184,7 +205,24 @@ export class StreamSession {
     this.logger.info("realtime connect: starting", { attemptCycle: attempt });
 
     try {
-      await pRetry(() => this.runOneConnect(attempt), this.retryOptionsFor(attempt, this.config.connectRetries));
+      // p-retry handles every failure but a capacity refusal, which it hands back here to be
+      // re-dialled after the server's `retry_after` instead of its backoff, within the budget.
+      const startedAt = Date.now();
+      for (let wait = 1; ; wait++) {
+        try {
+          return await pRetry(
+            () => this.runOneConnect(attempt),
+            this.retryOptionsFor(attempt, this.config.connectRetries, true),
+          );
+        } catch (error) {
+          const delayMs = this.capacityWaitMs(attempt, error, startedAt);
+          if (delayMs === undefined) throw error;
+          const capacityWait: CapacityWait = { retryAfterMs: delayMs, attempt: wait };
+          this.logger.warn("realtime connect: server at capacity; waiting before re-dial", capacityWait);
+          this.events.emit("capacityWait", capacityWait);
+          await sleep(delayMs);
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const terminal = this.terminalEndReason ?? terminalReasonFromError(error);
@@ -238,7 +276,32 @@ export class StreamSession {
     }
   }
 
-  private retryOptionsFor(attempt: number, retries: number = REALTIME_CONFIG.session.retry.retries) {
+  /**
+   * The jittered wait before `connect()` dials again after a capacity refusal, or `undefined` when
+   * that refusal ends the connect: re-dials are off, the session is gone, or the wait would end past
+   * `capacityRetryBudgetMs`. Floored at `minWaitMs` so a tiny `retry_after` cannot re-dial into the
+   * refused socket's own close.
+   */
+  private capacityWaitMs(attempt: number, error: unknown, startedAt: number): number | undefined {
+    const retryAfterMs = capacityRetryAfterMs(error);
+    if (retryAfterMs === undefined || this.config.connectRetries === 0) return undefined;
+    if (this.disposed || this.currentAttempt !== attempt) return undefined;
+    const { jitter, minWaitMs } = REALTIME_CONFIG.session.capacity;
+    const budgetMs = this.config.capacityRetryBudgetMs ?? REALTIME_CONFIG.session.capacity.budgetMs;
+    const delayMs = Math.max(minWaitMs, Math.round(retryAfterMs * (1 - jitter + Math.random() * 2 * jitter)));
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs + delayMs > budgetMs) {
+      this.logger.error("realtime connect: server at capacity, retry budget used up", { elapsedMs, delayMs, budgetMs });
+      return undefined;
+    }
+    return delayMs;
+  }
+
+  private retryOptionsFor(
+    attempt: number,
+    retries: number = REALTIME_CONFIG.session.retry.retries,
+    capacityWaits = false,
+  ) {
     return {
       ...REALTIME_CONFIG.session.retry,
       retries,
@@ -247,6 +310,8 @@ export class StreamSession {
       },
       shouldRetry: (error: Error) => {
         if (this.disposed || this.currentAttempt !== attempt) return false;
+        // `connect()` waits the server's `retry_after` for these instead of the backoff here.
+        if (capacityWaits && capacityRetryAfterMs(error) !== undefined) return false;
         const terminal = this.terminalEndReason ?? terminalReasonFromError(error);
         if (terminal) {
           this.terminalEndReason = terminal;

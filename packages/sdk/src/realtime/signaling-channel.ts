@@ -438,6 +438,8 @@ export class SignalingChannel {
       case "error": {
         const error = new Error(msg.error) as ServerError;
         error.source = "server";
+        if (typeof msg.error_type === "string") error.errorType = msg.error_type;
+        if (typeof msg.retry_after === "number") error.retryAfter = msg.retry_after;
         this.logger.error("signaling: server error received", { error: msg.error });
         this.events.emit("serverError", error);
         this.rejectPendingRoomInfo(error);
