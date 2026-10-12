@@ -2538,7 +2538,7 @@ describe("CustomModelDefinition", () => {
 });
 
 describe("Realtime speed capability", () => {
-  const fastRealtimeModels = ["lucy-2.5", "lucy-latest", "lucy-vton-3.5", "lucy-vton-latest"] as const;
+  const fastRealtimeModels = ["lucy-2.5", "lucy-latest", "lucy-vton-3.5", "lucy-vton-3.6", "lucy-vton-latest"] as const;
 
   it("advertises fast mode on exactly the supported realtime models", () => {
     const advertised = listModels({ kind: "realtime" })
@@ -2748,8 +2748,7 @@ describe("Canonical Model Names", () => {
       expect(model.fps).toEqual({ ideal: 30, max: 30 });
       expect(model.width).toBe(1280);
       expect(model.height).toBe(720);
-      // 3.6 is not offered on the fast tier, unlike 3.5.
-      expect(model.supportedSpeeds).toBeUndefined();
+      expect(model.supportedSpeeds).toEqual(["fast"]);
     });
 
     it("lucy-restyle-2 canonical name works", () => {
@@ -2832,7 +2831,7 @@ describe("Canonical Model Names", () => {
       expect(model.height).toBe(720);
     });
 
-    it("lucy-vton-latest works as realtime model and resolves server-side to lucy-vton-3.5", () => {
+    it("lucy-vton-latest works as realtime model and resolves server-side to lucy-vton-3.6", () => {
       const model = models.realtime("lucy-vton-latest");
       expect(model.name).toBe("lucy-vton-latest");
       expect(model.urlPath).toBe("/v1/stream");
@@ -2860,7 +2859,7 @@ describe("Canonical Model Names", () => {
       expect(model.height).toBe(720);
     });
 
-    it("lucy-vton-latest works as video model and resolves server-side to lucy-vton-3.5", () => {
+    it("lucy-vton-latest works as video model and resolves server-side to lucy-vton-3.6", () => {
       const model = models.video("lucy-vton-latest");
       expect(model.name).toBe("lucy-vton-latest");
       expect(model.urlPath).toBe("/v1/generate/lucy-vton-latest");

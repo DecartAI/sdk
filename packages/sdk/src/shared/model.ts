@@ -378,6 +378,7 @@ const _models = {
       width: 1280,
       height: 720,
       inputSchema: z.object({}),
+      supportedSpeeds: ["fast"],
     },
     "lucy-restyle-2": {
       urlPath: "/v1/stream",
@@ -397,7 +398,7 @@ const _models = {
       inputSchema: z.object({}),
       supportedSpeeds: ["fast"],
     },
-    // Server-side alias currently resolves to lucy-vton-3.5.
+    // Server-side alias currently resolves to lucy-vton-3.6.
     "lucy-vton-latest": {
       urlPath: "/v1/stream",
       name: "lucy-vton-latest" as const,
@@ -514,7 +515,7 @@ const _models = {
       height: 720,
       inputSchema: modelInputSchemas["lucy-latest"],
     },
-    // Server-side alias currently resolves to lucy-vton-3.5.
+    // Server-side alias currently resolves to lucy-vton-3.6.
     "lucy-vton-latest": {
       urlPath: "/v1/generate/lucy-vton-latest",
       queueUrlPath: "/v1/jobs/lucy-vton-latest",
