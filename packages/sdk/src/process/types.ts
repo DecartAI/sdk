@@ -70,8 +70,6 @@ export interface VideoModelInputs {
   /**
    * The data to use for generation (for image-to-video and video-to-video).
    * Can be a File, Blob, ReadableStream, URL, or string URL.
-   *
-   * Output video is limited to 5 seconds.
    */
   data?: FileInput;
 }
@@ -137,9 +135,12 @@ export interface PromptInput {
  * This allows different models to have field-specific documentation while maintaining type safety.
  * Specific models are checked first, then falls back to category-based selection.
  */
-export type ModelSpecificInputs<T extends ModelDefinition> = T["name"] extends "lucy-pro-i2i" | "lucy-image-2"
+export type ModelSpecificInputs<T extends ModelDefinition> = T["name"] extends
+  | "lucy-pro-i2i"
+  | "lucy-image-2"
+  | "lucy-image-latest"
   ? ImageEditingInputs
-  : T["name"] extends "lucy-restyle-v2v" | "lucy-restyle-2"
+  : T["name"] extends "lucy-restyle-v2v" | "lucy-restyle-2" | "lucy-restyle-latest"
     ? VideoRestyleInputs
     : T["name"] extends "lucy-2.1" | "lucy-2.5" | "lucy-vton-3.5" | "lucy-vton-3.6" | "lucy-latest" | "lucy-vton-latest"
       ? VideoEdit2Inputs
