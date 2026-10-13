@@ -168,13 +168,13 @@ describe("Decart Proxy Middleware", () => {
       const { port, close } = await startTestServer(app);
 
       mswServer.use(
-        http.post(`${BASE_URL}/v1/jobs/lucy-pro-v2v`, async ({ request }) => {
+        http.post(`${BASE_URL}/v1/jobs/lucy-latest`, async ({ request }) => {
           lastRequest = request;
           return HttpResponse.json({});
         }),
       );
 
-      await fetch(getProxyUrl(port, "/v1/jobs/lucy-pro-v2v"), {
+      await fetch(getProxyUrl(port, "/v1/jobs/lucy-latest"), {
         method: "POST",
         headers: {
           "User-Agent": "Custom-Agent/1.0",
@@ -198,7 +198,7 @@ describe("Decart Proxy Middleware", () => {
       const mockResponse = { job_id: "job_abc123", status: "pending" };
 
       mswServer.use(
-        http.post(`${BASE_URL}/v1/jobs/lucy-pro-v2v`, () => {
+        http.post(`${BASE_URL}/v1/jobs/lucy-latest`, () => {
           return HttpResponse.json(mockResponse, {
             status: 201,
             headers: { "Content-Type": "application/json" },
@@ -206,7 +206,7 @@ describe("Decart Proxy Middleware", () => {
         }),
       );
 
-      const response = await fetch(getProxyUrl(port, "/v1/jobs/lucy-pro-v2v"), {
+      const response = await fetch(getProxyUrl(port, "/v1/jobs/lucy-latest"), {
         method: "POST",
       });
 

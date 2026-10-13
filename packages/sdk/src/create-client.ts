@@ -241,7 +241,7 @@ export const createDecartClientForPlatform = (createRealtime: CreateRealtime, op
      *
      * // Option 1: Submit and poll automatically
      * const result = await client.queue.submitAndPoll({
-     *   model: models.video("lucy-pro-v2v"),
+     *   model: models.video("lucy-latest"),
      *   prompt: "Transform into anime style",
      *   data: videoBlob,
      *   onStatusChange: (job) => console.log(`Job ${job.job_id}: ${job.status}`)
@@ -249,7 +249,7 @@ export const createDecartClientForPlatform = (createRealtime: CreateRealtime, op
      *
      * // Option 2: Submit and poll manually
      * const job = await client.queue.submit({
-     *   model: models.video("lucy-pro-v2v"),
+     *   model: models.video("lucy-latest"),
      *   prompt: "Transform into anime style",
      *   data: videoBlob
      * });

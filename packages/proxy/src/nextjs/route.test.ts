@@ -248,13 +248,13 @@ describe("Next.js Proxy Adapter", () => {
 
         const captureRequest = vi.fn();
         mswServer.use(
-          http.post(`${BASE_URL}/v1/jobs/lucy-pro-v2v`, async ({ request }) => {
+          http.post(`${BASE_URL}/v1/jobs/lucy-latest`, async ({ request }) => {
             captureRequest(request);
             return HttpResponse.json({});
           }),
         );
 
-        const request = createNextRequest("/v1/jobs/lucy-pro-v2v", {
+        const request = createNextRequest("/v1/jobs/lucy-latest", {
           method: "POST",
           headers: {
             "User-Agent": "Custom-Agent/1.0",
@@ -278,7 +278,7 @@ describe("Next.js Proxy Adapter", () => {
         const mockResponse = { job_id: "job_abc123", status: "pending" };
 
         mswServer.use(
-          http.post(`${BASE_URL}/v1/jobs/lucy-pro-v2v`, () => {
+          http.post(`${BASE_URL}/v1/jobs/lucy-latest`, () => {
             return HttpResponse.json(mockResponse, {
               status: 201,
               headers: { "Content-Type": "application/json" },
@@ -286,7 +286,7 @@ describe("Next.js Proxy Adapter", () => {
           }),
         );
 
-        const request = createNextRequest("/v1/jobs/lucy-pro-v2v", { method: "POST" });
+        const request = createNextRequest("/v1/jobs/lucy-latest", { method: "POST" });
         const response = await handlers.POST(request);
 
         expect(response.status).toBe(201);
@@ -508,13 +508,13 @@ describe("Next.js Proxy Adapter", () => {
 
         const captureRequest = vi.fn();
         mswServer.use(
-          http.post(`${BASE_URL}/v1/jobs/lucy-pro-v2v`, async ({ request }) => {
+          http.post(`${BASE_URL}/v1/jobs/lucy-latest`, async ({ request }) => {
             captureRequest(request);
             return HttpResponse.json({});
           }),
         );
 
-        const { req, res } = createMockPagesRouter(["v1", "jobs", "lucy-pro-v2v"], {
+        const { req, res } = createMockPagesRouter(["v1", "jobs", "lucy-latest"], {
           method: "POST",
           body: { prompt: "A cat playing piano" },
           headers: {
@@ -539,7 +539,7 @@ describe("Next.js Proxy Adapter", () => {
         const mockResponse = { job_id: "job_abc123", status: "pending" };
 
         mswServer.use(
-          http.post(`${BASE_URL}/v1/jobs/lucy-pro-v2v`, () => {
+          http.post(`${BASE_URL}/v1/jobs/lucy-latest`, () => {
             return HttpResponse.json(mockResponse, {
               status: 201,
               headers: { "Content-Type": "application/json" },
@@ -547,7 +547,7 @@ describe("Next.js Proxy Adapter", () => {
           }),
         );
 
-        const { req, res, getResponse } = createMockPagesRouter(["v1", "jobs", "lucy-pro-v2v"], {
+        const { req, res, getResponse } = createMockPagesRouter(["v1", "jobs", "lucy-latest"], {
           method: "POST",
         });
 

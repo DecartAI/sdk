@@ -77,28 +77,6 @@ export interface VideoModelInputs {
 }
 
 /**
- * Model-specific input documentation for lucy-pro-v2v.
- */
-export interface VideoEditInputs {
-  /**
-   * Text description to use for the video editing.
-   *
-   * See our [Prompt Engineering](https://docs.platform.decart.ai/models/video/video-generation#prompt-engineering) guide for how to write prompt for Decart video models effectively.
-   */
-  prompt: string;
-  /**
-   * Video file to process.
-   * Can be a File, Blob, ReadableStream, URL, or string URL.
-   */
-  data: FileInput;
-  /**
-   * Optional reference image to guide what to add to the video.
-   * Can be a File, Blob, ReadableStream, URL, or string URL.
-   */
-  reference_image?: FileInput;
-}
-
-/**
  * Model-specific input documentation for Lucy 2.1 video editing models.
  * Requires prompt (can be empty string). Optional reference_image can also be provided.
  */
@@ -163,15 +141,13 @@ export type ModelSpecificInputs<T extends ModelDefinition> = T["name"] extends "
   ? ImageEditingInputs
   : T["name"] extends "lucy-restyle-v2v" | "lucy-restyle-2"
     ? VideoRestyleInputs
-    : T["name"] extends "lucy-2.1" | "lucy-2.5" | "lucy-vton-3.5" | "lucy-vton-3.6" | "lucy-vton-latest"
+    : T["name"] extends "lucy-2.1" | "lucy-2.5" | "lucy-vton-3.5" | "lucy-vton-3.6" | "lucy-latest" | "lucy-vton-latest"
       ? VideoEdit2Inputs
-      : T["name"] extends "lucy-pro-v2v" | "lucy-clip"
-        ? VideoEditInputs
-        : T["name"] extends ImageModels
-          ? ImageGenerationInputs
-          : T["name"] extends VideoModels
-            ? VideoModelInputs
-            : PromptInput;
+      : T["name"] extends ImageModels
+        ? ImageGenerationInputs
+        : T["name"] extends VideoModels
+          ? VideoModelInputs
+          : PromptInput;
 
 export interface ProcessInputs {
   /**

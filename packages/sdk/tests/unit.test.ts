@@ -390,7 +390,7 @@ describe("Queue API", () => {
   describe("submit", () => {
     it("submits video-to-video job", async () => {
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-v2v", async ({ request }) => {
+        http.post("http://localhost/v1/jobs/lucy-latest", async ({ request }) => {
           lastRequest = request;
           lastFormData = await request.formData();
           return HttpResponse.json({
@@ -403,7 +403,7 @@ describe("Queue API", () => {
       const testBlob = new Blob(["test-video"], { type: "video/mp4" });
 
       const result = await decart.queue.submit({
-        model: models.video("lucy-pro-v2v"),
+        model: models.video("lucy-latest"),
         prompt: "Make it artistic",
         data: testBlob,
         enhance_prompt: true,
@@ -420,7 +420,7 @@ describe("Queue API", () => {
 
     it("submits video-to-video job with optional reference_image", async () => {
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-v2v", async ({ request }) => {
+        http.post("http://localhost/v1/jobs/lucy-latest", async ({ request }) => {
           lastRequest = request;
           lastFormData = await request.formData();
           return HttpResponse.json({
@@ -434,7 +434,7 @@ describe("Queue API", () => {
       const testImageBlob = new Blob(["test-image"], { type: "image/png" });
 
       const result = await decart.queue.submit({
-        model: models.video("lucy-pro-v2v"),
+        model: models.video("lucy-latest"),
         prompt: "Make it artistic",
         data: testVideoBlob,
         reference_image: testImageBlob,
@@ -671,7 +671,7 @@ describe("Queue API", () => {
     it("validates required inputs for video-to-video", async () => {
       await expect(
         decart.queue.submit({
-          model: models.video("lucy-pro-v2v"),
+          model: models.video("lucy-latest"),
           prompt: "test",
           // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
         } as any),
@@ -680,7 +680,7 @@ describe("Queue API", () => {
 
     it("handles API errors", async () => {
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-v2v", () => {
+        http.post("http://localhost/v1/jobs/lucy-latest", () => {
           return HttpResponse.text("Internal Server Error", { status: 500 });
         }),
       );
@@ -689,7 +689,7 @@ describe("Queue API", () => {
 
       await expect(
         decart.queue.submit({
-          model: models.video("lucy-pro-v2v"),
+          model: models.video("lucy-latest"),
           prompt: "test",
           data: testBlob,
         }),
@@ -700,7 +700,7 @@ describe("Queue API", () => {
       const detail =
         "Prompt is too long: 362 tokens (maximum 226, including the end-of-sequence token). Please shorten the prompt.";
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-v2v", () => {
+        http.post("http://localhost/v1/jobs/lucy-latest", () => {
           return HttpResponse.json({ detail }, { status: 400 });
         }),
       );
@@ -709,7 +709,7 @@ describe("Queue API", () => {
 
       await expect(
         decart.queue.submit({
-          model: models.video("lucy-pro-v2v"),
+          model: models.video("lucy-latest"),
           prompt: "test",
           data: testBlob,
         }),
@@ -781,7 +781,7 @@ describe("Queue API", () => {
       const statusChanges: Array<{ job_id: string; status: string }> = [];
 
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-v2v", async ({ request }) => {
+        http.post("http://localhost/v1/jobs/lucy-latest", async ({ request }) => {
           lastFormData = await request.formData();
           return HttpResponse.json({
             job_id: "job_456",
@@ -811,7 +811,7 @@ describe("Queue API", () => {
       const testBlob = new Blob(["test-video"], { type: "video/mp4" });
 
       const result = await decart.queue.submitAndPoll({
-        model: models.video("lucy-pro-v2v"),
+        model: models.video("lucy-latest"),
         prompt: "A beautiful sunset",
         data: testBlob,
         onStatusChange: (job) => {
@@ -829,7 +829,7 @@ describe("Queue API", () => {
 
     it("returns failed status when job fails", async () => {
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-v2v", () => {
+        http.post("http://localhost/v1/jobs/lucy-latest", () => {
           return HttpResponse.json({
             job_id: "job_789",
             status: "pending",
@@ -846,7 +846,7 @@ describe("Queue API", () => {
       const testBlob = new Blob(["test-video"], { type: "video/mp4" });
 
       const result = await decart.queue.submitAndPoll({
-        model: models.video("lucy-pro-v2v"),
+        model: models.video("lucy-latest"),
         prompt: "This will fail",
         data: testBlob,
       });
@@ -861,7 +861,7 @@ describe("Queue API", () => {
       const controller = new AbortController();
 
       server.use(
-        http.post("http://localhost/v1/jobs/lucy-pro-v2v", () => {
+        http.post("http://localhost/v1/jobs/lucy-latest", () => {
           return HttpResponse.json({
             job_id: "job_abort",
             status: "pending",
@@ -879,7 +879,7 @@ describe("Queue API", () => {
       const testBlob = new Blob(["test-video"], { type: "video/mp4" });
 
       const pollPromise = decart.queue.submitAndPoll({
-        model: models.video("lucy-pro-v2v"),
+        model: models.video("lucy-latest"),
         prompt: "test",
         data: testBlob,
         signal: controller.signal,
@@ -1082,10 +1082,10 @@ describe("Tokens API", () => {
         }),
       );
 
-      await decart.tokens.create({ allowedModels: ["lucy-pro-v2v", "lucy-restyle-v2v"] });
+      await decart.tokens.create({ allowedModels: ["lucy-latest", "lucy-restyle-v2v"] });
 
       const body = await lastRequest?.json();
-      expect(body).toEqual({ allowedModels: ["lucy-pro-v2v", "lucy-restyle-v2v"] });
+      expect(body).toEqual({ allowedModels: ["lucy-latest", "lucy-restyle-v2v"] });
     });
 
     it("sends constraints in request body", async () => {
@@ -1136,7 +1136,7 @@ describe("Tokens API", () => {
       await decart.tokens.create({
         metadata: { role: "viewer" },
         expiresIn: 300,
-        allowedModels: ["lucy-pro-v2v"],
+        allowedModels: ["lucy-latest"],
         allowedOrigins: ["https://example.com"],
         constraints: { realtime: { maxSessionDuration: 60 } },
       });
@@ -1145,7 +1145,7 @@ describe("Tokens API", () => {
       expect(body).toEqual({
         metadata: { role: "viewer" },
         expiresIn: 300,
-        allowedModels: ["lucy-pro-v2v"],
+        allowedModels: ["lucy-latest"],
         allowedOrigins: ["https://example.com"],
         constraints: { realtime: { maxSessionDuration: 60 } },
       });
@@ -1159,7 +1159,7 @@ describe("Tokens API", () => {
             token: "eyJhbGciOiJFZERTQS.signed.jwt",
             expiresAt: "2024-12-15T12:15:00Z",
             permissions: {
-              models: ["lucy-pro-v2v", "lucy-restyle-v2v"],
+              models: ["lucy-latest", "lucy-restyle-v2v"],
               origins: ["https://example.com"],
             },
             constraints: { realtime: { maxSessionDuration: 120 } },
@@ -1168,7 +1168,7 @@ describe("Tokens API", () => {
       );
 
       const result = await decart.tokens.create({
-        allowedModels: ["lucy-pro-v2v", "lucy-restyle-v2v"],
+        allowedModels: ["lucy-latest", "lucy-restyle-v2v"],
         allowedOrigins: ["https://example.com"],
         constraints: { realtime: { maxSessionDuration: 120 } },
       });
@@ -1178,7 +1178,7 @@ describe("Tokens API", () => {
         token: "eyJhbGciOiJFZERTQS.signed.jwt",
         expiresAt: "2024-12-15T12:15:00Z",
         permissions: {
-          models: ["lucy-pro-v2v", "lucy-restyle-v2v"],
+          models: ["lucy-latest", "lucy-restyle-v2v"],
           origins: ["https://example.com"],
         },
         constraints: { realtime: { maxSessionDuration: 120 } },
@@ -2572,14 +2572,8 @@ describe("Realtime speed capability", () => {
 
 describe("Canonical Model Names", () => {
   describe("Public model registry exports", () => {
-    const latestAliases = [
-      "lucy-latest",
-      "lucy-vton-latest",
-      "lucy-restyle-latest",
-      "lucy-clip-latest",
-      "lucy-image-latest",
-    ];
-    const deprecatedAliases = ["lucy-pro-v2v", "lucy-restyle-v2v", "lucy-pro-i2i"];
+    const latestAliases = ["lucy-latest", "lucy-vton-latest", "lucy-restyle-latest", "lucy-image-latest"];
+    const deprecatedAliases = ["lucy-restyle-v2v", "lucy-pro-i2i"];
 
     it("canonical schemas exclude deprecated and latest aliases", () => {
       for (const alias of [...latestAliases, ...deprecatedAliases]) {
@@ -2594,7 +2588,6 @@ describe("Canonical Model Names", () => {
         "lucy-restyle-2",
       ]);
       expect(canonicalVideoModels.options).toEqual([
-        "lucy-clip",
         "lucy-2.1",
         "lucy-2.5",
         "lucy-vton-3.5",
@@ -2604,8 +2597,8 @@ describe("Canonical Model Names", () => {
       expect(canonicalImageModels.options).toEqual(["lucy-image-2"]);
       expect(canonicalRealtimeModels.safeParse("lucy-2.1").success).toBe(true);
       expect(canonicalRealtimeModels.safeParse("lucy-latest").success).toBe(false);
-      expect(canonicalVideoModels.safeParse("lucy-clip").success).toBe(true);
-      expect(canonicalVideoModels.safeParse("lucy-pro-v2v").success).toBe(false);
+      expect(canonicalVideoModels.safeParse("lucy-restyle-2").success).toBe(true);
+      expect(canonicalVideoModels.safeParse("lucy-restyle-v2v").success).toBe(false);
       expect(canonicalImageModels.safeParse("lucy-image-2").success).toBe(true);
       expect(canonicalImageModels.safeParse("lucy-image-latest").success).toBe(false);
     });
@@ -2616,23 +2609,23 @@ describe("Canonical Model Names", () => {
       }
 
       expect(realtimeModels.safeParse("lucy-latest").success).toBe(true);
-      expect(videoModels.safeParse("lucy-clip-latest").success).toBe(true);
-      expect(videoModels.safeParse("lucy-pro-v2v").success).toBe(true);
+      expect(videoModels.safeParse("lucy-restyle-latest").success).toBe(true);
+      expect(videoModels.safeParse("lucy-restyle-v2v").success).toBe(true);
       expect(imageModels.safeParse("lucy-image-latest").success).toBe(true);
       expect(imageModels.safeParse("lucy-pro-i2i").success).toBe(true);
     });
 
     it("resolves model aliases while preserving accepted latest aliases", () => {
-      expect(modelAliases["lucy-pro-v2v"]).toBe("lucy-clip");
-      expect(resolveModelAlias("lucy-pro-v2v")).toBe("lucy-clip");
-      expect(resolveModelAlias("lucy-clip")).toBe("lucy-clip");
+      expect(modelAliases["lucy-restyle-v2v"]).toBe("lucy-restyle-2");
+      expect(resolveModelAlias("lucy-restyle-v2v")).toBe("lucy-restyle-2");
+      expect(resolveModelAlias("lucy-restyle-2")).toBe("lucy-restyle-2");
       expect(resolveModelAlias("lucy-latest")).toBe("lucy-latest");
       expect(resolveModelAlias("unknown-model")).toBeUndefined();
     });
 
     it("resolves only stable canonical names for canonical alias resolution", () => {
-      expect(resolveCanonicalModelAlias("lucy-pro-v2v")).toBe("lucy-clip");
-      expect(resolveCanonicalModelAlias("lucy-clip")).toBe("lucy-clip");
+      expect(resolveCanonicalModelAlias("lucy-restyle-v2v")).toBe("lucy-restyle-2");
+      expect(resolveCanonicalModelAlias("lucy-restyle-2")).toBe("lucy-restyle-2");
       expect(resolveCanonicalModelAlias("lucy-latest")).toBeUndefined();
       expect(resolveCanonicalModelAlias("unknown-model")).toBeUndefined();
     });
@@ -2640,7 +2633,7 @@ describe("Canonical Model Names", () => {
     it("validates models through public helper functions instead of root zod exports", () => {
       expect(isModel("lucy-latest")).toBe(true);
       expect(isModel("unknown-model")).toBe(false);
-      expect(isCanonicalModel("lucy-clip")).toBe(true);
+      expect(isCanonicalModel("lucy-restyle-2")).toBe(true);
       expect(isCanonicalModel("lucy-latest")).toBe(false);
     });
 
@@ -2648,8 +2641,8 @@ describe("Canonical Model Names", () => {
       _resetDeprecationWarnings();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      expect(resolveModelAlias("lucy-pro-v2v")).toBe("lucy-clip");
-      expect(resolveCanonicalModelAlias("lucy-pro-v2v")).toBe("lucy-clip");
+      expect(resolveModelAlias("lucy-restyle-v2v")).toBe("lucy-restyle-2");
+      expect(resolveCanonicalModelAlias("lucy-restyle-v2v")).toBe("lucy-restyle-2");
       expect(warnSpy).not.toHaveBeenCalled();
 
       warnSpy.mockRestore();
@@ -2658,9 +2651,9 @@ describe("Canonical Model Names", () => {
     it("lists all models when called without options", () => {
       const listedModels = listModels();
 
-      expect(listedModels).toHaveLength(23);
+      expect(listedModels).toHaveLength(20);
       expect(listedModels.some((model) => model.kind === "realtime" && model.name === "lucy-2.1")).toBe(true);
-      expect(listedModels.some((model) => model.kind === "video" && model.name === "lucy-clip")).toBe(true);
+      expect(listedModels.some((model) => model.kind === "video" && model.name === "lucy-2.5")).toBe(true);
       expect(listedModels.some((model) => model.kind === "image" && model.name === "lucy-image-2")).toBe(true);
     });
 
@@ -2691,10 +2684,10 @@ describe("Canonical Model Names", () => {
 
     it("supports consumer-style imports from the package root", () => {
       const kind: ModelKind = "video";
-      const canonicalModel: CanonicalModel = resolveCanonicalModelAlias("lucy-pro-v2v") ?? "lucy-clip";
+      const canonicalModel: CanonicalModel = resolveCanonicalModelAlias("lucy-restyle-v2v") ?? "lucy-restyle-2";
       const listedModels: ListedModelDefinition[] = listModels({ kind, canonicalOnly: true });
 
-      expect(canonicalModel).toBe("lucy-clip");
+      expect(canonicalModel).toBe("lucy-restyle-2");
       expect(isCanonicalModel(canonicalModel)).toBe(true);
       expect(listedModels.every((model) => model.kind === kind)).toBe(true);
     });
@@ -2759,14 +2752,6 @@ describe("Canonical Model Names", () => {
   });
 
   describe("Video canonical models", () => {
-    it("lucy-clip canonical name works", () => {
-      const model = models.video("lucy-clip");
-      expect(model.name).toBe("lucy-clip");
-      expect(model.urlPath).toBe("/v1/generate/lucy-clip");
-      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-clip");
-      expect(model.fps).toBe(25);
-    });
-
     it("lucy-2.1 as video model works", () => {
       const model = models.video("lucy-2.1");
       expect(model.name).toBe("lucy-2.1");
@@ -2877,14 +2862,6 @@ describe("Canonical Model Names", () => {
       expect(model.fps).toBe(22);
     });
 
-    it("lucy-clip-latest works as video model", () => {
-      const model = models.video("lucy-clip-latest");
-      expect(model.name).toBe("lucy-clip-latest");
-      expect(model.urlPath).toBe("/v1/generate/lucy-clip-latest");
-      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-clip-latest");
-      expect(model.fps).toBe(25);
-    });
-
     it("lucy-image-latest works as image model", () => {
       const model = models.image("lucy-image-latest");
       expect(model.name).toBe("lucy-image-latest");
@@ -2917,7 +2894,6 @@ describe("Canonical Model Names", () => {
       models.video("lucy-latest");
       models.video("lucy-vton-latest");
       models.video("lucy-restyle-latest");
-      models.video("lucy-clip-latest");
       models.image("lucy-image-latest");
 
       expect(warnSpy).not.toHaveBeenCalled();
@@ -2938,9 +2914,9 @@ describe("Canonical Model Names", () => {
   });
 
   describe("Deprecated names still work", () => {
-    it("lucy-pro-v2v still works as video model", () => {
-      const model = models.video("lucy-pro-v2v");
-      expect(model.name).toBe("lucy-pro-v2v");
+    it("lucy-restyle-v2v still works as video model", () => {
+      const model = models.video("lucy-restyle-v2v");
+      expect(model.name).toBe("lucy-restyle-v2v");
     });
 
     it("lucy-pro-i2i still works as image model", () => {
@@ -2954,9 +2930,9 @@ describe("Canonical Model Names", () => {
       _resetDeprecationWarnings();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      models.video("lucy-pro-v2v");
+      models.video("lucy-restyle-v2v");
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Model "lucy-pro-v2v" is deprecated. Use "lucy-clip" instead.'),
+        expect.stringContaining('Model "lucy-restyle-v2v" is deprecated. Use "lucy-restyle-2" instead.'),
       );
 
       warnSpy.mockRestore();
@@ -2966,8 +2942,8 @@ describe("Canonical Model Names", () => {
       _resetDeprecationWarnings();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      models.video("lucy-pro-v2v");
-      models.video("lucy-pro-v2v");
+      models.video("lucy-restyle-v2v");
+      models.video("lucy-restyle-v2v");
       expect(warnSpy).toHaveBeenCalledTimes(1);
 
       warnSpy.mockRestore();

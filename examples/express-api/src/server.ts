@@ -60,7 +60,7 @@ app.post("/api/video/generate", async (req, res) => {
     }
 
     const job = await client.queue.submit({
-      model: models.video("lucy-clip"),
+      model: models.video("lucy-latest"),
       prompt,
       data: parseBase64DataUrl(videoDataUrl, "video"),
     });
@@ -103,7 +103,7 @@ app.post("/api/video/generate-sync", async (req, res) => {
     }
 
     const result = await client.queue.submitAndPoll({
-      model: models.video("lucy-clip"),
+      model: models.video("lucy-latest"),
       prompt,
       data: parseBase64DataUrl(videoDataUrl, "video"),
     });

@@ -81,13 +81,12 @@
 - `lucy-latest`, `lucy-vton-latest`, `lucy-restyle-latest` - Server-resolved aliases for the latest stable version (`lucy-vton-latest` → `lucy-vton-3.6`)
 
 ### Video Models (Queue API)
-- `lucy-clip` - video-to-video editing
 - `lucy-2.1` - long-form video editing (720p)
 - `lucy-2.5` - long-form video editing (720p)
 - `lucy-vton-3.5` - virtual try-on 3.5 video editing
 - `lucy-vton-3.6` - virtual try-on 3.6 video editing
 - `lucy-restyle-2` - video restyling
-- `lucy-latest`, `lucy-vton-latest`, `lucy-restyle-latest`, `lucy-clip-latest` - Server-resolved aliases (`lucy-vton-latest` → `lucy-vton-3.6`)
+- `lucy-latest`, `lucy-vton-latest`, `lucy-restyle-latest` - Server-resolved aliases (`lucy-vton-latest` → `lucy-vton-3.6`)
 
 ### Image Models (Process API)
 - `lucy-image-2` - image-to-image editing
@@ -140,9 +139,9 @@ rejected at billing time. Only list a tier once the model is confirmed to be ser
 
 ### `-latest` aliases
 
-`lucy-latest` / `lucy-vton-latest` / `lucy-restyle-latest` / `lucy-clip-latest` resolve **server-side**. A new
-model is opt-in by explicit name until the service repoints the alias. When that happens, update the alias
-entry's geometry here in the same release, or the SDK advertises a capture size the alias is not serving.
+`lucy-latest` / `lucy-vton-latest` / `lucy-restyle-latest` resolve **server-side**. A new model is opt-in by
+explicit name until the service repoints the alias. When that happens, update the alias entry's geometry here
+in the same release, or the SDK advertises a capture size the alias is not serving.
 
 ### Checklist
 

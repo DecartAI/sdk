@@ -178,17 +178,5 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
 
       await expectResult(result, "lucy-latest", ".mp4");
     });
-
-    it("lucy-clip-latest: video-to-video", async () => {
-      const result = await client.queue.submitAndPoll({
-        model: models.video("lucy-clip-latest"),
-        prompt: "Lego World animated style",
-        data: videoBlob,
-        seed: 999,
-        enhance_prompt: true,
-      });
-
-      await expectResult(result, "lucy-clip-latest", ".mp4");
-    });
   });
 });
