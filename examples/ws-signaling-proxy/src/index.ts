@@ -3,7 +3,7 @@ import { type WebSocket, WebSocketServer } from "ws";
 import { ProxySession } from "./proxy-session.js";
 
 const DECART_API_KEY = process.env.DECART_API_KEY;
-const DECART_BASE_URL = process.env.DECART_BASE_URL ?? "wss://api3.decart.ai";
+const DECART_BASE_URL = process.env.DECART_BASE_URL ?? "wss://api.decart.ai";
 const PORT = Number(process.env.PORT ?? 8080);
 
 if (!DECART_API_KEY) {
