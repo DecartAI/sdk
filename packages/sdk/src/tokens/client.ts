@@ -60,7 +60,7 @@ export type TokensClient = {
    * // With expiry, model restrictions, origin restrictions, and constraints:
    * const token = await client.tokens.create({
    *   expiresIn: 300,
-   *   allowedModels: ["lucy-pro-v2v", "lucy-restyle-v2v"],
+   *   allowedModels: ["lucy-latest", "lucy-restyle-latest"],
    *   allowedOrigins: ["https://example.com"],
    *   constraints: { realtime: { maxSessionDuration: 120 } },
    * });

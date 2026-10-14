@@ -37,7 +37,7 @@ Image models use the synchronous Process API - they return immediately with a Bl
 
 Video models use the asynchronous Queue API - jobs are submitted and polled for completion.
 
-- `video/video-to-video.ts` - Transform existing video with a prompt (`lucy-clip`)
+- `video/video-to-video.ts` - Transform existing video with a prompt (`lucy-latest`)
 - `video/video-editing.ts` - Edit video with prompt, reference image, or both (`lucy-2.1`)
 - `video/long-form-video-restyle.ts` - Transform existing video with `lucy-restyle-2`
 - `video/manual-polling.ts` - Manual job status polling
@@ -79,7 +79,7 @@ const blob = await client.process({
 ```typescript
 // Automatic polling (video-to-video)
 const result = await client.queue.submitAndPoll({
-  model: models.video("lucy-clip"),
+  model: models.video("lucy-latest"),
   prompt: "Make it look like a watercolor painting",
   data: videoBlob,
   onStatusChange: (job) => console.log(job.status),

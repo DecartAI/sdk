@@ -76,7 +76,7 @@ app.post("/api/video/generate", async (c) => {
     }
 
     const job = await client.queue.submit({
-      model: models.video("lucy-clip"),
+      model: models.video("lucy-latest"),
       prompt,
       data: parseBase64DataUrl(videoDataUrl, "video"),
     });

@@ -8,7 +8,6 @@ const CANONICAL_MODEL_NAMES = [
   "lucy-vton-3.5",
   "lucy-vton-3.6",
   "lucy-restyle-2",
-  "lucy-clip",
   "lucy-image-2",
 ] as const;
 
@@ -20,7 +19,6 @@ const CANONICAL_REALTIME_MODEL_NAMES = [
   "lucy-restyle-2",
 ] as const;
 const CANONICAL_VIDEO_MODEL_NAMES = [
-  "lucy-clip",
   "lucy-2.1",
   "lucy-2.5",
   "lucy-vton-3.5",
@@ -40,7 +38,6 @@ export type CanonicalModel = z.infer<typeof canonicalModelSchema>;
  * Old names still work but will log a deprecation warning.
  */
 export const modelAliases = {
-  "lucy-pro-v2v": "lucy-clip",
   "lucy-restyle-v2v": "lucy-restyle-2",
   "lucy-pro-i2i": "lucy-image-2",
 } as const satisfies Record<string, CanonicalModel>;
@@ -76,7 +73,6 @@ export const realtimeModels = z.union([
 ]);
 export const videoModels = z.union([
   // Canonical names
-  z.literal("lucy-clip"),
   z.literal("lucy-2.1"),
   z.literal("lucy-2.5"),
   z.literal("lucy-vton-3.5"),
@@ -86,9 +82,7 @@ export const videoModels = z.union([
   z.literal("lucy-latest"),
   z.literal("lucy-vton-latest"),
   z.literal("lucy-restyle-latest"),
-  z.literal("lucy-clip-latest"),
   // Deprecated names (use canonical names above instead)
-  z.literal("lucy-pro-v2v"),
   z.literal("lucy-restyle-v2v"),
 ]);
 export const imageModels = z.union([
@@ -188,21 +182,6 @@ const v2vResolutionSchema = z
   .describe("The resolution to use for the generation")
   .default("720p");
 
-const videoEditSchema = z.object({
-  prompt: z.string().min(1).describe("The prompt to use for the generation"),
-  data: fileInputSchema.describe(
-    "The video data to use for generation (File, Blob, ReadableStream, URL, or string URL). Output video is limited to 5 seconds.",
-  ),
-  reference_image: fileInputSchema
-    .optional()
-    .describe(
-      "Optional reference image to guide what to add to the video (File, Blob, ReadableStream, URL, or string URL)",
-    ),
-  seed: z.number().optional().describe("The seed to use for the generation"),
-  resolution: v2vResolutionSchema,
-  enhance_prompt: z.boolean().optional().describe("Whether to enhance the prompt"),
-});
-
 const imageEditSchema = z.object({
   prompt: z.string().min(1).max(1000).describe("The prompt to use for the generation"),
   data: fileInputSchema.describe(
@@ -250,7 +229,6 @@ const videoEdit2Schema = z.object({
 
 export const modelInputSchemas = {
   // Canonical names
-  "lucy-clip": videoEditSchema,
   "lucy-image-2": imageEditSchema,
   "lucy-restyle-2": restyleSchema,
   "lucy-2.1": videoEdit2Schema,
@@ -261,10 +239,8 @@ export const modelInputSchemas = {
   "lucy-latest": videoEdit2Schema,
   "lucy-vton-latest": videoEdit2Schema,
   "lucy-restyle-latest": restyleSchema,
-  "lucy-clip-latest": videoEditSchema,
   "lucy-image-latest": imageEditSchema,
   // Deprecated names (kept for backward compatibility)
-  "lucy-pro-v2v": videoEditSchema,
   "lucy-pro-i2i": imageEditSchema,
   "lucy-restyle-v2v": restyleSchema,
 } as const;
@@ -451,15 +427,6 @@ const _models = {
   },
   video: {
     // Canonical names
-    "lucy-clip": {
-      urlPath: "/v1/generate/lucy-clip",
-      queueUrlPath: "/v1/jobs/lucy-clip",
-      name: "lucy-clip" as const,
-      fps: 25,
-      width: 1280,
-      height: 704,
-      inputSchema: modelInputSchemas["lucy-clip"],
-    },
     "lucy-2.1": {
       urlPath: "/v1/generate/lucy-2.1",
       queueUrlPath: "/v1/jobs/lucy-2.1",
@@ -534,25 +501,7 @@ const _models = {
       height: 704,
       inputSchema: modelInputSchemas["lucy-restyle-latest"],
     },
-    "lucy-clip-latest": {
-      urlPath: "/v1/generate/lucy-clip-latest",
-      queueUrlPath: "/v1/jobs/lucy-clip-latest",
-      name: "lucy-clip-latest" as const,
-      fps: 25,
-      width: 1280,
-      height: 704,
-      inputSchema: modelInputSchemas["lucy-clip-latest"],
-    },
     // Deprecated names (use canonical names above instead)
-    "lucy-pro-v2v": {
-      urlPath: "/v1/generate/lucy-pro-v2v",
-      queueUrlPath: "/v1/jobs/lucy-pro-v2v",
-      name: "lucy-pro-v2v" as const,
-      fps: 25,
-      width: 1280,
-      height: 704,
-      inputSchema: modelInputSchemas["lucy-pro-v2v"],
-    },
     "lucy-restyle-v2v": {
       urlPath: "/v1/generate/lucy-restyle-v2v",
       queueUrlPath: "/v1/jobs/lucy-restyle-v2v",
@@ -616,7 +565,6 @@ export const models = {
    * Get a video model identifier.
    *
    * Available options:
-   *   - `"lucy-clip"` - Video-to-video editing
    *   - `"lucy-2.1"` - Long-form video editing (Lucy 2.1)
    *   - `"lucy-2.5"` - Long-form video editing (Lucy 2.5)
    *   - `"lucy-vton-3.5"` - Virtual try-on 3.5 video editing

@@ -24,7 +24,7 @@ export type QueueClient = {
    * @example
    * ```ts
    * const job = await client.queue.submit({
-   *   model: models.video("lucy-pro-v2v"),
+   *   model: models.video("lucy-latest"),
    *   prompt: "Make it look like a watercolor painting",
    *   data: videoBlob
    * });
@@ -63,7 +63,7 @@ export type QueueClient = {
    * @example
    * ```ts
    * const result = await client.queue.submitAndPoll({
-   *   model: models.video("lucy-pro-v2v"),
+   *   model: models.video("lucy-latest"),
    *   prompt: "Transform into anime style",
    *   data: videoBlob,
    *   onStatusChange: (job) => {
