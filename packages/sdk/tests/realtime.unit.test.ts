@@ -629,7 +629,7 @@ describe("realtime.connect options", () => {
   it("adds resolution to the realtime URL when provided", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const client = createRealTimeClient({
-      baseUrl: "wss://api3.decart.ai",
+      baseUrl: "wss://api.decart.ai",
       apiKey: "test-key",
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       telemetryEnabled: false,
@@ -655,7 +655,7 @@ describe("realtime.connect options", () => {
   }) => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     return createRealTimeClient({
-      baseUrl: "wss://api3.decart.ai",
+      baseUrl: "wss://api.decart.ai",
       apiKey: "test-key",
       logger,
       telemetryEnabled: false,
@@ -877,7 +877,7 @@ describe("realtime.connect options", () => {
   it("rejects unsupported realtime resolutions", async () => {
     const { createRealTimeClient } = await import("../src/realtime/client.js");
     const client = createRealTimeClient({
-      baseUrl: "wss://api3.decart.ai",
+      baseUrl: "wss://api.decart.ai",
       apiKey: "test-key",
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       telemetryEnabled: false,
@@ -902,7 +902,7 @@ describe("realtime.connect options", () => {
     const createClient = async (credentials: { apiKey: string; apiKeyProvider?: () => string | Promise<string> }) => {
       const { createRealTimeClient } = await import("../src/realtime/client.js");
       return createRealTimeClient({
-        baseUrl: "wss://api3.decart.ai",
+        baseUrl: "wss://api.decart.ai",
         ...credentials,
         logger,
         telemetryEnabled: false,

@@ -149,7 +149,7 @@ export const createDecartClientForPlatform = (createRealtime: CreateRealtime, op
   // Realtime (WebRTC) always requires direct API access with API key
   // Proxy mode is only for HTTP endpoints (process, queue, tokens)
   // Note: Realtime will fail at connection time if no API key is provided
-  const wsBaseUrl = parsedOptions.data.realtimeBaseUrl || "wss://api3.decart.ai";
+  const wsBaseUrl = parsedOptions.data.realtimeBaseUrl || "wss://api.decart.ai";
   const hasExplicitBaseUrl = isProxyMode || parsedOptions.data.baseUrl !== undefined;
   const subscribeBaseUrl = hasExplicitBaseUrl ? baseUrl : wsBaseUrl.replace(/^wss?:\/\//i, "https://");
   const realtime = createRealtime({

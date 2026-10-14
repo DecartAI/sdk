@@ -20,7 +20,7 @@ async function main() {
   });
 
   // Create a client with a custom realtime WebSocket base URL
-  // This overrides the default wss://api3.decart.ai endpoint
+  // This overrides the default wss://api.decart.ai endpoint
   const client = createDecartClient({
     apiKey: process.env.DECART_API_KEY!,
     realtimeBaseUrl: "wss://custom-ws.example.com",

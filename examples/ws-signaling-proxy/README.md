@@ -33,7 +33,7 @@ Optional realtime query params sent by the SDK (`resolution=1080p`, `speed=fast`
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DECART_API_KEY` | Yes | — | Your Decart API key |
-| `DECART_BASE_URL` | No | `wss://api3.decart.ai` | Decart WebSocket endpoint |
+| `DECART_BASE_URL` | No | `wss://api.decart.ai` | Decart WebSocket endpoint |
 | `PORT` | No | `8080` | Proxy listen port |
 
 ## Scripts
