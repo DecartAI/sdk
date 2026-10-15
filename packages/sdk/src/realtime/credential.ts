@@ -3,12 +3,14 @@ import { createApiKeyProviderResultError, createClientTokenExpiredError } from "
 import { REALTIME_CONFIG } from "./config-realtime";
 
 /**
- * Returns the credential for the next realtime dial: a client token's `apiKey` (minted on your
- * server with `client.tokens.create`) or a permanent key. The SDK calls it right before every
- * connect and reconnect, so each dial carries a token minted for it instead of one from page load.
+ * Returns the credential for the next HTTP request or realtime dial: a client token's `apiKey`
+ * (minted on your server with `client.tokens.create`) or a permanent key. The SDK calls it right
+ * before every request, connect and reconnect, so each carries a token minted for it instead of one
+ * from page load. For uploads, mint with an `expiresIn` that covers the upload: the API checks the
+ * token once the request body has fully arrived.
  *
- * A rejection on `connect()` rejects the connect with the same error. During reconnects a
- * rejection is retried like any other dial failure.
+ * A rejection rejects the call with the same error. During reconnects a rejection is retried like
+ * any other dial failure.
  */
 export type ApiKeyProvider = () => string | Promise<string>;
 

@@ -82,13 +82,13 @@ export type QueueClient = {
 };
 
 export type QueueClientOptions = {
-  apiKey: string;
+  getApiKey: () => string | Promise<string>;
   baseUrl: string;
   integration?: string;
 };
 
 export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
-  const { apiKey, baseUrl, integration } = opts;
+  const { getApiKey, baseUrl, integration } = opts;
 
   const submit = async <T extends VideoModelDefinition>(options: QueueSubmitOptions<T>): Promise<JobSubmitResponse> => {
     const { model, signal, ...inputs } = options;
@@ -111,7 +111,7 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
 
     return submitJob({
       baseUrl,
-      apiKey,
+      apiKey: await getApiKey(),
       model,
       inputs: processedInputs,
       signal,
@@ -122,7 +122,7 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
   const status = async (jobId: string): Promise<JobStatusResponse> => {
     return getJobStatus({
       baseUrl,
-      apiKey,
+      apiKey: await getApiKey(),
       jobId,
       integration,
     });
@@ -131,7 +131,7 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
   const result = async (jobId: string): Promise<Blob> => {
     return getJobContent({
       baseUrl,
-      apiKey,
+      apiKey: await getApiKey(),
       jobId,
       integration,
     });
@@ -152,18 +152,18 @@ export const createQueueClient = (opts: QueueClientOptions): QueueClient => {
 
     // Poll until complete
     return pollUntilComplete({
-      checkStatus: () =>
+      checkStatus: async () =>
         getJobStatus({
           baseUrl,
-          apiKey,
+          apiKey: await getApiKey(),
           jobId: job.job_id,
           signal,
           integration,
         }),
-      getContent: () =>
+      getContent: async () =>
         getJobContent({
           baseUrl,
-          apiKey,
+          apiKey: await getApiKey(),
           jobId: job.job_id,
           signal,
           integration,

@@ -6,7 +6,7 @@ import { type VerifyClientTokenOptions, verifyClientToken } from "./verify";
 
 export type TokensClientOptions = {
   baseUrl: string;
-  apiKey: string;
+  getApiKey: () => string | Promise<string>;
   integration?: string;
 };
 
@@ -81,11 +81,11 @@ export type TokensClient = {
 };
 
 export const createTokensClient = (opts: TokensClientOptions): TokensClient => {
-  const { baseUrl, apiKey, integration } = opts;
+  const { baseUrl, getApiKey, integration } = opts;
 
   const create = async (options?: CreateTokenOptions): Promise<CreateTokenResponse> => {
     const headers: HeadersInit = {
-      ...buildAuthHeaders({ apiKey, integration }),
+      ...buildAuthHeaders({ apiKey: await getApiKey(), integration }),
       "content-type": "application/json",
     };
 

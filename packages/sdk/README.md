@@ -401,9 +401,14 @@ const realtimeClient = await client.realtime.connect(stream, { model, onRemoteSt
 ```
 
 If the provider rejects during `connect()`, `connect()` rejects with that error; during a
-reconnect a provider failure is retried like any other dial failure. The provider serves the
-realtime APIs (`connect` and `subscribe`); `process`, `queue`, `files` and `tokens` still use
-`apiKey` or `proxy`.
+reconnect a provider failure is retried like any other dial failure.
+
+The provider also serves `process`, `queue`, `files` and `tokens`: the SDK calls it right before
+every HTTP request, including each `submitAndPoll` status poll and the result download, so one
+client works for batch jobs too (proxy mode never calls it for HTTP requests). The SDK does not
+cache what it returns; a provider may hand out a token it minted earlier while that token still has
+enough life left. The API checks the token once the request body has fully arrived, so a token used
+for an upload must outlive the upload: mint it with an `expiresIn` that covers your largest upload.
 
 ### React Native / Expo
 
