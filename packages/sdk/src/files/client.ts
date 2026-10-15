@@ -10,7 +10,7 @@ const MD5_HEX = /^[0-9a-f]{32}$/i;
 
 export type FilesClientOptions = {
   baseUrl: string;
-  apiKey: string;
+  getApiKey: () => string | Promise<string>;
   integration?: string;
 };
 
@@ -50,7 +50,7 @@ export type FilesClient = {
 };
 
 export const createFilesClient = (opts: FilesClientOptions): FilesClient => {
-  const { baseUrl, apiKey, integration } = opts;
+  const { baseUrl, getApiKey, integration } = opts;
 
   const upload = async (file: FileUploadInput, options?: UploadFileOptions): Promise<FileReference> => {
     if (options?.ttlSeconds !== undefined) {
@@ -68,7 +68,7 @@ export const createFilesClient = (opts: FilesClientOptions): FilesClient => {
 
     const response = await fetch(`${baseUrl}/v1/files`, {
       method: "POST",
-      headers: buildAuthHeaders({ apiKey, integration }),
+      headers: buildAuthHeaders({ apiKey: await getApiKey(), integration }),
       body: formData,
       signal: options?.signal,
     });
@@ -85,7 +85,7 @@ export const createFilesClient = (opts: FilesClientOptions): FilesClient => {
   const fetchReference = async (path: string): Promise<FileReference> => {
     const response = await fetch(`${baseUrl}${path}`, {
       method: "GET",
-      headers: buildAuthHeaders({ apiKey, integration }),
+      headers: buildAuthHeaders({ apiKey: await getApiKey(), integration }),
     });
 
     if (!response.ok) {
@@ -109,7 +109,7 @@ export const createFilesClient = (opts: FilesClientOptions): FilesClient => {
   const deleteFile = async (fileId: string): Promise<void> => {
     const response = await fetch(`${baseUrl}/v1/files/${encodeURIComponent(fileId)}`, {
       method: "DELETE",
-      headers: buildAuthHeaders({ apiKey, integration }),
+      headers: buildAuthHeaders({ apiKey: await getApiKey(), integration }),
     });
 
     if (!response.ok) {

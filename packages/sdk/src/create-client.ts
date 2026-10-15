@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createFilesClient } from "./files/client";
 import { createProcessClient } from "./process/client";
 import { createQueueClient } from "./queue/client";
-import type { ApiKeyProvider } from "./realtime/credential";
+import { type ApiKeyProvider, createCredentialSource } from "./realtime/credential";
 import type { CreateRealtime } from "./realtime/factory";
 import { createTokensClient } from "./tokens/client";
 import { readEnv } from "./utils/env";
@@ -65,9 +65,11 @@ export type DecartClientOptions =
  * @param options - Configuration options
  * @param options.proxy - URL of the proxy server. When set, the client will use the proxy instead of direct API access and apiKey is not required.
  * @param options.apiKey - API key for authentication.
- * @param options.apiKeyProvider - Called before every realtime connect and reconnect for a fresh credential (a client
- *   token's `apiKey`), so a token minted on page load is never dialled after it expired. Wins over `apiKey` for
- *   realtime; the HTTP APIs (`process`, `queue`, `files`, `tokens`) still use `apiKey` or `proxy`.
+ * @param options.apiKeyProvider - Called before every HTTP request (including each `submitAndPoll` status poll) and
+ *   every realtime connect and reconnect for a fresh credential (a client token's `apiKey`), so a token minted on page
+ *   load is never sent after it expired. Wins over `apiKey`; not called for HTTP requests in proxy mode. The API
+ *   checks the token once the request body has fully arrived, so for uploads mint it with an `expiresIn` that covers
+ *   the upload.
  * @param options.baseUrl - Override the default API base URL.
  * @param options.realtimeBaseUrl - Override the default WebSocket base URL for realtime connections.
  * @param options.integration - Optional integration identifier.
@@ -85,7 +87,7 @@ export type DecartClientOptions =
  * // Option 3: Using proxy (client-side, no API key needed)
  * const client = createDecartClient({ proxy: "https://your-server.com/api/decart" });
  *
- * // Option 4: A fresh client token for every realtime connect and reconnect
+ * // Option 4: A fresh client token for every request, realtime connect and reconnect
  * const client = createDecartClient({
  *   apiKeyProvider: async () => (await (await fetch("/api/realtime-token", { method: "POST" })).json()).apiKey,
  * });
@@ -162,27 +164,31 @@ export const createDecartClientForPlatform = (createRealtime: CreateRealtime, op
     telemetryEnabled,
   });
 
+  // Proxy mode sends no key, so HTTP requests only ask the provider in direct mode.
+  const getApiKey =
+    apiKeyProvider && !isProxyMode ? createCredentialSource({ apiKey: "", apiKeyProvider }) : () => apiKey || "";
+
   const process = createProcessClient({
     baseUrl,
-    apiKey: apiKey || "",
+    getApiKey,
     integration,
   });
 
   const queue = createQueueClient({
     baseUrl,
-    apiKey: apiKey || "",
+    getApiKey,
     integration,
   });
 
   const tokens = createTokensClient({
     baseUrl,
-    apiKey: apiKey || "",
+    getApiKey,
     integration,
   });
 
   const files = createFilesClient({
     baseUrl,
-    apiKey: apiKey || "",
+    getApiKey,
     integration,
   });
 
@@ -290,7 +296,7 @@ export const createDecartClientForPlatform = (createRealtime: CreateRealtime, op
      * const client = createDecartClient({ apiKey: token.apiKey });
      * const realtimeClient = await client.realtime.connect(stream, options);
      *
-     * // Or let the SDK fetch a fresh token before every connect and reconnect
+     * // Or let the SDK fetch a fresh token before every request, connect and reconnect
      * const client = createDecartClient({ apiKeyProvider: () => fetchClientTokenFromYourServer() });
      * ```
      */

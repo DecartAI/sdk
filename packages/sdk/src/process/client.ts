@@ -11,13 +11,13 @@ import type { FileInput, ProcessOptions } from "./types";
 export type ProcessClient = <T extends ImageModelDefinition>(options: ProcessOptions<T>) => Promise<Blob>;
 
 export type ProcessClientOptions = {
-  apiKey: string;
+  getApiKey: () => string | Promise<string>;
   baseUrl: string;
   integration?: string;
 };
 
 export const createProcessClient = (opts: ProcessClientOptions): ProcessClient => {
-  const { apiKey, baseUrl, integration } = opts;
+  const { getApiKey, baseUrl, integration } = opts;
 
   const _process = async <T extends ImageModelDefinition>(options: ProcessOptions<T>): Promise<Blob> => {
     const { model, signal, ...inputs } = options;
@@ -38,7 +38,7 @@ export const createProcessClient = (opts: ProcessClientOptions): ProcessClient =
 
     const response = await sendRequest({
       baseUrl,
-      apiKey,
+      apiKey: await getApiKey(),
       model,
       inputs: processedInputs,
       signal,

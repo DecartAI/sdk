@@ -775,6 +775,51 @@ describe("Queue API", () => {
     });
   });
 
+  describe("apiKeyProvider", () => {
+    it("asks the provider before every request and sends its key over apiKey", async () => {
+      const keys: (string | null)[] = [];
+      server.use(
+        http.get("http://localhost/v1/jobs/job_123", ({ request }) => {
+          keys.push(request.headers.get("x-api-key"));
+          return HttpResponse.json({ job_id: "job_123", status: "processing" });
+        }),
+      );
+      let minted = 0;
+      const client = createDecartClient({
+        apiKey: "test-api-key",
+        apiKeyProvider: async () => `fresh-${++minted}`,
+        baseUrl: "http://localhost",
+      });
+
+      await client.queue.status("job_123");
+      await client.queue.status("job_123");
+
+      expect(keys).toEqual(["fresh-1", "fresh-2"]);
+    });
+
+    it("rejects the request when the provider returns an invalid key", async () => {
+      const client = createDecartClient({ apiKeyProvider: () => "", baseUrl: "http://localhost" });
+
+      await expect(client.queue.status("job_123")).rejects.toMatchObject({ code: "INVALID_API_KEY" });
+    });
+
+    it("is not called in proxy mode, which sends no key", async () => {
+      server.use(
+        http.get("http://localhost/api/decart/v1/jobs/job_123", ({ request }) => {
+          lastRequest = request;
+          return HttpResponse.json({ job_id: "job_123", status: "processing" });
+        }),
+      );
+      const apiKeyProvider = vi.fn(() => "fresh");
+      const client = createDecartClient({ proxy: "http://localhost/api/decart", apiKeyProvider });
+
+      await client.queue.status("job_123");
+
+      expect(lastRequest?.headers.get("x-api-key")).toBeNull();
+      expect(apiKeyProvider).not.toHaveBeenCalled();
+    });
+  });
+
   describe("submitAndPoll", () => {
     it("submits and polls until completed", async () => {
       let pollCount = 0;
