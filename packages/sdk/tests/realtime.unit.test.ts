@@ -23,6 +23,7 @@ const liveKitMock = vi.hoisted(() => {
     Source: { Camera: "camera" },
   } as const;
   const TrackEvent = { VideoPlaybackStarted: "videoPlaybackStarted" } as const;
+  const VideoQuality = { LOW: 0, MEDIUM: 1, HIGH: 2 } as const;
   const ConnectionState = {
     Connecting: "connecting",
     Connected: "connected",
@@ -33,6 +34,7 @@ const liveKitMock = vi.hoisted(() => {
 
   class MockPublication {
     setSubscribed = vi.fn();
+    setVideoQuality = vi.fn();
     constructor(public readonly kind: "video" | "audio") {}
   }
   class MockRemoteParticipant {
@@ -87,6 +89,7 @@ const liveKitMock = vi.hoisted(() => {
     RoomEvent,
     Track,
     TrackEvent,
+    VideoQuality,
     ConnectionState,
     MockRoom,
     MockPublication,
@@ -99,6 +102,7 @@ vi.mock("livekit-client", () => ({
   RoomEvent: liveKitMock.RoomEvent,
   Track: liveKitMock.Track,
   TrackEvent: liveKitMock.TrackEvent,
+  VideoQuality: liveKitMock.VideoQuality,
   ConnectionState: liveKitMock.ConnectionState,
 }));
 
@@ -423,8 +427,146 @@ describe("realtime.subscribe", () => {
 
     const room = liveKitMock.roomInstances[0] as InstanceType<typeof liveKitMock.MockRoom>;
     expect(room.options).toMatchObject({ frameMetadata: { worker } });
-    expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "watch-token");
+    expect(room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "watch-token", { autoSubscribe: false });
     client.disconnect();
+  });
+
+  describe("input stream", () => {
+    type MockRoom = InstanceType<typeof liveKitMock.MockRoom>;
+    type MockPublication = InstanceType<typeof liveKitMock.MockPublication>;
+    const OUTPUT = "inference-server-1";
+    const INPUT = "client-room-1";
+
+    /** The inference server and the session's publisher, each in the room with video and audio when we join. */
+    const subscribeWith = async (options: Partial<import("../src/realtime/subscribe-client.js").SubscribeOptions>) => {
+      const { createRealTimeSubscribeClient } = await import("../src/realtime/subscribe-client.js");
+      liveKitMock.connectMocks.push(() => {
+        const room = liveKitMock.roomInstances[0] as MockRoom;
+        for (const identity of [OUTPUT, INPUT]) {
+          const participant = new liveKitMock.MockRemoteParticipant(identity);
+          participant.trackPublications.set("video", new liveKitMock.MockPublication("video"));
+          participant.trackPublications.set("audio", new liveKitMock.MockPublication("audio"));
+          room.remoteParticipants.set(identity, participant);
+        }
+        return Promise.resolve();
+      });
+      const subscriber = createRealTimeSubscribeClient({
+        baseUrl: "https://api.example.test",
+        apiKey: "test-key",
+        logger,
+      });
+      return subscriber.subscribe({
+        token: btoa(JSON.stringify({ room_name: "room-1" })),
+        onRemoteStream: () => {},
+        ...options,
+      });
+    };
+
+    const tracksOf = (identity: string) => {
+      const room = liveKitMock.roomInstances[0] as MockRoom;
+      const participant = room.remoteParticipants.get(identity) as InstanceType<
+        typeof liveKitMock.MockRemoteParticipant
+      >;
+      return {
+        room,
+        participant,
+        video: participant.trackPublications.get("video") as MockPublication,
+        audio: participant.trackPublications.get("audio") as MockPublication,
+      };
+    };
+
+    it("joins without auto-subscribe and never downloads the input unless asked", async () => {
+      const client = await subscribeWith({});
+      const output = tracksOf(OUTPUT);
+      const input = tracksOf(INPUT);
+
+      expect(output.room.connect).toHaveBeenCalledWith("wss://livekit.example.test", "watch-token", {
+        autoSubscribe: false,
+      });
+      expect(output.video.setSubscribed).toHaveBeenCalledWith(true);
+      expect(output.audio.setSubscribed).toHaveBeenCalledWith(true);
+      expect(input.video.setSubscribed).not.toHaveBeenCalled();
+      expect(input.audio.setSubscribed).not.toHaveBeenCalled();
+
+      // A publication that shows up after the join goes through the same gate.
+      const late = new liveKitMock.MockPublication("video");
+      input.room.emit(liveKitMock.RoomEvent.TrackPublished, late, input.participant);
+      expect(late.setSubscribed).not.toHaveBeenCalled();
+      client.disconnect();
+    });
+
+    it("delivers the publisher's tracks to onInputStream, at full quality by default", async () => {
+      vi.stubGlobal("MediaStream", FakeMediaStream);
+      const outputs: MediaStream[] = [];
+      const inputs: MediaStream[] = [];
+      const client = await subscribeWith({
+        onRemoteStream: (stream) => outputs.push(stream),
+        onInputStream: (stream) => inputs.push(stream),
+      });
+      const output = tracksOf(OUTPUT);
+      const input = tracksOf(INPUT);
+
+      expect(input.video.setSubscribed).toHaveBeenCalledWith(true);
+      expect(input.audio.setSubscribed).toHaveBeenCalledWith(true);
+      expect(input.video.setVideoQuality).toHaveBeenCalledWith(liveKitMock.VideoQuality.HIGH);
+      expect(input.audio.setVideoQuality).not.toHaveBeenCalled();
+      expect(output.video.setVideoQuality).not.toHaveBeenCalled();
+
+      const camera = { id: "input-video", kind: "video" };
+      const microphone = { id: "input-audio", kind: "audio" };
+      const styled = { id: "output-video", kind: "video" };
+      const { RoomEvent } = liveKitMock;
+      input.room.emit(RoomEvent.TrackSubscribed, { kind: "video", mediaStreamTrack: camera }, {}, input.participant);
+      input.room.emit(
+        RoomEvent.TrackSubscribed,
+        { kind: "audio", mediaStreamTrack: microphone },
+        {},
+        input.participant,
+      );
+      input.room.emit(RoomEvent.TrackSubscribed, { kind: "video", mediaStreamTrack: styled }, {}, output.participant);
+
+      // A fresh stream per change, so an element re-reads a late audio track.
+      expect(inputs.map((stream) => stream.getTracks())).toEqual([[camera], [camera, microphone]]);
+      expect(inputs[0]).not.toBe(inputs[1]);
+      expect(outputs.map((stream) => stream.getTracks())).toEqual([[styled]]);
+      client.disconnect();
+    });
+
+    it("drops ended tracks when a resubscribe hands over new ones", async () => {
+      vi.stubGlobal("MediaStream", FakeMediaStream);
+      const inputs: MediaStream[] = [];
+      const client = await subscribeWith({ onInputStream: (stream) => inputs.push(stream) });
+      const input = tracksOf(INPUT);
+      const before = { id: "camera-1", kind: "video", readyState: "live" };
+      const after = { id: "camera-2", kind: "video", readyState: "live" };
+      const { RoomEvent } = liveKitMock;
+      input.room.emit(RoomEvent.TrackSubscribed, { kind: "video", mediaStreamTrack: before }, {}, input.participant);
+      before.readyState = "ended";
+      input.room.emit(RoomEvent.TrackSubscribed, { kind: "video", mediaStreamTrack: after }, {}, input.participant);
+      expect(inputs.at(-1)?.getTracks()).toEqual([after]);
+      client.disconnect();
+    });
+
+    it("asks the SFU for the requested input video quality", async () => {
+      const client = await subscribeWith({ onInputStream: () => {}, inputVideoQuality: "low" });
+      expect(tracksOf(INPUT).video.setVideoQuality).toHaveBeenCalledWith(liveKitMock.VideoQuality.LOW);
+      client.disconnect();
+    });
+
+    it("re-subscribes output and input after a livekit-internal full reconnect", async () => {
+      const client = await subscribeWith({ onInputStream: () => {} });
+      const output = tracksOf(OUTPUT);
+      const input = tracksOf(INPUT);
+      output.video.setSubscribed.mockClear();
+      input.video.setSubscribed.mockClear();
+
+      // A full reconnect lands on a fresh SFU session; publications already known to the
+      // Room never re-emit TrackPublished, so the sweep must run again on Reconnected.
+      output.room.emit(liveKitMock.RoomEvent.Reconnected);
+      expect(output.video.setSubscribed).toHaveBeenCalledWith(true);
+      expect(input.video.setSubscribed).toHaveBeenCalledWith(true);
+      client.disconnect();
+    });
   });
 
   it("asks apiKeyProvider for the watch-stream credential instead of the static key", async () => {

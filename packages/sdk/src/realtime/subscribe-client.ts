@@ -1,4 +1,4 @@
-import type { RemoteParticipant, RemoteTrack, Room } from "livekit-client";
+import type { RemoteParticipant, RemoteTrack, RemoteTrackPublication, Room } from "livekit-client";
 
 import {
   classifyWebrtcError,
@@ -68,10 +68,21 @@ export type RealTimeSubscribeClient = {
   off: <K extends keyof SubscribeEvents>(event: K, listener: (data: SubscribeEvents[K]) => void) => void;
 };
 
+/** The highest simulcast layer to receive; the SFU still drops lower when bandwidth requires. */
+export type SubscribeVideoQuality = "low" | "medium" | "high";
+
 export type SubscribeOptions = {
   token: string;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionChange?: (state: ConnectionState) => void;
+  /**
+   * Also receive the session's input: the tracks its publisher sends into the
+   * room (camera, microphone), as a separate MediaStream re-emitted whenever
+   * its track set changes. Omit it and the input is never downloaded.
+   */
+  onInputStream?: (stream: MediaStream) => void;
+  /** Highest quality of the input video to receive, when `onInputStream` is set. Default `"high"`. */
+  inputVideoQuality?: SubscribeVideoQuality;
 };
 
 export type RealTimeSubscribeClientOptions = {
@@ -99,6 +110,22 @@ function mapLiveKitState(state: string): ConnectionState {
     default:
       return "disconnected";
   }
+}
+
+/**
+ * `stream`'s live tracks plus `track`, as a fresh MediaStream. Consumers assign
+ * it to an element's `srcObject`, and assigning the same reference is a no-op
+ * that would leave a late-arriving audio track without a sink; a new object
+ * makes the element re-read its tracks, so a single <video> plays video and
+ * audio. Ended tracks (a full reconnect, a republish) are dropped so the
+ * element never keeps playing a dead one.
+ */
+function withTrack(stream: MediaStream | null, track: MediaStreamTrack): MediaStream {
+  const tracks = (stream?.getTracks() ?? []).filter((existing) => existing.readyState !== "ended");
+  if (!tracks.includes(track)) {
+    tracks.push(track);
+  }
+  return new MediaStream(tracks);
 }
 
 async function fetchWatchStreamCredentials(opts: WatchStreamCredentialsRequest): Promise<WatchStreamResponse> {
@@ -138,6 +165,7 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
     let frameMetadataWorker: Worker | undefined;
     let currentState: ConnectionState = "connecting";
     let remoteStream: MediaStream | null = null;
+    let inputStream: MediaStream | null = null;
 
     const setState = (state: ConnectionState) => {
       if (currentState === state) return;
@@ -151,7 +179,8 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
     const apiKey = await nextCredential();
 
     try {
-      const { Room: LiveKitRoom, RoomEvent } = await loadLiveKitClient();
+      const liveKit = await loadLiveKitClient();
+      const { Room: LiveKitRoom, RoomEvent } = liveKit;
       observability = new RealtimeObservability({
         telemetryEnabled: false,
         apiKey,
@@ -197,23 +226,57 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
         throw error;
       }
       const activeRoom = room;
+      const { onInputStream } = options;
+      // Read only when the input is wanted, so callers that never ask for it don't depend on the export.
+      const inputVideoQuality = onInputStream
+        ? {
+            low: liveKit.VideoQuality.LOW,
+            medium: liveKit.VideoQuality.MEDIUM,
+            high: liveKit.VideoQuality.HIGH,
+          }[options.inputVideoQuality ?? "high"]
+        : undefined;
+      const isInferenceServer = (participant: RemoteParticipant) =>
+        participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix);
+
+      // The room joins with `autoSubscribe: false` so only wanted tracks are
+      // downloaded: the inference server's output always, the publisher's input
+      // only when `onInputStream` asks for it. Publications already in the room
+      // at join never emit TrackPublished and are swept after connect; a
+      // livekit-internal full reconnect starts with no subscriptions, so sweep
+      // again. `setSubscribed(true)` is idempotent.
+      const subscribeIfWanted = (publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+        if (publication.kind !== "video" && publication.kind !== "audio") return;
+        if (isInferenceServer(participant)) {
+          publication.setSubscribed(true);
+        } else if (onInputStream) {
+          publication.setSubscribed(true);
+          if (publication.kind === "video" && inputVideoQuality !== undefined) {
+            publication.setVideoQuality(inputVideoQuality);
+          }
+        }
+      };
+      const subscribeExisting = () => {
+        for (const participant of activeRoom.remoteParticipants.values()) {
+          for (const publication of participant.trackPublications.values()) {
+            subscribeIfWanted(publication as RemoteTrackPublication, participant);
+          }
+        }
+      };
+      activeRoom.on(RoomEvent.TrackPublished, subscribeIfWanted);
+      activeRoom.on(RoomEvent.Reconnected, subscribeExisting);
 
       activeRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
-        if (!participant.identity.startsWith(REALTIME_CONFIG.livekit.inferenceServerIdentityPrefix)) return;
         if (track.kind !== "video" && track.kind !== "audio") return;
-
         const mediaStreamTrack = track.mediaStreamTrack;
         if (!mediaStreamTrack) return;
-        // Emit a fresh MediaStream whenever the track set changes so the
-        // consumer's element re-reads its tracks (assigning the same reference
-        // is a no-op, leaving a late-arriving audio track without a sink). A
-        // single <video> element then plays both video and audio.
-        const tracks = remoteStream?.getTracks() ?? [];
-        if (!tracks.includes(mediaStreamTrack)) {
-          tracks.push(mediaStreamTrack);
+
+        if (isInferenceServer(participant)) {
+          remoteStream = withTrack(remoteStream, mediaStreamTrack);
+          options.onRemoteStream(remoteStream);
+        } else if (onInputStream) {
+          inputStream = withTrack(inputStream, mediaStreamTrack);
+          onInputStream(inputStream);
         }
-        remoteStream = new MediaStream(tracks);
-        options.onRemoteStream(remoteStream);
       });
 
       activeRoom.on(RoomEvent.ConnectionStateChanged, (state) => {
@@ -224,7 +287,8 @@ export const createRealTimeSubscribeClient = (opts: RealTimeSubscribeClientOptio
         setState("disconnected");
       });
 
-      await activeRoom.connect(creds.livekit_url, creds.token);
+      await activeRoom.connect(creds.livekit_url, creds.token, { autoSubscribe: false });
+      subscribeExisting();
       observability.setLiveKitRoom(activeRoom);
       setState("connected");
 

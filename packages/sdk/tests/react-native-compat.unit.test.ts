@@ -210,7 +210,9 @@ describe("React Native compatibility", () => {
       onRemoteStream: () => {},
     });
     expect(subscription.isConnected()).toBe(true);
-    expect(liveKitMockState.rooms[1]?.connect).toHaveBeenCalledWith("wss://livekit.test", "watch-token");
+    expect(liveKitMockState.rooms[1]?.connect).toHaveBeenCalledWith("wss://livekit.test", "watch-token", {
+      autoSubscribe: false,
+    });
     subscription.disconnect();
   });
 
