@@ -532,6 +532,21 @@ describe("realtime.subscribe", () => {
       client.disconnect();
     });
 
+    it("drops ended tracks when a resubscribe hands over new ones", async () => {
+      vi.stubGlobal("MediaStream", FakeMediaStream);
+      const inputs: MediaStream[] = [];
+      const client = await subscribeWith({ onInputStream: (stream) => inputs.push(stream) });
+      const input = tracksOf(INPUT);
+      const before = { id: "camera-1", kind: "video", readyState: "live" };
+      const after = { id: "camera-2", kind: "video", readyState: "live" };
+      const { RoomEvent } = liveKitMock;
+      input.room.emit(RoomEvent.TrackSubscribed, { kind: "video", mediaStreamTrack: before }, {}, input.participant);
+      before.readyState = "ended";
+      input.room.emit(RoomEvent.TrackSubscribed, { kind: "video", mediaStreamTrack: after }, {}, input.participant);
+      expect(inputs.at(-1)?.getTracks()).toEqual([after]);
+      client.disconnect();
+    });
+
     it("asks the SFU for the requested input video quality", async () => {
       const client = await subscribeWith({ onInputStream: () => {}, inputVideoQuality: "low" });
       expect(tracksOf(INPUT).video.setVideoQuality).toHaveBeenCalledWith(liveKitMock.VideoQuality.LOW);

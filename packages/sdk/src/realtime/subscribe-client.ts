@@ -113,13 +113,15 @@ function mapLiveKitState(state: string): ConnectionState {
 }
 
 /**
- * `stream`'s tracks plus `track`, as a fresh MediaStream. Consumers assign it to
- * an element's `srcObject`, and assigning the same reference is a no-op that
- * would leave a late-arriving audio track without a sink; a new object makes
- * the element re-read its tracks, so a single <video> plays video and audio.
+ * `stream`'s live tracks plus `track`, as a fresh MediaStream. Consumers assign
+ * it to an element's `srcObject`, and assigning the same reference is a no-op
+ * that would leave a late-arriving audio track without a sink; a new object
+ * makes the element re-read its tracks, so a single <video> plays video and
+ * audio. Ended tracks (a full reconnect, a republish) are dropped so the
+ * element never keeps playing a dead one.
  */
 function withTrack(stream: MediaStream | null, track: MediaStreamTrack): MediaStream {
-  const tracks = [...(stream?.getTracks() ?? [])];
+  const tracks = (stream?.getTracks() ?? []).filter((existing) => existing.readyState !== "ended");
   if (!tracks.includes(track)) {
     tracks.push(track);
   }
