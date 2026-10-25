@@ -872,7 +872,14 @@ describe("realtime.connect options", () => {
     const warn = vi.fn();
     const client = await createClientWithLogger({ ...logger, warn });
 
-    for (const name of ["lucy-2.5", "lucy-latest", "lucy-vton-3.5", "lucy-vton-3.6", "lucy-vton-latest"] as const) {
+    for (const name of [
+      "lucy-2.5",
+      "lucy-2.6",
+      "lucy-latest",
+      "lucy-vton-3.5",
+      "lucy-vton-3.6",
+      "lucy-vton-latest",
+    ] as const) {
       const realtimeClient = await client.connect(null, {
         model: models.realtime(name),
         speed: "fast",

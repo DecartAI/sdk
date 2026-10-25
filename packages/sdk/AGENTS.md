@@ -75,6 +75,7 @@
 ### Realtime Models (WebRTC)
 - `lucy-2.1` - Real-time video editing (supports reference image)
 - `lucy-2.5` - Real-time video editing (supports reference image)
+- `lucy-2.6` - Real-time video editing (supports reference image)
 - `lucy-vton-3.5` - Real-time virtual try-on 3.5
 - `lucy-vton-3.6` - Real-time virtual try-on 3.6
 - `lucy-restyle-2` - Real-time video restyling
@@ -83,6 +84,7 @@
 ### Video Models (Queue API)
 - `lucy-2.1` - long-form video editing (720p)
 - `lucy-2.5` - long-form video editing (720p)
+- `lucy-2.6` - long-form video editing (720p)
 - `lucy-vton-3.5` - virtual try-on 3.5 video editing
 - `lucy-vton-3.6` - virtual try-on 3.6 video editing
 - `lucy-restyle-2` - video restyling

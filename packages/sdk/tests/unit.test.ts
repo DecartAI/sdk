@@ -2583,7 +2583,14 @@ describe("CustomModelDefinition", () => {
 });
 
 describe("Realtime speed capability", () => {
-  const fastRealtimeModels = ["lucy-2.5", "lucy-latest", "lucy-vton-3.5", "lucy-vton-3.6", "lucy-vton-latest"] as const;
+  const fastRealtimeModels = [
+    "lucy-2.5",
+    "lucy-2.6",
+    "lucy-latest",
+    "lucy-vton-3.5",
+    "lucy-vton-3.6",
+    "lucy-vton-latest",
+  ] as const;
 
   it("advertises fast mode on exactly the supported realtime models", () => {
     const advertised = listModels({ kind: "realtime" })
@@ -2628,6 +2635,7 @@ describe("Canonical Model Names", () => {
       expect(canonicalRealtimeModels.options).toEqual([
         "lucy-2.1",
         "lucy-2.5",
+        "lucy-2.6",
         "lucy-vton-3.5",
         "lucy-vton-3.6",
         "lucy-restyle-2",
@@ -2635,6 +2643,7 @@ describe("Canonical Model Names", () => {
       expect(canonicalVideoModels.options).toEqual([
         "lucy-2.1",
         "lucy-2.5",
+        "lucy-2.6",
         "lucy-vton-3.5",
         "lucy-vton-3.6",
         "lucy-restyle-2",
@@ -2696,7 +2705,7 @@ describe("Canonical Model Names", () => {
     it("lists all models when called without options", () => {
       const listedModels = listModels();
 
-      expect(listedModels).toHaveLength(20);
+      expect(listedModels).toHaveLength(22);
       expect(listedModels.some((model) => model.kind === "realtime" && model.name === "lucy-2.1")).toBe(true);
       expect(listedModels.some((model) => model.kind === "video" && model.name === "lucy-2.5")).toBe(true);
       expect(listedModels.some((model) => model.kind === "image" && model.name === "lucy-image-2")).toBe(true);
@@ -2770,6 +2779,16 @@ describe("Canonical Model Names", () => {
       expect(model.height).toBe(720);
     });
 
+    it("lucy-2.6 canonical name works", () => {
+      const model = models.realtime("lucy-2.6");
+      expect(model.name).toBe("lucy-2.6");
+      expect(model.urlPath).toBe("/v1/stream");
+      expect(model.fps).toEqual({ ideal: 30, max: 30 });
+      expect(model.width).toBe(1280);
+      expect(model.height).toBe(720);
+      expect(model.supportedSpeeds).toEqual(["fast"]);
+    });
+
     it("lucy-vton-3.5 canonical name works", () => {
       const model = models.realtime("lucy-vton-3.5");
       expect(model.name).toBe("lucy-vton-3.5");
@@ -2813,6 +2832,17 @@ describe("Canonical Model Names", () => {
       expect(model.fps).toBe(20);
       expect(model.width).toBe(1280);
       expect(model.height).toBe(720);
+    });
+
+    it("lucy-2.6 as video model works", () => {
+      const model = models.video("lucy-2.6");
+      expect(model.name).toBe("lucy-2.6");
+      expect(model.urlPath).toBe("/v1/generate/lucy-2.6");
+      expect(model.queueUrlPath).toBe("/v1/jobs/lucy-2.6");
+      expect(model.fps).toBe(20);
+      expect(model.width).toBe(1280);
+      expect(model.height).toBe(720);
+      expect(model.supportedSpeeds).toBeUndefined();
     });
     it("lucy-vton-3.5 as video model works", () => {
       const model = models.video("lucy-vton-3.5");

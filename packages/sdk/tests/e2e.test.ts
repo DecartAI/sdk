@@ -144,6 +144,18 @@ describe.concurrent("E2E Tests", { timeout: TIMEOUT, retry: 2 }, () => {
       await expectResult(result, "lucy-2.5", ".mp4");
     });
 
+    it("lucy-2.6: video editing (prompt + reference_image)", async () => {
+      const result = await client.queue.submitAndPoll({
+        model: models.video("lucy-2.6"),
+        prompt: "Watercolor painting style with soft brushstrokes",
+        reference_image: imageBlob,
+        data: videoBlob,
+        seed: 42,
+      });
+
+      await expectResult(result, "lucy-2.6", ".mp4");
+    });
+
     it("lucy-vton-3.5: virtual try-on (prompt + reference_image)", async () => {
       const result = await client.queue.submitAndPoll({
         model: models.video("lucy-vton-3.5"),

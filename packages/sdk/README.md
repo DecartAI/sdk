@@ -93,7 +93,7 @@ iOS does not show the microphone permission prompt that playing out any remote a
 
 #### Fast mode
 
-Fast mode (`speed: "fast"`) serves the session from a higher-compute tier for lower latency and higher throughput; output quality is unchanged. It is currently available for `lucy-2.5` / `lucy-latest` and `lucy-vton-3.6` / `lucy-vton-3.5` / `lucy-vton-latest`, in the US region only, and is billed at 2x the standard realtime rate for those models. Other models ignore the option. Omit it (the default) for standard mode.
+Fast mode (`speed: "fast"`) serves the session from a higher-compute tier for lower latency and higher throughput; output quality is unchanged. It is currently available for `lucy-2.6`, `lucy-2.5` / `lucy-latest` and `lucy-vton-3.6` / `lucy-vton-3.5` / `lucy-vton-latest`, in the US region only, and is billed at 2x the standard realtime rate for those models. Other models ignore the option. Omit it (the default) for standard mode.
 
 ```ts
 const realtimeClient = await client.realtime.connect(stream, {
