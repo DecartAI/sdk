@@ -47,6 +47,7 @@ export type {
   RealTimeSubscribeClient,
   SubscribeEvents,
   SubscribeOptions,
+  SubscribeVideoQuality,
 } from "./realtime/subscribe-client";
 export type {
   CapacityWait,

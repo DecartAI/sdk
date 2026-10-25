@@ -211,6 +211,25 @@ subscriber.on("connectionChange", (state) => {
 subscriber.disconnect();
 ```
 
+**Viewer with the session's input** — also receive what the publisher sends in (its camera and
+microphone), e.g. to show the original next to the styled output:
+
+```typescript
+const subscriber = await client.realtime.subscribe({
+  token: subscribeToken,
+  onRemoteStream: (stream) => {
+    outputVideo.srcObject = stream;
+  },
+  onInputStream: (stream) => {
+    inputVideo.srcObject = stream;
+  },
+  inputVideoQuality: "low", // "low" | "medium" | "high" (default)
+});
+```
+
+Without `onInputStream` the input is never downloaded. `inputVideoQuality` sets the highest
+simulcast layer of the input video to receive; the SFU still steps down when bandwidth requires.
+
 ### Connection quality
 
 There are two layers: a **preflight** check before connecting, and an **in-session** quality
