@@ -142,7 +142,14 @@ export type ModelSpecificInputs<T extends ModelDefinition> = T["name"] extends
   ? ImageEditingInputs
   : T["name"] extends "lucy-restyle-v2v" | "lucy-restyle-2" | "lucy-restyle-latest"
     ? VideoRestyleInputs
-    : T["name"] extends "lucy-2.1" | "lucy-2.5" | "lucy-vton-3.5" | "lucy-vton-3.6" | "lucy-latest" | "lucy-vton-latest"
+    : T["name"] extends
+          | "lucy-2.1"
+          | "lucy-2.5"
+          | "lucy-2.6"
+          | "lucy-vton-3.5"
+          | "lucy-vton-3.6"
+          | "lucy-latest"
+          | "lucy-vton-latest"
       ? VideoEdit2Inputs
       : T["name"] extends ImageModels
         ? ImageGenerationInputs
