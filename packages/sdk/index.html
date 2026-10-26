@@ -324,6 +324,11 @@
                 <label><input type="radio" name="auth-mode" value="jwt"> JWKS token</label>
             </fieldset>
         </div>
+        <div class="control-group" id="endpoint-preset-group" style="display: none;">
+            <label for="endpoint-preset">API endpoint:</label>
+            <select id="endpoint-preset"></select>
+            <div id="endpoint-preset-note" style="font-size: 12px; color: #555; margin-top: 4px;"></div>
+        </div>
         <div class="control-group">
             <label for="realtime-base-url">Realtime Base URL (optional):</label>
             <input type="text" id="realtime-base-url" placeholder="wss://api.decart.ai">
@@ -635,6 +640,9 @@
             apiKey: document.getElementById('api-key'),
             modelSelect: document.getElementById('model-select'),
             realtimeBaseUrl: document.getElementById('realtime-base-url'),
+            endpointPresetGroup: document.getElementById('endpoint-preset-group'),
+            endpointPreset: document.getElementById('endpoint-preset'),
+            endpointPresetNote: document.getElementById('endpoint-preset-note'),
             queryParams: document.getElementById('query-params'),
             customModelGroup: document.getElementById('custom-model-group'),
             customModelName: document.getElementById('custom-model-name'),
@@ -747,16 +755,18 @@
         // doesn't list. The object matches the SDK's model definition schema (name, urlPath,
         // fps, width, height), so connect() accepts it and the API decides whether the name exists.
         const CUSTOM_MODEL_OPTION = '__custom__';
+        // Models the deployment lists in VITE_EXTRA_REALTIME_MODELS ride the same path, by name.
+        const EXTRA_MODEL_PREFIX = '__extra__:';
 
         function isCustomModelSelected() {
             return elements.modelSelect.value === CUSTOM_MODEL_OPTION;
         }
 
-        function buildCustomModel() {
+        function buildCustomModel(name = elements.customModelName.value.trim()) {
             const width = Number.parseInt(elements.customModelWidth.value, 10);
             const height = Number.parseInt(elements.customModelHeight.value, 10);
             return {
-                name: elements.customModelName.value.trim(),
+                name,
                 urlPath: '/v1/stream',
                 fps: { ideal: 30, max: 30 },
                 width: Number.isFinite(width) && width > 0 ? width : 1280,
@@ -765,7 +775,78 @@
         }
 
         function resolveSelectedModel() {
-            return isCustomModelSelected() ? buildCustomModel() : models.realtime(elements.modelSelect.value);
+            const value = elements.modelSelect.value;
+            if (value === CUSTOM_MODEL_OPTION) return buildCustomModel();
+            if (value.startsWith(EXTRA_MODEL_PREFIX)) return buildCustomModel(value.slice(EXTRA_MODEL_PREFIX.length));
+            return models.realtime(value);
+        }
+
+        // The SDK rejects a base URL without a scheme; read a bare host ("api.example.com") as wss://.
+        function readRealtimeBaseUrl() {
+            const raw = elements.realtimeBaseUrl.value.trim();
+            if (!raw) return '';
+            return /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `wss://${raw}`;
+        }
+
+        // Presets a deployment can provide (e.g. staging), so the page never hardcodes hosts:
+        //   VITE_REALTIME_BASE_URLS='[{"label":"Staging","url":"wss://api.example.com","note":"Needs a staging key"}]'
+        //   VITE_EXTRA_REALTIME_MODELS=name-a,name-b   (server-side models this SDK build does not list)
+        const CUSTOM_ENDPOINT_OPTION = '__custom__';
+        const endpointPresets = parseEndpointPresets(import.meta.env.VITE_REALTIME_BASE_URLS);
+
+        function parseEndpointPresets(raw) {
+            if (!raw) return [];
+            try {
+                const presets = JSON.parse(raw);
+                if (Array.isArray(presets) && presets.every((p) => p && typeof p.label === 'string' && typeof p.url === 'string')) {
+                    return presets;
+                }
+            } catch {}
+            addLog('Ignoring VITE_REALTIME_BASE_URLS: expected a JSON array of {label, url, note?}', 'error');
+            return [];
+        }
+
+        // Select the preset whose URL is in the field, else "Custom", and show its note.
+        function syncEndpointPreset() {
+            const url = readRealtimeBaseUrl();
+            const known = url === '' || endpointPresets.some((p) => p.url === url);
+            elements.endpointPreset.value = known ? url : CUSTOM_ENDPOINT_OPTION;
+            const preset = endpointPresets.find((p) => p.url === elements.endpointPreset.value);
+            elements.endpointPresetNote.textContent = preset?.note ?? '';
+        }
+
+        if (endpointPresets.length > 0) {
+            elements.endpointPreset.add(new Option('SDK default', ''));
+            for (const { label, url } of endpointPresets) elements.endpointPreset.add(new Option(label, url));
+            elements.endpointPreset.add(new Option('Custom (type below)', CUSTOM_ENDPOINT_OPTION));
+            elements.endpointPresetGroup.style.display = '';
+            syncEndpointPreset();
+            elements.endpointPreset.addEventListener('change', () => {
+                const url = elements.endpointPreset.value;
+                if (url === CUSTOM_ENDPOINT_OPTION) {
+                    elements.endpointPresetNote.textContent = '';
+                    elements.realtimeBaseUrl.focus();
+                    return;
+                }
+                elements.realtimeBaseUrl.value = url;
+                syncEndpointPreset();
+                addLog(`API endpoint: ${url || 'SDK default'}`, 'info');
+                // Ephemeral/JWT credentials are minted through the endpoint in the field.
+                const authMode = document.querySelector('input[name="auth-mode"]:checked').value;
+                if (authMode !== 'parent' && model.name) mintCredential(authMode);
+            });
+            elements.realtimeBaseUrl.addEventListener('input', syncEndpointPreset);
+        }
+
+        const extraModels = (import.meta.env.VITE_EXTRA_REALTIME_MODELS ?? '')
+            .split(',')
+            .map((name) => name.trim())
+            .filter(Boolean);
+        if (extraModels.length > 0) {
+            const group = document.createElement('optgroup');
+            group.label = 'This deployment';
+            for (const name of extraModels) group.append(new Option(name, EXTRA_MODEL_PREFIX + name));
+            elements.modelSelect.insertBefore(group, elements.modelSelect.querySelector('optgroup[label="Override"]'));
         }
 
         // "pool=moderation-eval&foo=bar" -> { pool: "moderation-eval", foo: "bar" }; passed to
@@ -1007,7 +1088,7 @@
             mintedCredential = null;
             const parentKey = elements.apiKey.value.trim();
             if (!parentKey) { addLog('Please enter an API key first', 'error'); return; }
-            const wsBase = elements.realtimeBaseUrl.value.trim();
+            const wsBase = readRealtimeBaseUrl();
             const baseUrl = wsBase ? wsBase.replace(/^wss?:/i, 'https:') : undefined;
             try {
                 const minter = createDecartClient({ apiKey: parentKey, ...(baseUrl && { baseUrl }), logger: createDemoLogger('debug') });
@@ -1281,7 +1362,7 @@
 
                 addLog('Initializing Decart client...', 'info');
                 
-                const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
+                const realtimeBaseUrl = readRealtimeBaseUrl();
                 decartClient = createDecartClient({
                     apiKey,
                     ...(realtimeBaseUrl && { realtimeBaseUrl }),
@@ -1441,7 +1522,7 @@
                 elements.connectBtn.disabled = true;
                 stopCameraResources();
 
-                const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
+                const realtimeBaseUrl = readRealtimeBaseUrl();
                 decartClient = createDecartClient({
                     apiKey,
                     ...(realtimeBaseUrl && { realtimeBaseUrl }),
@@ -1724,7 +1805,7 @@
                 
                 // Initialize client if not already done
                 if (!decartClient) {
-                    const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
+                    const realtimeBaseUrl = readRealtimeBaseUrl();
                     decartClient = createDecartClient({
                         apiKey,
                         ...(realtimeBaseUrl && { realtimeBaseUrl }),
@@ -1808,7 +1889,7 @@
                 addLog('Please enter an API key', 'error');
                 return null;
             }
-            const realtimeBaseUrl = elements.realtimeBaseUrl.value.trim();
+            const realtimeBaseUrl = readRealtimeBaseUrl();
             decartClient = createDecartClient({
                 apiKey,
                 ...(realtimeBaseUrl && { realtimeBaseUrl }),
