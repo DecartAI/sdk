@@ -166,7 +166,7 @@ describe("Lucy 2.1 realtime", () => {
       expect(lucyModel.height).toBe(720);
     });
 
-    it("lucy-latest captures at the same 720p shape as the model it resolves to", () => {
+    it("lucy-latest captures at the same 720p shape as lucy-2.6, the model it resolves to", () => {
       const latest = models.realtime("lucy-latest");
       expect(latest.width).toBe(1280);
       expect(latest.height).toBe(720);

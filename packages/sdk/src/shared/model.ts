@@ -379,7 +379,7 @@ const _models = {
       height: 704,
       inputSchema: z.object({}),
     },
-    // Latest aliases (server-side resolution)
+    // Latest aliases (server-side resolution); lucy-latest currently resolves to lucy-2.6.
     "lucy-latest": {
       urlPath: "/v1/stream",
       name: "lucy-latest" as const,
@@ -496,7 +496,7 @@ const _models = {
       height: 704,
       inputSchema: modelInputSchemas["lucy-restyle-2"],
     },
-    // Latest aliases (server-side resolution)
+    // Latest aliases (server-side resolution); lucy-latest currently resolves to lucy-2.6.
     "lucy-latest": {
       urlPath: "/v1/generate/lucy-latest",
       queueUrlPath: "/v1/jobs/lucy-latest",
