@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@decartai/sdk": "workspace:*",
-    "hono": "^4.6.0"
+    "hono": "^4.13.18"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241127.0",
